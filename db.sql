@@ -2279,6 +2279,8 @@ CREATE TABLE `settings` (
   `config_send_invoice_reminders` tinyint(1) NOT NULL DEFAULT 1,
   `config_azure_client_id` varchar(200) DEFAULT NULL,
   `config_azure_client_secret` varchar(200) DEFAULT NULL,
+  `config_azure_tenant_id` varchar(36) DEFAULT NULL,
+  `config_azure_agent_sso_enable` tinyint(1) NOT NULL DEFAULT 0,
   `config_module_enable_itdoc` tinyint(1) NOT NULL DEFAULT 1,
   `config_module_enable_accounting` tinyint(1) NOT NULL DEFAULT 1,
   `config_client_portal_enable` tinyint(1) NOT NULL DEFAULT 1,
@@ -3011,6 +3013,8 @@ CREATE TABLE `users` (
   `user_email` varchar(200) NOT NULL,
   `user_password` varchar(200) NOT NULL,
   `user_auth_method` varchar(200) NOT NULL DEFAULT 'local',
+  `user_azure_oid` varchar(36) DEFAULT NULL,
+  `user_azure_tenant_id` varchar(36) DEFAULT NULL,
   `user_type` tinyint(1) NOT NULL DEFAULT 1,
   `user_status` tinyint(1) NOT NULL DEFAULT 1,
   `user_token` varchar(200) DEFAULT NULL,
@@ -3024,7 +3028,8 @@ CREATE TABLE `users` (
   `user_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `user_archived_at` datetime DEFAULT NULL,
   `user_role_id` int(11) DEFAULT 0,
-  PRIMARY KEY (`user_id`)
+  PRIMARY KEY (`user_id`),
+  UNIQUE KEY `user_azure_identity` (`user_azure_tenant_id`,`user_azure_oid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

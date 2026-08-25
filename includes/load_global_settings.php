@@ -1,7 +1,8 @@
 <?php
 
 // Query Settings
-$sql_settings = mysqli_query($mysqli, "SELECT config_azure_client_id, config_azure_client_secret, config_client_portal_enable,
+$sql_settings = mysqli_query($mysqli, "SELECT config_azure_agent_sso_enable, config_azure_client_id,
+    config_azure_client_secret, config_azure_tenant_id, config_client_portal_enable,
     config_current_database_version, config_default_calendar, config_default_expense_account,
     config_default_expense_payment_method, config_default_hourly_rate,
     config_default_net_terms, config_default_payment_account, config_default_payment_method,
@@ -40,6 +41,8 @@ DEFINE("CURRENT_DATABASE_VERSION", $row['config_current_database_version']);
 // Microsoft OAuth
 $config_azure_client_id = $row['config_azure_client_id'];
 $config_azure_client_secret = $row['config_azure_client_secret'];
+$config_azure_tenant_id = $row['config_azure_tenant_id'];
+$config_azure_agent_sso_enable = intval($row['config_azure_agent_sso_enable']);
 
 // Mail - SMTP
 $config_smtp_provider = $row['config_smtp_provider'];

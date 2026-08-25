@@ -15,7 +15,7 @@ if (isset($_POST['add_user'])) {
     $password = password_hash(trim($_POST['password']), PASSWORD_DEFAULT);
     $user_specific_encryption_ciphertext = encryptUserSpecificKey(trim($_POST['password']));
 
-    mysqli_query($mysqli, "INSERT INTO users SET user_name = '$name', user_email = '$email', user_password = '$password', user_specific_encryption_ciphertext = '$user_specific_encryption_ciphertext', user_role_id = $role");
+    mysqli_query($mysqli, "INSERT INTO users SET user_name = '$name', user_email = '$email', user_password = '$password', user_auth_method = '$auth_method', user_specific_encryption_ciphertext = '$user_specific_encryption_ciphertext', user_role_id = $role");
 
     $user_id = mysqli_insert_id($mysqli);
 
@@ -162,7 +162,13 @@ if (isset($_POST['edit_user'])) {
         }
     }
 
-    mysqli_query($mysqli, "UPDATE users SET user_name = '$name', user_email = '$email', user_role_id = $role WHERE user_id = $user_id");
+    mysqli_query($mysqli, "UPDATE users SET user_name = '$name', user_email = '$email', user_auth_method = '$auth_method', user_role_id = $role WHERE user_id = $user_id");
+
+    if ($auth_method !== 'azure') {
+        // Disabling Entra deliberately removes the durable binding. If it is
+        // enabled again, the next successful sign-in must establish it anew.
+        mysqli_query($mysqli, "UPDATE users SET user_azure_oid = NULL, user_azure_tenant_id = NULL WHERE user_id = $user_id");
+    }
 
     if (!empty($new_password)) {
         $new_password = password_hash($new_password, PASSWORD_DEFAULT);

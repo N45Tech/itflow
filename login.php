@@ -102,6 +102,9 @@ $config_login_key_required = $row['config_login_key_required'];
 $config_login_key_secret   = $row['config_login_key_secret'];
 
 $azure_client_id = $row['config_azure_client_id'] ?? null;
+$azure_client_secret = $row['config_azure_client_secret'] ?? null;
+$azure_tenant_id = $row['config_azure_tenant_id'] ?? null;
+$azure_agent_sso_enable = intval($row['config_azure_agent_sso_enable'] ?? 0);
 
 $response         = null;
 $token_field      = null;
@@ -683,6 +686,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['login']) || isset($_
 $show_mfa_form   = (isset($token_field) && !empty($token_field));
 $show_login_form = (!$show_role_choice && !$show_mfa_form);
 
+$agent_login_key_valid = !$config_login_key_required
+    || (isset($_GET['key']) && hash_equals((string)$config_login_key_secret, (string)$_GET['key']));
+$show_agent_sso = $show_login_form
+    && $agent_login_key_valid
+    && $azure_agent_sso_enable === 1
+    && entraGuidIsValid($azure_client_id)
+    && entraGuidIsValid($azure_tenant_id)
+    && !empty($azure_client_secret);
+
+$agent_sso_params = [];
+if ($config_login_key_required && isset($_GET['key'])) {
+    $agent_sso_params['key'] = $_GET['key'];
+}
+if (isset($_GET['last_visited'])) {
+    $agent_sso_params['last_visited'] = $_GET['last_visited'];
+}
+$agent_sso_url = 'agent/login_microsoft.php';
+if (!empty($agent_sso_params)) {
+    $agent_sso_url .= '?' . http_build_query($agent_sso_params);
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -792,6 +816,13 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
 
             </form>
 
+            <?php if ($show_agent_sso) { ?>
+                <div class="text-center my-3 text-muted">or</div>
+                <a class="btn btn-outline-primary btn-block" href="<?= escapeHtml($agent_sso_url) ?>">
+                    <i class="fab fa-microsoft mr-2"></i>Sign in as a technician with Microsoft
+                </a>
+            <?php } ?>
+
             <?php if($config_client_portal_enable == 1){ ?>
                 <hr>
                 <?php if (!empty($config_smtp_provider)) { ?>
@@ -800,7 +831,7 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
                 <?php if (!empty($azure_client_id)) { ?>
                     <div class="col text-center mt-2">
                         <a href="client/login_microsoft.php">
-                            <button type="button" class="btn btn-secondary">Login with Microsoft Entra</button>
+                            <button type="button" class="btn btn-secondary">Client portal with Microsoft Entra</button>
                         </a>
                     </div>
                 <?php } ?>
