@@ -289,7 +289,12 @@
                                 </a>
                             </li>
                         <?php } ?>
-                        <!-- Currently the only integration is the client portal SSO -->
+                        <li class="nav-item">
+                            <a href="/admin/integration_level.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'integration_level.php' ? 'active' : '') ?>">
+                                <i class="nav-icon fas fa-satellite"></i>
+                                <p>Level.io</p>
+                            </a>
+                        </li>
                         <?php if ($config_client_portal_enable) { ?>
                             <li class="nav-item">
                                 <a href="/admin/identity_providers.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'identity_providers.php' ? 'active' : '') ?>">

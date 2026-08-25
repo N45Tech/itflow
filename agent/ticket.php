@@ -355,6 +355,12 @@ if (isset($_GET['ticket_id'])) {
         );
         $ticket_history_count = mysqli_num_rows($sql_ticket_history);
 
+        // Level.io alert context for tickets opened by the RMM integration.
+        $level_alert_link = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT level_alert_id,
+            level_alert_last_event_at, level_alert_name, level_alert_resolved_at,
+            level_alert_severity, level_alert_started_at, level_asset_id, level_device_id
+            FROM level_alert_links WHERE level_ticket_id = $ticket_id LIMIT 1"));
+
         /*
          * The single most useful thing on the page: which clock is running and
          * how long is left. Everything else about the SLA is detail.
@@ -1092,6 +1098,46 @@ if (isset($_GET['ticket_id'])) {
                                 ?>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                <?php } ?>
+
+                <?php if ($level_alert_link) {
+                    $level_alert_id = escapeHtml($level_alert_link['level_alert_id']);
+                    $level_alert_name = escapeHtml($level_alert_link['level_alert_name']);
+                    $level_alert_severity = escapeHtml(ucfirst($level_alert_link['level_alert_severity']));
+                    $level_alert_started_at = escapeHtml($level_alert_link['level_alert_started_at']);
+                    $level_alert_resolved_at = escapeHtml($level_alert_link['level_alert_resolved_at']);
+                    $level_alert_asset_id = intval($level_alert_link['level_asset_id']);
+                    $level_severity_badge = match (strtolower($level_alert_link['level_alert_severity'])) {
+                        'emergency' => 'dark',
+                        'critical' => 'danger',
+                        'warning' => 'warning',
+                        default => 'info',
+                    };
+                    ?>
+                    <div class="card">
+                        <div class="card-header px-3 py-2">
+                            <h5 class="card-title mt-1"><i class="fas fa-fw fa-satellite mr-2"></i>Level.io Alert</h5>
+                            <div class="card-tools">
+                                <span class="badge badge-<?= $level_alert_resolved_at ? 'success' : $level_severity_badge ?>"><?= $level_alert_resolved_at ? 'Resolved' : $level_alert_severity ?></span>
+                            </div>
+                        </div>
+                        <div class="card-body p-3">
+                            <strong><?= $level_alert_name ?></strong>
+                            <?php if ($level_alert_started_at) { ?>
+                                <div class="mt-2" title="<?= $level_alert_started_at ?>"><i class="fas fa-fw fa-clock text-secondary mr-2"></i>Started <?= escapeHtml(timeAgo($level_alert_started_at)) ?></div>
+                            <?php } ?>
+                            <?php if ($level_alert_resolved_at) { ?>
+                                <div class="mt-2" title="<?= $level_alert_resolved_at ?>"><i class="fas fa-fw fa-check text-success mr-2"></i>Resolved <?= escapeHtml(timeAgo($level_alert_resolved_at)) ?></div>
+                            <?php } ?>
+                            <?php if ($level_alert_asset_id) { ?>
+                                <div class="mt-2"><i class="fas fa-fw fa-desktop text-secondary mr-2"></i><a href="asset.php?asset_id=<?= $level_alert_asset_id ?>">Open managed asset</a></div>
+                            <?php } ?>
+                            <div class="mt-2 text-muted small text-truncate" title="<?= $level_alert_id ?>">Alert ID: <?= $level_alert_id ?></div>
+                            <div class="mt-3 pt-2 border-top">
+                                <a href="https://app.level.io/devices" target="_blank" rel="noopener noreferrer">Open Level devices <i class="fas fa-external-link-alt ml-1"></i></a>
+                            </div>
                         </div>
                     </div>
                 <?php } ?>

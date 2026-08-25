@@ -14,7 +14,9 @@ $sql_settings = mysqli_query($mysqli, "SELECT config_azure_agent_sso_enable, con
     config_invoice_late_fee_percent, config_invoice_next_number,
     config_invoice_paid_notification_email, config_invoice_prefix, config_invoice_show_tax_id,
     config_log_retention, config_login_key_required, config_login_key_secret,
-    config_login_message, config_login_remember_me_expire, config_mail_from_email,
+    config_level_alert_assigned_to, config_level_alert_ticket_enable, config_level_api_key,
+    config_level_enable, config_level_webhook_secret, config_login_message,
+    config_login_remember_me_expire, config_mail_from_email,
     config_mail_from_name, config_mail_oauth_access_token,
     config_mail_oauth_access_token_expires_at, config_mail_oauth_client_id,
     config_mail_oauth_client_secret, config_mail_oauth_refresh_token,
@@ -43,6 +45,13 @@ $config_azure_client_id = $row['config_azure_client_id'];
 $config_azure_client_secret = $row['config_azure_client_secret'];
 $config_azure_tenant_id = $row['config_azure_tenant_id'];
 $config_azure_agent_sso_enable = intval($row['config_azure_agent_sso_enable']);
+
+// Level.io RMM
+$config_level_enable = intval($row['config_level_enable']);
+$config_level_api_key = $row['config_level_api_key'];
+$config_level_webhook_secret = $row['config_level_webhook_secret'];
+$config_level_alert_ticket_enable = intval($row['config_level_alert_ticket_enable']);
+$config_level_alert_assigned_to = intval($row['config_level_alert_assigned_to']);
 
 // Mail - SMTP
 $config_smtp_provider = $row['config_smtp_provider'];

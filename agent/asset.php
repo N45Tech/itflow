@@ -283,6 +283,19 @@ if (isset($_GET['asset_id'])) {
         );
         $note_count = mysqli_num_rows($sql_related_notes);
 
+        // Level.io device context, when this asset is managed by the native RMM integration.
+        $level_asset_link = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT level_asset_links.*,
+            level_group_name FROM level_asset_links
+            LEFT JOIN level_group_mappings USING (level_group_id)
+            WHERE level_asset_id = $asset_id LIMIT 1"));
+        $level_device_snapshot = [];
+        if ($level_asset_link && !empty($level_asset_link['level_device_snapshot'])) {
+            $decoded_level_snapshot = json_decode($level_asset_link['level_device_snapshot'], true);
+            if (is_array($decoded_level_snapshot)) {
+                $level_device_snapshot = $decoded_level_snapshot;
+            }
+        }
+
         // Note type icons, read from the categories list so the seeded icons
         // stay the single source of truth
         $note_type_icons = array();
@@ -342,6 +355,79 @@ if (isset($_GET['asset_id'])) {
                         <?php } ?>
                     </div>
                 </div>
+
+                <?php if ($level_asset_link) {
+                    $level_device_online = intval($level_asset_link['level_device_online']);
+                    $level_device_deleted = !empty($level_asset_link['level_device_deleted_at']);
+                    $level_device_hostname = escapeHtml($level_asset_link['level_device_hostname']);
+                    $level_group_name = escapeHtml($level_asset_link['level_group_name']);
+                    $level_device_last_seen = escapeHtml($level_asset_link['level_device_last_seen_at']);
+                    $level_device_last_synced = escapeHtml($level_asset_link['level_device_last_synced_at']);
+                    $level_device_security_score = $level_asset_link['level_device_security_score'];
+                    $level_device_sync_status = escapeHtml($level_asset_link['level_device_sync_status']);
+                    $level_device_sync_message = escapeHtml($level_asset_link['level_device_sync_message']);
+                    $level_device_role = escapeHtml(str_replace('_', ' ', $level_device_snapshot['role'] ?? ''));
+                    $level_last_logged_in_user = escapeHtml($level_device_snapshot['last_logged_in_user'] ?? '');
+                    $level_total_memory = intval($level_device_snapshot['total_memory'] ?? 0);
+                    $level_cpu_cores = intval($level_device_snapshot['cpu_cores'] ?? 0);
+                    $level_network_addresses = [];
+                    $level_network_mac = '';
+                    foreach (($level_device_snapshot['network_interfaces'] ?? []) as $level_network_interface) {
+                        if (!is_array($level_network_interface)) {
+                            continue;
+                        }
+                        foreach (($level_network_interface['ip_addresses'] ?? []) as $level_network_address) {
+                            if (is_string($level_network_address) && !in_array($level_network_address, ['127.0.0.1', '::1'], true)) {
+                                $level_network_addresses[$level_network_address] = true;
+                            }
+                        }
+                        if ($level_network_mac === '' && !empty($level_network_interface['mac_address'])) {
+                            $level_network_mac = escapeHtml($level_network_interface['mac_address']);
+                        }
+                    }
+                    $level_network_addresses = array_slice(array_keys($level_network_addresses), 0, 3);
+                    ?>
+                    <div class="card card-dark">
+                        <div class="card-header">
+                            <h5 class="card-title"><i class="fas fa-fw fa-satellite mr-2"></i>Level.io</h5>
+                            <div class="card-tools">
+                                <?php if ($level_device_sync_status === 'Conflict') { ?>
+                                    <span class="badge badge-warning">Conflict</span>
+                                <?php } elseif ($level_device_deleted) { ?>
+                                    <span class="badge badge-secondary">Removed</span>
+                                <?php } elseif ($level_device_online) { ?>
+                                    <span class="badge badge-success">Online</span>
+                                <?php } else { ?>
+                                    <span class="badge badge-danger">Offline</span>
+                                <?php } ?>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <?php if ($level_device_sync_status !== 'Synced' && $level_device_sync_message) { ?>
+                                <div class="alert alert-warning py-2 small"><?= $level_device_sync_message ?></div>
+                            <?php } ?>
+                            <div><i class="fas fa-fw fa-desktop text-secondary mr-2"></i><?= $level_device_hostname ?></div>
+                            <?php if ($level_group_name) { ?><div class="mt-2"><i class="fas fa-fw fa-sitemap text-secondary mr-2"></i><?= $level_group_name ?></div><?php } ?>
+                            <?php if ($level_device_role) { ?><div class="mt-2 text-capitalize"><i class="fas fa-fw fa-server text-secondary mr-2"></i><?= $level_device_role ?></div><?php } ?>
+                            <?php if ($level_last_logged_in_user) { ?><div class="mt-2"><i class="fas fa-fw fa-user-clock text-secondary mr-2"></i><?= $level_last_logged_in_user ?></div><?php } ?>
+                            <?php if ($level_cpu_cores || $level_total_memory) { ?>
+                                <div class="mt-2"><i class="fas fa-fw fa-microchip text-secondary mr-2"></i><?= $level_cpu_cores ? "$level_cpu_cores cores" : '' ?><?= $level_cpu_cores && $level_total_memory ? ' / ' : '' ?><?= $level_total_memory ? escapeHtml(formatBytes($level_total_memory, 1)) . ' RAM' : '' ?></div>
+                            <?php } ?>
+                            <?php if ($level_network_addresses) { ?><div class="mt-2"><i class="fas fa-fw fa-network-wired text-secondary mr-2"></i><?= escapeHtml(implode(', ', $level_network_addresses)) ?></div><?php } ?>
+                            <?php if ($level_network_mac) { ?><div class="mt-2"><i class="fas fa-fw fa-ethernet text-secondary mr-2"></i><span class="text-monospace"><?= $level_network_mac ?></span></div><?php } ?>
+                            <?php if ($level_device_security_score !== null) { ?>
+                                <div class="mt-2"><i class="fas fa-fw fa-shield-alt text-secondary mr-2"></i>Security score <?= intval($level_device_security_score) ?></div>
+                            <?php } ?>
+                            <?php if ($level_device_last_seen) { ?>
+                                <div class="mt-2" title="<?= $level_device_last_seen ?>"><i class="fas fa-fw fa-eye text-secondary mr-2"></i>Seen <?= escapeHtml(timeAgo($level_device_last_seen)) ?></div>
+                            <?php } ?>
+                            <div class="mt-2" title="<?= $level_device_last_synced ?>"><i class="fas fa-fw fa-sync-alt text-secondary mr-2"></i>Synced <?= escapeHtml(timeAgo($level_device_last_synced)) ?></div>
+                            <div class="mt-3 pt-2 border-top">
+                                <a href="https://app.level.io/devices" target="_blank" rel="noopener noreferrer">Open Level devices <i class="fas fa-external-link-alt ml-1"></i></a>
+                            </div>
+                        </div>
+                    </div>
+                <?php } ?>
 
                 <div class="card card-dark">
                     <div class="card-header">

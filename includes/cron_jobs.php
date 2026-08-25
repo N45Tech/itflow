@@ -65,6 +65,22 @@ function cronJobRegistry(): array
             'interval_minutes' => 1,
         ],
         [
+            'name' => 'level_webhook_processor',
+            'label' => 'Level.io Webhooks',
+            'script' => 'level_webhook_processor.php',
+            'description' => 'Processes signed Level device, group, and alert events queued by the public webhook endpoint.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 1,
+        ],
+        [
+            'name' => 'level_sync',
+            'label' => 'Level.io Reconciliation',
+            'script' => 'level_sync.php',
+            'description' => 'Reconciles Level groups, managed devices, and active alerts with ITFlow.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 15,
+        ],
+        [
             'name' => 'domain_refresher',
             'label' => 'Domain Refresher',
             'script' => 'domain_refresher.php',
