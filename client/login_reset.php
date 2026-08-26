@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
             //End Mail IF
         }
 
-        $_SESSION['login_message'] = "If your account exists, a reset link is on it's way! Please allow a few minutes for it to reach you.";
+        $_SESSION['login_message'] = "If your account exists, a reset link is on its way. Please allow a few minutes for it to reach you.";
 
     /*
      * Link is being used - Perform password reset
@@ -186,14 +186,23 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
 
     <!-- Theme style -->
     <link rel="stylesheet" href="../libs/adminlte/css/adminlte.min.css">
+    <link rel="stylesheet" href="/css/itflow_custom.css">
 
 </head>
 
-<body class="hold-transition login-page">
-<div class="login-box">
-    <div class="login-logo"><b><?= escapeHtml($company_name_display) ?></b> <br>Password Reset</h2></div>
+<body class="hold-transition login-page n45-auth-page">
+<main class="login-box n45-auth-shell">
+    <div class="login-logo n45-auth-brand">
+        <span class="n45-auth-mark" aria-hidden="true"><i class="fas fa-layer-group"></i></span>
+        <span><?= escapeHtml($company_name_display) ?></span>
+    </div>
     <div class="card">
         <div class="card-body login-card-body">
+
+            <div class="n45-auth-heading">
+                <h1>Reset your password</h1>
+                <p>Use the email address connected to your client portal account.</p>
+            </div>
 
             <form method="post">
 
@@ -214,7 +223,8 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
                     if (sha1($user_row['user_password_reset_token']) == sha1($token)) { ?>
 
                         <div class="input-group mb-3">
-                            <input type="password" class="form-control" placeholder="New Password" name="new_password" required minlength="8">
+                            <label class="sr-only" for="new-password">New password</label>
+                            <input type="password" class="form-control" id="new-password" placeholder="New password" name="new_password" autocomplete="new-password" required minlength="8">
                             <div class="input-group-append">
                                 <div class="input-group-text">
                                     <span class="fas fa-lock"></span>
@@ -242,7 +252,8 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
                 } else { ?>
 
                     <div class="input-group mb-3">
-                        <input type="email" class="form-control" placeholder="Registered Client Email" name="email" required autofocus>
+                        <label class="sr-only" for="reset-email">Registered client email</label>
+                        <input type="email" class="form-control" id="reset-email" placeholder="Registered client email" name="email" autocomplete="email" required autofocus>
                         <div class="input-group-append">
                             <div class="input-group-text">
                                 <span class="fas fa-envelope"></span>
@@ -276,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
     </div>
     <!-- /.div.card -->
 
-</div>
+</main>
 <!-- /.login-box -->
 
 <!-- jQuery -->

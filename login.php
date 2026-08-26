@@ -724,20 +724,35 @@ if (!empty($agent_sso_params)) {
     <?php } ?>
 
     <link rel="stylesheet" href="libs/adminlte/css/adminlte.min.css">
+    <link rel="stylesheet" href="/css/itflow_custom.css">
 </head>
-<body class="hold-transition login-page">
+<body class="hold-transition login-page n45-auth-page">
 
-<div class="login-box">
-    <div class="login-logo">
+<main class="login-box n45-auth-shell">
+    <div class="login-logo n45-auth-brand">
         <?php if (!empty($company_logo)) { ?>
             <img alt="<?=escapeHtml($company_name)?> logo" height="110" width="380" class="img-fluid" src="<?= "uploads/settings/$company_logo" ?>">
         <?php } else { ?>
-            <span class="text-primary text-bold"><i class="fas fa-paper-plane mr-2"></i>IT</span>Flow
+            <span class="n45-auth-mark" aria-hidden="true"><i class="fas fa-layer-group"></i></span>
+            <span><?= escapeHtml($company_name) ?></span>
         <?php } ?>
     </div>
 
     <div class="card">
         <div class="card-body login-card-body">
+
+            <div class="n45-auth-heading">
+                <?php if ($show_role_choice) { ?>
+                    <h1>Choose your workspace</h1>
+                    <p>This account can access both technician and client tools.</p>
+                <?php } elseif ($show_mfa_form) { ?>
+                    <h1>Verify your identity</h1>
+                    <p>Enter the current code from your authenticator app.</p>
+                <?php } else { ?>
+                    <h1>Service operations</h1>
+                    <p>Sign in to manage clients, tickets, assets, and automation.</p>
+                <?php } ?>
+            </div>
 
             <?php if (!empty($config_login_message)){ ?>
                 <p class="login-box-msg px-0"><?= nl2br($config_login_message) ?></p>
@@ -749,7 +764,7 @@ if (!empty($agent_sso_params)) {
             <?php } ?>
 
             <?php if (isset($response)) { ?>
-                <p><?= $response ?></p>
+                <?= $response ?>
             <?php } ?>
 
             <form method="post">
@@ -757,7 +772,9 @@ if (!empty($agent_sso_params)) {
                 <?php if ($show_login_form): ?>
                     <!-- STEP 1: Email + Password -->
                     <div class="input-group mb-3">
+                        <label class="sr-only" for="login-email">Email address</label>
                         <input type="email" class="form-control"
+                            id="login-email"
                             placeholder="<?php if ($config_login_key_required) { if (!isset($_GET['key']) || $_GET['key'] !== $config_login_key_secret) { echo "Client "; } } echo "Email"; ?>"
                             name="email"
                             value="<?= htmlspecialchars($email ?? '', ENT_QUOTES) ?>"
@@ -771,7 +788,8 @@ if (!empty($agent_sso_params)) {
                     </div>
 
                     <div class="input-group mb-3">
-                        <input type="password" class="form-control" placeholder="Password" name="password" required>
+                        <label class="sr-only" for="login-password">Password</label>
+                        <input type="password" class="form-control" id="login-password" placeholder="Password" name="password" autocomplete="current-password" required>
                         <div class="input-group-append">
                             <div class="input-group-text">
                                 <span class="fas fa-lock"></span>
@@ -779,7 +797,7 @@ if (!empty($agent_sso_params)) {
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-block mb-3" name="login">Sign In</button>
+                    <button type="submit" class="btn btn-primary btn-block mb-3" name="login">Sign in</button>
                 <?php endif; ?>
 
                 <?php if ($show_role_choice): ?>
@@ -789,10 +807,10 @@ if (!empty($agent_sso_params)) {
 
                     <div class="mb-2 text-center">
                         <button type="submit" class="btn btn-dark btn-block mb-2" name="role_choice" value="agent">
-                            Log in as Agent
+                            Continue as technician
                         </button>
                         <button type="submit" class="btn btn-light btn-block" name="role_choice" value="client">
-                            Log in as Client
+                            Continue as client
                         </button>
                     </div>
                 <?php endif; ?>
@@ -811,7 +829,7 @@ if (!empty($agent_sso_params)) {
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-dark btn-block mb-3" name="mfa_login">Verify & Sign In</button>
+                    <button type="submit" class="btn btn-dark btn-block mb-3" name="mfa_login">Verify &amp; sign in</button>
                 <?php endif; ?>
 
             </form>
@@ -830,8 +848,8 @@ if (!empty($agent_sso_params)) {
                 <?php } ?>
                 <?php if (!empty($azure_client_id)) { ?>
                     <div class="col text-center mt-2">
-                        <a href="client/login_microsoft.php">
-                            <button type="button" class="btn btn-secondary">Client portal with Microsoft Entra</button>
+                        <a class="btn btn-secondary btn-block" href="client/login_microsoft.php">
+                            <i class="fab fa-microsoft mr-2"></i>Client portal with Microsoft Entra
                         </a>
                     </div>
                 <?php } ?>
@@ -839,11 +857,11 @@ if (!empty($agent_sso_params)) {
 
         </div>
     </div>
-</div>
+</main>
 
 <?php
 if (!$config_whitelabel_enabled) {
-    echo '<small class="text-muted">Powered by ITFlow</small>';
+    echo '<small class="n45-auth-footer text-muted">Powered by ITFlow</small>';
 }
 ?>
 

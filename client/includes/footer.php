@@ -6,19 +6,16 @@
 ?>
 
 <!-- Close container -->
-</div>
+</main>
 
-<br>
-<hr>
-
-<p class="text-center">
+<footer class="n45-portal-footer text-center">
     <?php
         echo escapeHtml($session_company_name);
         if (!$config_whitelabel_enabled) {
             echo '<br><small class="text-muted">Powered by ITFlow</small>';
         }
     ?>
-</p>
+</footer>
 
 
 <?php require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/inc_confirm_modal.php'; ?>
@@ -70,3 +67,6 @@
 <script src="/js/confirm_modal.js"></script>
 
 <script src="/js/keepalive.js"></script>
+
+</body>
+</html>

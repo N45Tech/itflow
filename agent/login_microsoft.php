@@ -441,22 +441,27 @@ $pending_email = escapeHtml($pending['email'] ?? 'your technician account');
         <link rel="icon" type="image/x-icon" href="/uploads/favicon.ico">
     <?php } ?>
     <link rel="stylesheet" href="../libs/adminlte/css/adminlte.min.css">
+    <link rel="stylesheet" href="/css/itflow_custom.css">
 </head>
-<body class="hold-transition login-page">
-<div class="login-box">
-    <div class="login-logo">
+<body class="hold-transition login-page n45-auth-page">
+<main class="login-box n45-auth-shell">
+    <div class="login-logo n45-auth-brand">
         <?php if (!empty($company_logo)) { ?>
             <img alt="<?= escapeHtml($company_name) ?> logo" height="110" width="380" class="img-fluid" src="<?= '/uploads/settings/' . escapeHtml($company_logo) ?>">
         <?php } else { ?>
-            <span class="text-primary text-bold"><i class="fas fa-paper-plane mr-2"></i>IT</span>Flow
+            <span class="n45-auth-mark" aria-hidden="true"><i class="fas fa-layer-group"></i></span>
+            <span><?= escapeHtml($company_name) ?></span>
         <?php } ?>
     </div>
     <div class="card">
         <div class="card-body login-card-body">
+            <div class="n45-auth-heading">
+                <h1>Unlock credential vault</h1>
+                <p>Microsoft confirmed your identity. One local step protects stored credentials.</p>
+            </div>
             <p class="login-box-msg">
                 <i class="fab fa-microsoft text-primary mr-1"></i>
-                Microsoft verified <strong><?= $pending_email ?></strong>.
-                Enter your local password to unlock the ITFlow credential vault.
+                Signed in as <strong><?= $pending_email ?></strong>
             </p>
 
             <?php if ($unlock_response !== '') { ?>
@@ -466,7 +471,8 @@ $pending_email = escapeHtml($pending['email'] ?? 'your technician account');
             <form method="post" autocomplete="off">
                 <input type="hidden" name="pending_token" value="<?= escapeHtml($pending['token']) ?>">
                 <div class="input-group mb-3">
-                    <input type="password" class="form-control" name="password" placeholder="Vault password" autocomplete="current-password" required autofocus>
+                    <label class="sr-only" for="vault-password">Vault password</label>
+                    <input type="password" class="form-control" id="vault-password" name="password" placeholder="Vault password" autocomplete="current-password" required autofocus>
                     <div class="input-group-append">
                         <div class="input-group-text"><span class="fas fa-key"></span></div>
                     </div>
@@ -479,10 +485,10 @@ $pending_email = escapeHtml($pending['email'] ?? 'your technician account');
             </div>
         </div>
     </div>
-</div>
+</main>
 
 <?php if (!$config_whitelabel_enabled) { ?>
-    <small class="text-muted">Powered by ITFlow</small>
+    <small class="n45-auth-footer text-muted">Powered by ITFlow</small>
 <?php } ?>
 
 <script src="../libs/jquery/jquery.min.js"></script>

@@ -887,6 +887,227 @@ label,
     color: #ffffff;
 }
 
+/* Authentication and external portal surfaces */
+.login-page.n45-auth-page {
+    align-items: center;
+    background: var(--n45-canvas);
+    justify-content: center;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+}
+
+.n45-auth-shell {
+    margin: 0;
+    width: min(100%, 28rem);
+}
+
+.n45-auth-brand {
+    align-items: center;
+    color: var(--n45-ink);
+    display: flex;
+    font-size: 1.15rem;
+    font-weight: 650;
+    gap: .7rem;
+    justify-content: center;
+    line-height: 1.2;
+    margin-bottom: 1rem;
+}
+
+.n45-auth-brand img {
+    height: auto;
+    max-height: 3.75rem;
+    max-width: min(100%, 15rem);
+    object-fit: contain;
+}
+
+.n45-auth-mark {
+    align-items: center;
+    background: var(--n45-accent);
+    border-radius: 9px;
+    color: #ffffff;
+    display: inline-flex;
+    flex: 0 0 2.4rem;
+    height: 2.4rem;
+    justify-content: center;
+}
+
+.n45-auth-shell .card {
+    margin: 0;
+}
+
+.n45-auth-shell .login-card-body {
+    background: var(--n45-surface);
+    border-radius: calc(var(--n45-radius-lg) - 1px);
+    color: var(--n45-ink);
+    padding: 1.5rem;
+}
+
+.n45-auth-heading {
+    margin-bottom: 1.25rem;
+    text-align: left;
+}
+
+.n45-auth-heading h1 {
+    font-size: 1.35rem;
+    letter-spacing: -.02em;
+    line-height: 1.25;
+    margin: 0 0 .35rem;
+}
+
+.n45-auth-heading p {
+    color: var(--n45-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.n45-auth-shell .login-box-msg {
+    background: var(--n45-surface-subtle);
+    border-radius: var(--n45-radius-sm);
+    color: var(--n45-muted);
+    margin-bottom: 1rem;
+    padding: .75rem;
+    text-align: left;
+}
+
+.n45-auth-shell .form-control,
+.n45-auth-shell .input-group-text,
+.n45-auth-shell .btn {
+    min-height: 2.75rem;
+}
+
+.n45-auth-shell .input-group-text {
+    min-width: 2.75rem;
+    justify-content: center;
+}
+
+.n45-auth-shell .n45-auth-qr {
+    background: #ffffff;
+    border-radius: var(--n45-radius-sm);
+    height: auto;
+    margin-bottom: .75rem;
+    max-width: min(100%, 13rem);
+    padding: .5rem;
+}
+
+.n45-auth-footer {
+    color: var(--n45-muted) !important;
+    display: block;
+    margin-top: 1rem;
+    text-align: center;
+}
+
+.n45-client-portal,
+.n45-guest-portal {
+    background: var(--n45-canvas);
+    min-height: 100vh;
+}
+
+.n45-portal-nav {
+    background: var(--n45-sidebar);
+    border-bottom: 1px solid var(--n45-sidebar-deep);
+    min-height: 3.75rem;
+    padding: .45rem 1rem;
+}
+
+.n45-portal-nav .navbar-brand,
+.n45-portal-nav .nav-link {
+    color: var(--n45-sidebar-ink) !important;
+}
+
+.n45-portal-nav .navbar-brand {
+    font-size: 1rem;
+    font-weight: 650;
+}
+
+.n45-portal-nav .nav-link {
+    border-radius: var(--n45-radius-sm);
+    padding-left: .75rem !important;
+    padding-right: .75rem !important;
+}
+
+.n45-portal-nav .nav-link:hover,
+.n45-portal-nav .nav-link:focus {
+    background: rgba(255, 255, 255, .08);
+    color: #ffffff !important;
+}
+
+.n45-portal-nav .nav-link.active {
+    background: var(--n45-accent);
+    color: #ffffff !important;
+    font-weight: 600;
+}
+
+.n45-portal-nav .navbar-toggler {
+    border-color: rgba(255, 255, 255, .25);
+    color: #ffffff;
+}
+
+.n45-portal-nav .navbar-toggler-icon {
+    background-image: none;
+    position: relative;
+}
+
+.n45-portal-nav .navbar-toggler-icon::before {
+    background: #ffffff;
+    box-shadow: 0 -.42rem 0 #ffffff, 0 .42rem 0 #ffffff;
+    content: "";
+    height: 2px;
+    left: 50%;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 1.35rem;
+}
+
+.n45-portal-main {
+    max-width: 1440px;
+    padding-bottom: 2rem;
+    padding-top: 1.5rem;
+}
+
+.n45-portal-welcome {
+    align-items: center;
+    background: var(--n45-surface);
+    border: 1px solid var(--n45-border);
+    border-radius: var(--n45-radius-lg);
+    margin: 0 0 1rem;
+    padding: 1rem;
+}
+
+.n45-portal-welcome-copy {
+    min-width: 0;
+}
+
+.n45-portal-welcome h1 {
+    font-size: 1.25rem;
+    margin: 0 0 .2rem;
+}
+
+.n45-portal-welcome p {
+    color: var(--n45-muted);
+    margin: 0;
+}
+
+.n45-portal-footer {
+    border-top: 1px solid var(--n45-border);
+    color: var(--n45-muted);
+    margin: 0 auto;
+    max-width: 1440px;
+    padding: 1.25rem;
+}
+
+.n45-client-portal .card > a,
+.n45-client-portal a.card {
+    color: var(--n45-ink);
+}
+
+.n45-client-portal a.card:hover,
+.n45-client-portal a.card:focus {
+    border-color: var(--n45-accent);
+    color: var(--n45-ink);
+    text-decoration: none;
+}
+
 /* N45 technician operations workspace */
 .n45-ops-shell,
 .n45-tech-pulse,
@@ -1552,6 +1773,35 @@ label,
 }
 
 @media (max-width: 575.98px) {
+    .login-page.n45-auth-page {
+        justify-content: flex-start;
+        padding: 1.25rem .75rem;
+    }
+
+    .n45-auth-shell .login-card-body {
+        padding: 1.15rem;
+    }
+
+    .n45-portal-main {
+        padding-left: .75rem;
+        padding-right: .75rem;
+        padding-top: .75rem;
+    }
+
+    .n45-portal-welcome {
+        gap: .75rem;
+        padding: .85rem;
+        text-align: center;
+    }
+
+    .n45-portal-welcome-copy {
+        padding: 0;
+    }
+
+    .n45-portal-welcome-copy img {
+        display: none;
+    }
+
     .content-wrapper > .content {
         padding-top: .6rem !important;
     }

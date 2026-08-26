@@ -28,15 +28,18 @@ header("X-Frame-Options: DENY"); // Legacy
 
     <!-- Theme style -->
     <link rel="stylesheet" href="/libs/adminlte/css/adminlte.min.css">
+    <link rel="stylesheet" href="/css/itflow_custom.css">
 
 </head>
 
+<body class="n45-client-portal">
+
 <!-- Navbar -->
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+<nav class="navbar navbar-expand-lg n45-portal-nav" aria-label="Client portal">
     <div class="container">
         <a class="navbar-brand" href="index.php"><?= escapeHtml($session_company_name) ?></a>
-        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent">
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
 
@@ -120,15 +123,13 @@ header("X-Frame-Options: DENY"); // Legacy
     </div>
 </nav>
 
-<br>
-
 <!-- Page content container -->
-<div class="container">
+<main class="container n45-portal-main">
 
-    <div class="row mb-3">
+    <div class="row n45-portal-welcome">
         <div class="col-md-1 text-center">
             <?php if (!empty($session_contact_photo)) { ?>
-                <img src="/uploads/clients/<?= $session_client_id ?>/<?= $session_contact_photo ?>" alt="..." height="50" width="50" class="img-circle img-responsive">
+                <img src="/uploads/clients/<?= $session_client_id ?>/<?= $session_contact_photo ?>" alt="<?= stripslashes(escapeHtml($session_contact_name)) ?>" height="50" width="50" class="img-circle img-responsive">
 
             <?php } else { ?>
                 <span class="fa-stack fa-2x rounded-left">
@@ -138,14 +139,14 @@ header("X-Frame-Options: DENY"); // Legacy
             <?php } ?>
         </div>
 
-        <div class="col-md-11 p-0">
+        <div class="col-md-11 n45-portal-welcome-copy">
                 <?php if ($session_company_logo) { ?>
-                    <img height="48" width="142" class="img-fluid float-right" src="<?= "/uploads/settings/$session_company_logo" ?>">
+                    <img alt="<?= escapeHtml($session_company_name) ?> logo" height="48" width="142" class="img-fluid float-right" src="<?= "/uploads/settings/$session_company_logo" ?>">
                 <?php } ?>
-            <h4>Welcome, <strong><?= stripslashes(escapeHtml($session_contact_name)) ?></strong>!</h4>
+            <h1>Welcome, <?= stripslashes(escapeHtml($session_contact_name)) ?></h1>
+            <p>Manage support requests, billing, and your organization’s technical records.</p>
         </div>
     </div>
-    <hr>
 
     <?php
     //Alert Feedback
