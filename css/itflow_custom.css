@@ -375,8 +375,10 @@ body [tabindex]:focus-visible {
 }
 
 .nav-sidebar .nav-treeview > .nav-item > .nav-link {
+    align-items: center;
     border-radius: 8px;
     color: var(--n45-sidebar-muted) !important;
+    display: flex;
     margin: .1rem 0;
     min-height: 2.35rem;
     padding-bottom: .48rem;
