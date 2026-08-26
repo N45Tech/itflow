@@ -4,7 +4,7 @@
     <!-- Left navbar links -->
     <ul class="navbar-nav">
         <li class="nav-item">
-            <a class="nav-link" data-widget="pushmenu" data-enable-remember="TRUE" href="#"><i class="fas fa-bars"></i></a>
+            <a class="nav-link" data-widget="pushmenu" data-enable-remember="TRUE" href="#" aria-label="Toggle navigation" title="Toggle navigation"><i class="fas fa-bars"></i></a>
         </li>
     </ul>
 
@@ -12,12 +12,12 @@
     <ul class="navbar-nav ml-auto">
 
         <!-- SEARCH FORM -->
-        <form class="form-inline" action="/agent/global_search.php">
+        <form class="form-inline" action="/agent/global_search.php" role="search" aria-label="Search ITFlow">
             <div class="input-group input-group-sm">
-                <input class="form-control form-control-navbar" type="search" placeholder="Search everywhere" name="query"
+                <input class="form-control form-control-navbar" type="search" placeholder="Search clients, tickets, and assets" name="query" aria-label="Search clients, tickets, and assets"
                     value="<?php if (isset($_GET['query'])) { echo escapeHtml($_GET['query']); } ?>">
                 <div class="input-group-append">
-                    <button class="btn btn-navbar" type="submit">
+                    <button class="btn btn-navbar" type="submit" aria-label="Run search" title="Search">
                         <i class="fas fa-search"></i>
                     </button>
                 </div>
@@ -64,7 +64,7 @@
         ?>
 
         <li class="nav-item">
-            <a class="nav-link ajax-modal" href="#" data-modal-url="/modals/notifications.php">
+            <a class="nav-link ajax-modal" href="#" data-modal-url="/modals/notifications.php" aria-label="Notifications<?= $num_notifications ? ': ' . intval($num_notifications) . ' unread' : '' ?>" title="Notifications">
                 <i class="fas fa-bell"></i>
                 <?php if ($num_notifications) { ?>
                 <span class="badge badge-light badge-pill navbar-badge position-absolute" style="top: 1px; right: 3px;">
@@ -75,7 +75,7 @@
         </li>
 
         <li class="nav-item dropdown user-menu">
-            <a href="#" class="nav-link" data-toggle="dropdown">
+            <a href="#" class="nav-link" data-toggle="dropdown" aria-label="Open account menu">
                 <?php if (empty($session_avatar)) { ?>
                 <i class="fas fa-user-circle mr-1"></i>
                 <?php }else{ ?>

@@ -872,6 +872,21 @@ label,
     z-index: var(--n45-z-tooltip);
 }
 
+.user-menu .user-header {
+    background: var(--n45-sidebar) !important;
+    color: #ffffff;
+}
+
+.user-menu .user-footer {
+    background: var(--n45-surface);
+    border-radius: 0 0 calc(var(--n45-radius) - 1px) calc(var(--n45-radius) - 1px);
+}
+
+.main-header .navbar-badge {
+    background: var(--n45-danger);
+    color: #ffffff;
+}
+
 /* N45 technician operations workspace */
 .n45-ops-shell,
 .n45-tech-pulse,
@@ -1267,6 +1282,86 @@ label,
     overflow: hidden;
 }
 
+.n45-dashboard-controls {
+    background: var(--n45-surface);
+    border: 1px solid var(--n45-border);
+    border-radius: var(--n45-radius-lg);
+    margin-bottom: 1rem;
+    padding: .8rem 1rem;
+}
+
+.n45-dashboard-controls .form-inline {
+    align-items: center;
+    gap: .5rem;
+}
+
+.n45-summary-list-two-column {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.n45-summary-row {
+    align-items: center;
+    border-bottom: 1px solid var(--n45-border);
+    color: var(--n45-ink);
+    display: flex;
+    gap: .75rem;
+    min-height: 4rem;
+    padding: .7rem 1rem;
+    transition: background-color var(--n45-ease), color var(--n45-ease);
+}
+
+.n45-summary-list:not(.n45-summary-list-two-column) .n45-summary-row:last-child,
+.n45-summary-list-two-column .n45-summary-row:nth-last-child(-n+2) {
+    border-bottom: 0;
+}
+
+.n45-summary-list-two-column .n45-summary-row:nth-child(odd) {
+    border-right: 1px solid var(--n45-border);
+}
+
+.n45-summary-row:hover,
+.n45-summary-row:focus {
+    background: var(--n45-surface-subtle);
+    color: var(--n45-ink);
+    text-decoration: none;
+}
+
+.n45-summary-row > div {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.n45-summary-row > div strong,
+.n45-summary-row > div span {
+    display: block;
+}
+
+.n45-summary-row > div span {
+    color: var(--n45-muted);
+    font-size: .75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.n45-summary-value {
+    color: var(--n45-ink);
+    flex: 0 0 auto;
+    font-size: 1.05rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    min-width: 2rem;
+    text-align: right;
+}
+
+.n45-summary-value-warning {
+    background: var(--n45-warning-soft);
+    border-radius: 999px;
+    color: var(--n45-warning);
+    padding: .2rem .5rem;
+}
+
 .n45-tech-pulse-header {
     align-items: center;
     border-bottom: 1px solid var(--n45-border);
@@ -1380,7 +1475,50 @@ label,
     }
 }
 
+@media (max-width: 991.98px) {
+    .main-header .form-control-navbar {
+        min-width: min(16rem, 32vw);
+    }
+
+    .content-wrapper .container-fluid {
+        padding-left: .75rem;
+        padding-right: .75rem;
+    }
+}
+
 @media (max-width: 767.98px) {
+    .card-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: .5rem;
+    }
+
+    .card-tools {
+        align-items: center;
+        display: flex;
+        margin-left: auto;
+    }
+
+    .table td,
+    .table th {
+        font-size: .82rem;
+    }
+
+    .n45-summary-list-two-column {
+        grid-template-columns: 1fr;
+    }
+
+    .n45-summary-list-two-column .n45-summary-row,
+    .n45-summary-list-two-column .n45-summary-row:nth-child(odd),
+    .n45-summary-list-two-column .n45-summary-row:nth-last-child(2) {
+        border-bottom: 1px solid var(--n45-border);
+        border-right: 0;
+    }
+
+    .n45-summary-list-two-column .n45-summary-row:last-child {
+        border-bottom: 0;
+    }
+
     .n45-ops-header {
         align-items: stretch;
         flex-direction: column;
@@ -1414,6 +1552,31 @@ label,
 }
 
 @media (max-width: 575.98px) {
+    .content-wrapper > .content {
+        padding-top: .6rem !important;
+    }
+
+    .main-header.navbar {
+        padding-left: .35rem;
+        padding-right: .35rem;
+    }
+
+    .main-header .form-control-navbar {
+        min-width: 0;
+        width: min(42vw, 12rem);
+    }
+
+    .n45-dashboard-controls .form-inline {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .n45-dashboard-controls .form-control {
+        margin-right: 0 !important;
+        max-width: none;
+        width: 100%;
+    }
+
     .n45-ops-actions .btn {
         flex: 1 1 calc(50% - .5rem);
     }
@@ -1448,6 +1611,15 @@ label,
 }
 
 @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
+
     .n45-ops-shell *,
     .n45-tech-pulse * {
         scroll-behavior: auto !important;

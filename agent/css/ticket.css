@@ -25,14 +25,14 @@
 .ticket-field-label {
     font-size: 0.72rem;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #8a94a0;
+    letter-spacing: 0;
+    color: var(--n45-muted, #586579);
     margin-bottom: 0.2rem;
     white-space: nowrap;
 }
 
 .ticket-field-value {
+    color: var(--n45-ink, #172033);
     font-size: 0.95rem;
     line-height: 1.4;
 }
@@ -51,7 +51,8 @@
 
 /* The subject is the page's real heading, so let it breathe */
 .ticket-subject {
-    font-weight: 600;
+    color: var(--n45-ink, #172033);
+    font-weight: 650;
     word-break: break-word;
 }
 
@@ -63,7 +64,7 @@
 
 .ticket-meta {
     font-size: 0.85rem;
-    color: #6c757d;
+    color: var(--n45-muted, #586579);
     word-break: break-word;
 }
 
