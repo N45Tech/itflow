@@ -33,7 +33,7 @@ if (isset($_GET['calendar_id'])) {
             <div class="card-header bg-dark">
                 <h3 class="card-title">Calendars</h3>
                 <div class="card-tools">
-                    <button type="button" class="btn btn-tool ajax-modal" data-modal-url="modals/calendar/calendar_add.php"><i class="fas fa-plus" title="New Calendar"></i></button>
+                    <button type="button" class="btn btn-tool ajax-modal" aria-label="New calendar" data-modal-url="modals/calendar/calendar_add.php"><i class="fas fa-plus" aria-hidden="true"></i></button>
                 </div>
             </div>
             <div class="card-body">
@@ -52,8 +52,8 @@ if (isset($_GET['calendar_id'])) {
                     <?php } ?>
 
                     <div class="dropdown dropright ml-auto">
-                        <button class="btn btn-tool" type="button" data-toggle="dropdown">
-                            <i class="fas fa-ellipsis-v"></i>
+                        <button class="btn btn-tool" type="button" data-toggle="dropdown" aria-label="Calendar actions">
+                            <i class="fas fa-ellipsis-v" aria-hidden="true"></i>
                         </button>
                         <div class="dropdown-menu">
                             <a class="dropdown-item ajax-modal" href="#"
@@ -153,13 +153,11 @@ while ($row = mysqli_fetch_assoc($sql)) {
 
 ?>
 
-<?php require_once "../includes/footer.php";
-?>
-
 <!-- FullCalendar v7: theme + CSS are now separate plugins, must be loaded alongside the core bundle -->
 <link href='/libs/fullcalendar/skeleton.css' rel='stylesheet' />
 <link href='/libs/fullcalendar/themes/classic/theme.css' rel='stylesheet' />
 <link href='/libs/fullcalendar/themes/classic/palette.css' rel='stylesheet' />
+<link href='/agent/css/calendar.css' rel='stylesheet' />
 <script src='/libs/fullcalendar/fullcalendar.global.js'></script>
 <script src='/libs/fullcalendar/themes/classic/global.js'></script>
 
@@ -201,16 +199,11 @@ while ($row = mysqli_fetch_assoc($sql)) {
             headerToolbar: {
                 left: 'prev,next today',
                 center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth newEvent'
+                right: '<?= $session_mobile ? 'dayGridMonth,listMonth newEvent' : 'dayGridMonth,timeGridWeek,timeGridDay,listMonth newEvent' ?>'
             },
-            <?php if (!$session_mobile) {
-            ?>aspectRatio: 2.5,
-        <?php } else { ?>
-            aspectRatio: 0.7,
-        <?php } ?>
         navLinks: true, // can click day/week names to navigate views
         selectable: true,
-        height: '90vh',
+        height: <?= $session_mobile ? "'auto'" : "'75vh'" ?>,
 
         selectMirror: true,
         eventDidMount: function(info) {
@@ -502,3 +495,5 @@ while ($row = mysqli_fetch_assoc($sql)) {
         calendar.render();
     });
 </script>
+
+<?php require_once "../includes/footer.php"; ?>

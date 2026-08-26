@@ -161,7 +161,7 @@ $kanban = array_values($statuses);
                                 <span class="badge badge-warning" title="SLA at risk"><i class="fas fa-fw fa-stopwatch"></i></span>
                             <?php } ?>
 
-                            <span class="drag-handle-class" title="Drag to move"><i class="fas fa-grip-vertical"></i></span>
+                            <span class="drag-handle-class" title="Drag to move" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                         </div>
 
                         <a href="ticket.php?ticket_id=<?= $item_ticket_id . $item_has_client ?>" class="kanban-card-subject">
