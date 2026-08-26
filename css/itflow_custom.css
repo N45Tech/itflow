@@ -226,9 +226,9 @@ body [tabindex]:focus-visible {
 
 .main-sidebar .brand-link {
     align-items: center;
-    background: var(--n45-sidebar-deep);
+    background: var(--n45-sidebar-deep) !important;
     border-bottom: 1px solid var(--n45-sidebar-border);
-    color: var(--n45-sidebar-ink);
+    color: var(--n45-sidebar-ink) !important;
     display: flex;
     min-height: 3.5rem;
     padding: .7rem 1rem;
@@ -237,8 +237,8 @@ body [tabindex]:focus-visible {
 
 .main-sidebar .brand-link:hover,
 .main-sidebar .brand-link:focus {
-    background: var(--n45-sidebar-hover);
-    color: var(--n45-accent);
+    background: var(--n45-sidebar-hover) !important;
+    color: var(--n45-accent) !important;
     text-decoration: none;
 }
 
