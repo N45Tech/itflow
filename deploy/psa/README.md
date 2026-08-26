@@ -14,5 +14,12 @@ Run from this directory with the production environment file stored outside the 
 sudo docker compose --env-file /opt/n45/psa/.env up -d --build
 ```
 
-The application is image-managed. Deploy updates by checking out the reviewed branch, rebuilding, and recreating the web and cron containers. Do not use ITFlow's in-app Git updater in this deployment.
+For the initial N45 deployment, clone this repository to `/opt/n45/psa/app` and run:
 
+```bash
+sudo /opt/n45/psa/app/deploy/psa/install-production.sh
+```
+
+The first administrator's generated local/vault password is written once to `/home/n45admin/psa-initial-admin.txt` with mode `0600`.
+
+The application is image-managed. Deploy updates by checking out the reviewed branch, rebuilding, and recreating the web and cron containers. Do not use ITFlow's in-app Git updater in this deployment.
