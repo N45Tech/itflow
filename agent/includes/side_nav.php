@@ -57,6 +57,17 @@
                     <?php if ($config_module_enable_ticketing == 1) { ?>
                         <li class="nav-header mt-3">SUPPORT</li>
                         <li class="nav-item">
+                            <a href="/agent/operations.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "operations.php") { echo "active"; } ?>">
+                                <i class="nav-icon fas fa-wave-square"></i>
+                                <p>
+                                    Operations
+                                    <?php if ($num_operations_attention) { ?>
+                                        <span class="right badge badge-warning" data-toggle="tooltip" title="Operational exceptions"><?= $num_operations_attention ?></span>
+                                    <?php } ?>
+                                </p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a href="/agent/tickets.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "tickets.php" || basename($_SERVER["PHP_SELF"]) == "ticket.php") { echo "active"; } ?>">
                                 <i class="nav-icon fas fa-life-ring"></i>
                                 <p>

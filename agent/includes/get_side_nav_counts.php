@@ -9,6 +9,19 @@ $num_active_clients = $row['num'];
 $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('ticket_id') AS num FROM tickets WHERE ticket_archived_at IS NULL AND ticket_closed_at IS NULL AND ticket_status != 4 " . clientScopeSql('ticket_client_id') . ""));
 $num_active_tickets = $row['num'];
 
+// Operational exceptions: open automation incidents plus Level.io mappings that need review.
+$operations_incident_scope = clientScopeSql('automation_incident_client_id');
+$operations_level_scope = clientScopeSql('assets.asset_client_id');
+$row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
+    (SELECT COUNT(*) FROM automation_incidents
+        WHERE automation_incident_status = 'Open' $operations_incident_scope)
+    +
+    (SELECT COUNT(*) FROM level_asset_links
+        INNER JOIN assets ON level_asset_id = asset_id
+        WHERE level_device_deleted_at IS NULL
+        AND level_device_sync_status = 'Conflict' $operations_level_scope) AS num"));
+$num_operations_attention = intval($row['num'] ?? 0);
+
 // Recurring Ticket Count
 $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('recurring_ticket_id') AS num FROM recurring_tickets WHERE 1 = 1 " . clientScopeSql('recurring_ticket_client_id') . ""));
 $num_recurring_tickets = $row['num'];

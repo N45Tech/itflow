@@ -361,6 +361,24 @@ if (isset($_GET['ticket_id'])) {
             level_alert_severity, level_alert_started_at, level_asset_id, level_device_id
             FROM level_alert_links WHERE level_ticket_id = $ticket_id LIMIT 1"));
 
+        // Automation broker context: keep the correlated incident and its latest signals beside the ticket.
+        $automation_incident = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT *
+            FROM automation_incidents WHERE automation_incident_ticket_id = $ticket_id LIMIT 1"));
+        $automation_incident_events = [];
+        if ($automation_incident) {
+            $automation_source_sql = escapeSql($automation_incident['automation_incident_source']);
+            $automation_key_sql = escapeSql($automation_incident['automation_incident_key']);
+            $sql_automation_incident_events = mysqli_query($mysqli, "SELECT automation_event_action,
+                automation_event_received_at, automation_event_state
+                FROM automation_events
+                WHERE automation_event_source = '$automation_source_sql'
+                AND automation_event_incident_key = '$automation_key_sql'
+                ORDER BY automation_event_received_at DESC LIMIT 5");
+            while ($automation_event = mysqli_fetch_assoc($sql_automation_incident_events)) {
+                $automation_incident_events[] = $automation_event;
+            }
+        }
+
         /*
          * The single most useful thing on the page: which clock is running and
          * how long is left. Everything else about the SLA is detail.
@@ -1137,6 +1155,74 @@ if (isset($_GET['ticket_id'])) {
                             <div class="mt-2 text-muted small text-truncate" title="<?= $level_alert_id ?>">Alert ID: <?= $level_alert_id ?></div>
                             <div class="mt-3 pt-2 border-top">
                                 <a href="https://app.level.io/devices" target="_blank" rel="noopener noreferrer">Open Level devices <i class="fas fa-external-link-alt ml-1"></i></a>
+                            </div>
+                        </div>
+                    </div>
+                <?php } ?>
+
+                <?php if ($automation_incident) {
+                    $automation_source_raw = strtolower($automation_incident['automation_incident_source']);
+                    $automation_source_name = match ($automation_source_raw) {
+                        'uptime_kuma' => 'Uptime Kuma',
+                        'netbox' => 'NetBox',
+                        'n8n' => 'n8n',
+                        'level', 'level_io' => 'Level.io',
+                        default => ucwords(str_replace(['_', '-'], ' ', $automation_source_raw)),
+                    };
+                    $automation_source_icon = match ($automation_source_raw) {
+                        'uptime_kuma' => 'fa-heartbeat',
+                        'netbox' => 'fa-project-diagram',
+                        'n8n' => 'fa-random',
+                        'level', 'level_io' => 'fa-satellite',
+                        default => 'fa-bolt',
+                    };
+                    $automation_incident_severity = strtolower($automation_incident['automation_incident_severity']);
+                    $automation_incident_open = strtolower($automation_incident['automation_incident_status']) === 'open';
+                    $automation_incident_badge = !$automation_incident_open ? 'success' : match ($automation_incident_severity) {
+                        'emergency', 'critical' => 'danger',
+                        'high', 'medium' => 'warning',
+                        default => 'info',
+                    };
+                    ?>
+                    <div class="card n45-automation-ticket-card">
+                        <div class="card-header px-3 py-2">
+                            <h5 class="card-title mt-1"><i class="fas fa-fw <?= $automation_source_icon ?> mr-2"></i>Automation incident</h5>
+                            <div class="card-tools">
+                                <span class="badge badge-<?= $automation_incident_badge ?>"><?= $automation_incident_open ? escapeHtml(ucfirst($automation_incident_severity)) . ' · Open' : 'Recovered' ?></span>
+                            </div>
+                        </div>
+                        <div class="card-body p-3">
+                            <strong><?= escapeHtml($automation_incident['automation_incident_title']) ?></strong>
+                            <div class="text-muted small mt-1"><?= escapeHtml($automation_source_name) ?> · <?= intval($automation_incident['automation_incident_event_count']) ?> correlated event<?= intval($automation_incident['automation_incident_event_count']) === 1 ? '' : 's' ?></div>
+
+                            <div class="n45-incident-facts mt-3">
+                                <div>
+                                    <span>Opened</span>
+                                    <strong title="<?= escapeHtml($automation_incident['automation_incident_opened_at']) ?>"><?= $automation_incident['automation_incident_opened_at'] ? escapeHtml(timeAgo($automation_incident['automation_incident_opened_at'])) : 'Unknown' ?></strong>
+                                </div>
+                                <div>
+                                    <span>Last signal</span>
+                                    <strong title="<?= escapeHtml($automation_incident['automation_incident_last_event_at']) ?>"><?= $automation_incident['automation_incident_last_event_at'] ? escapeHtml(timeAgo($automation_incident['automation_incident_last_event_at'])) : 'Unknown' ?></strong>
+                                </div>
+                            </div>
+
+                            <?php if ($automation_incident_events) { ?>
+                                <div class="n45-incident-events">
+                                    <span class="mb-1">Latest signals</span>
+                                    <?php foreach ($automation_incident_events as $automation_event) {
+                                        $event_state = strtolower($automation_event['automation_event_state']);
+                                        $event_badge = $event_state === 'resolved' ? 'success' : ($event_state === 'open' ? 'danger' : 'secondary');
+                                        ?>
+                                        <div class="n45-incident-event">
+                                            <div><span class="badge badge-<?= $event_badge ?> mr-1"><?= escapeHtml(ucfirst($event_state)) ?></span><?= escapeHtml(ucwords(str_replace('_', ' ', $automation_event['automation_event_action']))) ?></div>
+                                            <small class="text-muted" title="<?= escapeHtml($automation_event['automation_event_received_at']) ?>"><?= escapeHtml(timeAgo($automation_event['automation_event_received_at'])) ?></small>
+                                        </div>
+                                    <?php } ?>
+                                </div>
+                            <?php } ?>
+
+                            <div class="mt-3 pt-2 border-top">
+                                <a href="operations.php?source=<?= urlencode($automation_source_raw) ?><?= $automation_incident_open ? '#incident-' . intval($automation_incident['automation_incident_id']) : '#recent-activity' ?>">Open in Operations <i class="fas fa-arrow-right ml-1"></i></a>
                             </div>
                         </div>
                     </div>
