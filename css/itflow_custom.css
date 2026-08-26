@@ -59,16 +59,25 @@
     margin: 0;
 }
 
-/* N45 technician operations workspace */
-.n45-ops-shell,
-.n45-tech-pulse,
-.n45-automation-ticket-card {
+/* N45 global product theme
+   Technicians use these dense records in mixed office light. Cool neutral surfaces
+   and one operational blue keep the interface calm while semantic color carries state. */
+:root {
+    color-scheme: light;
     --n45-surface: #ffffff;
+    --n45-surface-raised: #ffffff;
     --n45-surface-subtle: #f4f6f9;
+    --n45-canvas: #edf1f5;
     --n45-border: #d8dee7;
+    --n45-border-strong: #bcc6d3;
     --n45-ink: #172033;
     --n45-muted: #586579;
+    --n45-sidebar: #17202d;
+    --n45-sidebar-deep: #111822;
+    --n45-sidebar-ink: #dbe3ee;
+    --n45-sidebar-muted: #8e9bab;
     --n45-accent: #1769aa;
+    --n45-accent-hover: #12578e;
     --n45-accent-soft: #e8f2fb;
     --n45-success: #157347;
     --n45-success-soft: #e8f5ee;
@@ -76,18 +85,36 @@
     --n45-warning-soft: #fff4d6;
     --n45-danger: #b42318;
     --n45-danger-soft: #fcebea;
-    color: var(--n45-ink);
+    --n45-info: #1769aa;
+    --n45-info-soft: #e8f2fb;
+    --n45-radius-sm: 7px;
+    --n45-radius: 10px;
+    --n45-radius-lg: 12px;
+    --n45-ease: 180ms cubic-bezier(.22, 1, .36, 1);
+    --n45-z-dropdown: 1040;
+    --n45-z-sticky: 1050;
+    --n45-z-modal-backdrop: 1060;
+    --n45-z-modal: 1070;
+    --n45-z-toast: 1080;
+    --n45-z-tooltip: 1090;
 }
 
-.dark-mode .n45-ops-shell,
-.dark-mode .n45-tech-pulse,
-.dark-mode .n45-automation-ticket-card {
+body.dark-mode {
+    color-scheme: dark;
     --n45-surface: #252a31;
+    --n45-surface-raised: #2b3139;
     --n45-surface-subtle: #1e2329;
+    --n45-canvas: #181d23;
     --n45-border: #46505d;
+    --n45-border-strong: #5a6675;
     --n45-ink: #f4f7fb;
     --n45-muted: #b8c1cc;
+    --n45-sidebar: #111820;
+    --n45-sidebar-deep: #0d1218;
+    --n45-sidebar-ink: #e6edf5;
+    --n45-sidebar-muted: #98a6b7;
     --n45-accent: #69b7f0;
+    --n45-accent-hover: #8bc8f4;
     --n45-accent-soft: #263d50;
     --n45-success: #69d19b;
     --n45-success-soft: #203a30;
@@ -95,6 +122,199 @@
     --n45-warning-soft: #44391f;
     --n45-danger: #ff8b83;
     --n45-danger-soft: #4a292a;
+    --n45-info: #69b7f0;
+    --n45-info-soft: #263d50;
+}
+
+html,
+body {
+    background: var(--n45-canvas);
+}
+
+body {
+    color: var(--n45-ink);
+    font-family: "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    font-feature-settings: "kern" 1, "tnum" 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+body a {
+    color: var(--n45-accent);
+    transition: color var(--n45-ease), background-color var(--n45-ease), border-color var(--n45-ease);
+}
+
+body a:hover,
+body a:focus {
+    color: var(--n45-accent-hover);
+}
+
+body a:focus-visible,
+body button:focus-visible,
+body [tabindex]:focus-visible {
+    outline: 3px solid var(--n45-accent);
+    outline-offset: 2px;
+}
+
+.content-wrapper {
+    background: var(--n45-canvas);
+    color: var(--n45-ink);
+}
+
+.content-wrapper > .content {
+    padding-top: 1rem !important;
+}
+
+.content-wrapper .container-fluid {
+    max-width: 1920px;
+}
+
+.main-header.navbar {
+    background: var(--n45-surface) !important;
+    border-bottom: 1px solid var(--n45-border);
+    min-height: 3.5rem;
+    padding: .35rem .75rem;
+}
+
+.main-header.navbar .nav-link,
+.main-header.navbar .btn-navbar {
+    border-radius: var(--n45-radius-sm);
+    color: var(--n45-muted) !important;
+    transition: color var(--n45-ease), background-color var(--n45-ease);
+}
+
+.main-header.navbar .nav-link:hover,
+.main-header.navbar .nav-link:focus,
+.main-header.navbar .btn-navbar:hover,
+.main-header.navbar .btn-navbar:focus {
+    background: var(--n45-surface-subtle);
+    color: var(--n45-ink) !important;
+}
+
+.main-header .form-control-navbar {
+    background: var(--n45-surface-subtle) !important;
+    border: 1px solid var(--n45-border) !important;
+    border-right: 0 !important;
+    color: var(--n45-ink) !important;
+    min-width: min(22rem, 34vw);
+}
+
+.main-header .form-control-navbar::placeholder {
+    color: var(--n45-muted) !important;
+    opacity: 1;
+}
+
+.main-header .input-group-append .btn-navbar {
+    background: var(--n45-surface-subtle) !important;
+    border: 1px solid var(--n45-border) !important;
+    border-left: 0 !important;
+}
+
+.main-sidebar {
+    background: var(--n45-sidebar) !important;
+    border-right: 1px solid var(--n45-sidebar-deep);
+}
+
+.main-sidebar .brand-link {
+    align-items: center;
+    background: var(--n45-sidebar-deep);
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+    color: #ffffff;
+    display: flex;
+    min-height: 3.5rem;
+    padding: .7rem 1rem;
+}
+
+.main-sidebar .brand-text {
+    font-size: 1rem;
+    font-weight: 650 !important;
+    letter-spacing: -.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.main-sidebar .sidebar {
+    padding: .35rem .6rem 1rem;
+}
+
+.nav-sidebar .nav-header {
+    color: var(--n45-sidebar-muted) !important;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    padding: 1.15rem .75rem .4rem;
+}
+
+.nav-sidebar > .nav-item > .nav-link {
+    align-items: center;
+    border-radius: 8px;
+    color: var(--n45-sidebar-ink) !important;
+    display: flex;
+    margin: .12rem 0;
+    min-height: 2.55rem;
+    padding: .55rem .7rem;
+    transition: color var(--n45-ease), background-color var(--n45-ease);
+}
+
+.nav-sidebar > .nav-item > .nav-link:hover,
+.nav-sidebar > .nav-item > .nav-link:focus {
+    background: rgba(255, 255, 255, .075) !important;
+    color: #ffffff !important;
+}
+
+.nav-sidebar > .nav-item > .nav-link.active {
+    background: var(--n45-accent) !important;
+    box-shadow: none !important;
+    color: #ffffff !important;
+    font-weight: 600;
+}
+
+.nav-sidebar .nav-icon {
+    color: var(--n45-sidebar-muted);
+    font-size: .95rem !important;
+    margin-right: .65rem !important;
+    text-align: center;
+    width: 1.25rem !important;
+}
+
+.nav-sidebar .nav-link:hover .nav-icon,
+.nav-sidebar .nav-link.active .nav-icon {
+    color: inherit;
+}
+
+.nav-sidebar .nav-link p {
+    align-items: center;
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.nav-sidebar .nav-link .right.badge {
+    background: rgba(255, 255, 255, .13);
+    color: #ffffff !important;
+    font-size: .68rem;
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+    position: static;
+}
+
+.nav-sidebar .nav-link .badge-warning {
+    background: var(--n45-warning);
+    color: #172033 !important;
+}
+
+/* N45 technician operations workspace */
+.n45-ops-shell,
+.n45-tech-pulse,
+.n45-automation-ticket-card {
+    color: var(--n45-ink);
+}
+
+.dark-mode .n45-ops-shell,
+.dark-mode .n45-tech-pulse,
+.dark-mode .n45-automation-ticket-card {
+    color: var(--n45-ink);
 }
 
 .n45-ops-header {
