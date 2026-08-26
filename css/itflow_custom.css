@@ -72,16 +72,20 @@
     --n45-border-strong: #bcc6d3;
     --n45-ink: #172033;
     --n45-muted: #586579;
-    --n45-sidebar: #17202d;
-    --n45-sidebar-deep: #111822;
-    --n45-sidebar-ink: #dbe3ee;
-    --n45-sidebar-muted: #8e9bab;
+    --n45-sidebar: #f8fafc;
+    --n45-sidebar-deep: #edf1f5;
+    --n45-sidebar-ink: #263346;
+    --n45-sidebar-muted: #5d6a7d;
+    --n45-sidebar-border: #d8dee7;
+    --n45-sidebar-hover: #e8f2fb;
+    --n45-sidebar-badge: #e2e8f0;
+    --n45-sidebar-active: #1769aa;
     --n45-accent: #1769aa;
     --n45-accent-hover: #12578e;
     --n45-accent-soft: #e8f2fb;
     --n45-success: #157347;
     --n45-success-soft: #e8f5ee;
-    --n45-warning: #9a6700;
+    --n45-warning: #8a5d00;
     --n45-warning-soft: #fff4d6;
     --n45-danger: #b42318;
     --n45-danger-soft: #fcebea;
@@ -113,6 +117,10 @@ body.dark-mode {
     --n45-sidebar-deep: #0d1218;
     --n45-sidebar-ink: #e6edf5;
     --n45-sidebar-muted: #98a6b7;
+    --n45-sidebar-border: #29323d;
+    --n45-sidebar-hover: #1c2a38;
+    --n45-sidebar-badge: #253342;
+    --n45-sidebar-active: #1769aa;
     --n45-accent: #69b7f0;
     --n45-accent-hover: #8bc8f4;
     --n45-accent-soft: #263d50;
@@ -212,17 +220,26 @@ body [tabindex]:focus-visible {
 
 .main-sidebar {
     background: var(--n45-sidebar) !important;
-    border-right: 1px solid var(--n45-sidebar-deep);
+    border-right: 1px solid var(--n45-sidebar-border);
+    transition: background-color var(--n45-ease), border-color var(--n45-ease);
 }
 
 .main-sidebar .brand-link {
     align-items: center;
     background: var(--n45-sidebar-deep);
-    border-bottom: 1px solid rgba(255, 255, 255, .08);
-    color: #ffffff;
+    border-bottom: 1px solid var(--n45-sidebar-border);
+    color: var(--n45-sidebar-ink);
     display: flex;
     min-height: 3.5rem;
     padding: .7rem 1rem;
+    transition: background-color var(--n45-ease), border-color var(--n45-ease), color var(--n45-ease);
+}
+
+.main-sidebar .brand-link:hover,
+.main-sidebar .brand-link:focus {
+    background: var(--n45-sidebar-hover);
+    color: var(--n45-accent);
+    text-decoration: none;
 }
 
 .main-sidebar .brand-text {
@@ -259,12 +276,12 @@ body [tabindex]:focus-visible {
 
 .nav-sidebar > .nav-item > .nav-link:hover,
 .nav-sidebar > .nav-item > .nav-link:focus {
-    background: rgba(255, 255, 255, .075) !important;
-    color: #ffffff !important;
+    background: var(--n45-sidebar-hover) !important;
+    color: var(--n45-sidebar-ink) !important;
 }
 
 .nav-sidebar > .nav-item > .nav-link.active {
-    background: var(--n45-accent) !important;
+    background: var(--n45-sidebar-active) !important;
     box-shadow: none !important;
     color: #ffffff !important;
     font-weight: 600;
@@ -291,8 +308,8 @@ body [tabindex]:focus-visible {
 }
 
 .nav-sidebar .nav-link .right.badge {
-    background: rgba(255, 255, 255, .13);
-    color: #ffffff !important;
+    background: var(--n45-sidebar-badge);
+    color: var(--n45-sidebar-ink) !important;
     font-size: .68rem;
     font-variant-numeric: tabular-nums;
     margin-left: auto;
@@ -300,8 +317,40 @@ body [tabindex]:focus-visible {
 }
 
 .nav-sidebar .nav-link .badge-warning {
-    background: var(--n45-warning);
-    color: #172033 !important;
+    background: var(--n45-warning-soft);
+    color: var(--n45-warning) !important;
+}
+
+.nav-sidebar .nav-treeview {
+    padding: .15rem 0 .35rem;
+}
+
+.nav-sidebar .nav-treeview > .nav-item > .nav-link {
+    border-radius: 8px;
+    color: var(--n45-sidebar-muted) !important;
+    margin: .1rem 0;
+    min-height: 2.35rem;
+    padding-bottom: .48rem;
+    padding-top: .48rem;
+    transition: color var(--n45-ease), background-color var(--n45-ease);
+}
+
+.nav-sidebar .nav-treeview > .nav-item > .nav-link:hover,
+.nav-sidebar .nav-treeview > .nav-item > .nav-link:focus {
+    background: var(--n45-sidebar-hover) !important;
+    color: var(--n45-sidebar-ink) !important;
+}
+
+.nav-sidebar .nav-treeview > .nav-item > .nav-link.active {
+    background: var(--n45-accent-soft) !important;
+    box-shadow: none !important;
+    color: var(--n45-accent) !important;
+    font-weight: 600;
+}
+
+.nav-sidebar > .nav-item.menu-open > .nav-link:not(.active) {
+    background: var(--n45-sidebar-hover) !important;
+    color: var(--n45-sidebar-ink) !important;
 }
 
 /* Shared surfaces */
