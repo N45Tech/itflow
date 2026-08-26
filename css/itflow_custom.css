@@ -1288,8 +1288,14 @@ label,
 }
 
 .user-menu .user-header {
-    background: var(--n45-sidebar) !important;
-    color: #ffffff;
+    background: var(--n45-sidebar-deep) !important;
+    border-bottom: 1px solid var(--n45-sidebar-border);
+    color: var(--n45-sidebar-ink) !important;
+}
+
+.user-menu .user-header p,
+.user-menu .user-header small {
+    color: inherit !important;
 }
 
 .user-menu .user-footer {
