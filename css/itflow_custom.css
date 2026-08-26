@@ -251,6 +251,49 @@ body [tabindex]:focus-visible {
     white-space: nowrap;
 }
 
+.main-sidebar .n45-sidebar-brand {
+    align-items: center;
+    display: flex;
+    min-width: 0;
+    width: 100%;
+}
+
+.main-sidebar .n45-sidebar-lockup {
+    display: block;
+    height: 2.25rem;
+    max-width: 100%;
+    object-fit: contain;
+    object-position: left center;
+    width: auto;
+}
+
+.main-sidebar .n45-sidebar-lockup-dark-bg,
+.main-sidebar .n45-sidebar-mark {
+    display: none;
+}
+
+.dark-mode .main-sidebar .n45-sidebar-lockup-light-bg {
+    display: none;
+}
+
+.dark-mode .main-sidebar .n45-sidebar-lockup-dark-bg {
+    display: block;
+}
+
+.sidebar-collapse .main-sidebar:not(:hover) .n45-sidebar-lockup {
+    display: none;
+}
+
+.sidebar-collapse .main-sidebar:not(:hover) .n45-sidebar-brand {
+    justify-content: center;
+}
+
+.sidebar-collapse .main-sidebar:not(:hover) .n45-sidebar-mark {
+    display: block;
+    height: 2.25rem;
+    width: 2.25rem;
+}
+
 .main-sidebar .sidebar {
     padding: .35rem .6rem 1rem;
 }
