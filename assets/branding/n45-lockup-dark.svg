@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 590 150" role="img" aria-labelledby="title desc">
   <title id="title">N45 Technology Solutions</title>
-  <desc id="desc">N45 Technology Solutions. Serving Western North Carolina.</desc>
+  <desc id="desc">N45 Technology Solutions.</desc>
   <g transform="translate(8 7)">
     <rect width="136" height="136" rx="29" fill="#0a2423"/>
     <path d="M34 98V40M88 98V40" fill="none" stroke="#f4f0e8" stroke-width="11" stroke-linecap="round"/>
@@ -9,6 +9,4 @@
   </g>
   <text x="174" y="68" fill="#0a2423" font-family="Manrope, Segoe UI, sans-serif" font-size="52" font-weight="800" letter-spacing="-2">N45</text>
   <text x="287" y="60" fill="#0a2423" font-family="Manrope, Segoe UI, sans-serif" font-size="29" font-weight="700">Technology Solutions</text>
-  <path d="M176 87h394" stroke="#c9c4ba" stroke-width="1"/>
-  <text x="373" y="117" fill="#4d625e" font-family="IBM Plex Mono, Consolas, monospace" font-size="14.5" font-weight="500" letter-spacing="1.5" text-anchor="middle">SERVING WESTERN NORTH CAROLINA</text>
 </svg>
