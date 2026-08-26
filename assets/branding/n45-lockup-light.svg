@@ -7,6 +7,6 @@
     <path d="M34 40l54 58" fill="none" stroke="#289e8b" stroke-width="11" stroke-linecap="round"/>
     <circle cx="105" cy="29" r="7" fill="#f2a65a"/>
   </g>
-  <text x="174" y="68" fill="#f4f0e8" font-family="Manrope, Segoe UI, sans-serif" font-size="52" font-weight="800" letter-spacing="-2">N45</text>
-  <text x="287" y="60" fill="#f4f0e8" font-family="Manrope, Segoe UI, sans-serif" font-size="29" font-weight="700">Technology Solutions</text>
+  <text x="370" y="66" fill="#f4f0e8" font-family="Manrope, Segoe UI, sans-serif" font-size="56" font-weight="800" letter-spacing="-2" text-anchor="middle">N45</text>
+  <text x="370" y="105" fill="#f4f0e8" font-family="Manrope, Segoe UI, sans-serif" font-size="31" font-weight="700" text-anchor="middle">Technology Solutions</text>
 </svg>

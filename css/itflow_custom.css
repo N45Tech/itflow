@@ -254,16 +254,22 @@ body [tabindex]:focus-visible {
 .main-sidebar .n45-sidebar-brand {
     align-items: center;
     display: flex;
+    justify-content: center;
     min-width: 0;
     width: 100%;
 }
 
+.main-sidebar .n45-sidebar-brand-link {
+    justify-content: center;
+    padding: .3rem .75rem;
+}
+
 .main-sidebar .n45-sidebar-lockup {
     display: block;
-    height: 2.25rem;
+    height: 2.75rem;
     max-width: 100%;
     object-fit: contain;
-    object-position: left center;
+    object-position: center;
     width: auto;
 }
 
@@ -290,8 +296,8 @@ body [tabindex]:focus-visible {
 
 .sidebar-collapse .main-sidebar:not(:hover) .n45-sidebar-mark {
     display: block;
-    height: 2.25rem;
-    width: 2.25rem;
+    height: 2.5rem;
+    width: 2.5rem;
 }
 
 .main-sidebar .sidebar {

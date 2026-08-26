@@ -1,7 +1,7 @@
 <!-- Main Sidebar Container -->
 <aside class="main-sidebar sidebar-dark-<?= escapeHtml($config_theme) ?> d-print-none">
 
-    <a class="brand-link" href="/agent/dashboard.php" aria-label="<?= escapeHtml($session_company_name) ?> dashboard">
+    <a class="brand-link n45-sidebar-brand-link" href="/agent/dashboard.php" aria-label="<?= escapeHtml($session_company_name) ?> dashboard">
         <span class="n45-sidebar-brand" aria-hidden="true">
             <img class="n45-sidebar-lockup n45-sidebar-lockup-light-bg" src="/assets/branding/n45-lockup-dark.svg" alt="">
             <img class="n45-sidebar-lockup n45-sidebar-lockup-dark-bg" src="/assets/branding/n45-lockup-light.svg" alt="">
