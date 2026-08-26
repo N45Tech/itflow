@@ -1,0 +1,14 @@
+{
+  "monitor": {
+    "id": 42,
+    "name": "N45 Technologies :: Infrastructure :: PSA",
+    "type": "http",
+    "url": "https://psa.n45tech.com"
+  },
+  "heartbeat": {
+    "id": 1001,
+    "status": 0,
+    "time": "2026-08-26T04:15:00Z",
+    "msg": "Connection timeout"
+  }
+}

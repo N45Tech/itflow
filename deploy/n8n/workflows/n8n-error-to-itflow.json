@@ -1,0 +1,88 @@
+{
+  "name": "N45 - Automation Failure to ITFlow",
+  "nodes": [
+    {
+      "id": "cb44be91-41cd-4b32-a69a-ce2ad33d6ab7",
+      "name": "Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "db633e22-451f-4796-a19c-14d0bea75343",
+      "name": "Normalize n8n Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst execution = input.execution || {};\nconst workflow = input.workflow || {};\nconst trigger = input.trigger || {};\nconst error = execution.error || trigger.error || input.error || {};\nconst executionId = String(execution.id || Date.now());\nconst workflowId = String(workflow.id || 'unknown');\nreturn [{ json: {\n  source: 'n8n', event_id: 'execution:' + executionId,\n  incident_key: 'workflow:' + workflowId, entity_type: 'workflow', state: 'open', severity: 'high',\n  title: '[n8n] Workflow failed: ' + (workflow.name || workflowId),\n  description: String(error.message || error.description || 'The n8n workflow failed.') +\n    (execution.lastNodeExecuted ? '\\nLast node: ' + execution.lastNodeExecuted : ''),\n  occurred_at: new Date().toISOString(),\n  url: execution.url || '', auto_resolve: false,\n  identity: {\n    external_id: workflowId, external_name: workflow.name || workflowId,\n    client: { name: 'N45 Technologies' }, location: { name: 'Infrastructure' },\n    options: { create_client: true, create_location: true, create_asset: false },\n    metadata: { execution_id: executionId, last_node: execution.lastNodeExecuted || '' },\n  },\n} }];"
+      }
+    },
+    {
+      "id": "02b2831b-e105-4ef3-a978-fe0adea1caf5",
+      "name": "Open ITFlow Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        60,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://psa.n45tech.com/api/v1/integrations/automation/event.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-itflow-api",
+          "name": "N45 ITFlow API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Normalize n8n Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize n8n Error": {
+      "main": [
+        [
+          {
+            "node": "Open ITFlow Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "active": false,
+  "tags": []
+}

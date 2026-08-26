@@ -52,17 +52,34 @@ if ($_SERVER['REQUEST_METHOD'] !== "GET" && $_SERVER['REQUEST_METHOD'] !== "POST
     exit();
 }
 
+// Prefer an Authorization header so credentials do not appear in URLs, proxy
+// access logs, or workflow bodies. Query/body keys remain for API compatibility.
+$authorization_header = trim((string) (
+    $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? ''
+));
+if ($authorization_header === '' && function_exists('getallheaders')) {
+    foreach (getallheaders() as $header_name => $header_value) {
+        if (strcasecmp((string) $header_name, 'Authorization') === 0) {
+            $authorization_header = trim((string) $header_value);
+            break;
+        }
+    }
+}
+if (preg_match('/^Bearer\s+([^\s]+)$/i', $authorization_header, $authorization_match)) {
+    $api_key = escapeSql($authorization_match[1]);
+}
+
 // Check API key is provided
-if (!isset($_GET['api_key']) && !isset($_POST['api_key'])) {
+if (!isset($api_key) && !isset($_GET['api_key']) && !isset($_POST['api_key'])) {
     header(WORDING_UNAUTHORIZED);
     exit();
 }
 
 // Set API key variable
-if (isset($_GET['api_key'])) {
+if (!isset($api_key) && isset($_GET['api_key'])) {
     $api_key = escapeSql($_GET['api_key']);
 }
-if (isset($_POST['api_key'])) {
+if (!isset($api_key) && isset($_POST['api_key'])) {
     $api_key = escapeSql($_POST['api_key']);
 }
 

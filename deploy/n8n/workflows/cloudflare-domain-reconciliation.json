@@ -1,0 +1,159 @@
+{
+  "name": "N45 - Cloudflare Domain Reconciliation",
+  "nodes": [
+    {
+      "id": "f48f4f06-c1b1-493b-ad04-28155af91e1d",
+      "name": "Daily Domain Reconciliation",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -660,
+        -100
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "45 3 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "3f005428-b835-41b8-8a5b-105a8d111ca4",
+      "name": "Manual Domain Reconciliation",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -660,
+        80
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "c8ed8a12-f878-47ef-a714-5feaf6c3cbea",
+      "name": "Fetch Cloudflare Zones",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -400,
+        0
+      ],
+      "parameters": {
+        "url": "https://api.cloudflare.com/client/v4/zones?per_page=50",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-cloudflare-api",
+          "name": "N45 Cloudflare API"
+        }
+      }
+    },
+    {
+      "id": "9e2aa024-f1b5-4993-95c2-bb7a6846d124",
+      "name": "Map Zones to Clients",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst zones = response.result || [];\nconst CLIENT_BY_ZONE = {\n  'n45tech.com': 'N45 Technologies',\n};\nif (!Array.isArray(zones)) throw new Error('Cloudflare did not return a zone result array.');\nreturn zones.filter((zone) => CLIENT_BY_ZONE[String(zone.name).toLowerCase()]).map((zone) => ({ json: {\n  source: 'cloudflare', entity_type: 'zone', external_id: String(zone.id), external_name: zone.name,\n  client: { name: CLIENT_BY_ZONE[String(zone.name).toLowerCase()] },\n  domain: {\n    name: zone.name,\n    description: 'Cloudflare-managed DNS zone.',\n    notes: 'Cloudflare zone ID: ' + zone.id + '. ITFlow native refresh jobs maintain registration and DNS observations.',\n  },\n  options: { create_client: false, create_location: false, create_asset: false, create_domain: true },\n  metadata: { cloudflare_status: zone.status || '', account_id: zone.account?.id || '', account_name: zone.account?.name || '' },\n} }));"
+      }
+    },
+    {
+      "id": "19165423-18d4-46cd-b453-2ba704817470",
+      "name": "Resolve Domains in ITFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        120,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://psa.n45tech.com/api/v1/integrations/automation/resolve.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 10,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-itflow-api",
+          "name": "N45 ITFlow API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Domain Reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Fetch Cloudflare Zones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Domain Reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Fetch Cloudflare Zones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Cloudflare Zones": {
+      "main": [
+        [
+          {
+            "node": "Map Zones to Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Zones to Clients": {
+      "main": [
+        [
+          {
+            "node": "Resolve Domains in ITFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "active": false,
+  "tags": []
+}

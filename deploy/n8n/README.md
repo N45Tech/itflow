@@ -1,0 +1,105 @@
+# N45 n8n integration pack
+
+This pack keeps ITFlow authoritative for clients, locations, assets, domains, incidents, and tickets. n8n translates source payloads and retries delivery; it does not write to the ITFlow database or maintain a second mapping database.
+
+## Included workflows
+
+- **ITFlow Operations Event Broker** — one authenticated webhook for Uptime Kuma, backup jobs, generic service checks, and canonical events. Repeated failures update one ticket; recovery adds an internal reply and can resolve it.
+- **NetBox Entity Reconciliation** — nightly and event-driven device reconciliation. Durable NetBox tenant, site, and device IDs are attached to ITFlow clients, locations, and assets after conservative name/serial/URL matching.
+- **Cloudflare Domain Reconciliation** — nightly zone-to-domain reconciliation for explicitly mapped zones.
+- **Automation Failure to ITFlow** — shared n8n error workflow that opens one incident per failing workflow.
+
+Generated workflow JSON lives in `workflows/`. Rebuild it with:
+
+```bash
+node deploy/n8n/build-workflows.mjs
+node deploy/n8n/test-workflows.mjs
+```
+
+## Required credentials
+
+Create these credentials in n8n, then assign them to the matching nodes after import:
+
+1. `N45 Integration Webhook` — Header Auth. Use a random header name such as `X-N45-Integration-Key` and a 32-byte random value. Configure the same header on Uptime Kuma and NetBox webhooks.
+2. `N45 ITFlow API` — Header Auth with name `Authorization` and value `Bearer <ITFlow API key>`.
+3. `N45 NetBox API` — Header Auth with name `Authorization` and value `Token <read-only NetBox token>`.
+4. `N45 Cloudflare API` — Header Auth with name `Authorization` and value `Bearer <zone-read API token>`.
+
+The ITFlow key must be tied to a dedicated active automation technician with Support and Client write permissions. Automatic creation of previously unknown clients is a global action in ITFlow and therefore requires an administrator role. Give this account no interactive Entra access and set an API-key expiry/rotation reminder.
+
+## Import order
+
+1. Deploy the ITFlow `2.7.0` database migration and application code.
+2. Import all JSON files from `workflows/` into n8n.
+3. Assign the four credentials above.
+4. In `Cloudflare Domain Reconciliation`, edit `CLIENT_BY_ZONE` in **Map Zones to Clients**. Zones absent from this explicit map are skipped.
+5. In `NetBox Entity Reconciliation`, confirm `DEFAULT_CLIENT` and whether `CREATE_CLIENTS_FROM_TENANTS` should remain enabled.
+6. Run both reconciliation workflows manually and review the output before activation.
+7. Select `N45 - Automation Failure to ITFlow` as the Error Workflow on production workflows.
+8. Activate the broker and reconciliation workflows.
+
+## Naming convention
+
+Uptime Kuma monitor names can carry identity without maintaining a separate map:
+
+```text
+Client Name :: Location Name :: Service Name
+```
+
+Explicit webhook headers win over the name convention:
+
+- `X-ITFlow-Client`
+- `X-ITFlow-Location`
+- `X-ITFlow-Create-Client`
+- `X-ITFlow-Create-Location`
+- `X-ITFlow-Create-Asset`
+
+The first successful match is saved by source and external ID. NetBox tenant, site, and device mappings are saved separately, so later renames and newly added devices continue using the original client and location. Ambiguous normalized names return HTTP 409 and create nothing.
+
+## Canonical event contract
+
+POST canonical events to the production broker at:
+
+```text
+https://automate.n45tech.com/webhook/n45-itflow-events
+```
+
+Example:
+
+```json
+{
+  "source": "backup",
+  "event_id": "infra01-psa-2026-08-26T04:00:00Z",
+  "incident_key": "backup:infra01:psa",
+  "state": "open",
+  "severity": "high",
+  "title": "PSA backup failed",
+  "description": "The nightly database backup did not complete.",
+  "occurred_at": "2026-08-26T04:00:00Z",
+  "auto_resolve": true,
+  "identity": {
+    "external_id": "infra01:psa",
+    "external_name": "PSA backup",
+    "client": { "name": "N45 Technologies" },
+    "location": { "name": "Infrastructure" },
+    "options": {
+      "create_client": true,
+      "create_location": true,
+      "create_asset": false
+    }
+  }
+}
+```
+
+Send a later event with the same `incident_key`, a new `event_id`, and `state: resolved` to add the recovery note and resolve the linked ticket.
+
+## Safety rules
+
+- Matching is normalized exact matching, never fuzzy matching.
+- A saved external-ID mapping wins after the first match.
+- Ambiguous matches fail closed.
+- Cloudflare zones require an explicit client map.
+- NetBox is read-only. It supplies technical context; ITFlow keeps client/service ownership.
+- Level.io remains the endpoint telemetry authority. NetBox matching prefers durable IDs, serial numbers, URLs, and same-location names to avoid duplicate assets.
+- Integration secrets stay in n8n credentials and API authorization headers, not workflow JSON or URLs.
+- Do not point n8n directly at the ITFlow MariaDB database.
