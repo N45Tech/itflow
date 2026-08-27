@@ -16,6 +16,69 @@
  * render time.
  */
 
+// A single set of impact-based priority definitions for every ticket form and
+// the SLA administration page. The array keys remain the values stored on
+// tickets; the short labels are guidance only.
+function ticketPriorityDefinitions()
+{
+    return [
+        'Low' => [
+            'short' => 'request or planned work',
+            'description' => 'No active service disruption. Use for information requests, routine changes and planned work.',
+        ],
+        'Medium' => [
+            'short' => 'limited impact; workaround available',
+            'description' => 'One or a few users are impaired, or a service is degraded, and a practical workaround exists.',
+        ],
+        'High' => [
+            'short' => 'major impact; no workaround',
+            'description' => 'A critical service is unavailable, many users are affected or there is no practical workaround.',
+        ],
+        'Urgent' => [
+            'short' => 'outage or active security threat',
+            'description' => 'Business-wide outage, active security incident or immediate threat of material data loss. After-hours emergency terms may apply.',
+        ],
+    ];
+}
+
+// Workflow guidance is deliberately keyed by status name so custom statuses
+// still work without a schema change. Unknown statuses are identified as custom
+// rather than silently receiving the wrong lifecycle description.
+function ticketStatusGuidance($status_name)
+{
+    $guidance = [
+        'New' => 'Unreviewed intake; ownership and impact have not been confirmed.',
+        'Open' => 'Triaged and accepted into the work queue.',
+        'In Progress' => 'A technician is actively working the ticket.',
+        'Scheduled' => 'Work has a committed appointment or change window; the SLA clock keeps running.',
+        'Waiting on Client' => 'The next action or required information belongs to the client; resolution SLA is paused.',
+        'Waiting on Vendor' => 'A documented third-party action is blocking progress; resolution SLA is paused.',
+        'Resolved' => 'Work is complete and the outcome has been communicated.',
+        'Closed' => 'Final state after validation, acceptance or the closure window.',
+    ];
+
+    return $guidance[$status_name] ?? 'Custom workflow status.';
+}
+
+function slaTargetDisplay($minutes)
+{
+    $minutes = intval($minutes);
+    if ($minutes <= 0) {
+        return '-';
+    }
+    if ($minutes < 60) {
+        return $minutes . ' min';
+    }
+    if ($minutes % 60 === 0) {
+        $hours = intval($minutes / 60);
+        return $hours . ' business hr' . ($hours === 1 ? '' : 's');
+    }
+
+    $hours = floor($minutes / 60);
+    $remaining_minutes = $minutes % 60;
+    return $hours . ' hr ' . $remaining_minutes . ' min';
+}
+
 // Business hours + SLA settings, fetched once per request
 function getSlaSettings($refresh = false)
 {

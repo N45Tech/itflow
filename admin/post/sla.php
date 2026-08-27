@@ -134,7 +134,7 @@ if (isset($_POST['save_sla_assignments'])) {
 
     // Global defaults - one select per priority; 0 means no SLA, which for the
     // global row is simply no assignment
-    foreach (['Low', 'Medium', 'High', 'Urgent'] as $priority) {
+    foreach (array_keys(ticketPriorityDefinitions()) as $priority) {
 
         $field = 'global_sla_' . strtolower($priority);
         $sla_id = intval($_POST[$field] ?? 0);

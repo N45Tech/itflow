@@ -127,7 +127,7 @@ $overall = getSlaCompliance("AND YEAR(ticket_created_at) = $year");
                                 </tr>
                                 </thead>
                                 <tbody>
-                                <?php foreach (['Urgent', 'High', 'Medium', 'Low'] as $priority) {
+                                <?php foreach (array_reverse(array_keys(ticketPriorityDefinitions())) as $priority) {
                                     $stats = getSlaCompliance("AND YEAR(ticket_created_at) = $year AND ticket_priority = '$priority'");
                                     if ($stats['ticket_count'] == 0) {
                                         continue;

@@ -46,10 +46,9 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
                                 <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
                             </div>
                             <select class="form-control select2" name="priority" required>
-                                <option>Low</option>
-                                <option>Medium</option>
-                                <option>High</option>
-                                <option>Urgent</option>
+                                <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
+                                    <option value="<?= escapeHtml($priority) ?>"><?= escapeHtml("$priority — " . $definition['short']) ?></option>
+                                <?php } ?>
                             </select>
                         </div>
                     </div>

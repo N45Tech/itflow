@@ -384,7 +384,7 @@ ob_start();
                     <div class="form-group">
                         <label>Ticket SLAs</label>
                         <div class="form-row">
-                            <?php foreach (['Low', 'Medium', 'High', 'Urgent'] as $sla_priority) { ?>
+                            <?php foreach (ticketPriorityDefinitions() as $sla_priority => $sla_definition) { ?>
                                 <div class="col-3">
                                     <small class="text-secondary"><?= $sla_priority ?></small>
                                     <select class="form-control" name="client_sla_<?= strtolower($sla_priority) ?>">
@@ -397,7 +397,11 @@ ob_start();
                                 </div>
                             <?php } ?>
                         </div>
-                        <small class="text-muted">Default follows the global SLA assignment for each priority.</small>
+                        <div class="btn-group btn-group-sm mt-2" role="group" aria-label="SLA presets">
+                            <button type="button" class="btn btn-outline-secondary" onclick="$(this.form).find('[name^=client_sla_]').val('default').trigger('change')">Use Managed Care defaults</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="$(this.form).find('[name^=client_sla_]').val('0').trigger('change')">No SLA</button>
+                        </div>
+                        <small class="text-muted d-block mt-1">Use No SLA for hourly and project-only clients. Individual priorities can still be overridden.</small>
                     </div>
                 <?php } ?>
             </div>

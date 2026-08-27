@@ -23,3 +23,10 @@ sudo /opt/n45/psa/app/deploy/psa/install-production.sh
 The first administrator's generated local/vault password is written once to `/home/n45admin/psa-initial-admin.txt` with mode `0600`.
 
 The application is image-managed. Deploy updates by checking out the reviewed branch, rebuilding, and recreating the web and cron containers. Do not use ITFlow's in-app Git updater in this deployment.
+
+After deploying this revision, reconcile the recommended ticket workflow, Managed Care SLAs and operational tags from the web container. Preview first; both commands are idempotent.
+
+```bash
+sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_ticket_operations.php --dry-run
+sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_ticket_operations.php
+```

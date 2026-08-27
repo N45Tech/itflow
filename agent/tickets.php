@@ -176,7 +176,7 @@ if (!empty($_GET['category'])) {
 // Priority Filter
 $ticket_priority_query = '';
 $priority_filter = '';
-if (!empty($_GET['priority']) && in_array($_GET['priority'], array('Low', 'Medium', 'High', 'Urgent'), true)) {
+if (!empty($_GET['priority']) && in_array($_GET['priority'], array_keys(ticketPriorityDefinitions()), true)) {
     $priority_filter = $_GET['priority'];
     $ticket_priority_query = "AND ticket_priority = '$priority_filter'";
     $active_filters[] = array('label' => 'Priority', 'value' => $priority_filter, 'drop' => 'priority');
@@ -442,7 +442,7 @@ if ($date_filter_active) {
                             <label>Priority</label>
                             <select onchange="this.form.submit()" class="form-control select2" name="priority">
                                 <option value="">Any priority</option>
-                                <?php foreach (array('Urgent', 'High', 'Medium', 'Low') as $priority_option) { ?>
+                                <?php foreach (array_reverse(array_keys(ticketPriorityDefinitions())) as $priority_option) { ?>
                                     <option value="<?= $priority_option ?>" <?php if ($priority_filter == $priority_option) { echo "selected"; } ?>><?= $priority_option ?></option>
                                 <?php } ?>
                             </select>

@@ -42,7 +42,18 @@ while ($assignment_row = mysqli_fetch_assoc($sql_assignments)) {
 
     <div class="card-body">
 
-        <p class="text-muted">SLAs are optional. Tickets only get response/resolution targets when an assignment below matches their client and priority - with nothing assigned, nothing changes.</p>
+        <p class="text-muted">SLAs are measured in configured business time. A ticket receives the default for its priority unless the client has an explicit override.</p>
+
+        <div class="row mb-3">
+            <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
+                <div class="col-lg-3 col-md-6 mb-2">
+                    <div class="border rounded h-100 p-2">
+                        <strong><?= escapeHtml($priority) ?></strong>
+                        <small class="text-muted d-block"><?= escapeHtml($definition['description']) ?></small>
+                    </div>
+                </div>
+            <?php } ?>
+        </div>
 
         <div class="table-responsive-sm">
             <table class="table table-striped table-borderless table-hover">
@@ -74,8 +85,8 @@ while ($assignment_row = mysqli_fetch_assoc($sql_assignments)) {
                             </a>
                         </td>
                         <td><?= $sla_description ?></td>
-                        <td><?= $sla_response_minutes ?> min</td>
-                        <td><?= $sla_resolution_minutes ? "$sla_resolution_minutes min" : "-" ?></td>
+                        <td title="<?= $sla_response_minutes ?> minutes"><?= escapeHtml(slaTargetDisplay($sla_response_minutes)) ?></td>
+                        <td title="<?= $sla_resolution_minutes ?> minutes"><?= escapeHtml(slaTargetDisplay($sla_resolution_minutes)) ?></td>
                         <td>
                             <?php if ($sla_archived_at) { ?>
                                 <div class="text-secondary">Archived</div>
@@ -125,7 +136,7 @@ while ($assignment_row = mysqli_fetch_assoc($sql_assignments)) {
 
             <strong>Default (all clients)</strong>
             <div class="form-row mt-2">
-                <?php foreach (['Low', 'Medium', 'High', 'Urgent'] as $priority) {
+                <?php foreach (ticketPriorityDefinitions() as $priority => $definition) {
                     $selected_sla_id = $assignments[0][$priority] ?? 0;
                     ?>
                     <div class="form-group col-md-3">
@@ -136,13 +147,14 @@ while ($assignment_row = mysqli_fetch_assoc($sql_assignments)) {
                                 <option value="<?= $active_sla_id ?>" <?php if ($selected_sla_id == $active_sla_id) { echo "selected"; } ?>><?= escapeHtml($active_sla_name) ?></option>
                             <?php } ?>
                         </select>
+                        <small class="text-muted"><?= escapeHtml($definition['short']) ?></small>
                     </div>
                 <?php } ?>
             </div>
             <button type="submit" name="save_sla_assignments" class="btn btn-primary"><i class="fas fa-check mr-2"></i>Save Defaults</button>
         </form>
 
-        <small class="text-muted d-block mt-2">Per-client overrides are set on each client (edit client, Notes tab).</small>
+        <small class="text-muted d-block mt-2">Defaults apply to every client. Use the client Notes tab to opt hourly or project-only clients out, or to apply a different contract target.</small>
     </div>
 </div>
 
