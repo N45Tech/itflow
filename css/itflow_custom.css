@@ -99,6 +99,7 @@
     --n45-z-sticky: 1050;
     --n45-z-modal-backdrop: 1060;
     --n45-z-modal: 1070;
+    --n45-z-modal-popup: 1075;
     --n45-z-toast: 1080;
     --n45-z-tooltip: 1090;
 }
@@ -1144,6 +1145,17 @@ label,
 
 .modal {
     z-index: var(--n45-z-modal);
+}
+
+/*
+ * Select2 and date/time pickers append their open panels to the document body.
+ * Lift only those active panels while a modal is open; changing their parent
+ * breaks option loading in several dynamically rendered ITFlow forms.
+ */
+.modal-open .select2-container--open,
+.modal-open .bootstrap-datetimepicker-widget.dropdown-menu,
+.modal-open .daterangepicker {
+    z-index: var(--n45-z-modal-popup);
 }
 
 .modal-content {

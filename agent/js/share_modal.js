@@ -14,19 +14,10 @@ function populateShareModal(client_id, item_type, item_ref_id) {
     document.getElementById("div_share_link_generate").hidden = false;
 
     $(document).ready(function() {
-        const $shareEmail = $('#share_email');
-        const $shareModal = $shareEmail.closest('.modal');
-
-        if ($shareEmail.hasClass('select2-hidden-accessible')) {
-            $shareEmail.select2('destroy');
-        }
-
-        $shareEmail.select2({
-            theme: 'bootstrap4',
+        $('#share_email').select2({
             tags: true,
             placeholder: 'Select or type a value',
-            allowClear: true,
-            dropdownParent: $shareModal
+            allowClear: true
         });
     });
 }
