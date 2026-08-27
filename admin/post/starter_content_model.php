@@ -53,6 +53,16 @@ function starterContentPacks() {
             'icon' => 'fa-file-alt',
             'description' => 'Runbooks, build sheets, checklists and plans as fill-in-the-blank skeletons.',
         ],
+        'contract_templates' => [
+            'label' => 'Contract Templates',
+            'icon' => 'fa-file-contract',
+            'description' => 'Operational starting points for managed service, project and hourly support agreements. Legal review is still required.',
+        ],
+        'software_templates' => [
+            'label' => 'Software Templates',
+            'icon' => 'fa-cube',
+            'description' => 'The standard management, productivity, automation and endpoint software stack.',
+        ],
         'products' => [
             'label' => 'Products & Services',
             'icon' => 'fa-cubes',
@@ -146,6 +156,10 @@ function starterContentLoad($mysqli, $pack, $dry_run = false) {
             return starterLoadVendorTemplates($mysqli, $dry_run);
         case 'document_templates':
             return starterLoadDocumentTemplates($mysqli, $dry_run);
+        case 'contract_templates':
+            return starterLoadContractTemplates($mysqli, $dry_run);
+        case 'software_templates':
+            return starterLoadSoftwareTemplates($mysqli, $dry_run);
         case 'products':
             return starterLoadProducts($mysqli, $dry_run);
     }
@@ -188,6 +202,10 @@ function starterContentTotal($pack) {
             return count(starterContentVendorTemplates());
         case 'document_templates':
             return count(starterContentDocumentTemplates());
+        case 'contract_templates':
+            return count(starterContentContractTemplates());
+        case 'software_templates':
+            return count(starterContentSoftwareTemplates());
         case 'products':
             return count(starterContentProducts());
     }
@@ -382,6 +400,71 @@ function starterLoadDocumentTemplates($mysqli, $dry_run = false) {
             'document_template_content' => $document_template[2],
             'document_template_created_by' => intval($session_user_id ?? 0),
         ], ['document_template_content']);
+    }
+
+    return $added;
+}
+
+// ------------------------------
+// starterLoadContractTemplates
+// ------------------------------
+function starterLoadContractTemplates($mysqli, $dry_run = false) {
+    $existing = starterExistingNames($mysqli, 'contract_templates', 'contract_template_name');
+    $added = 0;
+
+    foreach (starterContentContractTemplates() as $contract_template) {
+        if (isset($existing[mb_strtolower($contract_template['name'])])) {
+            continue;
+        }
+        $added++;
+        if ($dry_run) {
+            continue;
+        }
+        starterInsert($mysqli, 'contract_templates', [
+            'contract_template_name' => $contract_template['name'],
+            'contract_template_description' => $contract_template['description'],
+            'contract_template_type' => $contract_template['type'],
+            'contract_template_renewal_frequency' => $contract_template['renewal_frequency'],
+            'contract_template_sla_low_response_time' => $contract_template['sla_low_response'],
+            'contract_template_sla_low_resolution_time' => $contract_template['sla_low_resolution'],
+            'contract_template_sla_medium_response_time' => $contract_template['sla_medium_response'],
+            'contract_template_sla_medium_resolution_time' => $contract_template['sla_medium_resolution'],
+            'contract_template_sla_high_response_time' => $contract_template['sla_high_response'],
+            'contract_template_sla_high_resolution_time' => $contract_template['sla_high_resolution'],
+            'contract_template_rate_standard' => $contract_template['rate_standard'],
+            'contract_template_rate_after_hours' => $contract_template['rate_after_hours'],
+            'contract_template_support_hours' => $contract_template['support_hours'],
+            'contract_template_net_terms' => $contract_template['net_terms'],
+            'contract_template_details' => $contract_template['details'],
+        ], ['contract_template_details']);
+    }
+
+    return $added;
+}
+
+// ------------------------------
+// starterLoadSoftwareTemplates
+// ------------------------------
+function starterLoadSoftwareTemplates($mysqli, $dry_run = false) {
+    $existing = starterExistingNames($mysqli, 'software_templates', 'software_template_name');
+    $added = 0;
+
+    foreach (starterContentSoftwareTemplates() as $software_template) {
+        if (isset($existing[mb_strtolower($software_template['name'])])) {
+            continue;
+        }
+        $added++;
+        if ($dry_run) {
+            continue;
+        }
+        starterInsert($mysqli, 'software_templates', [
+            'software_template_name' => $software_template['name'],
+            'software_template_description' => $software_template['description'],
+            'software_template_version' => $software_template['version'],
+            'software_template_type' => $software_template['type'],
+            'software_template_license_type' => $software_template['license_type'],
+            'software_template_notes' => $software_template['notes'],
+        ]);
     }
 
     return $added;
@@ -674,65 +757,63 @@ function starterContentTicketTemplates() {
 
     $ticket_templates = [
         [
-            'name' => 'New Hire Onboarding',
-            'description' => 'Standard setup for a new employee joining a client',
-            'subject' => 'New hire onboarding - [Employee Name]',
-            'details' => '<p>New user setup. Confirm the following with the client before starting:</p><ul><li>Full name and preferred display name</li><li>Job title, department and manager</li><li>Start date and working hours</li><li>Who to mirror permissions from</li><li>Hardware and phone requirements</li></ul>',
+            'name' => 'User Onboarding',
+            'description' => 'Authorized account and access setup for a new user',
+            'subject' => 'User onboarding - [Employee Name]',
+            'details' => '<p>Do not begin until an authorized approver has confirmed the identity, start date, manager, role, location and required access. Device deployment is a separate scope unless explicitly included.</p>',
             'tasks' => [
-                ['Confirm start date and written approval from an authorized contact', 15],
-                ['Create the directory account and set the initial password', 15],
-                ['Assign licenses', 10],
-                ['Create the mailbox, signature and alias', 20],
-                ['Add to security and distribution groups', 15],
-                ['Configure file share and application permissions', 20],
-                ['Image and enroll the workstation', 60],
-                ['Install the standard application stack', 30],
-                ['Install line of business applications', 30],
-                ['Enroll multi-factor authentication', 15],
-                ['Configure the phone extension and voicemail', 15],
-                ['Add to RMM, endpoint protection and backup', 20],
-                ['Hand over credentials to the user securely', 10],
-                ['Create the contact record and document the setup', 15],
+                ['Validate the request and approval against the authorized contact list', 15],
+                ['Confirm start time, manager, role, location and access baseline', 15],
+                ['Create the Entra ID or directory account with a temporary access method', 15],
+                ['Assign the approved Microsoft 365 and application licenses', 10],
+                ['Configure mailbox aliases, groups and shared resources using least privilege', 25],
+                ['Configure approved line-of-business application access', 20],
+                ['Enroll multi-factor authentication and verify recovery methods', 20],
+                ['Link or create the device deployment work when required', 10],
+                ['Verify sign-in, mail, file access and required applications', 20],
+                ['Record the user, approvals, licenses and access in ITFlow', 15],
+                ['Send the requester a completion summary without transmitting passwords', 10],
             ],
         ],
         [
-            'name' => 'Employee Offboarding',
-            'description' => 'Standard process for a departing employee',
-            'subject' => 'Employee offboarding - [Employee Name]',
-            'details' => '<p>Departing user. Do not start until written authorization has been received from an authorized contact.</p><p>Confirm the last working day, who inherits the mailbox and data, and whether the account should be deleted or retained.</p>',
+            'name' => 'User Offboarding',
+            'description' => 'Authorized access revocation and data handoff for a departing user',
+            'subject' => 'User offboarding - [Employee Name]',
+            'details' => '<p>Do not begin without written authorization from an authorized contact. Confirm the effective time, legal-hold or retention requirements, data owner and device disposition before making changes.</p>',
             'tasks' => [
-                ['Obtain written authorization and confirm the effective date', 15],
-                ['Disable the account and reset the password', 10],
-                ['Revoke multi-factor authentication and active sessions', 10],
-                ['Convert the mailbox to shared or set forwarding', 15],
-                ['Remove group, share and application access', 20],
-                ['Reclaim and reassign licenses', 15],
-                ['Collect hardware, keys and access cards', 30],
-                ['Back up and hand over user data', 30],
-                ['Wipe and reimage the workstation', 60],
-                ['Remove the device from RMM, endpoint protection and backup', 15],
-                ['Update documentation and contact records', 15],
-                ['Notify billing of the license change', 10],
+                ['Validate the authorization, effective time and data-retention decision', 15],
+                ['Block sign-in and reset the account credentials', 10],
+                ['Revoke sessions, refresh tokens and registered authentication methods', 15],
+                ['Remove privileged roles, groups, shared access and application sessions', 20],
+                ['Apply the approved mailbox conversion, delegation, forwarding and auto-reply', 20],
+                ['Transfer OneDrive, SharePoint and line-of-business data to the approved owner', 30],
+                ['Record and coordinate the return of devices, keys and access cards', 20],
+                ['Quarantine or reassign managed devices; do not wipe without separate approval', 20],
+                ['Recover licenses only after retention and access requirements are satisfied', 15],
+                ['Update ITFlow contacts, assets, documentation and billing records', 15],
+                ['Send the authorized requester a completion and exception summary', 10],
             ],
         ],
         [
-            'name' => 'Workstation Deployment',
-            'description' => 'Build and deploy a new desktop or laptop',
-            'subject' => 'Workstation deployment - [Client] - [User]',
-            'details' => '<p>New workstation build. Confirm the order reference, the user it is for, and whether an existing machine is being replaced.</p>',
+            'name' => 'Device Deployment',
+            'description' => 'Build, secure, document and hand over a desktop or laptop',
+            'subject' => 'Device deployment - [Client] - [User]',
+            'details' => '<p>Confirm the approved quote, assigned user, management scope and old-device disposition. Security, backup and software products must only be installed when included in the client agreement or project scope.</p>',
             'tasks' => [
                 ['Confirm the quote or purchase order', 10],
                 ['Receive, inventory and create the asset record', 20],
                 ['Record the serial number and warranty expiry', 10],
-                ['Image the device and apply all updates', 60],
-                ['Join the domain or cloud directory', 15],
-                ['Install the standard application stack', 30],
-                ['Install line of business applications', 30],
-                ['Map printers and network drives', 15],
-                ['Enroll in RMM, endpoint protection and backup', 20],
-                ['Migrate the user profile and data', 60],
-                ['Verify mail, file sync and printing', 20],
-                ['Deliver, walk the user through it and wipe the old device', 45],
+                ['Update firmware, operating system and drivers', 60],
+                ['Join Entra ID or the approved directory and verify device ownership', 20],
+                ['Configure encryption and verify the recovery key is escrowed', 15],
+                ['Install the approved standard and line-of-business applications', 45],
+                ['Install and verify the Level agent for managed devices', 15],
+                ['Install approved endpoint protection and backup products when in scope', 20],
+                ['Migrate the user profile and data after confirming a recoverable source copy', 60],
+                ['Verify mail, file synchronization, printing and required applications', 25],
+                ['Confirm the user has no unintended local administrator access', 10],
+                ['Deliver the device, obtain acceptance and record the handoff', 20],
+                ['Route the old device to the separately approved reuse, retention or disposal process', 15],
             ],
         ],
         [
@@ -754,22 +835,22 @@ function starterContentTicketTemplates() {
             ],
         ],
         [
-            'name' => 'Monthly Maintenance',
-            'description' => 'Recurring monthly maintenance pass for a managed client',
-            'subject' => 'Monthly maintenance - [Client] - [Month]',
-            'details' => '<p>Scheduled monthly maintenance. Work the checklist and send the client a summary when complete.</p>',
+            'name' => 'Managed Care Monthly Review',
+            'description' => 'Exception-based monthly operational review for a managed client',
+            'subject' => 'Managed Care review - [Client] - [Month]',
+            'details' => '<p>Review automated operations by exception. Do not repeat healthy automated checks manually; investigate exceptions, record decisions and raise separately scoped work when required.</p>',
             'tasks' => [
-                ['Review patch compliance across the fleet', 20],
-                ['Approve and deploy pending patches', 30],
-                ['Reboot within the agreed maintenance window', 30],
-                ['Verify services and applications after reboot', 30],
-                ['Check disk space and clear down where needed', 20],
-                ['Review endpoint protection alerts and quarantine', 20],
-                ['Verify backup jobs completed and spot check a restore', 30],
-                ['Check UPS battery health and runtime', 15],
-                ['Review firewall firmware and license expiry', 15],
-                ['Review certificate and domain expiry', 15],
-                ['Update documentation and send the client a summary', 30],
+                ['Review Level device health, stale agents and unresolved alerts', 20],
+                ['Review patch exceptions, failed jobs and pending reboot exposure', 20],
+                ['Review security alerts only for products active in the client scope', 20],
+                ['Review backup exceptions and the most recent restore evidence when backup is in scope', 20],
+                ['Review asset lifecycle, warranty and unsupported operating systems', 20],
+                ['Review Microsoft 365 license and privileged-access exceptions', 20],
+                ['Review network monitoring, firmware and subscription exceptions', 20],
+                ['Check domain, certificate and critical vendor renewal exposure', 15],
+                ['Reconcile ITFlow records with Level and other connected systems', 20],
+                ['Raise prioritized remediation tickets instead of hiding work in this review', 15],
+                ['Send a concise outcome and exception summary to the client', 20],
             ],
         ],
         [
@@ -831,7 +912,8 @@ function starterContentTicketTemplates() {
                 ['Declare the incident and establish scope and impact', 30],
                 ['Isolate affected systems and accounts', 30],
                 ['Preserve logs, images and evidence', 60],
-                ['Notify the client, insurer and any required authority', 30],
+                ['Notify the authorized client decision maker and identify insurer, legal and regulatory requirements', 30],
+                ['Obtain authorization before any external insurer, legal or regulatory notification', 15],
                 ['Contain the spread and close the entry point', 120],
                 ['Eradicate persistence and reset all affected credentials', 120],
                 ['Restore from a known good backup and verify', 180],
@@ -840,42 +922,45 @@ function starterContentTicketTemplates() {
             ],
         ],
         [
-            'name' => 'Client Onboarding',
-            'description' => 'Bring a newly signed client under management',
-            'subject' => 'Client onboarding - [Client]',
-            'details' => '<p>New client onboarding. Nothing goes live until the agreement is countersigned. The output of this ticket is a fully documented client that can be supported by anyone on the team.</p>',
+            'name' => 'Managed Care Onboarding',
+            'description' => 'Bring a signed client into the documented Managed Care operating model',
+            'subject' => 'Managed Care onboarding - [Client]',
+            'details' => '<p>Do not deploy tools or assume administrative control until the agreement, onboarding scope and authorized contacts are confirmed. The output is a documented client with explicit supported and excluded systems.</p>',
             'tasks' => [
                 ['Confirm the countersigned agreement is on file', 15],
-                ['Hold the kickoff call and agree the escalation path', 60],
-                ['Collect contacts, locations, hours and authorized approvers', 60],
-                ['Discover and document the network', 180],
-                ['Inventory assets and create asset records', 180],
-                ['Deploy RMM and endpoint protection', 120],
-                ['Move all credentials into the vault', 120],
-                ['Configure and verify backups', 120],
-                ['Run a security baseline audit', 120],
-                ['Review DNS, mail records and certificate expiry', 60],
-                ['Set up billing, invoicing and autopay', 45],
-                ['Schedule the review cadence', 20],
-                ['Hold the 30 day review', 60],
+                ['Confirm scope, minimum billing, exclusions and onboarding deliverables', 30],
+                ['Hold the kickoff call and agree contacts, approvals and escalation paths', 60],
+                ['Create and normalize the client, locations, contacts and vendors in ITFlow', 60],
+                ['Discover and document networks, circuits and critical dependencies', 180],
+                ['Inventory users and assets and map them to Level records', 180],
+                ['Deploy and verify the Level agent on approved managed devices', 120],
+                ['Deploy only the security and backup products included in the agreement', 120],
+                ['Move administrative credentials into the vault and verify access ownership', 120],
+                ['Record supported systems, exclusions, warranties and lifecycle risks', 90],
+                ['Complete the Microsoft 365 and operational security baseline', 120],
+                ['Verify billing, recurring items, licenses and payment method', 45],
+                ['Establish maintenance, review and reporting cadence', 20],
+                ['Hold the 30-day review and obtain acceptance of the documented baseline', 60],
             ],
         ],
         [
             'name' => 'Client Offboarding',
             'description' => 'Cleanly exit a departing client',
             'subject' => 'Client offboarding - [Client]',
-            'details' => '<p>Departing client. Agree in writing what is handed over, what is retained and for how long, and settle the final invoice before access is removed.</p>',
+            'details' => '<p>Agree in writing what will be handed over, what N45 must retain, when access changes occur and who is authorized to receive credentials. Billing disputes must never delay a security-critical access revocation.</p>',
             'tasks' => [
                 ['Confirm the notice period and termination date in writing', 20],
                 ['Agree the handover scope with the client or incoming provider', 45],
-                ['Raise and settle the final invoice', 30],
-                ['Export and hand over documentation', 60],
-                ['Hand over credentials securely and confirm receipt', 45],
-                ['Remove RMM, endpoint protection and monitoring agents', 60],
+                ['Confirm the identity and authority of every handover recipient', 20],
+                ['Prepare the final invoice independently from the technical exit', 30],
+                ['Export approved documentation and record exactly what was released', 60],
+                ['Hand over credentials through an approved secure channel and confirm receipt', 45],
+                ['Remove Level and other agents at the agreed time without leaving protection gaps', 60],
                 ['Release or transfer licenses and subscriptions', 45],
                 ['Agree the backup retention and destruction date', 20],
                 ['Revoke all remaining access and delegated permissions', 45],
-                ['Archive the client record and close out', 30],
+                ['Reconcile integrations and disable client-specific automations', 30],
+                ['Archive the client record only after retention obligations are recorded', 30],
             ],
         ],
         [
@@ -897,28 +982,31 @@ function starterContentTicketTemplates() {
             ],
         ],
         [
-            'name' => 'Microsoft 365 Tenant Onboarding',
-            'description' => 'Bring a client tenant under management and to a security baseline',
-            'subject' => 'Microsoft 365 tenant onboarding - [Client]',
-            'details' => '<p>Tenant onboarding. Establish delegated access, document the licensing position, then bring the tenant to the agreed security baseline.</p>',
+            'name' => 'Microsoft 365 Tenant Baseline',
+            'description' => 'Document and apply the approved Microsoft 365 management and security baseline',
+            'subject' => 'Microsoft 365 tenant baseline - [Client]',
+            'details' => '<p>Establish approved delegated access and document the current state before changing policy. Record and obtain approval for user-impacting controls, exclusions and break-glass arrangements.</p>',
             'tasks' => [
                 ['Establish delegated administrative access', 30],
                 ['Document the tenant ID, domains and license position', 45],
                 ['Create the break glass administrator account and vault it', 30],
-                ['Enforce multi-factor authentication for all users', 60],
-                ['Review and harden the conditional access policy', 60],
+                ['Capture the current administrative roles and authentication posture', 30],
+                ['Approve and enforce multi-factor authentication for all in-scope users', 60],
+                ['Review, approve and implement the conditional access baseline', 60],
+                ['Block legacy authentication after validating application compatibility', 30],
                 ['Review mail flow, connectors and forwarding rules', 45],
                 ['Verify SPF, DKIM and DMARC records', 45],
                 ['Enable and configure audit logging and alerting', 45],
-                ['Configure tenant backup', 60],
-                ['Document the tenant and report the baseline findings', 60],
+                ['Configure tenant backup only when licensed and included in scope', 60],
+                ['Document approved exceptions, evidence and remaining risks', 45],
+                ['Update the Microsoft 365 Tenant Details document and send the baseline summary', 45],
             ],
         ],
         [
-            'name' => 'Quarterly Business Review',
-            'description' => 'Prepare and deliver a client review meeting',
-            'subject' => 'Quarterly business review - [Client] - [Quarter]',
-            'details' => '<p>Client review meeting. Pull the numbers before the meeting and lead with outcomes rather than activity - ticket volume, uptime, risks closed and what is coming next.</p>',
+            'name' => 'Technology Review',
+            'description' => 'Prepare and deliver a recurring client technology and risk review',
+            'subject' => 'Technology review - [Client] - [Period]',
+            'details' => '<p>Lead with business outcomes, material risks and decisions. Use operational activity only as evidence; do not turn the meeting into a ticket-count recital.</p>',
             'tasks' => [
                 ['Pull ticket volume, response and resolution figures', 45],
                 ['Review asset age, warranty and end of life exposure', 45],
@@ -928,6 +1016,269 @@ function starterContentTicketTemplates() {
                 ['Build the roadmap and budget recommendations', 60],
                 ['Circulate the pack and hold the meeting', 90],
                 ['Log the agreed actions and raise the follow up work', 45],
+            ],
+        ],
+        [
+            'name' => 'Same-Day Remote Rescue',
+            'description' => 'Time-boxed remote diagnosis and recovery for an unmanaged client',
+            'subject' => 'Same-day remote rescue - [Client] - [Issue]',
+            'details' => '<p>Confirm the $450 prepaid authorization for the first two hours. This is a best-effort rescue, not an unlimited support commitment. Stop and request approval before exceeding the prepaid scope.</p>',
+            'tasks' => [
+                ['Confirm payment, authorized requester and callback details', 10],
+                ['Record the business impact, symptoms and last known good state', 10],
+                ['Establish secure attended remote access', 10],
+                ['Protect recoverable data and capture the current state before changing it', 15],
+                ['Diagnose and implement the least disruptive safe recovery', 75],
+                ['Verify the reported business function with the requester', 15],
+                ['Stop at two hours and obtain approval before additional billable work', 5],
+                ['Document the result, residual risk and recommended next step', 15],
+            ],
+        ],
+        [
+            'name' => 'Microsoft 365 Security Triage',
+            'description' => 'Fixed-scope Microsoft 365 posture assessment for up to 25 users',
+            'subject' => 'Microsoft 365 security triage - [Client]',
+            'details' => '<p>Assessment only. Collect evidence and recommendations without making tenant changes unless the client separately approves remediation in writing.</p>',
+            'tasks' => [
+                ['Confirm payment, tenant scope, authorized contact and read-only access path', 15],
+                ['Inventory domains, licenses, users and privileged roles', 25],
+                ['Review multi-factor authentication and authentication-method coverage', 30],
+                ['Review conditional access, security defaults and legacy authentication', 30],
+                ['Review external sharing, guest access and application consent', 25],
+                ['Review mailbox forwarding, connectors and transport rules', 25],
+                ['Verify SPF, DKIM and DMARC posture', 20],
+                ['Review audit logging, alerting, retention and tenant backup coverage', 25],
+                ['Produce prioritized findings with evidence and plain-language impact', 45],
+                ['Hold the review call and offer a separately scoped remediation plan', 30],
+            ],
+        ],
+        [
+            'name' => 'Security & Continuity Assessment',
+            'description' => 'One-site security, identity, backup and continuity assessment',
+            'subject' => 'Security and continuity assessment - [Client]',
+            'details' => '<p>This engagement identifies operational risk and priorities; it is not a compliance certification, penetration test or guarantee against an incident.</p>',
+            'tasks' => [
+                ['Confirm scope, authorized contacts, evidence access and assessment limitations', 30],
+                ['Inventory users, endpoints, servers, network devices and critical applications', 90],
+                ['Review identity, privileged access and account lifecycle controls', 60],
+                ['Review endpoint management, patching and active security coverage', 60],
+                ['Review firewall, segmentation, wireless and remote access posture', 60],
+                ['Review backup coverage, retention, immutability and restore evidence', 60],
+                ['Review Microsoft 365, email authentication and external sharing exposure', 60],
+                ['Review incident contacts, cyber-insurance constraints and continuity dependencies', 45],
+                ['Record unsupported systems, accepted risks and evidence gaps', 30],
+                ['Produce a risk-ranked remediation roadmap with indicative effort', 90],
+                ['Present the findings and record client decisions', 60],
+            ],
+        ],
+        [
+            'name' => 'Network Assessment & Diagram',
+            'description' => 'Onsite network discovery, configuration review and current-state diagram',
+            'subject' => 'Network assessment and diagram - [Client] - [Site]',
+            'details' => '<p>Use non-disruptive discovery by default. Obtain approval before active scans, configuration changes or testing that could affect production.</p>',
+            'tasks' => [
+                ['Confirm site access, maintenance restrictions and authorized network contacts', 20],
+                ['Inventory circuits, public addressing and provider account references', 30],
+                ['Back up and review firewall, switch and wireless configurations', 90],
+                ['Map physical and logical topology, uplinks, VLANs and subnets', 90],
+                ['Review routing, DHCP, DNS, NAT, VPN and remote access', 60],
+                ['Review firmware, support status, licensing and lifecycle exposure', 45],
+                ['Review wireless coverage, channel use, guest isolation and authentication', 45],
+                ['Record undocumented dependencies, single points of failure and access gaps', 45],
+                ['Create the Network Overview document and diagram', 90],
+                ['Deliver risk-ranked findings and an implementation roadmap', 60],
+            ],
+        ],
+        [
+            'name' => 'Stabilization Sprint',
+            'description' => 'Time-boxed remediation of the highest-priority operational risks',
+            'subject' => 'Stabilization sprint - [Client] - [Scope]',
+            'details' => '<p>Work only the signed scope and prioritized outcomes. Record out-of-scope discoveries separately instead of absorbing them into the sprint.</p>',
+            'tasks' => [
+                ['Confirm the signed scope, deposit, success criteria and decision maker', 20],
+                ['Capture the pre-change baseline, dependencies and rollback requirements', 45],
+                ['Rank the approved work by business impact and execution risk', 30],
+                ['Create change records for user-impacting or high-risk remediation', 30],
+                ['Implement the approved remediation in controlled batches', 180],
+                ['Validate each change against its success and rollback criteria', 60],
+                ['Update ITFlow assets, credentials, services and documentation as work completes', 60],
+                ['Separate unresolved and out-of-scope findings into follow-up recommendations', 30],
+                ['Produce the closeout summary with evidence and remaining risks', 45],
+                ['Hold the client readout and obtain acceptance', 30],
+            ],
+        ],
+        [
+            'name' => 'Automation Discovery',
+            'description' => 'Map a business process and define a safe, valuable automation scope',
+            'subject' => 'Automation discovery - [Client] - [Process]',
+            'details' => '<p>Define the source of truth, ownership, exception path and measurable outcome before designing the workflow. Default to client-owned service accounts and automation infrastructure.</p>',
+            'tasks' => [
+                ['Confirm the process owner, users, pain point and desired outcome', 30],
+                ['Document the current process, decisions, handoffs and duplicate entry', 60],
+                ['Identify systems, records, APIs, permissions and rate limits', 45],
+                ['Define the authoritative source and matching keys for each entity', 30],
+                ['Identify sensitive data, retention needs and human approval points', 30],
+                ['Define failure handling, retry, alerting and manual fallback', 30],
+                ['Estimate business value, build effort and ongoing ownership', 30],
+                ['Produce the workflow map, acceptance criteria and fixed-scope proposal', 45],
+                ['Review the design and record the go or no-go decision', 30],
+            ],
+        ],
+        [
+            'name' => 'Automation Build & Test',
+            'description' => 'Build and validate an approved production automation',
+            'subject' => 'Automation build and test - [Client] - [Workflow]',
+            'details' => '<p>Build from an approved discovery and acceptance criteria. Use least-privilege service identities, non-production data where possible and a controlled release path.</p>',
+            'tasks' => [
+                ['Confirm approved scope, architecture, owner and acceptance criteria', 20],
+                ['Confirm the n8n ownership and licensing model for the client', 15],
+                ['Create least-privilege service identities and credential records', 30],
+                ['Build deterministic entity matching and duplicate prevention', 60],
+                ['Implement validation, idempotency, retries and rate-limit handling', 60],
+                ['Implement alerts, audit context and a manual exception queue', 45],
+                ['Test normal, duplicate, missing-data and partial-failure cases', 90],
+                ['Complete a security and sensitive-data review', 30],
+                ['Run user acceptance testing with the process owner', 60],
+                ['Deploy through an approved change window with rollback available', 45],
+                ['Monitor the initial production runs and record defects', 45],
+            ],
+        ],
+        [
+            'name' => 'Automation Handoff & Support',
+            'description' => 'Document, hand over and establish ownership for a production automation',
+            'subject' => 'Automation handoff - [Client] - [Workflow]',
+            'details' => '<p>A workflow is not complete until ownership, credentials, alerts, fallback and change boundaries are documented.</p>',
+            'tasks' => [
+                ['Create the Automation Runbook with systems, mappings and dependencies', 45],
+                ['Document credentials by vault reference without exposing secret values', 20],
+                ['Document triggers, schedules, retries, alerts and the exception queue', 30],
+                ['Document manual fallback, pause and rollback procedures', 30],
+                ['Record data retention, logging and access-review requirements', 20],
+                ['Train the process owner and support contact', 45],
+                ['Define included monitoring and separately billable change work', 20],
+                ['Obtain acceptance and schedule the first health review', 20],
+                ['Link the workflow to the client service and vendor records in ITFlow', 15],
+            ],
+        ],
+        [
+            'name' => 'Microsoft 365 Migration Planning',
+            'description' => 'Discover and design a Microsoft 365 migration before moving data',
+            'subject' => 'Microsoft 365 migration planning - [Client]',
+            'details' => '<p>Confirm identities, data volume, coexistence, business constraints and rollback before scheduling a pilot or cutover.</p>',
+            'tasks' => [
+                ['Confirm scope, source platforms, user count, domains and business constraints', 45],
+                ['Inventory identities, mailboxes, aliases, groups, files and applications', 90],
+                ['Measure source data and identify unsupported or high-risk items', 60],
+                ['Design identity matching, licensing, mail flow and coexistence', 60],
+                ['Document DNS ownership and required record changes', 30],
+                ['Define pilot users, migration waves, acceptance and rollback criteria', 45],
+                ['Confirm backup and retention for source and destination', 30],
+                ['Build the communication, support and change schedule', 45],
+                ['Produce the migration plan and obtain approval', 60],
+            ],
+        ],
+        [
+            'name' => 'Microsoft 365 Migration Pilot',
+            'description' => 'Validate the migration method with representative pilot users',
+            'subject' => 'Microsoft 365 migration pilot - [Client]',
+            'details' => '<p>Use representative users and real acceptance criteria. Do not proceed to broad cutover until pilot defects and rollback readiness are reviewed.</p>',
+            'tasks' => [
+                ['Confirm pilot users, support coverage and rollback decision point', 20],
+                ['Create destination identities, licenses and access controls', 45],
+                ['Run the initial pilot synchronization', 60],
+                ['Validate mail, calendar, contacts, files, permissions and applications', 60],
+                ['Validate mobile and desktop client reconfiguration', 45],
+                ['Measure duration, throughput and user-impact assumptions', 30],
+                ['Resolve defects and update the runbook', 60],
+                ['Obtain pilot-user and client approval for cutover', 30],
+            ],
+        ],
+        [
+            'name' => 'Microsoft 365 Migration Cutover',
+            'description' => 'Execute the approved Microsoft 365 production migration',
+            'subject' => 'Microsoft 365 migration cutover - [Client] - [Wave]',
+            'details' => '<p>Follow the approved runbook and change window. Pause at defined decision points when validation fails rather than improvising in production.</p>',
+            'tasks' => [
+                ['Confirm go or no-go with the authorized decision maker', 15],
+                ['Capture final source state and verify backup or retention coverage', 30],
+                ['Run the final synchronization and record exceptions', 90],
+                ['Apply approved DNS and mail-flow changes', 30],
+                ['Configure destination access, licensing and security controls', 60],
+                ['Reconfigure endpoints and mobile devices', 90],
+                ['Validate external and internal mail flow and representative data', 45],
+                ['Triage exceptions through the documented support path', 60],
+                ['Confirm business acceptance or execute the rollback decision', 30],
+                ['Send status and next-step communication', 20],
+            ],
+        ],
+        [
+            'name' => 'Microsoft 365 Migration Closeout',
+            'description' => 'Complete validation, documentation and controlled source retirement',
+            'subject' => 'Microsoft 365 migration closeout - [Client]',
+            'details' => '<p>Do not decommission the source until retention, application dependencies, user acceptance and rollback requirements are satisfied.</p>',
+            'tasks' => [
+                ['Reconcile migrated users, mailboxes, groups, files and exceptions', 60],
+                ['Resolve or formally accept remaining migration exceptions', 45],
+                ['Verify authentication, security, backup and audit configuration', 45],
+                ['Update tenant, user, license and application documentation in ITFlow', 45],
+                ['Confirm source retention and decommission approval', 30],
+                ['Remove temporary privileges, connectors and migration accounts', 30],
+                ['Deliver the closeout report and administrator handoff', 45],
+                ['Schedule the post-migration review', 15],
+            ],
+        ],
+        [
+            'name' => 'Network Cutover & Validation',
+            'description' => 'Execute and validate an approved network change or replacement',
+            'subject' => 'Network cutover and validation - [Client] - [Site]',
+            'details' => '<p>Use an approved change record, current configuration backup and tested rollback plan. Do not remove the prior configuration until acceptance is complete.</p>',
+            'tasks' => [
+                ['Confirm the approved design, change window, contacts and rollback trigger', 20],
+                ['Back up current configurations and capture cable and port state', 30],
+                ['Stage, label and update replacement equipment', 45],
+                ['Execute the cutover in the approved sequence', 90],
+                ['Validate internet, DNS, DHCP, VLANs, routing and remote access', 60],
+                ['Validate wireless, printing, voice and critical applications', 60],
+                ['Verify Level monitoring and network alerts', 20],
+                ['Obtain client acceptance or execute rollback', 20],
+                ['Update asset, network, credential and vendor records in ITFlow', 45],
+                ['Update the Network Overview and close the change record', 45],
+            ],
+        ],
+        [
+            'name' => 'Backup Design & Deployment',
+            'description' => 'Design, deploy and document an approved backup service',
+            'subject' => 'Backup design and deployment - [Client]',
+            'details' => '<p>Document what is and is not protected, agreed recovery objectives, retention, storage limits and test method. A successful backup job is not proof of recoverability.</p>',
+            'tasks' => [
+                ['Confirm protected systems, data owners and agreed recovery objectives', 45],
+                ['Document exclusions, retention, immutability and storage assumptions', 30],
+                ['Confirm licensing, capacity, credentials and network requirements', 30],
+                ['Deploy and configure the approved backup agents and jobs', 90],
+                ['Configure encryption, offsite copy, retention and alerting', 45],
+                ['Run and verify the first successful backup', 60],
+                ['Perform a representative restore before declaring service active', 90],
+                ['Create the Backup and Recovery Runbook', 60],
+                ['Record the service, assets and vendor references in ITFlow', 30],
+                ['Obtain client acceptance of coverage and exclusions', 30],
+            ],
+        ],
+        [
+            'name' => 'Office Move Planning',
+            'description' => 'Plan circuits, cabling, network, systems and user readiness for an office move',
+            'subject' => 'Office move planning - [Client] - [Site]',
+            'details' => '<p>Work backward from the business move date and identify third-party lead times early. Record who owns circuits, cabling, power, access, moving and application validation.</p>',
+            'tasks' => [
+                ['Confirm move date, outage tolerance, stakeholders and site access', 30],
+                ['Survey the new site for racks, power, cooling, cabling and wireless', 90],
+                ['Confirm circuit orders, install dates, addressing and demarcation', 45],
+                ['Inventory systems, devices, printers, voice and dependencies to move', 60],
+                ['Design the target network, addressing and equipment placement', 60],
+                ['Define vendor, mover, client and technician responsibilities', 30],
+                ['Create the cutover, communication, validation and rollback plan', 60],
+                ['Schedule device, server and network work packages', 30],
+                ['Confirm backup and insurance requirements before equipment moves', 30],
+                ['Hold the readiness review and record go or no-go criteria', 45],
             ],
         ],
     ];
@@ -944,9 +1295,9 @@ function starterContentProjectTemplates() {
 
     $project_templates = [
         [
-            'name' => 'New Client Onboarding',
-            'description' => 'Take a newly signed client from signature to fully managed and documented.',
-            'ticket_templates' => ['Client Onboarding', 'Microsoft 365 Tenant Onboarding', 'Backup Restore Test', 'Quarterly Business Review'],
+            'name' => 'Managed Care Onboarding',
+            'description' => 'Take a signed client from kickoff to an accepted, supportable and documented baseline.',
+            'ticket_templates' => ['Managed Care Onboarding', 'Microsoft 365 Tenant Baseline', 'Backup Restore Test', 'Technology Review'],
         ],
         [
             'name' => 'Client Offboarding',
@@ -959,34 +1310,59 @@ function starterContentProjectTemplates() {
             'ticket_templates' => ['Server Deployment', 'Backup Restore Test'],
         ],
         [
-            'name' => 'Workstation Refresh',
-            'description' => 'Phased replacement of end of life workstations across a client fleet.',
-            'ticket_templates' => ['Workstation Deployment'],
+            'name' => 'Device Refresh',
+            'description' => 'Phased replacement of end-of-life workstations with documented handoff and disposition.',
+            'ticket_templates' => ['Device Deployment'],
         ],
         [
             'name' => 'Network Refresh',
-            'description' => 'Replace switching, firewall and wireless and re-document the network.',
-            'ticket_templates' => ['Firewall Deployment'],
+            'description' => 'Assess, replace and validate switching, firewall and wireless infrastructure.',
+            'ticket_templates' => ['Network Assessment & Diagram', 'Firewall Deployment', 'Network Cutover & Validation'],
         ],
         [
             'name' => 'Microsoft 365 Migration',
-            'description' => 'Migrate mail and files to a client tenant and decommission the legacy platform.',
-            'ticket_templates' => ['Microsoft 365 Tenant Onboarding'],
+            'description' => 'Plan, pilot, cut over and close out a Microsoft 365 migration.',
+            'ticket_templates' => ['Microsoft 365 Migration Planning', 'Microsoft 365 Migration Pilot', 'Microsoft 365 Migration Cutover', 'Microsoft 365 Migration Closeout'],
         ],
         [
-            'name' => 'Security Baseline',
-            'description' => 'Bring a client up to the agreed security baseline - typically driven by a cyber insurance or compliance requirement.',
-            'ticket_templates' => ['Microsoft 365 Tenant Onboarding', 'Backup Restore Test', 'Firewall Deployment'],
+            'name' => 'Security Baseline Remediation',
+            'description' => 'Assess risk, approve priorities and implement a controlled security and continuity baseline.',
+            'ticket_templates' => ['Security & Continuity Assessment', 'Microsoft 365 Tenant Baseline', 'Stabilization Sprint'],
         ],
         [
             'name' => 'Backup and Disaster Recovery Implementation',
             'description' => 'Design, deploy and prove a backup and recovery solution.',
-            'ticket_templates' => ['Backup Restore Test'],
+            'ticket_templates' => ['Backup Design & Deployment', 'Backup Restore Test'],
         ],
         [
             'name' => 'Office Move',
             'description' => 'Relocate a client site including circuits, cabling, network and workstations.',
-            'ticket_templates' => ['Firewall Deployment', 'Workstation Deployment', 'Server Deployment'],
+            'ticket_templates' => ['Office Move Planning', 'Network Cutover & Validation', 'Device Deployment'],
+        ],
+        [
+            'name' => 'Stabilization Sprint',
+            'description' => 'Deliver a time-boxed set of approved high-priority remediation outcomes.',
+            'ticket_templates' => ['Stabilization Sprint'],
+        ],
+        [
+            'name' => 'Microsoft 365 Security Triage',
+            'description' => 'Assess one Microsoft 365 tenant and deliver prioritized findings without unapproved changes.',
+            'ticket_templates' => ['Microsoft 365 Security Triage'],
+        ],
+        [
+            'name' => 'Security & Continuity Assessment',
+            'description' => 'Assess identity, endpoint, network, backup and continuity posture for one site.',
+            'ticket_templates' => ['Security & Continuity Assessment'],
+        ],
+        [
+            'name' => 'Network Assessment & Diagram',
+            'description' => 'Discover a site, review configuration and deliver current-state network documentation.',
+            'ticket_templates' => ['Network Assessment & Diagram'],
+        ],
+        [
+            'name' => 'Automation Sprint',
+            'description' => 'Discover, build, test, document and hand off one production automation.',
+            'ticket_templates' => ['Automation Discovery', 'Automation Build & Test', 'Automation Handoff & Support'],
         ],
     ];
 
@@ -1003,6 +1379,9 @@ function starterContentVendorTemplates() {
 
     $vendor_templates = [
         ['Microsoft', 'Cloud, productivity and operating system vendor', 'https://www.microsoft.com'],
+        ['Level', 'Remote monitoring, endpoint management and automation platform', 'https://level.io'],
+        ['n8n', 'Workflow automation and systems integration platform', 'https://n8n.io'],
+        ['SentinelOne', 'Endpoint protection and security platform', 'https://www.sentinelone.com'],
         ['Google', 'Workspace, cloud and domain services', 'https://workspace.google.com'],
         ['Amazon Web Services', 'Cloud infrastructure and hosting', 'https://aws.amazon.com'],
         ['Dell', 'Workstation, laptop and server hardware', 'https://www.dell.com'],
@@ -1087,14 +1466,14 @@ function starterContentDocumentTemplates() {
             '<h3>Line of Business Application Profile</h3><p><strong>Application:</strong> [Application]<br><strong>Business owner:</strong> [Contact]<br><strong>Criticality:</strong> [Critical / High / Normal]</p><h4>Vendor and Support</h4><ul><li>Vendor:</li><li>Support portal:</li><li>Support hours and contract level:</li><li>Account or customer number:</li></ul><h4>Architecture</h4><ul><li>Hosting model:</li><li>Servers and services involved:</li><li>Database platform and location:</li><li>Integrations and dependencies:</li></ul><h4>Access</h4><ul><li>How users connect:</li><li>Licensing model and count:</li><li>Who administers it:</li></ul><h4>Maintenance</h4><ul><li>Update process and cadence:</li><li>Known constraints - patching, reboots, versions:</li><li>Backup approach:</li></ul><h4>Common Issues</h4><p></p>',
         ],
         [
-            'New Hire Onboarding Checklist',
-            'Client facing form for requesting a new user setup',
-            '<h3>New Hire Onboarding Request</h3><p>Return this form at least five working days before the start date.</p><h4>Employee</h4><ul><li>Full name:</li><li>Preferred display name:</li><li>Job title:</li><li>Department:</li><li>Manager:</li><li>Start date:</li><li>Working hours and location:</li></ul><h4>Access</h4><ul><li>Mirror access from:</li><li>Shared mailboxes required:</li><li>Distribution groups:</li><li>Applications required:</li></ul><h4>Equipment</h4><ul><li>Laptop or desktop:</li><li>Monitors and peripherals:</li><li>Mobile phone required:</li><li>Desk phone or extension:</li></ul><h4>Authorization</h4><ul><li>Requested by:</li><li>Approved by:</li><li>Date:</li></ul>',
+            'User Onboarding Request',
+            'Client-facing form for authorizing a new user setup',
+            '<h3>User Onboarding Request</h3><p>Return this form at least five working days before the start date. Device procurement and deployment may require additional lead time.</p><h4>User</h4><ul><li>Full name:</li><li>Preferred display name:</li><li>Job title:</li><li>Department:</li><li>Manager:</li><li>Start date and time:</li><li>Working location:</li></ul><h4>Access</h4><ul><li>Approved role or user to use as an access reference:</li><li>Shared mailboxes:</li><li>Groups and shared resources:</li><li>Applications and privileged access:</li></ul><h4>Equipment</h4><ul><li>Assigned existing device or new device required:</li><li>Monitors and peripherals:</li><li>Mobile or voice requirements:</li></ul><h4>Authorization</h4><ul><li>Requested by:</li><li>Approved by:</li><li>Date:</li></ul>',
         ],
         [
-            'Employee Offboarding Checklist',
-            'Client facing form authorizing a user removal',
-            '<h3>Employee Offboarding Request</h3><p>This form is the written authorization to disable access. It must come from an authorized contact.</p><h4>Employee</h4><ul><li>Full name:</li><li>Last working day:</li><li>Effective time for access removal:</li></ul><h4>Mailbox and Data</h4><ul><li>Forward mail to:</li><li>Who takes ownership of files:</li><li>Retention period required:</li><li>Auto reply wording:</li></ul><h4>Equipment</h4><ul><li>Equipment to be returned:</li><li>Collected by:</li><li>Return date:</li></ul><h4>Authorization</h4><ul><li>Requested by:</li><li>Approved by:</li><li>Date:</li></ul>',
+            'User Offboarding Request',
+            'Client-facing form authorizing access removal and data handoff',
+            '<h3>User Offboarding Request</h3><p>This form is written authorization to revoke access. It must come from an authorized contact.</p><h4>User</h4><ul><li>Full name:</li><li>Last working day:</li><li>Effective time for access removal:</li></ul><h4>Mailbox and Data</h4><ul><li>Legal hold or retention requirement:</li><li>Mailbox conversion, forwarding and auto-reply:</li><li>New owner for OneDrive, SharePoint and application data:</li><li>Access that must remain temporarily and why:</li></ul><h4>Equipment</h4><ul><li>Equipment to be returned:</li><li>Collected by:</li><li>Reuse, retain or dispose:</li></ul><h4>Authorization</h4><ul><li>Requested by:</li><li>Approved by:</li><li>Date:</li></ul>',
         ],
         [
             'Change Record',
@@ -1104,17 +1483,197 @@ function starterContentDocumentTemplates() {
         [
             'Incident Response Plan',
             'Agreed process and contacts for a security incident',
-            '<h3>Incident Response Plan</h3><p><strong>Client:</strong> [Client]<br><strong>Last reviewed:</strong> [Date]</p><h4>Contacts</h4><table style="width:100%" border="1"><tbody><tr><th>Role</th><th>Name</th><th>Contact</th><th>Out of Hours</th></tr><tr><td>Client decision maker</td><td></td><td></td><td></td></tr><tr><td>Technical lead</td><td></td><td></td><td></td></tr><tr><td>Cyber insurer</td><td></td><td></td><td></td></tr><tr><td>Legal counsel</td><td></td><td></td><td></td></tr></tbody></table><h4>Insurance and Notification Requirements</h4><ul><li>Policy number and insurer:</li><li>Notification deadline:</li><li>Approved responders required:</li><li>Regulatory reporting obligations:</li></ul><h4>Severity Definitions</h4><p></p><h4>Response Stages</h4><ol><li>Detect and declare</li><li>Contain and isolate</li><li>Preserve evidence</li><li>Notify</li><li>Eradicate</li><li>Recover and verify</li><li>Review</li></ol><h4>Evidence Handling</h4><p></p>',
+            '<h3>Incident Response Plan</h3><p><strong>Client:</strong> [Client]<br><strong>Last reviewed:</strong> [Date]</p><h4>Contacts</h4><table style="width:100%" border="1"><tbody><tr><th>Role</th><th>Name</th><th>Contact</th><th>Out of Hours</th></tr><tr><td>Client decision maker</td><td></td><td></td><td></td></tr><tr><td>Technical lead</td><td></td><td></td><td></td></tr><tr><td>Cyber insurer</td><td></td><td></td><td></td></tr><tr><td>Legal counsel</td><td></td><td></td><td></td></tr></tbody></table><h4>Insurance and Notification Requirements</h4><ul><li>Policy number and insurer:</li><li>Notification deadline:</li><li>Approved responders required:</li><li>Regulatory reporting obligations:</li></ul><p><em>The authorized client decision maker controls insurer, legal, law-enforcement and regulatory notification. N45 must not contact an external party without recorded authorization unless independently required by law.</em></p><h4>Severity Definitions</h4><p></p><h4>Response Stages</h4><ol><li>Detect and declare</li><li>Contain and isolate</li><li>Preserve evidence</li><li>Confirm the client-authorized notification decision</li><li>Eradicate</li><li>Recover and verify</li><li>Review</li></ol><h4>Evidence Handling</h4><p></p>',
         ],
         [
-            'Quarterly Business Review Notes',
-            'Standing agenda and record of a client review meeting',
-            '<h3>Quarterly Business Review</h3><p><strong>Client:</strong> [Client]<br><strong>Period:</strong> [Quarter]<br><strong>Attendees:</strong> [Attendees]<br><strong>Date:</strong> [Date]</p><h4>Service Performance</h4><ul><li>Tickets raised and closed:</li><li>Response and resolution against target:</li><li>Recurring themes:</li></ul><h4>Availability and Incidents</h4><p></p><h4>Security Posture</h4><ul><li>Open risks:</li><li>Risks closed this period:</li><li>Training completion:</li></ul><h4>Backup and Recovery</h4><ul><li>Restore test result:</li><li>Coverage gaps:</li></ul><h4>Asset and License Position</h4><ul><li>End of life exposure:</li><li>Warranty expiry in the next 12 months:</li><li>License changes:</li></ul><h4>Roadmap and Budget</h4><table style="width:100%" border="1"><tbody><tr><th>Item</th><th>Driver</th><th>Indicative Cost</th><th>Target Quarter</th></tr><tr><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Agreed Actions</h4><table style="width:100%" border="1"><tbody><tr><th>Action</th><th>Owner</th><th>Due</th></tr><tr><td></td><td></td><td></td></tr></tbody></table>',
+            'Technology Review Notes',
+            'Standing agenda and decision record for a recurring client technology review',
+            '<h3>Technology Review</h3><p><strong>Client:</strong> [Client]<br><strong>Period:</strong> [Period]<br><strong>Attendees:</strong> [Attendees]<br><strong>Date:</strong> [Date]</p><h4>Business Changes and Priorities</h4><p></p><h4>Service Outcomes</h4><ul><li>Material incidents and recurring themes:</li><li>Response and resolution exceptions:</li><li>Operational improvements completed:</li></ul><h4>Security and Continuity</h4><ul><li>Open and accepted risks:</li><li>Backup and restore evidence:</li><li>Identity and security exceptions:</li></ul><h4>Asset and License Position</h4><ul><li>End-of-life exposure:</li><li>Warranty expiry in the next 12 months:</li><li>License changes:</li></ul><h4>Roadmap and Budget</h4><table style="width:100%" border="1"><tbody><tr><th>Item</th><th>Business Driver</th><th>Indicative Cost</th><th>Target Period</th><th>Decision</th></tr><tr><td></td><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Agreed Actions</h4><table style="width:100%" border="1"><tbody><tr><th>Action</th><th>Owner</th><th>Due</th></tr><tr><td></td><td></td><td></td></tr></tbody></table>',
+        ],
+        [
+            'Client Service Baseline',
+            'Accepted support scope, ownership, tools, exclusions and known risks for a managed client',
+            '<h3>Client Service Baseline</h3><p><strong>Client:</strong> [Client]<br><strong>Effective:</strong> [Date]<br><strong>Approved by:</strong> [Contact]</p><h4>Authorized Contacts and Escalation</h4><table style="width:100%" border="1"><tbody><tr><th>Role</th><th>Name</th><th>Authority</th><th>Contact</th></tr><tr><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Locations and Business Hours</h4><p></p><h4>Supported Services and Systems</h4><table style="width:100%" border="1"><tbody><tr><th>Service or System</th><th>Owner</th><th>Support Scope</th><th>Monitoring</th><th>Backup</th></tr><tr><td></td><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Explicit Exclusions</h4><p></p><h4>Management and Security Tools</h4><ul><li>Level policy and device count:</li><li>Endpoint protection:</li><li>Email and identity security:</li><li>Backup products and limits:</li></ul><h4>Critical Applications and Vendors</h4><p></p><h4>Known and Accepted Risks</h4><table style="width:100%" border="1"><tbody><tr><th>Risk</th><th>Impact</th><th>Owner</th><th>Decision</th><th>Review Date</th></tr><tr><td></td><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Acceptance</h4><p>The client confirms that the supported scope, exclusions and known risks above accurately reflect the service baseline.</p>',
+        ],
+        [
+            'Microsoft 365 Security Triage Report',
+            'Fixed-scope tenant findings, evidence and remediation priorities',
+            '<h3>Microsoft 365 Security Triage</h3><p><strong>Client:</strong> [Client]<br><strong>Tenant:</strong> [Tenant]<br><strong>Assessment date:</strong> [Date]<br><strong>Assessor:</strong> [Technician]</p><p><em>This is a point-in-time operational assessment, not a compliance certification or penetration test. No tenant changes are included unless separately authorized.</em></p><h4>Scope and Evidence</h4><p></p><h4>Executive Summary</h4><p></p><h4>Findings</h4><table style="width:100%" border="1"><tbody><tr><th>Priority</th><th>Area</th><th>Observation</th><th>Business Impact</th><th>Evidence</th><th>Recommendation</th></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Immediate Actions</h4><ol><li></li></ol><h4>Remediation Options</h4><p></p><h4>Client Decisions</h4><p></p>',
+        ],
+        [
+            'Security & Continuity Assessment Report',
+            'Risk-ranked security, identity, network, backup and continuity findings',
+            '<h3>Security &amp; Continuity Assessment</h3><p><strong>Client:</strong> [Client]<br><strong>Site:</strong> [Site]<br><strong>Assessment date:</strong> [Date]</p><p><em>This report is a point-in-time operational assessment. It is not a certification, legal opinion, penetration test or guarantee against an incident.</em></p><h4>Scope, Limitations and Evidence Gaps</h4><p></p><h4>Executive Risk Summary</h4><p></p><h4>Findings</h4><table style="width:100%" border="1"><tbody><tr><th>Priority</th><th>Domain</th><th>Finding</th><th>Impact</th><th>Evidence</th><th>Recommended Action</th><th>Owner</th></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Continuity and Recovery</h4><ul><li>Critical systems and dependencies:</li><li>Backup coverage and exclusions:</li><li>Most recent restore evidence:</li><li>Recovery objective gaps:</li></ul><h4>Prioritized Roadmap</h4><table style="width:100%" border="1"><tbody><tr><th>Timing</th><th>Outcome</th><th>Indicative Effort</th><th>Decision</th></tr><tr><td>Now</td><td></td><td></td><td></td></tr></tbody></table>',
+        ],
+        [
+            'Network Assessment Report',
+            'Configuration findings, topology evidence and a prioritized network roadmap',
+            '<h3>Network Assessment &amp; Diagram</h3><p><strong>Client:</strong> [Client]<br><strong>Site:</strong> [Site]<br><strong>Assessment date:</strong> [Date]</p><h4>Scope and Discovery Method</h4><p></p><h4>Current-State Diagram</h4><p>[Attach or link diagram]</p><h4>Inventory and Support Status</h4><table style="width:100%" border="1"><tbody><tr><th>Device</th><th>Role</th><th>Model</th><th>Firmware</th><th>Support or License</th><th>Lifecycle</th></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Configuration Findings</h4><table style="width:100%" border="1"><tbody><tr><th>Priority</th><th>Area</th><th>Finding</th><th>Impact</th><th>Recommendation</th></tr><tr><td></td><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Single Points of Failure and Access Gaps</h4><p></p><h4>Recommended Roadmap</h4><p></p>',
+        ],
+        [
+            'Automation Runbook',
+            'Ownership, data mappings, operation, failure handling and support boundaries for an automation',
+            '<h3>Automation Runbook</h3><p><strong>Workflow:</strong> [Workflow]<br><strong>Client:</strong> [Client]<br><strong>Business owner:</strong> [Contact]<br><strong>Technical owner:</strong> [Technician]<br><strong>Last reviewed:</strong> [Date]</p><h4>Business Outcome and Trigger</h4><p></p><h4>Systems and Source of Truth</h4><table style="width:100%" border="1"><tbody><tr><th>System</th><th>Role</th><th>Authoritative Fields</th><th>Matching Key</th><th>Credential Vault Reference</th></tr><tr><td></td><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Workflow and Data Mapping</h4><p></p><h4>Human Approval Points</h4><p></p><h4>Failure, Retry and Exception Handling</h4><ul><li>Retry policy:</li><li>Alert destination:</li><li>Exception queue:</li><li>Manual fallback:</li></ul><h4>Sensitive Data, Logging and Retention</h4><p></p><h4>Pause, Rollback and Recovery</h4><ol><li></li></ol><h4>Support Boundary and Change Process</h4><p></p><h4>Test and Change History</h4><table style="width:100%" border="1"><tbody><tr><th>Date</th><th>Change</th><th>Result</th><th>Approved By</th></tr><tr><td></td><td></td><td></td><td></td></tr></tbody></table>',
+        ],
+        [
+            'Stabilization Sprint Closeout',
+            'Completed outcomes, evidence, remaining risks and client decisions from a sprint',
+            '<h3>Stabilization Sprint Closeout</h3><p><strong>Client:</strong> [Client]<br><strong>Sprint:</strong> [Scope]<br><strong>Completed:</strong> [Date]</p><h4>Approved Outcomes</h4><p></p><h4>Completed Work and Evidence</h4><table style="width:100%" border="1"><tbody><tr><th>Outcome</th><th>Change</th><th>Validation</th><th>Documentation Updated</th></tr><tr><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Remaining and Out-of-Scope Findings</h4><table style="width:100%" border="1"><tbody><tr><th>Priority</th><th>Finding</th><th>Business Impact</th><th>Recommended Next Step</th><th>Decision</th></tr><tr><td></td><td></td><td></td><td></td><td></td></tr></tbody></table><h4>Operational Handoff</h4><ul><li>Monitoring and alerts:</li><li>Credential and ownership changes:</li><li>Known exceptions:</li><li>Follow-up review:</li></ul><h4>Acceptance</h4><p></p>',
         ],
     ];
 
     return $document_templates;
 
+}
+
+// ------------------------------
+// starterContentContractTemplates
+// These are operational starting points, not a substitute for counsel.
+// ------------------------------
+function starterContentContractTemplates() {
+
+    return [
+        [
+            'name' => 'Managed Care Agreement',
+            'description' => 'Operational starting point for the recurring Managed Care service; legal review required before signature',
+            'type' => 'Fully Managed',
+            'renewal_frequency' => 'Annually',
+            'sla_low_response' => 8,
+            'sla_low_resolution' => 72,
+            'sla_medium_response' => 4,
+            'sla_medium_resolution' => 24,
+            'sla_high_response' => 1,
+            'sla_high_resolution' => 8,
+            'rate_standard' => 175,
+            'rate_after_hours' => 275,
+            'support_hours' => 'Mon-Fri 8am-5pm ET, excluding holidays',
+            'net_terms' => 0,
+            'details' => '<p><strong>DRAFT OPERATIONAL TEMPLATE - LEGAL REVIEW REQUIRED BEFORE CLIENT SIGNATURE.</strong></p><h4>Service</h4><p>Managed Care is billed per managed user at the rate shown on the accepted order, subject to a $1,750 monthly minimum. Recurring service is invoiced in advance.</p><h4>Included</h4><ul><li>Business-hours remote support for covered users and systems</li><li>Endpoint monitoring and patch management through the approved management platform</li><li>Microsoft 365 and Entra ID administration</li><li>ITFlow documentation, vendor coordination and recurring technology reviews</li></ul><h4>Separate Charges</h4><ul><li>Microsoft and third-party licenses</li><li>Backup products, storage and retention</li><li>Hardware, cabling, projects and migrations</li><li>Scheduled after-hours work at $275 per hour</li><li>Priority-one emergency response at $450 per hour with a two-hour minimum</li></ul><h4>Scope and Baseline</h4><p>The accepted order and Client Service Baseline identify covered users, systems, locations, products and exclusions. Unsupported or newly discovered systems require written scope approval.</p><h4>Response Targets</h4><p>Response and resolution figures are business-hours targets, not guarantees. Resolution depends on access, client decisions, third parties, vendor support, hardware availability and the technical nature of the issue.</p><h4>Client Responsibilities</h4><p>The client will maintain authorized contacts, timely access, supported licensing, lawful data practices and current cyber-insurance information, and will promptly approve or reject material changes.</p><h4>Security and Backup</h4><p>No product is considered active until it is licensed, deployed, checking in and documented. Monitoring and backup do not eliminate risk or guarantee recovery.</p><h4>Changes and Projects</h4><p>Material changes, migrations and projects require an accepted quote or statement of work. Emergency containment may be performed only within the authority documented for the incident.</p><h4>Termination and Handover</h4><p>Offboarding will follow the agreed notice, access, retention and handover plan. Security-critical access revocation will not be delayed by a billing dispute.</p>',
+        ],
+        [
+            'name' => 'Project Services Agreement',
+            'description' => 'Operational starting point for fixed-scope assessments, sprints, migrations and implementations; legal review required',
+            'type' => 'Partially Managed',
+            'renewal_frequency' => 'Manual',
+            'sla_low_response' => 8,
+            'sla_low_resolution' => 0,
+            'sla_medium_response' => 4,
+            'sla_medium_resolution' => 0,
+            'sla_high_response' => 2,
+            'sla_high_resolution' => 0,
+            'rate_standard' => 225,
+            'rate_after_hours' => 275,
+            'support_hours' => 'Scheduled project windows in Eastern Time',
+            'net_terms' => 0,
+            'details' => '<p><strong>DRAFT OPERATIONAL TEMPLATE - LEGAL REVIEW REQUIRED BEFORE CLIENT SIGNATURE.</strong></p><h4>Statement of Work</h4><p>The accepted quote or statement of work controls scope, deliverables, assumptions, exclusions, schedule and price. Work outside that scope requires written change approval.</p><h4>Payment</h4><p>Assessments and short engagements are prepaid unless the accepted order states otherwise. Stabilization Sprints normally require a 50 percent deposit. Hardware, licensing and non-cancellable vendor charges are due before ordering.</p><h4>Client Dependencies</h4><p>Dates depend on timely access, decisions, accurate information, third-party availability and a client decision maker. Delays outside the provider control may move the schedule and create additional effort.</p><h4>Change Control</h4><p>Material scope, schedule or risk changes will be documented with impact and price before implementation. A technician may pause work when prerequisites or safe rollback are missing.</p><h4>Testing and Acceptance</h4><p>Acceptance criteria are defined before delivery. The client will test and report material exceptions within the review period stated in the order; unresolved exceptions will be documented at closeout.</p><h4>Data and Access</h4><p>Least-privilege access and approved service identities will be used. The client remains responsible for lawful authority over the systems and data placed in scope.</p><h4>Handoff</h4><p>Deliverables include the documentation identified in the order. Ongoing monitoring, support and material changes are separate unless explicitly included.</p>',
+        ],
+        [
+            'name' => 'Hourly Support Terms',
+            'description' => 'Operational starting point for prepaid or time-and-materials support outside Managed Care; legal review required',
+            'type' => 'Break/Fix',
+            'renewal_frequency' => 'Manual',
+            'sla_low_response' => 8,
+            'sla_low_resolution' => 0,
+            'sla_medium_response' => 4,
+            'sla_medium_resolution' => 0,
+            'sla_high_response' => 2,
+            'sla_high_resolution' => 0,
+            'rate_standard' => 175,
+            'rate_after_hours' => 275,
+            'support_hours' => 'Mon-Fri 8am-5pm ET, excluding holidays',
+            'net_terms' => 0,
+            'details' => '<p><strong>DRAFT OPERATIONAL TEMPLATE - LEGAL REVIEW REQUIRED BEFORE CLIENT SIGNATURE.</strong></p><h4>Rates</h4><p>Remote support is $175 per hour in 15-minute increments. Onsite support is $195 per hour with a two-hour minimum. Scheduled after-hours work is $275 per hour. Priority-one emergency response is $450 per hour with a two-hour minimum.</p><h4>Authorization</h4><p>The requester confirms authority to approve the work and charges. Same-Day Remote Rescue is prepaid at $450 for the first two hours; work stops at the prepaid limit unless additional time is approved.</p><h4>Best Effort</h4><p>Hourly support is best effort and does not include proactive monitoring, backup, security management, guaranteed resolution or an ongoing support commitment.</p><h4>Data Protection</h4><p>The client must identify critical data and available backups. The technician may pause a risky change until recoverability and rollback are reasonably established.</p><h4>Materials and Third Parties</h4><p>Hardware, software, licensing, vendor charges and travel outside the included service radius are separate.</p>',
+        ],
+    ];
+}
+
+// ------------------------------
+// starterContentSoftwareTemplates
+// ------------------------------
+function starterContentSoftwareTemplates() {
+
+    return [
+        [
+            'name' => 'Level RMM Agent',
+            'version' => 'Current',
+            'description' => 'Remote monitoring and endpoint management agent',
+            'type' => 'System Software',
+            'license_type' => 'Device',
+            'notes' => 'Required only on approved managed devices. Record the Level organization, device and policy mapping in ITFlow.',
+        ],
+        [
+            'name' => 'Microsoft 365 Apps',
+            'version' => 'Current Channel',
+            'description' => 'Microsoft productivity desktop applications',
+            'type' => 'Productivity Suite',
+            'license_type' => 'User',
+            'notes' => 'Confirm the assigned Microsoft 365 license supports desktop applications before deployment.',
+        ],
+        [
+            'name' => 'Microsoft OneDrive',
+            'version' => 'Current',
+            'description' => 'Microsoft file synchronization client',
+            'type' => 'Desktop Application',
+            'license_type' => 'User',
+            'notes' => 'Document Known Folder Move, Files On-Demand and any excluded data locations.',
+        ],
+        [
+            'name' => 'Microsoft Teams',
+            'version' => 'Current',
+            'description' => 'Microsoft collaboration and meetings client',
+            'type' => 'Desktop Application',
+            'license_type' => 'User',
+            'notes' => 'Confirm licensing and client policy before deployment.',
+        ],
+        [
+            'name' => 'Microsoft Edge',
+            'version' => 'Current Stable',
+            'description' => 'Managed Microsoft web browser',
+            'type' => 'Desktop Application',
+            'license_type' => 'Device',
+            'notes' => 'Document managed browser policies, extensions and update channel.',
+        ],
+        [
+            'name' => 'Google Chrome',
+            'version' => 'Current Stable',
+            'description' => 'Google web browser',
+            'type' => 'Desktop Application',
+            'license_type' => 'Device',
+            'notes' => 'Install only when required by the client application stack; document managed policies and extensions.',
+        ],
+        [
+            'name' => 'Adobe Acrobat Reader',
+            'version' => 'Current',
+            'description' => 'Adobe PDF reader',
+            'type' => 'Desktop Application',
+            'license_type' => 'Device',
+            'notes' => 'Reader only. Paid Acrobat licensing is recorded separately.',
+        ],
+        [
+            'name' => 'n8n',
+            'version' => 'Current Supported',
+            'description' => 'Workflow automation and integration platform',
+            'type' => 'Web Application',
+            'license_type' => 'Usage-based',
+            'notes' => 'Record instance ownership, licensing, workflow owner, credential vault references, alerting and backup. Default client work to client-owned instances unless commercial hosting rights are confirmed.',
+        ],
+        [
+            'name' => 'SentinelOne Agent',
+            'version' => 'Current Supported',
+            'description' => 'Endpoint protection agent',
+            'type' => 'Security Software',
+            'license_type' => 'Device',
+            'notes' => 'Staged template only. Do not describe an endpoint as protected until the agent is licensed, assigned to the approved policy and reporting healthy.',
+        ],
+        [
+            'name' => 'Windows 11 Pro',
+            'version' => 'Current Supported Release',
+            'description' => 'Microsoft workstation operating system',
+            'type' => 'Operating System',
+            'license_type' => 'Perpetual',
+            'notes' => 'Record edition, activation, encryption recovery key location and supported-release status.',
+        ],
+    ];
 }
 
 // ------------------------------

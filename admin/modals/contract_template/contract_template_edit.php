@@ -3,7 +3,7 @@ require_once '../../includes/modal_header.php';
 
 $contract_template_id = intval($_GET['id']);
 
-$contract_types_array = ['Fully Managed', 'Partialy Managed', 'Break/Fix'];
+$contract_types_array = ['Fully Managed', 'Partially Managed', 'Break/Fix'];
 $update_frequency_array = ['Manual', 'Annually', '2 Year', '3 Year', '5 Year', '7 Year'];
 
 // Fetch existing template
@@ -27,8 +27,8 @@ $sla_high_resp = intval($row['contract_template_sla_high_response_time']);
 $sla_low_res   = intval($row['contract_template_sla_low_resolution_time']);
 $sla_med_res   = intval($row['contract_template_sla_medium_resolution_time']);
 $sla_high_res  = intval($row['contract_template_sla_high_resolution_time']);
-$hourly_rate   = intval($row['contract_template_rate_standard']);
-$after_hours   = intval($row['contract_template_rate_after_hours']);
+$hourly_rate   = escapeHtml($row['contract_template_rate_standard']);
+$after_hours   = escapeHtml($row['contract_template_rate_after_hours']);
 $support_hours = escapeHtml($row['contract_template_support_hours']);
 $net_terms     = intval($row['contract_template_net_terms']);
 $details       = escapeHtml($row['contract_template_details']);
@@ -201,7 +201,7 @@ ob_start();
                         <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-dollar-sign"></i></span>
                         </div>
-                        <input type="text" class="form-control" name="rate_standard" placeholder="e.g., 100"
+                        <input type="number" min="0" step="0.01" class="form-control" name="rate_standard" placeholder="e.g., 175"
                             value="<?= $rate_standard ?>">
                     </div>
                 </div>
@@ -212,8 +212,8 @@ ob_start();
                         <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-moon"></i></span>
                         </div>
-                        <input type="text" class="form-control" name="rate_after_hours" placeholder="e.g., 150"
-                            value="<?= $rate_after_hours ?>">
+                        <input type="number" min="0" step="0.01" class="form-control" name="rate_after_hours" placeholder="e.g., 275"
+                            value="<?= $after_hours ?>">
                     </div>
                 </div>
 
@@ -234,7 +234,7 @@ ob_start();
                         <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-file-invoice-dollar"></i></span>
                         </div>
-                        <input type="text" class="form-control" name="net_terms" placeholder="e.g., Net 30" maxlength="50"
+                        <input type="number" min="0" class="form-control" name="net_terms" placeholder="e.g., 30"
                             value="<?= $net_terms ?>">
                     </div>
                 </div>

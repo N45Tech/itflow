@@ -2,7 +2,7 @@
 require_once '../../includes/modal_header.php';
 
 
-$contract_types_array = ['Fully Managed', 'Partialy Managed', 'Break/Fix'];
+$contract_types_array = ['Fully Managed', 'Partially Managed', 'Break/Fix'];
 $renewal_frequency_array = ['Manual', 'Annually', '2 Year', '3 Year', '5 Year', '7 Year'];
 
 ob_start();
@@ -163,7 +163,7 @@ ob_start();
                         <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-dollar-sign"></i></span>
                         </div>
-                        <input type="text" class="form-control" name="rate_standard" placeholder="e.g., 100">
+                        <input type="number" min="0" step="0.01" class="form-control" name="rate_standard" placeholder="e.g., 175">
                     </div>
                 </div>
 
@@ -173,7 +173,7 @@ ob_start();
                         <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-moon"></i></span>
                         </div>
-                        <input type="text" class="form-control" name="rate_after_hours" placeholder="e.g., 150">
+                        <input type="number" min="0" step="0.01" class="form-control" name="rate_after_hours" placeholder="e.g., 275">
                     </div>
                 </div>
 
@@ -193,7 +193,7 @@ ob_start();
                         <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-file-invoice-dollar"></i></span>
                         </div>
-                        <input type="text" class="form-control" name="net_terms" placeholder="e.g., Net 30" maxlength="50">
+                        <input type="number" min="0" class="form-control" name="net_terms" placeholder="e.g., 30">
                     </div>
                 </div>
             </div>

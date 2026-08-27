@@ -65,7 +65,7 @@ ob_start();
                 </div>
                 <select class="form-control select2" name="type" required>
                     <option value="">- Select Type -</option>
-                    <<?php
+                    <?php
                     $sql_software_types_select = mysqli_query($mysqli, "
                         SELECT category_name FROM categories
                         WHERE category_type = 'software_type'
