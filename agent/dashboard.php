@@ -607,7 +607,9 @@ if ($user_config_dashboard_technical_enable == 1) {
         SUM(ticket_assigned_to = 0) AS unassigned_tickets,
         SUM(ticket_sla_id > 0 AND COALESCE(ticket_status_pauses_sla, 0) = 0 AND (ticket_response_sla_alert_stage = 1 OR ticket_resolution_sla_alert_stage = 1)) AS sla_at_risk,
         SUM(ticket_sla_id > 0 AND (ticket_response_sla_alert_stage = 2 OR ticket_resolution_sla_alert_stage = 2 OR ticket_response_sla_met = 0 OR ticket_resolution_sla_met = 0)) AS sla_breached
-        FROM tickets WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
+        FROM tickets
+        LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
+        WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
 
     $dashboard_incident_scope = clientScopeSql('automation_incident_client_id');
     $automation_pulse = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
