@@ -14,7 +14,12 @@ $quotes_sql = mysqli_query($mysqli, "SELECT quote_amount, quote_date, quote_id, 
     quote_url_key FROM quotes WHERE quote_client_id = $session_client_id AND quote_status != 'Draft' ORDER BY quote_date DESC");
 ?>
 
-<h3>Quotes</h3>
+<header class="n45-page-header">
+    <div>
+        <h1>Quotes</h1>
+        <p>Review current and historical proposals from N45.</p>
+    </div>
+</header>
 <div class="row">
 
     <div class="col-md-10">

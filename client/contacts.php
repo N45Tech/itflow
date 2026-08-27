@@ -13,14 +13,15 @@ enforceContactCan('contacts');
 $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_email, contact_primary, contact_technical, contact_billing FROM contacts WHERE contact_client_id = $session_client_id AND contacts.contact_archived_at IS NULL ORDER BY contact_created_at");
 ?>
 
-    <div class="row">
-        <div class="col">
-            <h3>Contacts</h3>
+    <header class="n45-page-header">
+        <div>
+            <h1>Contacts</h1>
+            <p>Manage who can work with N45 and which client responsibilities they hold.</p>
         </div>
-        <div class="col offset-6">
-            <a href="contact_add.php" class="btn btn-primary" role="button"><i class="fas fa-plus mr-2"></i>New Contact</a>
+        <div class="n45-page-header-actions">
+            <a href="contact_add.php" class="btn btn-primary" role="button"><i class="fas fa-plus" aria-hidden="true"></i>New contact</a>
         </div>
-    </div>
+    </header>
 
     <div class="row">
 

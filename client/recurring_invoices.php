@@ -30,7 +30,12 @@ $payment_provider_threshold = floatval($row['payment_provider_threshold']);
 
 ?>
 
-<h3>Recurring Invoices</h3>
+<header class="n45-page-header">
+    <div>
+        <h1>Recurring invoices</h1>
+        <p>See active recurring services, upcoming billing dates, and automatic payment settings.</p>
+    </div>
+</header>
 <div class="row">
 
     <div class="col-md-10">
@@ -83,7 +88,7 @@ $payment_provider_threshold = floatval($row['payment_provider_threshold']);
                                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                 <input type="hidden" name="set_recurring_payment" value="1">
                                 <input type="hidden" name="recurring_invoice_id" value="<?= $recurring_invoice_id ?>">
-                                <select class="form-control select2" name="saved_payment_id" onchange="this.form.submit()">
+                                <select class="form-control select2" name="saved_payment_id" aria-label="Automatic payment method for <?= $recurring_invoice_scope_display ?>" onchange="this.form.submit()">
                                     <option value="0">Disabled</option>
                                     <?php
                                         while ($row = mysqli_fetch_assoc($sql)) {

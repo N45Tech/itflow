@@ -50,11 +50,12 @@ $balance = $invoice_amounts - $amount_paid;
 
 ?>
 
-<div class="row">
-    <div class="col-5">
-        <h3>Unpaid Invoices</h3>
+<header class="n45-page-header">
+    <div>
+        <h1>Open balance</h1>
+        <p>Review invoices that still have an outstanding balance.</p>
     </div>
-    <div class="col-5">
+    <div class="n45-page-header-actions">
         <?php if ($payment_provider_active && $bulk_payment_enabled) { // Currently not implmented fully ?>
         <button type="button" class="btn btn-outline-success dropdown-toggle float-right" data-toggle="dropdown"><i class="fa fa-fw fa-credit-card mr-2"></i>Pay Balance <strong>(<?= numfmt_format_currency($currency_format, $balance, $session_company_currency) ?>)</strong></button>
         <div class="dropdown-menu">
@@ -75,7 +76,7 @@ $balance = $invoice_amounts - $amount_paid;
         </div>
         <?php } // End Payment Provider Active Check ?>
     </div>
-</div>
+</header>
 <div class="row">
 
     <div class="col-md-10">

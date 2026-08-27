@@ -2264,40 +2264,881 @@ label,
     z-index: calc(var(--n45-z-modal-backdrop) - 1);
 }
 
-/* Existing client pages inherit the portal surface without being rewritten. */
-.n45-client-portal .card {
+/* Shared portal components. These overrides intentionally replace the remaining
+   Bootstrap/AdminLTE visual vocabulary while preserving its layout utilities. */
+.n45-portal-route:not(.n45-portal-route-index) {
+    min-width: 0;
+}
+
+.n45-portal-route > h2,
+.n45-portal-route > h3,
+.n45-portal-route > .row:first-child h2,
+.n45-portal-route > .row:first-child h3,
+.n45-page-header h1 {
+    color: var(--n45-portal-mountain);
+    font-size: 2rem;
+    font-weight: 750;
+    letter-spacing: -.03em;
+    line-height: 1.15;
+    margin: 0 0 var(--n45-portal-space-6);
+    text-wrap: balance;
+}
+
+.n45-page-header {
+    align-items: flex-end;
+    display: flex;
+    gap: var(--n45-portal-space-6);
+    justify-content: space-between;
+    margin-bottom: var(--n45-portal-space-6);
+}
+
+.n45-page-header h1 {
+    margin-bottom: var(--n45-portal-space-1);
+}
+
+.n45-page-header p {
+    color: var(--n45-portal-stone);
+    margin: 0;
+    max-width: 68ch;
+    text-wrap: pretty;
+}
+
+.n45-page-header-actions {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: var(--n45-portal-space-2);
+}
+
+.n45-client-portal .breadcrumb {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: var(--n45-portal-stone);
+    font-size: .875rem;
+    margin: 0 0 var(--n45-portal-space-6);
+    padding: 0;
+}
+
+.n45-client-portal .breadcrumb-item + .breadcrumb-item::before {
+    color: var(--n45-portal-stone);
+    content: "›";
+    padding-right: .65rem;
+}
+
+.n45-client-portal .breadcrumb-item + .breadcrumb-item {
+    padding-left: .65rem;
+}
+
+.n45-client-portal .breadcrumb-item.active {
+    color: var(--n45-portal-mountain);
+    font-weight: 600;
+}
+
+.n45-client-portal .btn {
+    align-items: center;
+    background-image: none;
+    border-radius: .625rem;
+    box-shadow: none !important;
+    display: inline-flex;
+    font-size: .9375rem;
+    font-weight: 650;
+    gap: var(--n45-portal-space-2);
+    justify-content: center;
+    line-height: 1.2;
+    min-height: 2.75rem;
+    padding: .65rem var(--n45-portal-space-4);
+    text-decoration: none !important;
+    transition: background-color var(--n45-ease), border-color var(--n45-ease), color var(--n45-ease), transform var(--n45-ease);
+}
+
+.n45-client-portal .btn:active {
+    transform: translateY(1px);
+}
+
+.n45-client-portal .btn .text-white {
+    color: currentColor !important;
+}
+
+.n45-client-portal .btn:disabled,
+.n45-client-portal .btn.disabled {
+    cursor: not-allowed;
+    opacity: .58;
+    transform: none;
+}
+
+.n45-client-portal .btn-sm {
+    font-size: .875rem;
+    min-height: 2.5rem;
+    padding: .5rem .75rem;
+}
+
+.n45-client-portal .btn-lg {
+    font-size: 1rem;
+    min-height: 3rem;
+    padding: .75rem 1.125rem;
+}
+
+.n45-client-portal .btn-secondary,
+.n45-client-portal .btn-light,
+.n45-client-portal .btn-dark {
     background: var(--n45-portal-surface);
-    border-color: var(--n45-portal-border);
-    border-radius: .75rem;
-    box-shadow: none;
+    border: 1px solid var(--n45-portal-border);
+    color: var(--n45-portal-mountain) !important;
 }
 
-.n45-client-portal .card > a,
-.n45-client-portal a.card {
-    color: var(--n45-portal-ink);
-}
-
-.n45-client-portal a.card:hover,
-.n45-client-portal a.card:focus {
+.n45-client-portal .btn-secondary:hover,
+.n45-client-portal .btn-light:hover,
+.n45-client-portal .btn-dark:hover {
+    background: var(--n45-portal-mist);
     border-color: var(--n45-portal-action);
+    color: var(--n45-portal-mountain) !important;
+}
+
+.n45-client-portal .btn-success,
+.n45-client-portal .btn-outline-success {
+    background: var(--n45-portal-status-resolved-bg);
+    border: 1px solid #8fc69e;
+    color: var(--n45-portal-status-resolved-ink) !important;
+}
+
+.n45-client-portal .btn-success:hover,
+.n45-client-portal .btn-outline-success:hover {
+    background: #d7eddd;
+    border-color: var(--n45-portal-status-resolved-ink);
+    color: var(--n45-portal-status-resolved-ink) !important;
+}
+
+.n45-client-portal .btn-danger,
+.n45-client-portal .btn-outline-danger {
+    background: #fae9e7;
+    border: 1px solid #dca6a0;
+    color: #8d2820 !important;
+}
+
+.n45-client-portal .btn-danger:hover,
+.n45-client-portal .btn-outline-danger:hover {
+    background: #f5d7d3;
+    border-color: #8d2820;
+    color: #762019 !important;
+}
+
+.n45-client-portal .btn-outline-primary {
+    background: transparent;
+    border: 1px solid var(--n45-portal-action);
+    color: var(--n45-portal-action) !important;
+}
+
+.n45-client-portal .btn-outline-primary:hover {
+    background: var(--n45-portal-action-soft);
+    border-color: var(--n45-portal-action-hover);
+    color: var(--n45-portal-action-hover) !important;
+}
+
+.n45-client-portal .btn-group {
+    gap: var(--n45-portal-space-2);
+}
+
+.n45-client-portal .btn-group > .btn:not(:first-child),
+.n45-client-portal .btn-group > .btn:not(:last-child) {
+    border-radius: .625rem;
+    margin-left: 0;
+}
+
+.n45-client-portal label {
+    color: var(--n45-portal-mountain);
+    font-size: .875rem;
+    font-weight: 650;
+    margin-bottom: var(--n45-portal-space-2);
+}
+
+.n45-client-portal .form-group {
+    margin-bottom: var(--n45-portal-space-6);
+}
+
+.n45-client-portal .form-control,
+.n45-client-portal .custom-select {
+    background: var(--n45-portal-surface);
+    border: 1px solid #aebdb7;
+    border-radius: .5rem;
+    box-shadow: none;
     color: var(--n45-portal-ink);
-    text-decoration: none;
+    font-size: 1rem;
+    min-height: 2.75rem;
+    padding: .625rem .75rem;
+    transition: border-color var(--n45-ease), box-shadow var(--n45-ease), background-color var(--n45-ease);
+}
+
+.n45-client-portal textarea.form-control {
+    min-height: 8rem;
+    resize: vertical;
+}
+
+.n45-client-portal .form-control::placeholder {
+    color: #596a65;
+    opacity: 1;
+}
+
+.n45-client-portal .form-control:hover,
+.n45-client-portal .custom-select:hover {
+    border-color: var(--n45-portal-action);
+}
+
+.n45-client-portal .form-control:focus,
+.n45-client-portal .custom-select:focus {
+    background: var(--n45-portal-white);
+    border-color: var(--n45-portal-action);
+    box-shadow: 0 0 0 .2rem var(--n45-portal-action-soft);
+    color: var(--n45-portal-ink);
+}
+
+.n45-client-portal .form-control:disabled,
+.n45-client-portal .form-control[readonly] {
+    background: #e9eeeb;
+    color: var(--n45-portal-stone);
+}
+
+.n45-client-portal .input-group-text {
+    background: var(--n45-portal-mist);
+    border: 1px solid #aebdb7;
+    border-radius: .5rem 0 0 .5rem;
+    color: var(--n45-portal-action);
+    justify-content: center;
+    min-width: 2.75rem;
+}
+
+.n45-client-portal .input-group-prepend + .form-control,
+.n45-client-portal .input-group-prepend + select.form-control {
+    border-bottom-left-radius: 0;
+    border-top-left-radius: 0;
+}
+
+.n45-client-portal .input-group:focus-within .input-group-text {
+    border-color: var(--n45-portal-action);
+    color: var(--n45-portal-action-hover);
+}
+
+.n45-client-portal .form-control-file {
+    background: var(--n45-portal-surface);
+    border: 1px dashed #8fa49d;
+    border-radius: .625rem;
+    color: var(--n45-portal-stone);
+    cursor: pointer;
+    min-height: 3.25rem;
+    padding: .75rem;
+    width: 100%;
+}
+
+.n45-client-portal .custom-control {
+    min-height: 2.75rem;
+    padding-left: 2rem;
+}
+
+.n45-client-portal .custom-control-label {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    min-height: 2.75rem;
+}
+
+.n45-client-portal .custom-control-label::before,
+.n45-client-portal .custom-control-label::after {
+    height: 1.25rem;
+    left: -2rem;
+    top: .75rem;
+    width: 1.25rem;
+}
+
+.n45-client-portal .custom-control-input:checked ~ .custom-control-label::before {
+    background: var(--n45-portal-action);
+    border-color: var(--n45-portal-action);
+}
+
+.n45-client-portal .tox-tinymce {
+    border: 1px solid #aebdb7 !important;
+    border-radius: .625rem !important;
+    overflow: hidden;
+}
+
+.n45-client-portal .tox .tox-editor-header,
+.n45-client-portal .tox .tox-toolbar-overlord,
+.n45-client-portal .tox .tox-toolbar__primary {
+    background: var(--n45-portal-mist) !important;
+}
+
+.n45-form-surface,
+.n45-account-panel {
+    background: var(--n45-portal-surface);
+    border: 1px solid var(--n45-portal-border);
+    border-radius: .75rem;
+    max-width: 52rem;
+    padding: var(--n45-portal-space-6);
+}
+
+.n45-form-intro {
+    border-bottom: 1px solid var(--n45-portal-border);
+    margin-bottom: var(--n45-portal-space-6);
+    padding-bottom: var(--n45-portal-space-4);
+}
+
+.n45-form-intro h1,
+.n45-form-intro h2 {
+    color: var(--n45-portal-mountain);
+    font-size: 1.5rem;
+    font-weight: 750;
+    letter-spacing: -.02em;
+    margin: 0 0 var(--n45-portal-space-1);
+}
+
+.n45-form-intro p {
+    color: var(--n45-portal-stone);
+    margin: 0;
+    max-width: 65ch;
+}
+
+.n45-form-actions {
+    align-items: center;
+    border-top: 1px solid var(--n45-portal-border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--n45-portal-space-3);
+    margin-top: var(--n45-portal-space-6);
+    padding-top: var(--n45-portal-space-4);
+}
+
+.n45-table-scroll {
+    background: var(--n45-portal-surface);
+    border: 1px solid var(--n45-portal-border);
+    border-radius: .75rem;
+    overflow-x: auto;
+    width: 100%;
+}
+
+.n45-table-scroll:focus-visible {
+    outline: 3px solid var(--n45-portal-sunrise);
+    outline-offset: 3px;
 }
 
 .n45-client-portal .table {
-    background: var(--n45-portal-surface);
+    background: transparent;
     color: var(--n45-portal-ink);
+    margin-bottom: 0;
+    min-width: 42rem;
 }
 
+.n45-client-portal .table th,
+.n45-client-portal .table td {
+    border-color: var(--n45-portal-border);
+    padding: .875rem 1rem;
+    vertical-align: middle;
+}
+
+.n45-client-portal .table thead th,
 .n45-client-portal .table .thead-dark th {
-    background: var(--n45-portal-spruce);
-    border-color: var(--n45-portal-mountain);
-    color: var(--n45-portal-white);
+    background: #e6eeea;
+    border-bottom: 1px solid #b9c9c3;
+    border-top: 0;
+    color: #334b46;
+    font-size: .75rem;
+    font-weight: 750;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+    white-space: nowrap;
 }
 
-.n45-client-portal .form-control:focus {
-    border-color: var(--n45-portal-action);
-    box-shadow: 0 0 0 .2rem var(--n45-portal-action-soft);
+.n45-client-portal .table tbody tr {
+    transition: background-color var(--n45-ease);
+}
+
+.n45-client-portal .table tbody tr:hover {
+    background: var(--n45-portal-trail-10);
+}
+
+.n45-client-portal .table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.n45-client-portal .table a {
+    font-weight: 650;
+    text-decoration: none;
+}
+
+.n45-table-empty {
+    align-items: center;
+    color: var(--n45-portal-stone);
+    display: flex;
+    gap: var(--n45-portal-space-3);
+    justify-content: center;
+    min-height: 7rem;
+    text-align: left;
+}
+
+.n45-table-empty > i {
+    color: var(--n45-portal-action);
+    font-size: 1.5rem;
+}
+
+.n45-table-empty strong,
+.n45-table-empty span {
+    display: block;
+}
+
+.n45-table-empty strong {
+    color: var(--n45-portal-mountain);
+}
+
+.n45-table-empty span {
+    font-size: .875rem;
+}
+
+.n45-client-portal .table small,
+.n45-client-portal .text-muted,
+.n45-client-portal .text-secondary {
+    color: var(--n45-portal-stone) !important;
+}
+
+.n45-client-portal .badge {
+    border-radius: .375rem;
+    font-size: .75rem;
+    font-weight: 700;
+    line-height: 1.25;
+    padding: .35rem .55rem !important;
+}
+
+.n45-client-portal .badge-warning {
+    background: var(--n45-portal-status-waiting-bg);
+    color: var(--n45-portal-status-waiting-ink) !important;
+}
+
+.n45-client-portal .badge-info,
+.n45-client-portal .badge-primary {
+    background: var(--n45-portal-status-progress-bg);
+    color: var(--n45-portal-status-progress-ink);
+}
+
+.n45-client-portal .badge-success {
+    background: var(--n45-portal-status-resolved-bg);
+    color: var(--n45-portal-status-resolved-ink);
+}
+
+.n45-client-portal .badge-danger {
+    background: #fae9e7;
+    color: #8d2820;
+}
+
+.n45-client-portal .badge-secondary {
+    background: var(--n45-portal-status-neutral-bg);
+    color: var(--n45-portal-status-neutral-ink);
+}
+
+.n45-client-portal .card {
+    background: var(--n45-portal-surface);
+    border: 1px solid var(--n45-portal-border);
+    border-radius: .75rem;
+    box-shadow: none;
+    overflow: hidden;
+}
+
+.n45-client-portal .card-header,
+.n45-client-portal .card-header.bg-dark {
+    align-items: center;
+    background: #e6eeea !important;
+    border-bottom: 1px solid #b9c9c3;
+    color: var(--n45-portal-mountain) !important;
+    display: flex;
+    justify-content: space-between;
+    margin: 0 !important;
+    min-height: 3.75rem;
+    padding: .875rem 1rem;
+}
+
+.n45-client-portal .card-title {
+    color: var(--n45-portal-mountain);
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.n45-client-portal .card-body {
+    padding: var(--n45-portal-space-6);
+}
+
+.n45-client-portal .card-outline.card-warning,
+.n45-client-portal .card-outline.card-info {
+    border-top: 1px solid var(--n45-portal-border);
+}
+
+.n45-client-portal .card-outline.card-warning .card-header {
+    background: var(--n45-portal-status-waiting-bg) !important;
+}
+
+.n45-client-portal .card-outline.card-info .card-header {
+    background: var(--n45-portal-status-progress-bg) !important;
+}
+
+.n45-client-portal .dropdown-menu {
+    background: var(--n45-portal-surface);
+    border: 1px solid var(--n45-portal-border);
+    border-radius: .625rem;
+    box-shadow: 0 6px 8px rgba(10, 36, 35, .12);
+    color: var(--n45-portal-ink);
+    padding: var(--n45-portal-space-2);
+}
+
+.n45-client-portal .dropdown-item {
+    border-radius: .375rem;
+    color: var(--n45-portal-ink);
+    min-height: 2.75rem;
+    padding: .65rem .75rem;
+}
+
+.n45-client-portal .dropdown-item:hover,
+.n45-client-portal .dropdown-item:focus {
+    background: var(--n45-portal-trail-10);
+    color: var(--n45-portal-mountain);
+}
+
+.n45-client-portal .modal-backdrop.show {
+    background: var(--n45-portal-mountain);
+    opacity: .66;
+}
+
+.n45-client-portal .modal-content,
+.n45-client-portal .modal-content.bg-dark {
+    background: var(--n45-portal-surface) !important;
+    border: 0;
+    border-radius: .75rem;
+    box-shadow: 0 8px 8px rgba(10, 36, 35, .18);
+    color: var(--n45-portal-ink);
+    overflow: hidden;
+}
+
+.n45-client-portal .modal-header {
+    background: var(--n45-portal-mountain);
+    border: 0;
+    color: var(--n45-portal-white);
+    min-height: 4rem;
+    padding: 1rem 1.25rem;
+}
+
+.n45-client-portal .modal-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+}
+
+.n45-client-portal .modal-header .close {
+    align-items: center;
+    color: var(--n45-portal-white) !important;
+    display: flex;
+    height: 2.75rem;
+    justify-content: center;
+    margin: -.4rem -.5rem -.4rem auto;
+    opacity: .82;
+    padding: 0;
+    text-shadow: none;
+    width: 2.75rem;
+}
+
+.n45-client-portal .modal-body.bg-white,
+.n45-client-portal .modal-footer.bg-white {
+    background: var(--n45-portal-surface) !important;
+}
+
+.n45-client-portal .modal-body {
+    padding: 1.25rem;
+}
+
+.n45-client-portal .modal-footer {
+    border-top: 1px solid var(--n45-portal-border);
+    gap: var(--n45-portal-space-2);
+    padding: 1rem 1.25rem;
+}
+
+.n45-client-portal .alert {
+    align-items: flex-start;
+    background: var(--n45-portal-status-new-bg);
+    border: 1px solid #b9cbd9;
+    border-radius: .625rem;
+    color: var(--n45-portal-status-new-ink);
+    display: flex;
+    margin-bottom: var(--n45-portal-space-6);
+    padding: .875rem 1rem;
+}
+
+.n45-client-portal .alert-success {
+    background: var(--n45-portal-status-resolved-bg);
+    border-color: #9ccaaa;
+    color: var(--n45-portal-status-resolved-ink);
+}
+
+.n45-client-portal .alert-warning {
+    background: var(--n45-portal-status-waiting-bg);
+    border-color: #dfbd94;
+    color: var(--n45-portal-status-waiting-ink);
+}
+
+.n45-client-portal .alert-danger {
+    background: #fae9e7;
+    border-color: #dca6a0;
+    color: #8d2820;
+}
+
+.n45-client-portal .alert .close {
+    color: currentColor;
+    margin-left: auto;
+    opacity: .72;
+    text-shadow: none;
+}
+
+.n45-client-portal .nav-tabs {
+    border-bottom: 1px solid var(--n45-portal-border);
+    gap: var(--n45-portal-space-1);
+}
+
+.n45-client-portal .nav-tabs .nav-link {
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--n45-portal-stone);
+    min-height: 2.75rem;
+    padding: .7rem .9rem;
+}
+
+.n45-client-portal .nav-tabs .nav-link.active {
+    background: transparent;
+    border-bottom-color: var(--n45-portal-action);
+    color: var(--n45-portal-mountain);
+    font-weight: 650;
+}
+
+.n45-list-page > .row,
+.n45-portal-route-assets > .row,
+.n45-portal-route-certificates > .row,
+.n45-portal-route-contacts > .row,
+.n45-portal-route-domains > .row,
+.n45-portal-route-documents > .row,
+.n45-portal-route-invoices > .row,
+.n45-portal-route-quotes > .row,
+.n45-portal-route-recurring-invoices > .row,
+.n45-portal-route-unpaid-invoices > .row {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.n45-portal-route-assets > .row > [class*="col-md-"],
+.n45-portal-route-certificates > .row > [class*="col-md-"],
+.n45-portal-route-contacts > .row:last-of-type > [class*="col-md-"],
+.n45-portal-route-domains > .row > [class*="col-md-"],
+.n45-portal-route-documents > .row.mt-3 > [class*="col-md-"],
+.n45-portal-route-invoices > .row > [class*="col-md-"],
+.n45-portal-route-quotes > .row > [class*="col-md-"],
+.n45-portal-route-recurring-invoices > .row > [class*="col-md-"],
+.n45-portal-route-unpaid-invoices > .row > [class*="col-md-"] {
+    flex: 0 0 100%;
+    max-width: 100%;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.n45-portal-route-contacts > .row:first-child,
+.n45-portal-route-documents > .row:first-child,
+.n45-portal-route-unpaid-invoices > .row:first-child {
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--n45-portal-space-6);
+}
+
+.n45-portal-route-contacts > .row:first-child h3,
+.n45-portal-route-documents > .row:first-child h3,
+.n45-portal-route-unpaid-invoices > .row:first-child h3 {
+    margin-bottom: 0;
+}
+
+.n45-portal-route-contacts > .row:first-child .offset-6 {
+    margin-left: auto;
+}
+
+.n45-portal-route-ticket .card:first-of-type .card-body > h5 {
+    color: var(--n45-portal-mountain);
+    font-size: 1.25rem;
+    margin-bottom: var(--n45-portal-space-4);
+}
+
+.n45-portal-route-ticket .prettyContent {
+    color: #263d38;
+    line-height: 1.65;
+}
+
+.n45-ticket-summary-subject {
+    color: var(--n45-portal-mountain);
+    font-size: 1.5rem;
+    font-weight: 750;
+    letter-spacing: -.02em;
+    line-height: 1.25;
+    margin: 0 0 var(--n45-portal-space-6);
+    text-wrap: balance;
+}
+
+.n45-ticket-facts {
+    background: #eef3f0;
+    border-radius: .625rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    margin: 0 0 var(--n45-portal-space-6);
+    padding: var(--n45-portal-space-2);
+}
+
+.n45-ticket-facts > div {
+    min-width: 9rem;
+    padding: .55rem .75rem;
+}
+
+.n45-ticket-facts dt {
+    color: var(--n45-portal-stone);
+    font-size: .72rem;
+    font-weight: 650;
+    margin-bottom: .15rem;
+}
+
+.n45-ticket-facts dd {
+    color: var(--n45-portal-mountain);
+    font-size: .875rem;
+    font-weight: 650;
+    margin: 0;
+}
+
+.n45-ticket-description {
+    border-top: 1px solid var(--n45-portal-border);
+    margin-top: var(--n45-portal-space-4);
+    padding-top: var(--n45-portal-space-6);
+}
+
+.n45-ticket-reply-composer {
+    background: var(--n45-portal-surface);
+    border: 1px solid var(--n45-portal-border);
+    border-radius: .75rem;
+    padding: var(--n45-portal-space-6);
+}
+
+.n45-portal-route-ticket > hr {
+    border-color: var(--n45-portal-border);
+    margin: var(--n45-portal-space-8) 0;
+}
+
+.n45-ticket-filter-layout {
+    align-items: start;
+    display: grid;
+    gap: var(--n45-portal-space-6);
+    grid-template-columns: minmax(0, 1fr) 15rem;
+}
+
+.n45-ticket-filters {
+    background: var(--n45-portal-surface);
+    border: 1px solid var(--n45-portal-border);
+    border-radius: .75rem;
+    padding: var(--n45-portal-space-3);
+}
+
+.n45-ticket-filter {
+    align-items: center;
+    border-radius: .5rem;
+    color: var(--n45-portal-stone) !important;
+    display: flex;
+    font-weight: 600;
+    justify-content: space-between;
+    min-height: 2.75rem;
+    padding: .65rem .75rem;
+    text-decoration: none !important;
+}
+
+.n45-ticket-filter:hover,
+.n45-ticket-filter.active {
+    background: var(--n45-portal-trail-10);
+    color: var(--n45-portal-mountain) !important;
+}
+
+.n45-ticket-filter strong {
+    background: var(--n45-portal-mist);
+    border-radius: 999px;
+    color: var(--n45-portal-action);
+    font-size: .75rem;
+    min-width: 1.75rem;
+    padding: .15rem .45rem;
+    text-align: center;
+}
+
+.n45-account-grid {
+    display: grid;
+    gap: 0 var(--n45-portal-space-6);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0;
+}
+
+.n45-account-field {
+    border-bottom: 1px solid var(--n45-portal-border);
+    padding: .85rem 0;
+}
+
+.n45-account-field dt {
+    color: var(--n45-portal-stone);
+    font-size: .75rem;
+    font-weight: 650;
+    margin-bottom: .2rem;
+}
+
+.n45-account-field dd {
+    color: var(--n45-portal-mountain);
+    font-weight: 600;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.n45-account-security {
+    border-top: 1px solid var(--n45-portal-border);
+    margin-top: var(--n45-portal-space-6);
+    padding-top: var(--n45-portal-space-6);
+}
+
+.n45-account-security h2 {
+    color: var(--n45-portal-mountain);
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.n45-payment-method-list {
+    display: grid;
+    gap: var(--n45-portal-space-3);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.n45-payment-method-list li {
+    align-items: center;
+    background: var(--n45-portal-surface);
+    border: 1px solid var(--n45-portal-border);
+    border-radius: .625rem;
+    display: flex;
+    gap: var(--n45-portal-space-3);
+    min-height: 4rem;
+    padding: .75rem 1rem;
+}
+
+.n45-payment-layout {
+    gap: var(--n45-portal-space-6) 0;
+}
+
+.n45-payment-layout > [class*="col-md-"] {
+    background: var(--n45-portal-surface);
+    border: 1px solid var(--n45-portal-border);
+    border-radius: .75rem;
+    padding: var(--n45-portal-space-6);
+}
+
+.n45-payment-layout > [class*="col-md-"] + [class*="col-md-"] {
+    margin-left: var(--n45-portal-space-6);
+    max-width: calc(50% - var(--n45-portal-space-6));
 }
 
 @media (max-width: 1199.98px) {
@@ -2467,6 +3308,124 @@ label,
     .n45-portal-footer {
         margin: 0 var(--n45-portal-space-4);
     }
+
+    .n45-page-header {
+        align-items: stretch;
+        flex-direction: column;
+        gap: var(--n45-portal-space-4);
+    }
+
+    .n45-page-header h1,
+    .n45-portal-route > h2,
+    .n45-portal-route > h3,
+    .n45-portal-route > .row:first-child h2,
+    .n45-portal-route > .row:first-child h3 {
+        font-size: 1.75rem;
+    }
+
+    .n45-page-header-actions,
+    .n45-page-header-actions .btn,
+    .n45-client-portal .btn-responsive {
+        width: 100%;
+    }
+
+    .n45-form-surface,
+    .n45-account-panel,
+    .n45-client-portal .card-body {
+        padding: var(--n45-portal-space-4);
+    }
+
+    .n45-client-portal .form-row,
+    .n45-client-portal .row > .col {
+        flex-basis: 100%;
+    }
+
+    .n45-ticket-filter-layout,
+    .n45-account-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .n45-ticket-filters {
+        display: grid;
+        gap: var(--n45-portal-space-1);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-row: 1;
+    }
+
+    .n45-ticket-filter {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--n45-portal-space-1);
+    }
+
+    .n45-client-portal .modal-dialog {
+        margin: var(--n45-portal-space-4);
+    }
+
+    .n45-client-portal .modal-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .n45-client-portal .modal-footer .btn {
+        margin: 0;
+        width: 100%;
+    }
+
+    .n45-portal-route-tickets .n45-table-scroll {
+        overflow: visible;
+    }
+
+    .n45-portal-route-tickets .table {
+        display: block;
+        min-width: 0;
+    }
+
+    .n45-portal-route-tickets .table thead {
+        display: none;
+    }
+
+    .n45-portal-route-tickets .table tbody {
+        display: block;
+    }
+
+    .n45-portal-route-tickets .table tbody tr {
+        align-items: center;
+        display: grid;
+        gap: .2rem var(--n45-portal-space-3);
+        grid-template-columns: minmax(0, 1fr) auto;
+        padding: .85rem 1rem;
+    }
+
+    .n45-portal-route-tickets .table tbody td {
+        border: 0;
+        padding: 0;
+    }
+
+    .n45-portal-route-tickets .table tbody td:first-child {
+        font-size: .75rem;
+        grid-column: 1;
+    }
+
+    .n45-portal-route-tickets .table tbody td:nth-child(2) {
+        grid-column: 1;
+    }
+
+    .n45-portal-route-tickets .table tbody td:nth-child(3) {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+    }
+
+    .n45-portal-route-tickets .table tbody td[colspan] {
+        grid-column: 1 / -1 !important;
+    }
+
+    .n45-payment-layout > [class*="col-md-"],
+    .n45-payment-layout > [class*="col-md-"] + [class*="col-md-"] {
+        flex: 0 0 100%;
+        margin-left: 0;
+        max-width: 100%;
+    }
 }
 
 @media (min-width: 360px) and (max-width: 767.98px) {
@@ -2505,6 +3464,20 @@ label,
 
     .n45-support-panel .n45-portal-section-heading {
         flex-direction: column;
+    }
+
+    .n45-ticket-filters {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .n45-ticket-filter {
+        align-items: center;
+        flex-direction: row;
+    }
+
+    .n45-client-portal .btn-group {
+        display: grid;
+        width: 100%;
     }
 }
 

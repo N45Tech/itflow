@@ -7,6 +7,7 @@
 header("X-Frame-Options: DENY"); // Legacy
 
 $portal_current_page = basename($_SERVER['PHP_SELF']);
+$portal_page_slug = preg_replace('/[^a-z0-9-]/', '', str_replace('_', '-', pathinfo($portal_current_page, PATHINFO_FILENAME)));
 $portal_overview_active = $portal_current_page === 'index.php';
 $portal_get_help_active = $portal_current_page === 'ticket_add.php';
 $portal_ticket_active = in_array($portal_current_page, ['tickets.php', 'ticket.php', 'ticket_view_all.php'], true);
@@ -153,7 +154,7 @@ $portal_can_itdoc = contactCan('itdoc') && $config_module_enable_itdoc;
             </button>
         </header>
 
-        <main class="n45-portal-main" id="main-content" tabindex="-1">
+        <main class="n45-portal-main n45-portal-page-<?= escapeHtml($portal_page_slug) ?>" id="main-content" tabindex="-1">
             <?php
             if (!empty($_SESSION['alert_message'])) {
                 if (!isset($_SESSION['alert_type'])) {
@@ -169,3 +170,5 @@ $portal_can_itdoc = contactCan('itdoc') && $config_module_enable_itdoc;
                 unset($_SESSION['alert_message']);
             }
             ?>
+
+            <div class="n45-portal-route n45-portal-route-<?= escapeHtml($portal_page_slug) ?>">

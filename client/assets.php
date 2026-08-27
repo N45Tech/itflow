@@ -15,11 +15,12 @@ $assets_sql = mysqli_query($mysqli, "SELECT asset_description, asset_id, asset_m
     contact_name FROM assets LEFT JOIN contacts ON asset_contact_id = contact_id WHERE asset_client_id = $session_client_id AND asset_archived_at IS NULL ORDER BY asset_type ASC, asset_name ASC");
 ?>
 
-    <div class="row">
-        <div class="col">
-            <h3>Assets</h3>
+    <header class="n45-page-header">
+        <div>
+            <h1>Technology assets</h1>
+            <p>Review the devices and systems N45 has documented for your organization.</p>
         </div>
-    </div>
+    </header>
 
     <div class="row">
 
@@ -60,7 +61,7 @@ $assets_sql = mysqli_query($mysqli, "SELECT asset_description, asset_id, asset_m
 
                     <tr>
                         <td>
-                            <a href="#"><?= $asset_name ?></a>
+                            <strong><?= $asset_name ?></strong>
                             <br>
                             <small class="text-secondary"><?= $asset_description ?></small>
                         </td>

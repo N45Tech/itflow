@@ -52,28 +52,32 @@ if ($row) {
         <li class="breadcrumb-item active">Edit Contact</li>
     </ol>
 
-    <div class="col-md-6">
+    <div class="n45-form-surface">
+        <div class="n45-form-intro">
+            <h1>Edit contact</h1>
+            <p>Update contact details, client responsibilities, and portal access.</p>
+        </div>
         <form action="post.php" method="post">
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
             <input type="hidden" name="contact_id" value="<?= $contact_id ?>">
 
             <div class="form-group">
-                <label>Name <strong class="text-danger">*</strong></label>
+                <label for="contactName">Name <strong class="text-danger">*</strong></label>
                 <div class="input-group">
                     <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
                     </div>
-                    <input type="text" class="form-control" name="contact_name" value="<?= escapeHtml($contact_name) ?>" required maxlength="200">
+                    <input type="text" class="form-control" id="contactName" name="contact_name" value="<?= escapeHtml($contact_name) ?>" required maxlength="200">
                 </div>
             </div>
 
             <div class="form-group">
-                <label>Email <strong class="text-danger">*</strong></label>
+                <label for="contactEmail">Email <strong class="text-danger">*</strong></label>
                 <div class="input-group">
                     <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-envelope"></i></span>
                     </div>
-                    <input type="email" class="form-control" name="contact_email" value="<?= escapeHtml($contact_email) ?>" required maxlength="200">
+                    <input type="email" class="form-control" id="contactEmail" name="contact_email" value="<?= escapeHtml($contact_email) ?>" required maxlength="200">
                 </div>
             </div>
 
@@ -98,12 +102,12 @@ if ($row) {
             </div>
 
             <div class="form-group">
-                <label>Portal authentication</label>
+                <label for="contactAuthMethod">Portal authentication</label>
                 <div class="input-group">
                     <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-user-circle"></i></span>
                     </div>
-                    <select class="form-control select2 authMethod" name="contact_auth_method">
+                    <select class="form-control select2 authMethod" id="contactAuthMethod" name="contact_auth_method">
                         <option value="">- No portal access -</option>
                         <option value="local" <?php if ($contact_auth_method == "local") { echo "selected"; } ?>>Local (Email and password)</option>
                         <?php if (!empty($config_azure_client_id)) { ?>
@@ -113,9 +117,14 @@ if ($row) {
                 </div>
             </div>
 
-            <?php if ($contact_primary || $contact_id == $_SESSION['contact_id']) { echo "<i>Cannot edit this contact</i>"; } else { ?>
-                <button class="btn btn-primary" name="edit_contact">Save</button>
-            <?php } ?>
+            <div class="n45-form-actions">
+                <?php if ($contact_primary || $contact_id == $_SESSION['contact_id']) { ?>
+                    <span class="text-muted"><i class="fas fa-lock mr-2" aria-hidden="true"></i>This protected contact cannot be changed here.</span>
+                <?php } else { ?>
+                    <button class="btn btn-primary" name="edit_contact"><i class="fas fa-check" aria-hidden="true"></i>Save changes</button>
+                <?php } ?>
+                <a class="btn btn-secondary" href="contacts.php">Back to contacts</a>
+            </div>
         </form>
     </div>
 

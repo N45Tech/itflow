@@ -5,6 +5,7 @@
  */
 ?>
 
+            </div>
         </main>
 
         <footer class="n45-portal-footer">

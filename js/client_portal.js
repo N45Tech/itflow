@@ -7,6 +7,30 @@
     var scrim = document.querySelector('.n45-portal-scrim');
     var stage = document.querySelector('.n45-portal-stage');
 
+    document.querySelectorAll('.n45-portal-route .table').forEach(function (table) {
+        var tableBody = table.querySelector('tbody');
+        if (tableBody && tableBody.children.length === 0) {
+            var emptyRow = document.createElement('tr');
+            var emptyCell = document.createElement('td');
+            emptyCell.colSpan = Math.max(table.querySelectorAll('thead th').length, 1);
+            emptyCell.innerHTML = '<div class="n45-table-empty"><i class="far fa-folder-open" aria-hidden="true"></i><div><strong>Nothing to show here yet</strong><span>New items will appear here when they are available.</span></div></div>';
+            emptyRow.appendChild(emptyCell);
+            tableBody.appendChild(emptyRow);
+        }
+
+        if (table.parentElement && table.parentElement.classList.contains('n45-table-scroll')) {
+            return;
+        }
+
+        var wrapper = document.createElement('div');
+        wrapper.className = 'n45-table-scroll';
+        wrapper.setAttribute('role', 'region');
+        wrapper.setAttribute('aria-label', 'Scrollable data table');
+        wrapper.setAttribute('tabindex', '0');
+        table.parentNode.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+    });
+
     if (!body || !sidebar || !menuButton || !scrim || !stage) {
         return;
     }
