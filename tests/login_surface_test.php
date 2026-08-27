@@ -26,6 +26,21 @@ $assertSame(
     'Unified login account filter changed'
 );
 
+$assertSame(false, n45LocalLoginAllowed('technician'), 'Technician hostname still allows local authentication');
+$assertSame(false, n45LocalLoginAllowed('customer'), 'Customer hostname still allows local authentication');
+$assertSame(true, n45LocalLoginAllowed('unified'), 'Unified recovery login no longer allows local authentication');
+
+$assertSame(
+    'https://portal.n45tech.com/client/login_microsoft.php',
+    n45ClientEntraRedirectUri('portal.n45tech.com', 'psa.n45tech.com'),
+    'Portal OAuth callback does not stay on the portal hostname'
+);
+$assertSame(
+    'https://psa.n45tech.com/client/login_microsoft.php',
+    n45ClientEntraRedirectUri('localhost:8080', 'https://psa.n45tech.com/'),
+    'Unified client OAuth callback did not use the configured base URL'
+);
+
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);
     exit(1);

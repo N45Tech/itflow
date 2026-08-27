@@ -41,6 +41,7 @@ $session_user_id = intval($_SESSION['user_id'] ?? 0);
 $login_surface = n45LoginSurfaceForHost($_SERVER['HTTP_HOST'] ?? '');
 $is_customer_login = $login_surface === 'customer';
 $is_technician_login = $login_surface === 'technician';
+$local_login_allowed = n45LocalLoginAllowed($login_surface);
 $login_user_filter = n45LoginUserFilter($login_surface);
 
 // The count below and the logAudit() failure write that feeds it are far apart, with
@@ -132,6 +133,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['login']) || isset($_
     $is_login_step = isset($_POST['login']);
     $is_role_step  = isset($_POST['role_choice']) && !$is_login_step && !isset($_POST['mfa_login']);
     $is_mfa_step   = isset($_POST['mfa_login']);
+
+    // The dedicated production hostnames use Entra exclusively. Fail closed if
+    // a local credential form is submitted directly or from a stale browser.
+    if (!$local_login_allowed) {
+        unset($_SESSION['pending_dual_login'], $_SESSION['pending_mfa_login']);
+        header("HTTP/1.1 403 Forbidden");
+        $response = "
+          <div class='alert alert-danger'>
+            Password sign-in is disabled. Continue with Microsoft to access this workspace.
+          </div>";
+        $is_login_step = false;
+        $is_role_step = false;
+        $is_mfa_step = false;
+    }
 
     // -----------------------------------
     // STEP 2: ROLE CHOICE (no email/pass)
@@ -687,16 +702,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['login']) || isset($_
 
 // Form state
 $show_mfa_form   = (isset($token_field) && !empty($token_field));
-$show_login_form = (!$show_role_choice && !$show_mfa_form);
+$show_login_form = ($local_login_allowed && !$show_role_choice && !$show_mfa_form);
 
 $agent_login_key_valid = !$config_login_key_required
     || (isset($_GET['key']) && hash_equals((string)$config_login_key_secret, (string)$_GET['key']));
-$show_agent_sso = $show_login_form
-    && !$is_customer_login
+$show_agent_sso = !$is_customer_login
     && $agent_login_key_valid
     && $azure_agent_sso_enable === 1
     && entraGuidIsValid($azure_client_id)
     && entraGuidIsValid($azure_tenant_id)
+    && !empty($azure_client_secret);
+$show_client_sso = !$is_technician_login
+    && $config_client_portal_enable === 1
+    && entraGuidIsValid($azure_client_id)
     && !empty($azure_client_secret);
 
 $agent_sso_params = [];
@@ -709,6 +727,33 @@ if (isset($_GET['last_visited'])) {
 $agent_sso_url = 'agent/login_microsoft.php';
 if (!empty($agent_sso_params)) {
     $agent_sso_url .= '?' . http_build_query($agent_sso_params);
+}
+
+// Normal visits to either dedicated hostname go directly to Microsoft. An
+// OAuth error returns to this page with a session message, so keep that visit
+// here and render a retry action instead of creating a redirect loop.
+$has_login_message = !empty($_SESSION['login_message']);
+$may_auto_redirect = $_SERVER['REQUEST_METHOD'] === 'GET'
+    && !$show_role_choice
+    && !$show_mfa_form
+    && empty($response)
+    && !$has_login_message;
+
+if ($may_auto_redirect && $is_technician_login && $show_agent_sso) {
+    header("Location: $agent_sso_url");
+    exit();
+}
+
+if ($may_auto_redirect && $is_customer_login && $show_client_sso) {
+    header('Location: client/login_microsoft.php');
+    exit();
+}
+
+if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_client_sso)) {
+    $response = "
+      <div class='alert alert-danger'>
+        Microsoft sign-in is not available for this workspace. Please contact N45 Technology Solutions for assistance.
+      </div>";
 }
 
 ?>
@@ -845,21 +890,21 @@ if (!empty($agent_sso_params)) {
             </form>
 
             <?php if ($show_agent_sso) { ?>
-                <div class="text-center my-3 text-muted">or</div>
-                <a class="btn btn-outline-primary btn-block" href="<?= escapeHtml($agent_sso_url) ?>">
-                    <i class="fab fa-microsoft mr-2"></i>Sign in as a technician with Microsoft
+                <?php if ($show_login_form) { ?><div class="text-center my-3 text-muted">or</div><?php } ?>
+                <a class="btn <?= $is_technician_login ? 'btn-primary' : 'btn-outline-primary' ?> btn-block" href="<?= escapeHtml($agent_sso_url) ?>">
+                    <i class="fab fa-microsoft mr-2"></i><?= $is_technician_login ? 'Try Microsoft sign-in again' : 'Sign in as a technician with Microsoft' ?>
                 </a>
             <?php } ?>
 
             <?php if($config_client_portal_enable == 1 && !$is_technician_login){ ?>
-                <hr>
-                <?php if (!empty($config_smtp_provider)) { ?>
+                <?php if ($show_login_form) { ?><hr><?php } ?>
+                <?php if ($show_login_form && !empty($config_smtp_provider)) { ?>
                     <a href="client/login_reset.php">Forgot password?</a>
                 <?php } ?>
-                <?php if (!empty($azure_client_id)) { ?>
-                    <div class="col text-center mt-2">
-                        <a class="btn btn-secondary btn-block" href="client/login_microsoft.php">
-                            <i class="fab fa-microsoft mr-2"></i>Client portal with Microsoft Entra
+                <?php if ($show_client_sso) { ?>
+                    <div class="text-center <?= $show_login_form ? 'mt-2' : '' ?>">
+                        <a class="btn <?= $is_customer_login ? 'btn-primary' : 'btn-secondary' ?> btn-block" href="client/login_microsoft.php">
+                            <i class="fab fa-microsoft mr-2"></i><?= $is_customer_login ? 'Try Microsoft sign-in again' : 'Client portal with Microsoft Entra' ?>
                         </a>
                     </div>
                 <?php } ?>

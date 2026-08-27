@@ -6,6 +6,7 @@
 
 require_once '../config.php';
 require_once '../functions.php';
+require_once '../functions/login_surface.php';
 
 require_once __DIR__ . "/../includes/session_init.php";
 
@@ -21,7 +22,7 @@ $settings = mysqli_fetch_assoc($sql_settings);
 $client_id = $settings['config_azure_client_id'];
 $client_secret = $settings['config_azure_client_secret'];
 
-$redirect_uri = "https://$config_base_url/client/login_microsoft.php";
+$redirect_uri = n45ClientEntraRedirectUri($_SERVER['HTTP_HOST'] ?? '', $config_base_url);
 
 # https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-auth-code-flow
 $auth_code_url = "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize";

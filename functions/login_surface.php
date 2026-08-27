@@ -39,3 +39,26 @@ function n45LoginUserFilter($surface) {
 
     return "(user_type = 1 OR (user_type = 2 AND client_archived_at IS NULL))";
 }
+
+/*
+ * The public PSA and portal hostnames are Entra-only. The unified surface is
+ * intentionally retained for local development and explicit recovery access.
+ */
+function n45LocalLoginAllowed($surface) {
+    return $surface === 'unified';
+}
+
+/*
+ * Keep the client OAuth round trip on the hostname where it started so the
+ * host-only session cookie (and OAuth state) remain available on callback.
+ */
+function n45ClientEntraRedirectUri($host, $config_base_url) {
+    if (n45LoginSurfaceForHost($host) === 'customer') {
+        return 'https://portal.n45tech.com/client/login_microsoft.php';
+    }
+
+    $base_url = preg_replace('#^https?://#i', '', trim((string) $config_base_url));
+    $base_url = rtrim($base_url, '/');
+
+    return "https://$base_url/client/login_microsoft.php";
+}
