@@ -1,3 +1,56 @@
+/*
+ * Keep popup controls in the same stacking context as the modal that owns them.
+ *
+ * Select2 normally appends its results panel to <body>. N45's modal layer sits
+ * above Bootstrap's stock z-index, so a body-level results panel can appear
+ * behind the backdrop. Tempus Dominus has the same concept via widgetParent.
+ * Mounting each popup in its nearest modal fixes both stacking and modal focus
+ * handling without raising ordinary page dropdowns above an open dialog.
+ */
+function initializeItflowPopupControls(scope) {
+    const $scope = scope ? $(scope) : $(document);
+    const $selects = $scope.filter('.select2').add($scope.find('.select2'));
+    const $dateTimePickers = $scope.filter('.datetimepicker').add($scope.find('.datetimepicker'));
+
+    $selects.each(function() {
+        const $select = $(this);
+
+        if ($select.hasClass('select2-hidden-accessible')) {
+            return;
+        }
+
+        const options = {
+            theme: 'bootstrap4'
+        };
+        const $modal = $select.closest('.modal');
+
+        if ($modal.length) {
+            options.dropdownParent = $modal;
+        }
+
+        $select.select2(options);
+    });
+
+    $dateTimePickers.each(function() {
+        const $picker = $(this);
+
+        if ($picker.data('datetimepicker')) {
+            return;
+        }
+
+        const options = {};
+        const $modal = $picker.closest('.modal');
+
+        if ($modal.length) {
+            options.widgetParent = $modal;
+        }
+
+        $picker.datetimepicker(options);
+    });
+}
+
+window.initializeItflowPopupControls = initializeItflowPopupControls;
+
 $(document).ready(function() {
     // Prevents resubmit on forms
     if (window.history.replaceState) {
@@ -9,10 +62,8 @@ $(document).ready(function() {
         $("#alert").slideUp(500);
     });
 
-    // Initialize Select2 Elements
-    $('.select2').select2({
-        theme: 'bootstrap4',
-    });
+    // Initialize popup controls already present on the page.
+    initializeItflowPopupControls(document);
 
     // Initialize TinyMCE
     tinymce.init({
@@ -383,9 +434,6 @@ $(document).ready(function() {
         }
     });
 
-    // DateTime
-    $('.datetimepicker').datetimepicker();
-
     // Data Input Mask
     $('[data-mask]').inputmask();
 
@@ -411,6 +459,13 @@ $(document).ready(function() {
     // Data Tables
     new DataTable('.dataTables');
 });
+
+// AJAX modal contents can arrive after document.ready has run.
+$(document)
+    .off('shown.bs.modal.itflowPopupControls')
+    .on('shown.bs.modal.itflowPopupControls', '.modal', function() {
+        initializeItflowPopupControls(this);
+    });
 
 /*
  * Calendar event modals - the All day switch shows or hides the time row.

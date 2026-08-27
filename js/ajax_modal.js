@@ -46,6 +46,11 @@ $(document).on('click', '.ajax-modal', function (e) {
 
       $('.content-wrapper').append(modalHtml);
       const $modal = $('#' + modalId);
+
+      if (window.initializeItflowPopupControls) {
+        window.initializeItflowPopupControls($modal);
+      }
+
       $modal.modal('show');
 
       $modal.on('hidden.bs.modal', function () {
