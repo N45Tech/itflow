@@ -375,6 +375,8 @@ function addToMailQueue($data) {
         $recipient_name = strval($email['recipient_name']);
         $subject = strval($email['subject']);
         $body = strval($email['body']);
+        $body_plain = strval($email['body_plain'] ?? '');
+        $template_key = strval($email['template_key'] ?? 'legacy');
 
         $cal_str = '';
         if (isset($email['cal_str'])) {
@@ -409,7 +411,7 @@ function addToMailQueue($data) {
             $queued_at = 'CURRENT_TIMESTAMP()';
         }
 
-        mysqli_query($mysqli, "INSERT INTO email_queue SET email_recipient = '$recipient', email_recipient_name = '$recipient_name', email_from = '$from', email_from_name = '$from_name', email_subject = '$subject', email_content = '$body', email_queued_at = $queued_at, email_cal_str = '$cal_str', email_attachments = '$attachments'");
+        mysqli_query($mysqli, "INSERT INTO email_queue SET email_recipient = '$recipient', email_recipient_name = '$recipient_name', email_from = '$from', email_from_name = '$from_name', email_subject = '$subject', email_content = '$body', email_content_plain = '$body_plain', email_template_key = '$template_key', email_queued_at = $queued_at, email_cal_str = '$cal_str', email_attachments = '$attachments'");
     }
 
     return true;

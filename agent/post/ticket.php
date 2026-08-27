@@ -139,8 +139,19 @@ if (isset($_POST['add_ticket'])) {
 
         // EMAILING
 
-        $subject = "Ticket Created [$ticket_prefix$ticket_number] - $ticket_subject";
-        $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>A ticket regarding \"$ticket_subject\" has been created for you.<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: Open<br>Portal: <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+        $ticket_email_context = [
+            'company_name' => $company_name,
+            'contact_name' => $contact_name,
+            'ticket_number' => $ticket_prefix . $ticket_number,
+            'ticket_subject' => $ticket_subject,
+            'ticket_status' => 'Open',
+            'message_html' => $ticket_details,
+            'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+            'footer_email' => $config_ticket_from_email,
+            'footer_phone' => $company_phone,
+        ];
+        $ticket_email = renderN45Email('ticket.created', $ticket_email_context);
+        $data = [];
 
         // Verify contact email is valid
         if (filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
@@ -148,35 +159,32 @@ if (isset($_POST['add_ticket'])) {
 
             // Email Ticket Contact
             // Queue Mail
-            $data = [];
-
-            $data[] = [
+            $data[] = array_merge([
                 'from' => $config_ticket_from_email,
                 'from_name' => $config_ticket_from_name,
                 'recipient' => $contact_email,
                 'recipient_name' => $contact_name,
-                'subject' => $subject,
-                'body' => $body,
                 'attachments' => $emailable_attachments['send']
-            ];
+            ], n45EmailQueueFields($ticket_email));
         }
 
         // Also Email all the watchers
         $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
-        $body .= "<br><br>----------------------------------------<br>YOU HAVE BEEN ADDED AS A COLLABORATOR FOR THIS TICKET";
         while ($row = mysqli_fetch_assoc($sql_watchers)) {
             $watcher_email = escapeSql($row['watcher_email']);
+            $watcher_email_context = $ticket_email_context;
+            $watcher_email_context['contact_name'] = '';
+            $watcher_email_context['recipient_role'] = 'collaborator';
+            $watcher_message = renderN45Email('ticket.created', $watcher_email_context);
 
             // Queue Mail
-            $data[] = [
+            $data[] = array_merge([
                 'from' => $config_ticket_from_email,
                 'from_name' => $config_ticket_from_name,
                 'recipient' => $watcher_email,
                 'recipient_name' => $watcher_email,
-                'subject' => $subject,
-                'body' => $body,
                 'attachments' => $emailable_attachments['send']
-            ];
+            ], n45EmailQueueFields($watcher_message));
         }
         addToMailQueue($data);
 
@@ -314,20 +322,27 @@ if (isset($_POST['edit_ticket'])) {
         // Email content
         $data = []; // Queue array
 
-        $subject = "Ticket Created - [$ticket_prefix$ticket_number] - $ticket_subject";
-        $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>A ticket regarding \"$ticket_subject\" has been created for you.<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status<br>Portal: <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+        $ticket_email = renderN45Email('ticket.created', [
+            'company_name' => $company_name,
+            'contact_name' => $contact_name,
+            'ticket_number' => $ticket_prefix . $ticket_number,
+            'ticket_subject' => $ticket_subject,
+            'ticket_status' => $ticket_status,
+            'message_html' => $ticket_details,
+            'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+            'footer_email' => $config_ticket_from_email,
+            'footer_phone' => $company_phone,
+        ]);
 
 
         // Only add contact to email queue if email is valid
         if (filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
-            $data[] = [
+            $data[] = array_merge([
                 'from' => $config_ticket_from_email,
                 'from_name' => $config_ticket_from_name,
                 'recipient' => $contact_email,
                 'recipient_name' => $contact_name,
-                'subject' => $subject,
-                'body' => $body
-            ];
+            ], n45EmailQueueFields($ticket_email));
         }
 
         addToMailQueue($data);
@@ -510,17 +525,24 @@ if (isset($_POST['edit_ticket_contact'])) {
         // Email content
         $data = []; // Queue array
 
-        $subject = "Ticket Created - [$ticket_prefix$ticket_number] - $ticket_subject";
-        $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>A ticket regarding \"$ticket_subject\" has been created for you.<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status<br>Portal: <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+        $ticket_email = renderN45Email('ticket.created', [
+            'company_name' => $company_name,
+            'contact_name' => $contact_name,
+            'ticket_number' => $ticket_prefix . $ticket_number,
+            'ticket_subject' => $ticket_subject,
+            'ticket_status' => $ticket_status,
+            'message_html' => $ticket_details,
+            'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+            'footer_email' => $config_ticket_from_email,
+            'footer_phone' => $company_phone,
+        ]);
 
-        $data[] = [
+        $data[] = array_merge([
             'from' => $config_ticket_from_email,
             'from_name' => $config_ticket_from_name,
             'recipient' => $contact_email,
             'recipient_name' => $contact_name,
-            'subject' => $subject,
-            'body' => $body
-        ];
+        ], n45EmailQueueFields($ticket_email));
 
         addToMailQueue($data);
     }
@@ -626,17 +648,25 @@ if (isset($_POST['add_ticket_watcher'])) {
                 // Email content
                 $data = []; // Queue array
 
-                $subject = "Ticket Notification - [$ticket_prefix$ticket_number] - $ticket_subject";
-                $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello,<br><br>You have been added as a collaborator on this ticket regarding \"$ticket_subject\".<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status<br>Guest link: https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+                $ticket_email = renderN45Email('ticket.created', [
+                    'company_name' => $company_name,
+                    'contact_name' => '',
+                    'recipient_role' => 'collaborator',
+                    'ticket_number' => $ticket_prefix . $ticket_number,
+                    'ticket_subject' => $ticket_subject,
+                    'ticket_status' => $ticket_status,
+                    'message_html' => $ticket_details,
+                    'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+                    'footer_email' => $config_ticket_from_email,
+                    'footer_phone' => $company_phone,
+                ]);
 
-                $data[] = [
+                $data[] = array_merge([
                     'from' => $config_ticket_from_email,
                     'from_name' => $config_ticket_from_name,
                     'recipient' => $watcher_email,
                     'recipient_name' => $watcher_email,
-                    'subject' => $subject,
-                    'body' => $body
-                ];
+                ], n45EmailQueueFields($ticket_email));
 
                 addToMailQueue($data);
             }
@@ -1429,42 +1459,50 @@ if (isset($_POST['bulk_resolve_tickets'])) {
                     $company_phone = escapeSql(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
 
                     // EMAIL
-                    $subject = "Ticket resolved - [$ticket_prefix$ticket_number] - $ticket_subject | (pending closure)";
-                    $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Your ticket regarding \"$ticket_subject\" has been marked as solved and is pending closure.<br><br>$details<br><br> If your request/issue is resolved, you can simply ignore this email. If you need further assistance, please reply or <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>re-open</a> to let us know! <br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Portal: https://$base_url/client/ticket.php?id=$ticket_id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+                    $ticket_email_context = [
+                        'company_name' => $company_name,
+                        'contact_name' => $contact_name,
+                        'ticket_number' => $ticket_prefix . $ticket_number,
+                        'ticket_subject' => $ticket_subject,
+                        'ticket_status' => 'Resolved',
+                        'message_html' => $details,
+                        'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+                        'footer_email' => $config_ticket_from_email,
+                        'footer_phone' => $company_phone,
+                    ];
+                    $ticket_email = renderN45Email('ticket.resolved', $ticket_email_context);
+                    $data = [];
 
                     // Check email valid
                     if (filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-                        $data = [];
-
                         // Email Ticket Contact
                         // Queue Mail
 
-                        $data[] = [
+                        $data[] = array_merge([
                             'from' => $from_email,
                             'from_name' => $from_name,
                             'recipient' => $contact_email,
                             'recipient_name' => $contact_name,
-                            'subject' => $subject,
-                            'body' => $body
-                        ];
+                        ], n45EmailQueueFields($ticket_email));
                     }
 
                     // Also Email all the watchers
                     $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
-                    $body .= "<br><br>----------------------------------------<br>YOU ARE A COLLABORATOR ON THIS TICKET";
                     while ($row = mysqli_fetch_assoc($sql_watchers)) {
                         $watcher_email = escapeSql($row['watcher_email']);
+                        $watcher_email_context = $ticket_email_context;
+                        $watcher_email_context['contact_name'] = '';
+                        $watcher_email_context['recipient_role'] = 'collaborator';
+                        $watcher_message = renderN45Email('ticket.resolved', $watcher_email_context);
 
                         // Queue Mail
-                        $data[] = [
+                        $data[] = array_merge([
                             'from' => $from_email,
                             'from_name' => $from_name,
                             'recipient' => $watcher_email,
                             'recipient_name' => $watcher_email,
-                            'subject' => $subject,
-                            'body' => $body
-                        ];
+                        ], n45EmailQueueFields($watcher_message));
                     }
                     addToMailQueue($data);
                 } // End Mail IF
@@ -1607,41 +1645,49 @@ if (isset($_POST['bulk_ticket_reply'])) {
             // Send e-mail to client if public update & email is set up
             if ($private_note == 0 && (!empty($config_smtp_provider))) {
 
-                $subject = "Ticket update - [$ticket_prefix$ticket_number] - $ticket_subject";
-                $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Your ticket regarding $ticket_subject has been updated.<br><br>--------------------------------<br>$ticket_reply<br>--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status_name<br>Portal: <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$from_email<br>$company_phone";
+                $ticket_email_context = [
+                    'company_name' => $company_name,
+                    'contact_name' => $contact_name,
+                    'ticket_number' => $ticket_prefix . $ticket_number,
+                    'ticket_subject' => $ticket_subject,
+                    'ticket_status' => $ticket_status_name,
+                    'message_html' => $ticket_reply,
+                    'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+                    'footer_email' => $from_email,
+                    'footer_phone' => $company_phone,
+                ];
+                $ticket_email = renderN45Email('ticket.updated', $ticket_email_context);
+                $data = [];
 
                 if (filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-                    $data = [];
-
                     // Email Ticket Contact
                     // Queue Mail
-                    $data[] = [
+                    $data[] = array_merge([
                         'from' => $from_email,
                         'from_name' => $from_name,
                         'recipient' => $contact_email,
                         'recipient_name' => $contact_name,
-                        'subject' => $subject,
-                        'body' => $body
-                    ];
+                    ], n45EmailQueueFields($ticket_email));
 
                 }
 
                 // Also Email all the watchers
                 $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
-                $body .= "<br><br>----------------------------------------<br>YOU ARE A COLLABORATOR ON THIS TICKET";
                 while ($row = mysqli_fetch_assoc($sql_watchers)) {
                     $watcher_email = escapeSql($row['watcher_email']);
+                    $watcher_email_context = $ticket_email_context;
+                    $watcher_email_context['contact_name'] = '';
+                    $watcher_email_context['recipient_role'] = 'collaborator';
+                    $watcher_message = renderN45Email('ticket.updated', $watcher_email_context);
 
                     // Queue Mail
-                    $data[] = [
+                    $data[] = array_merge([
                         'from' => $from_email,
                         'from_name' => $from_name,
                         'recipient' => $watcher_email,
                         'recipient_name' => $watcher_email,
-                        'subject' => $subject,
-                        'body' => $body
-                    ];
+                    ], n45EmailQueueFields($watcher_message));
                 }
                 addToMailQueue($data);
             } //End Mail IF
@@ -1948,47 +1994,56 @@ if (isset($_POST['add_ticket_reply'])) {
 
             if ($ticket_status == 4) {
                 // Resolved
-                $subject = "Ticket resolved - [$ticket_prefix$ticket_number] - $ticket_subject | (pending closure)";
-                $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Your ticket regarding $ticket_subject has been marked as solved and is pending closure.<br><br>--------------------------------<br>$ticket_reply<br>--------------------------------<br><br>If your request/issue is resolved, you can simply ignore this email. If you need further assistance, please reply or <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>re-open</a> to let us know! <br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status_name<br>Portal: <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+                $email_template_key = 'ticket.resolved';
             } else {
                 // Anything else
-                $subject = "Ticket update - [$ticket_prefix$ticket_number] - $ticket_subject";
-                $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Your ticket regarding $ticket_subject has been updated.<br><br>--------------------------------<br>$ticket_reply<br>--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status_name<br>Portal: <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+                $email_template_key = 'ticket.updated';
             }
+
+            $ticket_email_context = [
+                'company_name' => $company_name,
+                'contact_name' => $contact_name,
+                'ticket_number' => $ticket_prefix . $ticket_number,
+                'ticket_subject' => $ticket_subject,
+                'ticket_status' => $ticket_status_name,
+                'message_html' => $ticket_reply,
+                'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+                'footer_email' => $config_ticket_from_email,
+                'footer_phone' => $company_phone,
+            ];
+            $ticket_email = renderN45Email($email_template_key, $ticket_email_context);
+            $data = [];
 
             if (filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-                $data = [];
-
                 // Email Ticket Contact
                 // Queue Mail
-                $data[] = [
+                $data[] = array_merge([
                     'from' => $config_ticket_from_email,
                     'from_name' => $config_ticket_from_name,
                     'recipient' => $contact_email,
                     'recipient_name' => $contact_name,
-                    'subject' => $subject,
-                    'body' => $body,
                     'attachments' => $emailable_attachments['send']
-                ];
+                ], n45EmailQueueFields($ticket_email));
             }
 
             // Also Email all the watchers
             $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
-            $body .= "<br><br>----------------------------------------<br>YOU ARE A COLLABORATOR ON THIS TICKET";
             while ($row = mysqli_fetch_assoc($sql_watchers)) {
                 $watcher_email = escapeSql($row['watcher_email']);
+                $watcher_email_context = $ticket_email_context;
+                $watcher_email_context['contact_name'] = '';
+                $watcher_email_context['recipient_role'] = 'collaborator';
+                $watcher_message = renderN45Email($email_template_key, $watcher_email_context);
 
                 // Queue Mail
-                $data[] = [
+                $data[] = array_merge([
                     'from' => $config_ticket_from_email,
                     'from_name' => $config_ticket_from_name,
                     'recipient' => $watcher_email,
                     'recipient_name' => $watcher_email,
-                    'subject' => $subject,
-                    'body' => $body,
                     'attachments' => $emailable_attachments['send']
-                ];
+                ], n45EmailQueueFields($watcher_message));
             }
             addToMailQueue($data);
 
@@ -2380,42 +2435,49 @@ if (isset($_GET['resolve_ticket'])) {
         $company_phone = escapeSql(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
 
         // EMAIL
-        $subject = "Ticket resolved - [$ticket_prefix$ticket_number] - $ticket_subject | (pending closure)";
-        $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Your ticket regarding $ticket_subject has been marked as solved and is pending closure.<br><br>If your request/issue is resolved, you can simply ignore this email. If you need further assistance, please reply or <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>re-open</a> to let us know! <br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status<br>Portal: <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+        $ticket_email_context = [
+            'company_name' => $company_name,
+            'contact_name' => $contact_name,
+            'ticket_number' => $ticket_prefix . $ticket_number,
+            'ticket_subject' => $ticket_subject,
+            'ticket_status' => $ticket_status,
+            'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+            'footer_email' => $config_ticket_from_email,
+            'footer_phone' => $company_phone,
+        ];
+        $ticket_email = renderN45Email('ticket.resolved', $ticket_email_context);
+        $data = [];
 
         // Check email valid
         if (filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-            $data = [];
-
             // Email Ticket Contact
             // Queue Mail
 
-            $data[] = [
+            $data[] = array_merge([
                 'from' => $config_ticket_from_email,
                 'from_name' => $config_ticket_from_name,
                 'recipient' => $contact_email,
                 'recipient_name' => $contact_name,
-                'subject' => $subject,
-                'body' => $body
-            ];
+            ], n45EmailQueueFields($ticket_email));
         }
 
         // Also Email all the watchers
         $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
-        $body .= "<br><br>----------------------------------------<br>YOU ARE A COLLABORATOR ON THIS TICKET";
         while ($row = mysqli_fetch_assoc($sql_watchers)) {
             $watcher_email = escapeSql($row['watcher_email']);
+            $watcher_email_context = $ticket_email_context;
+            $watcher_email_context['contact_name'] = '';
+            $watcher_email_context['recipient_role'] = 'collaborator';
+            $watcher_message = renderN45Email('ticket.resolved', $watcher_email_context);
 
             // Queue Mail
-            $data[] = [
+            $data[] = array_merge([
                 'from' => $config_ticket_from_email,
                 'from_name' => $config_ticket_from_name,
                 'recipient' => $watcher_email,
                 'recipient_name' => $watcher_email,
-                'subject' => $subject,
-                'body' => $body
-            ];
+            ], n45EmailQueueFields($watcher_message));
         }
         addToMailQueue($data);
     }

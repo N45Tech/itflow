@@ -189,17 +189,24 @@ if (isset($_POST['bulk_force_recurring_tickets'])) {
                 // Notify client by email their ticket has been raised, if general notifications are turned on & there is a valid contact email
                 if (!empty($config_smtp_provider) && $config_ticket_client_general_notifications == 1 && filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-                    $email_subject = "Ticket Created - [$ticket_prefix$ticket_number] - $ticket_subject (scheduled)";
-                    $email_body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>A ticket regarding \"$ticket_subject\" has been automatically created for you.<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: Open<br>Portal: https://$config_base_url/client/ticket.php?id=$id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+                    $ticket_email = renderN45Email('ticket.created', [
+                        'company_name' => $company_name,
+                        'contact_name' => $contact_name,
+                        'ticket_number' => $ticket_prefix . $ticket_number,
+                        'ticket_subject' => $ticket_subject,
+                        'ticket_status' => 'Open',
+                        'message_html' => $ticket_details,
+                        'action_url' => "https://$config_base_url/client/ticket.php?id=$id",
+                        'footer_email' => $config_ticket_from_email,
+                        'footer_phone' => $company_phone,
+                    ]);
 
-                    $email = [
+                    $email = array_merge([
                         'from' => $config_ticket_from_email,
                         'from_name' => $config_ticket_from_name,
                         'recipient' => $contact_email,
                         'recipient_name' => $contact_name,
-                        'subject' => $email_subject,
-                        'body' => $email_body
-                    ];
+                    ], n45EmailQueueFields($ticket_email));
 
                     $data[] = $email;
 
@@ -336,17 +343,24 @@ if (isset($_GET['force_recurring_ticket'])) {
         // Notify client by email their ticket has been raised, if general notifications are turned on & there is a valid contact email
         if (!empty($config_smtp_provider) && $config_ticket_client_general_notifications == 1 && filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-            $email_subject = "Ticket created - [$ticket_prefix$ticket_number] - $ticket_subject (scheduled)";
-            $email_body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>A ticket regarding \"$ticket_subject\" has been automatically created for you.<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: Open<br>Portal: https://$config_base_url/client/ticket.php?id=$id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+            $ticket_email = renderN45Email('ticket.created', [
+                'company_name' => $company_name,
+                'contact_name' => $contact_name,
+                'ticket_number' => $ticket_prefix . $ticket_number,
+                'ticket_subject' => $ticket_subject,
+                'ticket_status' => 'Open',
+                'message_html' => $ticket_details,
+                'action_url' => "https://$config_base_url/client/ticket.php?id=$id",
+                'footer_email' => $config_ticket_from_email,
+                'footer_phone' => $company_phone,
+            ]);
 
-            $email = [
+            $email = array_merge([
                 'from' => $config_ticket_from_email,
                 'from_name' => $config_ticket_from_name,
                 'recipient' => $contact_email,
                 'recipient_name' => $contact_name,
-                'subject' => $email_subject,
-                'body' => $email_body
-            ];
+            ], n45EmailQueueFields($ticket_email));
 
             $data[] = $email;
 

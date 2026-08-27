@@ -160,16 +160,23 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
     // External email
     $data = [];
     if ($config_ticket_client_general_notifications == 1 && !preg_match($bad_pattern, $contact_email)) {
-        $subject_email = "Ticket created - [$config_ticket_prefix$ticket_number] - $subject";
-        $body = "<i style='color: #808080'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Thank you for your email. A ticket regarding \"$subject\" has been automatically created for you.<br><br>Ticket: $config_ticket_prefix$ticket_number<br>Subject: $subject<br>Status: New<br>Portal: <a href='https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$id&url_key=$url_key'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
-        $data[] = [
+        $ticket_email = renderN45Email('ticket.created', [
+            'company_name' => escapeSql($company_name),
+            'contact_name' => escapeSql($contact_name),
+            'ticket_number' => escapeSql($config_ticket_prefix) . $ticket_number,
+            'ticket_subject' => $subject,
+            'ticket_status' => 'New',
+            'message_html' => $message_esc,
+            'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$id&url_key=$url_key",
+            'footer_email' => escapeSql($config_ticket_from_email),
+            'footer_phone' => escapeSql($company_phone),
+        ]);
+        $data[] = array_merge([
             'from' => $config_ticket_from_email,
             'from_name' => $config_ticket_from_name,
             'recipient' => $contact_email,
             'recipient_name' => $contact_name,
-            'subject' => $subject_email,
-            'body' => mysqli_real_escape_string($mysqli, $body)
-        ];
+        ], n45EmailQueueFields($ticket_email));
     }
 
     // Internal email
@@ -217,6 +224,12 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
     );
 
     // 2) Clean up the remaining message
+
+    // Branded messages include a complete HTML head before the reply marker.
+    // Some mail clients retain that head when quoting the original message, so
+    // remove it as a unit instead of leaving its CSS in the stored client reply.
+    $message = preg_replace('/<head\b[^>]*>.*?<\/head>/is', '', $message);
+    $message = preg_replace('/<style\b[^>]*>.*?<\/style>/is', '', $message);
 
     // Remove DOCTYPE and meta tags
     $message = preg_replace('/<!DOCTYPE[^>]*>/i', '', $message);

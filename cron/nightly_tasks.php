@@ -440,17 +440,24 @@ if (mysqli_num_rows($sql_recurring_tickets) > 0) {
         // Notify client by email their ticket has been raised, if general notifications are turned on & there is a valid contact email
         if (!empty($config_smtp_provider) && $config_ticket_client_general_notifications == 1 && filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-            $email_subject = "Ticket created - [$ticket_prefix$ticket_number] - $ticket_subject (scheduled)";
-            $email_body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>A ticket regarding \"$ticket_subject\" has been automatically created for you.<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: Open<br>Portal: https://$config_base_url/client/ticket.php?id=$id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+            $ticket_email = renderN45Email('ticket.created', [
+                'company_name' => $company_name,
+                'contact_name' => $contact_name,
+                'ticket_number' => $ticket_prefix . $ticket_number,
+                'ticket_subject' => $ticket_subject,
+                'ticket_status' => 'Open',
+                'message_html' => $ticket_details,
+                'action_url' => "https://$config_base_url/client/ticket.php?id=$id",
+                'footer_email' => $config_ticket_from_email,
+                'footer_phone' => $company_phone,
+            ]);
 
-            $email = [
+            $email = array_merge([
                     'from' => $config_ticket_from_email,
                     'from_name' => $config_ticket_from_name,
                     'recipient' => $contact_email,
                     'recipient_name' => $contact_name,
-                    'subject' => $email_subject,
-                    'body' => $email_body
-            ];
+            ], n45EmailQueueFields($ticket_email));
 
             $data[] = $email;
 
@@ -633,24 +640,27 @@ if ($config_send_invoice_reminders == 1) {
                 continue;
             }
 
-            $subject = "Overdue Invoice $invoice_prefix$invoice_number";
-
-            // Only show the paid line if a payment has actually been applied
-            $paid_line = $amount_paid > 0 ? "Amount Paid: " . numfmt_format_currency($currency_format, $amount_paid, $invoice_currency_code) . "<br>" : "";
-
-            $body = "Hello $contact_name,<br><br>Our records indicate that we have not yet received payment in full for the invoice $invoice_prefix$invoice_number. We kindly request that you submit your payment as soon as possible. If you have any questions or concerns, please do not hesitate to contact us at $company_email or $company_phone.
-                <br>
-                Kindly review the invoice details mentioned below.<br><br>Invoice: $invoice_prefix$invoice_number<br>Issue Date: $invoice_date<br>Invoice Total: " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . "<br>$paid_line" . "Balance Due: " . numfmt_format_currency($currency_format, $invoice_balance, $invoice_currency_code) . "<br>Due Date: $invoice_due<br>Over Due By: $day Days<br><br><br>To view your invoice, please click <a href=\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key\'>here</a>.<br><br><br>--<br>$company_name - Billing<br>$config_invoice_from_email<br>$company_phone";
+            $overdue_email = renderN45Email('invoice.overdue', [
+                'company_name' => $company_name,
+                'contact_name' => $contact_name,
+                'invoice_number' => $invoice_prefix . $invoice_number,
+                'issue_date' => $invoice_date,
+                'due_date' => $invoice_due,
+                'amount_paid' => $amount_paid > 0 ? numfmt_format_currency($currency_format, $amount_paid, $invoice_currency_code) : '',
+                'balance_due' => numfmt_format_currency($currency_format, $invoice_balance, $invoice_currency_code),
+                'overdue_by' => "$day days",
+                'action_url' => "https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key",
+                'footer_email' => $config_invoice_from_email,
+                'footer_phone' => $company_phone,
+            ]);
 
             $mail = addToMailQueue([
-                [
+                array_merge([
                     'from' => $config_invoice_from_email,
                     'from_name' => $config_invoice_from_name,
                     'recipient' => $contact_email,
                     'recipient_name' => $contact_name,
-                    'subject' => $subject,
-                    'body' => $body
-                ]
+                ], n45EmailQueueFields($overdue_email))
             ]);
 
             if ($mail === true) {
@@ -661,7 +671,7 @@ if ($config_send_invoice_reminders == 1) {
                 appNotify("Mail", "Failed to send email to $contact_email");
 
                 // Logging
-                logApp("Mail", "error", "Failed to send email to $contact_email regarding $subject. $mail");
+                logApp("Mail", "error", "Failed to send email to $contact_email regarding {$overdue_email['subject']}. $mail");
             }
 
         }
@@ -782,18 +792,28 @@ while ($row = mysqli_fetch_assoc($sql_recurring_invoices)) {
 
     if ($config_recurring_auto_send_invoice == 1 && $recurring_invoice_email_notify == 1) {
 
-        $subject = "Invoice $invoice_prefix$invoice_number";
-        $body = "Hello $contact_name,<br><br>An invoice regarding \"$invoice_scope\" has been generated. Please view the details below.<br><br>Invoice: $invoice_prefix$invoice_number<br>Issue Date: $invoice_date<br>Total: " . numfmt_format_currency($currency_format, $invoice_amount, $recurring_invoice_currency_code) . "<br>Due Date: $invoice_due<br><br><br>To view your invoice, please click <a href=\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$new_invoice_id&url_key=$invoice_url_key\'>here</a>.<br><br><br>--<br>$company_name - Billing<br>$config_invoice_from_email<br>$company_phone";
+        $invoice_email_context = [
+            'company_name' => $company_name,
+            'contact_name' => $contact_name,
+            'invoice_number' => $invoice_prefix . $invoice_number,
+            'invoice_scope' => $invoice_scope,
+            'issue_date' => $invoice_date,
+            'due_date' => $invoice_due,
+            'total' => numfmt_format_currency($currency_format, $invoice_amount, $recurring_invoice_currency_code),
+            'balance_due' => numfmt_format_currency($currency_format, $invoice_amount, $recurring_invoice_currency_code),
+            'action_url' => "https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$new_invoice_id&url_key=$invoice_url_key",
+            'footer_email' => $config_invoice_from_email,
+            'footer_phone' => $company_phone,
+        ];
+        $invoice_email = renderN45Email('invoice.issued', $invoice_email_context);
 
         $mail = addToMailQueue([
-            [
+            array_merge([
                 'from' => $config_invoice_from_email,
                 'from_name' => $config_invoice_from_name,
                 'recipient' => $contact_email,
                 'recipient_name' => $contact_name,
-                'subject' => $subject,
-                'body' => $body
-            ]
+            ], n45EmailQueueFields($invoice_email))
         ]);
 
         if ($mail === true) {
@@ -806,7 +826,7 @@ while ($row = mysqli_fetch_assoc($sql_recurring_invoices)) {
             appNotify("Mail", "Failed to send email to $contact_email");
 
             // Logging
-            logApp("Mail", "error", "Failed to send email to $contact_email regarding $subject. $mail");
+            logApp("Mail", "error", "Failed to send email to $contact_email regarding {$invoice_email['subject']}. $mail");
 
         }
 
@@ -820,16 +840,17 @@ while ($row = mysqli_fetch_assoc($sql_recurring_invoices)) {
         while ($billing_contact = mysqli_fetch_assoc($sql_billing_contacts)) {
             $billing_contact_name = escapeSql($billing_contact['contact_name']);
             $billing_contact_email = escapeSql($billing_contact['contact_email']);
+            $billing_email_context = $invoice_email_context;
+            $billing_email_context['contact_name'] = $billing_contact_name;
+            $billing_email = renderN45Email('invoice.issued', $billing_email_context);
 
             $data = [
-                [
+                array_merge([
                     'from' => $config_invoice_from_email,
                     'from_name' => $config_invoice_from_name,
                     'recipient' => $billing_contact_email,
                     'recipient_name' => $billing_contact_name,
-                    'subject' => $subject,
-                    'body' => $body
-                ]
+                ], n45EmailQueueFields($billing_email))
             ];
 
             addToMailQueue($data);
@@ -974,22 +995,29 @@ while ($row = mysqli_fetch_assoc($sql_recurring_payments)) {
 
                     // RECEIPT EMAIL
                     if (!empty($config_smtp_provider)) {
-                        $subject = "Payment Received - Invoice $invoice_prefix$invoice_number";
-                        $body = "Hello $contact_name<br><br>We have received online payment for the amount of " . numfmt_format_currency($currency_format, $invoice_amount, $recurring_payment_currency_code) . " for invoice <a href=\\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key\\'>$invoice_prefix$invoice_number</a>. Please keep this email as a receipt for your records.<br><br>Amount Paid: " . numfmt_format_currency($currency_format, $invoice_amount, $recurring_payment_currency_code) . "<br><br>Thank you for your business!<br><br><br>--<br>$company_name - Billing Department<br>$config_invoice_from_email<br>$company_phone";
+                        $payment_email = renderN45Email('payment.received', [
+                            'company_name' => $company_name,
+                            'contact_name' => $contact_name,
+                            'invoice_number' => $invoice_prefix . $invoice_number,
+                            'amount_paid' => numfmt_format_currency($currency_format, $invoice_amount, $recurring_payment_currency_code),
+                            'payment_method' => 'Stripe autopay',
+                            'payment_reference' => $pi_id,
+                            'action_url' => "https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key",
+                            'footer_email' => $config_invoice_from_email,
+                            'footer_phone' => $company_phone,
+                        ]);
 
-                        $data = [[
+                        $data = [array_merge([
                             'from' => $config_invoice_from_email,
                             'from_name' => $config_invoice_from_name,
                             'recipient' => $contact_email,
                             'recipient_name' => $contact_name,
-                            'subject' => $subject,
-                            'body' => $body,
-                        ]];
+                        ], n45EmailQueueFields($payment_email))];
 
                         // Internal notification
                         if (!empty($config_invoice_paid_notification_email)) {
                             $subject_int = "Payment Received - $client_name - Invoice $invoice_prefix$invoice_number";
-                            $body_int = "This is a notification that an invoice has been paid in ITFlow. Below is a copy of the receipt sent to the client:-<br><br>--------<br><br>$body";
+                            $body_int = "Invoice $invoice_prefix$invoice_number for $client_name was paid through Stripe autopay.<br><br>Amount received: " . numfmt_format_currency($currency_format, $invoice_amount, $recurring_payment_currency_code) . "<br>Payment reference: $pi_id<br><br>View invoice: https://$config_base_url/agent/invoice.php?invoice_id=$invoice_id";
                             $data[] = [
                                 'from' => $config_invoice_from_email,
                                 'from_name' => $config_invoice_from_name,
