@@ -9,9 +9,11 @@ header("Content-Security-Policy: default-src 'self'");
 require_once "includes/inc_all.php";
 
 $portal_can_accounting = contactCan('accounting') && $config_module_enable_accounting == 1;
+$portal_can_assets = contactCan('assets') && $config_module_enable_itdoc;
 $portal_can_itdoc = contactCan('itdoc') && $config_module_enable_itdoc;
-$portal_can_view_all_tickets = $session_contact_primary == 1 || $session_contact_is_technical_contact;
+$portal_can_view_all_tickets = contactCan('tickets_all');
 $ticket_contact_scope = $portal_can_view_all_tickets ? '' : "AND ticket_contact_id = $session_contact_id";
+$asset_contact_scope = contactCan('assets_all') ? '' : "AND asset_contact_id = $session_contact_id";
 
 $sql_active_tickets = mysqli_query(
     $mysqli,
@@ -164,9 +166,17 @@ $technology_counts = [
     'certificates' => 0,
 ];
 
+if ($portal_can_assets) {
+    $asset_count_result = mysqli_query(
+        $mysqli,
+        "SELECT COUNT(asset_id) AS item_count FROM assets WHERE asset_client_id = $session_client_id $asset_contact_scope AND asset_archived_at IS NULL"
+    );
+    $asset_count_row = mysqli_fetch_assoc($asset_count_result);
+    $technology_counts['assets'] = intval($asset_count_row['item_count'] ?? 0);
+}
+
 if ($portal_can_itdoc) {
     $technology_count_queries = [
-        'assets' => "SELECT COUNT(asset_id) AS item_count FROM assets WHERE asset_client_id = $session_client_id AND asset_archived_at IS NULL",
         'documents' => "SELECT COUNT(document_id) AS item_count FROM documents WHERE document_client_id = $session_client_id AND document_client_visible = 1 AND document_archived_at IS NULL",
         'domains' => "SELECT COUNT(domain_id) AS item_count FROM domains WHERE domain_client_id = $session_client_id AND domain_archived_at IS NULL",
         'certificates' => "SELECT COUNT(certificate_id) AS item_count FROM certificates WHERE certificate_client_id = $session_client_id AND certificate_archived_at IS NULL",
@@ -246,7 +256,7 @@ $hour = intval(date('G'));
 $greeting = $hour < 12 ? 'Good morning' : ($hour < 18 ? 'Good afternoon' : 'Good evening');
 $contact_name_parts = preg_split('/\s+/', trim(stripslashes($session_contact_name)));
 $contact_first_name = escapeHtml($contact_name_parts[0] ?? $session_contact_name);
-$show_summary_rail = $portal_can_accounting || $portal_can_itdoc;
+$show_summary_rail = $portal_can_accounting || $portal_can_assets || $portal_can_itdoc;
 
 $status_class = static function ($status) {
     switch (strtolower((string) $status)) {
@@ -369,7 +379,7 @@ $status_class = static function ($status) {
 
     <?php if ($show_summary_rail) { ?>
         <aside class="n45-portal-summary-rail" aria-label="Account summaries">
-            <?php if ($portal_can_itdoc) { ?>
+            <?php if ($portal_can_assets || $portal_can_itdoc) { ?>
                 <section class="n45-portal-panel n45-summary-panel" aria-labelledby="technology-title">
                     <div class="n45-portal-section-heading">
                         <div>
@@ -382,18 +392,20 @@ $status_class = static function ($status) {
                             <dt><span class="n45-summary-icon"><i class="fas fa-desktop" aria-hidden="true"></i></span>Managed devices</dt>
                             <dd><?= $technology_counts['assets'] ?></dd>
                         </div>
-                        <div>
-                            <dt><span class="n45-summary-icon"><i class="far fa-file-alt" aria-hidden="true"></i></span>Documents</dt>
-                            <dd><?= $technology_counts['documents'] ?></dd>
-                        </div>
-                        <div>
-                            <dt><span class="n45-summary-icon"><i class="fas fa-globe" aria-hidden="true"></i></span>Domains</dt>
-                            <dd><?= $technology_counts['domains'] ?></dd>
-                        </div>
-                        <div>
-                            <dt><span class="n45-summary-icon"><i class="fas fa-shield-alt" aria-hidden="true"></i></span>Certificates</dt>
-                            <dd><?= $technology_counts['certificates'] ?></dd>
-                        </div>
+                        <?php if ($portal_can_itdoc) { ?>
+                            <div>
+                                <dt><span class="n45-summary-icon"><i class="far fa-file-alt" aria-hidden="true"></i></span>Documents</dt>
+                                <dd><?= $technology_counts['documents'] ?></dd>
+                            </div>
+                            <div>
+                                <dt><span class="n45-summary-icon"><i class="fas fa-globe" aria-hidden="true"></i></span>Domains</dt>
+                                <dd><?= $technology_counts['domains'] ?></dd>
+                            </div>
+                            <div>
+                                <dt><span class="n45-summary-icon"><i class="fas fa-shield-alt" aria-hidden="true"></i></span>Certificates</dt>
+                                <dd><?= $technology_counts['certificates'] ?></dd>
+                            </div>
+                        <?php } ?>
                     </dl>
                     <a href="assets.php" class="n45-portal-panel-action">
                         View technology

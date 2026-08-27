@@ -10,7 +10,8 @@ $sql = mysqli_query($mysqli, "SELECT contact_archived_at, contact_billing, conta
     contact_department, contact_email, contact_extension, contact_important,
     contact_location_id, contact_mobile, contact_mobile_country_code, contact_name,
     contact_notes, contact_phone, contact_phone_country_code, contact_photo, contact_pin,
-    contact_primary, contact_technical, contact_title, contact_user_id, user_auth_method FROM contacts
+    contact_primary, contact_technical, contact_portal_ticket_scope, contact_portal_asset_scope,
+    contact_portal_manage_contacts, contact_title, contact_user_id, user_auth_method FROM contacts
     LEFT JOIN users ON user_id = contact_user_id
     WHERE contact_id = $contact_id
     LIMIT 1"
@@ -35,6 +36,8 @@ $contact_primary = intval($row['contact_primary']);
 $contact_important = intval($row['contact_important']);
 $contact_billing = intval($row['contact_billing']);
 $contact_technical = intval($row['contact_technical']);
+$contact_portal_role = $contact_primary === 1 || ($row['contact_portal_ticket_scope'] === 'client' && $row['contact_portal_asset_scope'] === 'client') ? 'manager' : 'user';
+$contact_portal_manage_contacts = $contact_primary === 1 ? 1 : intval($row['contact_portal_manage_contacts']);
 $contact_created_at = escapeHtml($row['contact_created_at']);
 $contact_archived_at = escapeHtml($row['contact_archived_at']);
 $contact_location_id = intval($row['contact_location_id']);
@@ -280,10 +283,25 @@ ob_start();
                             <div class="custom-control custom-checkbox">
                                 <input type="checkbox" class="custom-control-input" id="contactTechnicalCheckbox<?= $contact_id ?>" name="contact_technical" value="1" <?php if ($contact_technical == 1) { echo "checked"; } ?>>
                                 <label class="custom-control-label" for="contactTechnicalCheckbox<?= $contact_id ?>">Technical</label>
+                                <p class="text-secondary"><small>Service notifications and technical records</small></p>
                             </div>
                         </div>
                     </div>
 
+                </div>
+
+                <div class="form-group">
+                    <label for="contactPortalRole<?= $contact_id ?>">Client portal access</label>
+                    <select class="form-control" id="contactPortalRole<?= $contact_id ?>" name="contact_portal_role">
+                        <option value="user" <?= $contact_portal_role === 'user' ? 'selected' : '' ?>>Portal user — own tickets and assigned assets</option>
+                        <option value="manager" <?= $contact_portal_role === 'manager' ? 'selected' : '' ?>>Portal manager — all client tickets and assets</option>
+                    </select>
+                    <small class="form-text text-muted">Billing, technical contact status, and contact management are assigned separately.</small>
+                </div>
+
+                <div class="custom-control custom-checkbox mb-3">
+                    <input type="checkbox" class="custom-control-input" id="contactManageContactsCheckbox<?= $contact_id ?>" name="contact_portal_manage_contacts" value="1" <?= $contact_portal_manage_contacts === 1 ? 'checked' : '' ?>>
+                    <label class="custom-control-label" for="contactManageContactsCheckbox<?= $contact_id ?>">Can manage client portal contacts and permissions</label>
                 </div>
 
             </div>

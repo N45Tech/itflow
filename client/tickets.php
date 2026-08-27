@@ -118,7 +118,7 @@ $total_tickets = intval($row['total_tickets']);
         <a href="?status=%" class="n45-ticket-filter <?= $status === '%' ? 'active' : '' ?>" <?= $status === '%' ? 'aria-current="page"' : '' ?>>
             <span>All mine</span><strong><?= $total_tickets ?></strong>
         </a>
-        <?php if ($session_contact_primary == 1 || $session_contact_is_technical_contact) { ?>
+        <?php if (contactCan('tickets_all')) { ?>
             <a href="ticket_view_all.php" class="n45-ticket-filter">
                 <span>Organization tickets</span><i class="fas fa-arrow-right" aria-hidden="true"></i>
             </a>

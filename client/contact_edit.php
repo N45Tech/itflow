@@ -19,7 +19,8 @@ if (!isset($_GET['id']) && !intval($_GET['id'])) {
 $contact_id = intval($_GET['id']);
 
 $sql_contact = mysqli_query(
-    $mysqli, "SELECT contact_id, contact_name, contact_email, contact_primary, contact_technical, contact_billing, user_auth_method
+    $mysqli, "SELECT contact_id, contact_name, contact_email, contact_primary, contact_technical, contact_billing,
+        contact_portal_ticket_scope, contact_portal_asset_scope, contact_portal_manage_contacts, user_auth_method
     FROM contacts
     LEFT JOIN users ON user_id = contact_user_id
     WHERE contact_id = $contact_id AND contact_client_id = $session_client_id AND contacts.contact_archived_at IS NULL LIMIT 1"
@@ -34,6 +35,8 @@ if ($row) {
     $contact_primary = intval($row['contact_primary']);
     $contact_technical = intval($row['contact_technical']);
     $contact_billing = intval($row['contact_billing']);
+    $contact_portal_role = portalAccessRoleFromScopes($row['contact_portal_ticket_scope'], $row['contact_portal_asset_scope']);
+    $contact_portal_manage_contacts = intval($row['contact_portal_manage_contacts']);
     $contact_auth_method = escapeHtml($row['user_auth_method']);
 } else {
     header("Location: post.php?logout");
@@ -81,25 +84,39 @@ if ($row) {
                 </div>
             </div>
 
-            <label>Roles:</label>
-            <div class="form-row">
-                <div class="col-md-4">
-                    <div class="form-group">
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="contactBillingCheckbox" name="contact_billing" value="1" <?php if ($contact_billing == 1) { echo "checked"; } ?>>
-                            <label class="custom-control-label" for="contactBillingCheckbox">Billing</label>
-                        </div>
+            <fieldset class="n45-permission-group">
+                <legend>Portal access</legend>
+                <p class="n45-field-help">Choose what support and inventory information this person can see.</p>
+                <div class="n45-choice-row">
+                    <label class="n45-choice-option" for="portalRoleUser">
+                        <input type="radio" id="portalRoleUser" name="contact_portal_role" value="user" <?= $contact_portal_role === 'user' ? 'checked' : '' ?>>
+                        <span><strong>Portal user</strong><small>Only their tickets and assigned assets</small></span>
+                    </label>
+                    <label class="n45-choice-option" for="portalRoleManager">
+                        <input type="radio" id="portalRoleManager" name="contact_portal_role" value="manager" <?= $contact_portal_role === 'manager' ? 'checked' : '' ?>>
+                        <span><strong>Portal manager</strong><small>All organization tickets and assets</small></span>
+                    </label>
+                </div>
+            </fieldset>
+
+            <fieldset class="n45-permission-group">
+                <legend>Additional permissions</legend>
+                <p class="n45-field-help">These permissions are independent of the portal access role.</p>
+                <div class="n45-permission-grid">
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="contactBillingCheckbox" name="contact_billing" value="1" <?php if ($contact_billing == 1) { echo "checked"; } ?>>
+                        <label class="custom-control-label" for="contactBillingCheckbox"><span><strong>Billing</strong><small>Invoices, quotes, and payment methods</small></span></label>
+                    </div>
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="contactTechnicalCheckbox" name="contact_technical" value="1" <?php if ($contact_technical == 1) { echo "checked"; } ?>>
+                        <label class="custom-control-label" for="contactTechnicalCheckbox"><span><strong>Technical contact</strong><small>Technical records and service notifications</small></span></label>
+                    </div>
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="contactManageContactsCheckbox" name="contact_portal_manage_contacts" value="1" <?php if ($contact_portal_manage_contacts == 1) { echo "checked"; } ?>>
+                        <label class="custom-control-label" for="contactManageContactsCheckbox"><span><strong>Manage contacts</strong><small>Create contacts and assign portal permissions</small></span></label>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="form-group">
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="contactTechnicalCheckbox" name="contact_technical" value="1" <?php if ($contact_technical == 1) { echo "checked"; } ?>>
-                            <label class="custom-control-label" for="contactTechnicalCheckbox">Technical</label>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            </fieldset>
 
             <div class="form-group">
                 <label for="contactAuthMethod">Portal authentication</label>

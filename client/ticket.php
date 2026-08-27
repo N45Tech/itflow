@@ -20,8 +20,8 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
     $ticket_id = intval($_GET['id']);
 
     $ticket_contact_snippet = "AND ticket_contact_id = $session_contact_id";
-    // Bypass ticket contact being session_id for a primary / technical contact viewing all tickets
-    if ($session_contact_primary == 1 || $session_contact_is_technical_contact) {
+    // Organization-wide ticket access bypasses the individual contact filter.
+    if (contactCan('tickets_all')) {
         $ticket_contact_snippet = '';
     }
 

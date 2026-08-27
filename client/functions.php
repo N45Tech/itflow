@@ -10,7 +10,7 @@
 function verifyContactTicketAccess($requested_ticket_id, $expected_ticket_state) {
 
     // Access the global variables
-    global $mysqli, $session_contact_id, $session_contact_primary, $session_contact_is_technical_contact, $session_client_id;
+    global $mysqli, $session_contact_id, $session_client_id;
 
     // Setup
     if ($expected_ticket_state == "Closed") {
@@ -26,8 +26,8 @@ function verifyContactTicketAccess($requested_ticket_id, $expected_ticket_state)
     if ($row) {
         $ticket_id = $row['ticket_id'];
 
-        if (intval($ticket_id) && ($session_contact_id == $row['ticket_contact_id'] || $session_contact_primary == 1 || $session_contact_is_technical_contact)) {
-            // Client is ticket owner, primary contact, or a technical contact
+        if (intval($ticket_id) && ($session_contact_id == $row['ticket_contact_id'] || contactCan('tickets_all'))) {
+            // Client is the ticket owner or has organization-wide ticket access.
             return true;
         }
     }
@@ -39,11 +39,12 @@ function verifyContactTicketAccess($requested_ticket_id, $expected_ticket_state)
 
 /*
  * Portal access control - single source of truth for what a logged-in contact can do.
- * Primary contacts have full access; others are gated by their billing / technical flags.
+ * Primary contacts have full access; all other capabilities are independent.
  * Capabilities are named by area so the rule for one can change without touching callers.
  */
 function contactCan($capability) {
-    global $session_contact_primary, $session_contact_is_billing_contact, $session_contact_is_technical_contact;
+    global $session_contact_primary, $session_contact_is_billing_contact, $session_contact_is_technical_contact,
+        $session_contact_ticket_scope, $session_contact_asset_scope, $session_contact_can_manage_contacts;
 
     // Primary contacts can do everything in the portal
     if ($session_contact_primary == 1) {
@@ -54,13 +55,46 @@ function contactCan($capability) {
         case 'accounting':   // invoices, quotes, recurring invoices, saved payment methods
             return (bool) $session_contact_is_billing_contact;
 
-        case 'itdoc':        // assets, certificates, domains, documents, files
-        case 'contacts':     // view / manage contacts
+        case 'tickets_all':  // all tickets for the client organization
+            return ($session_contact_ticket_scope ?? 'own') === 'client';
+
+        case 'assets_all':   // all assets for the client organization
+            return ($session_contact_asset_scope ?? 'assigned') === 'client';
+
+        case 'assets':       // every portal contact may view their permitted asset inventory
+            return true;
+
+        case 'itdoc':        // certificates, domains, documents, files
             return (bool) $session_contact_is_technical_contact;
+
+        case 'contacts':     // view / manage client contacts
+            return (bool) ($session_contact_can_manage_contacts ?? false);
 
         default:             // unknown capability -> deny (fail closed)
             return false;
     }
+}
+
+/*
+ * Normalize the two simple portal roles exposed in contact forms. The database
+ * stores ticket and asset scopes separately so they can evolve independently.
+ */
+function portalAccessScopesFromRole($role) {
+    if ($role === 'manager') {
+        return [
+            'ticket_scope' => 'client',
+            'asset_scope' => 'client',
+        ];
+    }
+
+    return [
+        'ticket_scope' => 'own',
+        'asset_scope' => 'assigned',
+    ];
+}
+
+function portalAccessRoleFromScopes($ticket_scope, $asset_scope) {
+    return $ticket_scope === 'client' && $asset_scope === 'client' ? 'manager' : 'user';
 }
 
 /*

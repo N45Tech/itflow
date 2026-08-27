@@ -15,7 +15,10 @@ $portal_billing_active = in_array($portal_current_page, ['invoices.php', 'unpaid
 $portal_technology_active = in_array($portal_current_page, ['assets.php', 'documents.php', 'document.php', 'domains.php', 'certificates.php', 'contacts.php'], true);
 $portal_account_active = $portal_current_page === 'profile.php';
 $portal_can_accounting = contactCan('accounting') && $config_module_enable_accounting == 1;
+$portal_can_assets = contactCan('assets') && $config_module_enable_itdoc;
 $portal_can_itdoc = contactCan('itdoc') && $config_module_enable_itdoc;
+$portal_can_contacts = contactCan('contacts');
+$portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_contacts;
 ?>
 
 <!DOCTYPE html>
@@ -78,7 +81,7 @@ $portal_can_itdoc = contactCan('itdoc') && $config_module_enable_itdoc;
                 </details>
             <?php } ?>
 
-            <?php if ($portal_can_itdoc) { ?>
+            <?php if ($portal_can_technology) { ?>
                 <details class="n45-portal-nav-group" <?= $portal_technology_active ? 'open' : '' ?>>
                     <summary class="n45-portal-nav-item <?= $portal_technology_active ? 'active' : '' ?>">
                         <i class="fas fa-fw fa-desktop" aria-hidden="true"></i>
@@ -86,11 +89,17 @@ $portal_can_itdoc = contactCan('itdoc') && $config_module_enable_itdoc;
                         <i class="fas fa-chevron-down n45-portal-nav-chevron" aria-hidden="true"></i>
                     </summary>
                     <div class="n45-portal-subnav">
-                        <a href="/client/assets.php" <?= $portal_current_page === 'assets.php' ? 'aria-current="page"' : '' ?>>Assets</a>
-                        <a href="/client/documents.php" <?= in_array($portal_current_page, ['documents.php', 'document.php'], true) ? 'aria-current="page"' : '' ?>>Documents</a>
-                        <a href="/client/domains.php" <?= $portal_current_page === 'domains.php' ? 'aria-current="page"' : '' ?>>Domains</a>
-                        <a href="/client/certificates.php" <?= $portal_current_page === 'certificates.php' ? 'aria-current="page"' : '' ?>>Certificates</a>
-                        <a href="/client/contacts.php" <?= $portal_current_page === 'contacts.php' ? 'aria-current="page"' : '' ?>>Contacts</a>
+                        <?php if ($portal_can_assets) { ?>
+                            <a href="/client/assets.php" <?= $portal_current_page === 'assets.php' ? 'aria-current="page"' : '' ?>>Assets</a>
+                        <?php } ?>
+                        <?php if ($portal_can_itdoc) { ?>
+                            <a href="/client/documents.php" <?= in_array($portal_current_page, ['documents.php', 'document.php'], true) ? 'aria-current="page"' : '' ?>>Documents</a>
+                            <a href="/client/domains.php" <?= $portal_current_page === 'domains.php' ? 'aria-current="page"' : '' ?>>Domains</a>
+                            <a href="/client/certificates.php" <?= $portal_current_page === 'certificates.php' ? 'aria-current="page"' : '' ?>>Certificates</a>
+                        <?php } ?>
+                        <?php if ($portal_can_contacts) { ?>
+                            <a href="/client/contacts.php" <?= $portal_current_page === 'contacts.php' ? 'aria-current="page"' : '' ?>>Contacts</a>
+                        <?php } ?>
                     </div>
                 </details>
             <?php } ?>

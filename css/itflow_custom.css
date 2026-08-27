@@ -2607,6 +2607,115 @@ label,
     padding-top: var(--n45-portal-space-4);
 }
 
+.n45-permission-group {
+    border: 0;
+    border-top: 1px solid var(--n45-portal-border);
+    margin: var(--n45-portal-space-6) 0 0;
+    padding: var(--n45-portal-space-6) 0 0;
+}
+
+.n45-permission-group legend {
+    color: var(--n45-portal-mountain);
+    float: none;
+    font-size: 1rem;
+    font-weight: 750;
+    margin: 0 0 var(--n45-portal-space-1);
+    width: auto;
+}
+
+.n45-field-help {
+    color: var(--n45-portal-stone);
+    font-size: .875rem;
+    margin: 0 0 var(--n45-portal-space-4);
+}
+
+.n45-choice-row,
+.n45-permission-grid {
+    display: grid;
+    gap: var(--n45-portal-space-3);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.n45-choice-option {
+    align-items: flex-start;
+    background: var(--n45-portal-surface);
+    border: 1px solid #aebdb7;
+    border-radius: .625rem;
+    cursor: pointer;
+    display: flex;
+    gap: var(--n45-portal-space-3);
+    margin: 0 !important;
+    min-height: 5rem;
+    padding: var(--n45-portal-space-4);
+    transition: background-color var(--n45-ease), border-color var(--n45-ease);
+}
+
+.n45-choice-option:hover,
+.n45-choice-option:has(input:checked) {
+    background: var(--n45-portal-action-soft);
+    border-color: var(--n45-portal-action);
+}
+
+.n45-choice-option input {
+    accent-color: var(--n45-portal-action);
+    flex: 0 0 auto;
+    height: 1.125rem;
+    margin-top: .15rem;
+    width: 1.125rem;
+}
+
+.n45-choice-option span,
+.n45-choice-option strong,
+.n45-choice-option small,
+.n45-permission-grid .custom-control-label span,
+.n45-permission-grid .custom-control-label strong,
+.n45-permission-grid .custom-control-label small {
+    display: block;
+}
+
+.n45-choice-option strong,
+.n45-permission-grid .custom-control-label strong {
+    color: var(--n45-portal-mountain);
+    font-size: .925rem;
+}
+
+.n45-choice-option small,
+.n45-permission-grid .custom-control-label small {
+    color: var(--n45-portal-stone);
+    font-size: .8rem;
+    font-weight: 400;
+    line-height: 1.4;
+    margin-top: var(--n45-portal-space-1);
+}
+
+.n45-permission-grid .custom-control {
+    border-bottom: 1px solid var(--n45-portal-border);
+    min-height: 4.25rem;
+}
+
+.n45-permission-grid .custom-control-label {
+    align-items: flex-start;
+    padding-top: .55rem;
+}
+
+.n45-access-badge {
+    background: var(--n45-portal-action-soft);
+    border-radius: .375rem;
+    color: var(--n45-portal-action-hover);
+    display: inline-block;
+    font-size: .75rem;
+    font-weight: 750;
+    padding: .35rem .55rem;
+    white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+    .n45-choice-row,
+    .n45-permission-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 .n45-table-scroll {
     background: var(--n45-portal-surface);
     border: 1px solid var(--n45-portal-border);

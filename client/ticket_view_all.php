@@ -7,7 +7,7 @@
 require_once 'includes/inc_all.php';
 
 
-if ($session_contact_primary == 0 && !$session_contact_is_technical_contact) {
+if (!contactCan('tickets_all')) {
     header("Location: post.php?logout");
     exit();
 }

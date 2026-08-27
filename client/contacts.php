@@ -10,7 +10,9 @@ require_once "includes/inc_all.php";
 
 enforceContactCan('contacts');
 
-$contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_email, contact_primary, contact_technical, contact_billing FROM contacts WHERE contact_client_id = $session_client_id AND contacts.contact_archived_at IS NULL ORDER BY contact_created_at");
+$contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_email, contact_primary, contact_technical, contact_billing,
+    contact_portal_ticket_scope, contact_portal_asset_scope, contact_portal_manage_contacts
+    FROM contacts WHERE contact_client_id = $session_client_id AND contacts.contact_archived_at IS NULL ORDER BY contact_created_at");
 ?>
 
     <header class="n45-page-header">
@@ -23,16 +25,14 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
         </div>
     </header>
 
-    <div class="row">
-
-        <div class="col-md-10">
-
-            <table class="table tabled-bordered border border-dark">
+    <div class="n45-table-scroll" tabindex="0" role="region" aria-label="Client contacts">
+            <table class="table">
                 <thead class="thead-dark">
                 <tr>
                     <th>Name</th>
                     <th>Email</th>
-                    <th>Roles</th>
+                    <th>Portal access</th>
+                    <th>Additional permissions</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -45,33 +45,32 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
                     $contact_primary = intval($row['contact_primary']);
                     $contact_technical = intval($row['contact_technical']);
                     $contact_billing = intval($row['contact_billing']);
+                    $contact_portal_role = portalAccessRoleFromScopes($row['contact_portal_ticket_scope'], $row['contact_portal_asset_scope']);
+                    $contact_portal_manage_contacts = intval($row['contact_portal_manage_contacts']);
 
-                    $contact_roles_display = '-';
+                    $contact_role_display = $contact_portal_role === 'manager' ? 'Portal manager' : 'Portal user';
                     if ($contact_primary) {
-                        $contact_roles_display = 'Primary contact';
-                    } else if ($contact_technical && $contact_billing) {
-                        $contact_roles_display = 'Technical & Billing';
-                    } else if ($contact_technical) {
-                        $contact_roles_display = 'Technical';
-                    } else if ($contact_billing) {
-                        $contact_roles_display = 'Billing';
+                        $contact_role_display = 'Primary contact';
                     }
+
+                    $additional_permissions = [];
+                    if ($contact_billing) { $additional_permissions[] = 'Billing'; }
+                    if ($contact_technical) { $additional_permissions[] = 'Technical contact'; }
+                    if ($contact_portal_manage_contacts) { $additional_permissions[] = 'Manage contacts'; }
 
                     ?>
 
                     <tr>
                         <td><a href="contact_edit.php?id=<?= $contact_id ?>"><?= $contact_name ?></a></td>
                         <td><?= $contact_email ?></td>
-                        <td><?= $contact_roles_display ?></td>
+                        <td><span class="n45-access-badge"><?= escapeHtml($contact_role_display) ?></span></td>
+                        <td><?= $additional_permissions ? escapeHtml(implode(' · ', $additional_permissions)) : '<span class="text-muted">None</span>' ?></td>
                     </tr>
 
                 <?php } ?>
 
                 </tbody>
             </table>
-
-        </div>
-
     </div>
 
 <?php

@@ -19,6 +19,16 @@ if (isset($_POST['add_ticket'])) {
     $category = intval($_POST['category']);
     $asset = intval($_POST['asset']);
 
+    // Reject asset IDs outside the contact's permitted inventory. This protects
+    // the server-side boundary even if a form value is changed in the browser.
+    if ($asset > 0) {
+        $asset_contact_scope = contactCan('assets_all') ? '' : "AND asset_contact_id = $session_contact_id";
+        $asset_sql = mysqli_query($mysqli, "SELECT asset_id FROM assets WHERE asset_id = $asset AND asset_client_id = $session_client_id $asset_contact_scope AND asset_archived_at IS NULL LIMIT 1");
+        if (!$asset_sql || mysqli_num_rows($asset_sql) !== 1) {
+            $asset = 0;
+        }
+    }
+
     // Get settings from load_global_settings.php
     $config_ticket_prefix = escapeSql($config_ticket_prefix);
     $config_ticket_from_name = escapeSql($config_ticket_from_name);
@@ -389,6 +399,10 @@ if (isset($_POST['add_contact'])) {
     $contact_email = escapeSql($_POST['contact_email']);
     $contact_technical = intval($_POST['contact_technical'] ?? 0);
     $contact_billing = intval($_POST['contact_billing'] ?? 0);
+    $contact_portal_manage_contacts = intval($_POST['contact_portal_manage_contacts'] ?? 0);
+    $portal_scopes = portalAccessScopesFromRole($_POST['contact_portal_role'] ?? 'user');
+    $contact_portal_ticket_scope = $portal_scopes['ticket_scope'];
+    $contact_portal_asset_scope = $portal_scopes['asset_scope'];
     $contact_auth_method = escapeSql($_POST['contact_auth_method']);
 
     // Check the email isn't already in use
@@ -411,7 +425,7 @@ if (isset($_POST['add_contact'])) {
     }
 
     // Create contact record
-    mysqli_query($mysqli, "INSERT INTO contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_client_id = $session_client_id, contact_user_id = $contact_user_id");
+    mysqli_query($mysqli, "INSERT INTO contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_client_id = $session_client_id, contact_user_id = $contact_user_id");
 
     $contact_id = mysqli_insert_id($mysqli);
 
@@ -442,6 +456,10 @@ if (isset($_POST['edit_contact'])) {
     $contact_email = escapeSql($_POST['contact_email']);
     $contact_technical = intval($_POST['contact_technical'] ?? 0);
     $contact_billing = intval($_POST['contact_billing'] ?? 0);
+    $contact_portal_manage_contacts = intval($_POST['contact_portal_manage_contacts'] ?? 0);
+    $portal_scopes = portalAccessScopesFromRole($_POST['contact_portal_role'] ?? 'user');
+    $contact_portal_ticket_scope = $portal_scopes['ticket_scope'];
+    $contact_portal_asset_scope = $portal_scopes['asset_scope'];
     $contact_auth_method = escapeSql($_POST['contact_auth_method']);
 
     // Get the existing contact_user_id - we look it up ourselves so the user can't just overwrite random users
@@ -469,7 +487,7 @@ if (isset($_POST['edit_contact'])) {
     }
 
     // Update contact
-    mysqli_query($mysqli, "UPDATE contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_user_id = $contact_user_id WHERE contact_id = $contact_id AND contact_client_id = $session_client_id AND contact_archived_at IS NULL AND contact_primary = 0 AND contact_id != $session_contact_id");
+    mysqli_query($mysqli, "UPDATE contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_user_id = $contact_user_id WHERE contact_id = $contact_id AND contact_client_id = $session_client_id AND contact_archived_at IS NULL AND contact_primary = 0 AND contact_id != $session_contact_id");
 
     logAudit("Contact", "Edit", "Client contact $session_contact_name edited contact $contact_name in the client portal", $session_client_id, $contact_id);
 
