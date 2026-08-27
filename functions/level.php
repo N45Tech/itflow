@@ -2,18 +2,75 @@
 
 // Level.io RMM API, synchronization, webhook, and alert-ticket helpers.
 
-function levelAllowedWebhookEvents(): array
+function levelWebhookEventDefinitions(): array
 {
     return [
-        'alert_active',
-        'alert_resolved',
-        'device_created',
-        'device_updated',
-        'device_deleted',
-        'group_created',
-        'group_updated',
-        'group_deleted',
+        'alert_active' => ['resource' => 'alert', 'action' => 'active'],
+        'alert_resolved' => ['resource' => 'alert', 'action' => 'resolved'],
+        'device_created' => ['resource' => 'device', 'action' => 'created'],
+        'device_updated' => ['resource' => 'device', 'action' => 'updated'],
+        'device_deleted' => ['resource' => 'device', 'action' => 'deleted'],
+        'group_created' => ['resource' => 'group', 'action' => 'created'],
+        'group_updated' => ['resource' => 'group', 'action' => 'updated'],
+        'group_deleted' => ['resource' => 'group', 'action' => 'deleted'],
     ];
+}
+
+function levelAllowedWebhookEvents(): array
+{
+    return array_keys(levelWebhookEventDefinitions());
+}
+
+function levelWebhookEventDefinition(string $event_type): ?array
+{
+    $definitions = levelWebhookEventDefinitions();
+
+    return $definitions[$event_type] ?? null;
+}
+
+/*
+ * Validate the envelope and the minimum identity fields required to route the
+ * event. Create/update payloads are deliberately not trusted as a complete
+ * resource snapshot: the processor re-fetches devices and groups by this id.
+ */
+function levelWebhookValidationError(array $event): ?string
+{
+    if (!is_string($event['event_type'] ?? null)) {
+        return 'Unsupported Level event type';
+    }
+    $event_type = $event['event_type'];
+    $definition = levelWebhookEventDefinition($event_type);
+    if ($definition === null) {
+        return 'Unsupported Level event type';
+    }
+
+    if (!is_string($event['event_id'] ?? null)) {
+        return 'Invalid Level event id';
+    }
+    $event_id = $event['event_id'];
+    if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $event_id)) {
+        return 'Invalid Level event id';
+    }
+
+    if (levelDateTimeValue($event['occurred_at'] ?? null) === null) {
+        return 'Invalid Level event timestamp';
+    }
+
+    $data = $event['data'] ?? null;
+    if (!is_array($data)) {
+        return 'Invalid Level event data';
+    }
+
+    if (!is_string($data['id'] ?? null) || levelLimitText($data['id'], 255) === '') {
+        return 'Level event is missing its resource id';
+    }
+
+    if ($definition['resource'] === 'alert'
+        && (!is_string($data['device_id'] ?? null) || levelLimitText($data['device_id'], 255) === '')) {
+        return 'Level alert event is missing its device id';
+    }
+
+    return null;
 }
 
 function levelWebhookSignatureIsValid(string $raw_body, string $signature, string $secret): bool
@@ -251,6 +308,43 @@ function levelMarkGroupDeleted($group_id): void
     if ($group_id !== '') {
         mysqli_query($mysqli, "UPDATE level_group_mappings SET level_group_deleted_at = NOW() WHERE level_group_id = '$group_id'");
     }
+}
+
+function levelFetchAndStoreGroup(string $group_id): array
+{
+    $group_id = levelLimitText($group_id, 255);
+    if ($group_id === '') {
+        throw new InvalidArgumentException('Level group id is required');
+    }
+
+    $response = levelRequest('GET', '/v2/groups/' . rawurlencode($group_id));
+    if (!$response['ok']) {
+        // Webhooks can be delayed or retried out of order. A 404 is the current
+        // authoritative state even if this delivery was originally "created" or
+        // "updated", so do not resurrect a group from the stale webhook body.
+        if ($response['status'] === 404) {
+            levelMarkGroupDeleted($group_id);
+            levelQueueCronJob('level_sync');
+            return ['result' => 'deleted', 'group_id' => $group_id];
+        }
+
+        throw new RuntimeException($response['error']);
+    }
+
+    $group = $response['data'];
+    if (!is_array($group) || levelLimitText($group['id'] ?? '', 255) !== $group_id) {
+        throw new RuntimeException('Level returned a different group than the webhook resource');
+    }
+
+    if (!levelStoreGroup($group)) {
+        throw new RuntimeException('Could not update the Level group mapping');
+    }
+
+    // A parent or hierarchy change can alter inherited client routing for every
+    // device below this group. One coalesced reconciliation updates those assets.
+    levelQueueCronJob('level_sync');
+
+    return ['result' => 'updated', 'group_id' => $group_id];
 }
 
 function levelDiscoverGroups(): int
@@ -577,7 +671,19 @@ function levelFetchAndSyncDevice(string $device_id): array
         'include_security' => 'true',
     ]);
     if (!$response['ok']) {
+        // Reconcile against current Level state instead of applying a potentially
+        // stale event action. This also makes delayed create/update deliveries
+        // harmless after the device has already been deleted.
+        if ($response['status'] === 404) {
+            levelMarkDeviceDeleted($device_id);
+            return ['result' => 'deleted', 'device_id' => $device_id];
+        }
+
         throw new RuntimeException($response['error']);
+    }
+
+    if (levelLimitText($response['data']['id'] ?? '', 255) !== $device_id) {
+        throw new RuntimeException('Level returned a different device than the webhook resource');
     }
 
     return levelSyncDevice($response['data']);
@@ -671,6 +777,18 @@ function levelUpsertAlertLink(array $alert, ?int $ticket_id, ?int $asset_id, ?st
         level_alert_last_event_at = COALESCE(VALUES(level_alert_last_event_at), level_alert_last_event_at)");
 }
 
+function levelWebhookEventIsOlder(?string $incoming_time, ?string $stored_time): bool
+{
+    $incoming = levelDateTimeValue($incoming_time);
+    $stored = levelDateTimeValue($stored_time);
+
+    if ($incoming === null || $stored === null) {
+        return false;
+    }
+
+    return strtotime($incoming) < strtotime($stored);
+}
+
 function levelHandleAlertActive(array $alert, ?string $event_time = null, bool $device_already_synced = false): array
 {
     global $mysqli;
@@ -683,8 +801,13 @@ function levelHandleAlertActive(array $alert, ?string $event_time = null, bool $
 
     $settings = levelGetSettings();
     $alert_id_sql = levelDbEscape($alert_id);
-    $existing = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT level_alert_resolved_at, level_ticket_id
+    $existing = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT level_alert_last_event_at,
+        level_alert_resolved_at, level_ticket_id
         FROM level_alert_links WHERE level_alert_id = '$alert_id_sql' LIMIT 1"));
+
+    if ($existing && levelWebhookEventIsOlder($event_time, $existing['level_alert_last_event_at'] ?? null)) {
+        return ['result' => 'stale', 'ticket_id' => intval($existing['level_ticket_id'] ?? 0)];
+    }
 
     if (!$settings['alert_ticket_enabled'] || !$settings['ticketing_enabled']) {
         levelUpsertAlertLink($alert, null, null, $event_time);
@@ -851,10 +974,15 @@ function levelHandleAlertResolved(array $alert, ?string $event_time = null): arr
     }
 
     $alert_id_sql = levelDbEscape($alert_id);
-    $existing = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT level_alert_resolved_at, level_asset_id, level_ticket_id
+    $existing = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT level_alert_last_event_at,
+        level_alert_resolved_at, level_asset_id, level_ticket_id
         FROM level_alert_links WHERE level_alert_id = '$alert_id_sql' LIMIT 1"));
     $ticket_id = intval($existing['level_ticket_id'] ?? 0);
     $asset_id = intval($existing['level_asset_id'] ?? 0);
+
+    if ($existing && levelWebhookEventIsOlder($event_time, $existing['level_alert_last_event_at'] ?? null)) {
+        return ['result' => 'stale', 'ticket_id' => $ticket_id];
+    }
 
     if ($asset_id === 0 && $device_id !== '') {
         $device_id_sql = levelDbEscape($device_id);
@@ -875,33 +1003,30 @@ function levelHandleAlertResolved(array $alert, ?string $event_time = null): arr
 function levelProcessWebhookEvent(array $event): array
 {
     $type = (string) ($event['event_type'] ?? '');
-    $data = $event['data'] ?? null;
+    $data = $event['data'] ?? [];
     $event_time = (string) ($event['occurred_at'] ?? '');
+    $validation_error = levelWebhookValidationError($event);
 
-    if (!in_array($type, levelAllowedWebhookEvents(), true) || !is_array($data)) {
-        throw new InvalidArgumentException('Invalid Level webhook event');
+    if ($validation_error !== null) {
+        throw new InvalidArgumentException($validation_error);
     }
 
-    return match ($type) {
-        'group_created', 'group_updated' => ['result' => levelStoreGroup($data) ? 'updated' : 'skipped'],
-        'group_deleted' => (function () use ($data) {
-            levelMarkGroupDeleted($data['id'] ?? '');
-            return ['result' => 'deleted'];
-        })(),
-        'device_created', 'device_updated' => (function () use ($data) {
-            if (empty($data['id'])) {
-                throw new InvalidArgumentException('Level device event is missing an id');
-            }
-            // Webhook device payloads describe the changed resource but the show
-            // endpoint gives us a coherent hardware/OS snapshot for the asset.
-            return levelFetchAndSyncDevice((string) $data['id']);
-        })(),
-        'device_deleted' => (function () use ($data) {
-            levelMarkDeviceDeleted($data['id'] ?? '');
-            return ['result' => 'deleted'];
-        })(),
-        'alert_active' => levelHandleAlertActive($data, $event_time),
-        'alert_resolved' => levelHandleAlertResolved($data, $event_time),
+    $definition = levelWebhookEventDefinition($type);
+    $resource_id = (string) $data['id'];
+
+    return match ($definition['resource']) {
+        // Devices and groups are reconciled by resource id for every action. If
+        // the object no longer exists, the fetch helper applies the deletion;
+        // otherwise it updates the exact corresponding ITFlow resource with the
+        // latest Level snapshot. This is safe when deliveries arrive out of order.
+        'device' => levelFetchAndSyncDevice($resource_id),
+        'group' => levelFetchAndStoreGroup($resource_id),
+        'alert' => ($definition['action'] === 'resolved'
+            || !empty($data['is_resolved'])
+            || !empty($data['resolved_at']))
+                ? levelHandleAlertResolved($data, $event_time)
+                : levelHandleAlertActive($data, $event_time),
+        default => throw new InvalidArgumentException('Unsupported Level webhook resource'),
     };
 }
 

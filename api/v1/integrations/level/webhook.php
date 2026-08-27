@@ -63,18 +63,16 @@ try {
     levelWebhookRespond(400, ['accepted' => false, 'error' => 'Invalid JSON']);
 }
 
-$event_type = is_array($event) ? (string) ($event['event_type'] ?? '') : '';
-$event_id = is_array($event) ? (string) ($event['event_id'] ?? '') : '';
-$occurred_at = is_array($event) ? levelDateTimeValue($event['occurred_at'] ?? null) : null;
-
-if (
-    !is_array($event)
-    || !is_array($event['data'] ?? null)
-    || !in_array($event_type, levelAllowedWebhookEvents(), true)
-    || !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $event_id)
-) {
-    levelWebhookRespond(422, ['accepted' => false, 'error' => 'Invalid Level event envelope']);
+$validation_error = is_array($event)
+    ? levelWebhookValidationError($event)
+    : 'Invalid Level event envelope';
+if ($validation_error !== null) {
+    levelWebhookRespond(422, ['accepted' => false, 'error' => $validation_error]);
 }
+
+$event_type = (string) $event['event_type'];
+$event_id = (string) $event['event_id'];
+$occurred_at = levelDateTimeValue($event['occurred_at']);
 
 $event_id_sql = levelDbEscape($event_id);
 $event_type_sql = levelDbEscape($event_type);
