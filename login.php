@@ -11,6 +11,7 @@ if (!file_exists('config.php')) {
 
 require_once "config.php";
 require_once "functions.php";
+require_once "functions/login_surface.php";
 require_once "libs/totp/totp.php";
 
 require_once __DIR__ . "/includes/session_init.php";
@@ -36,6 +37,11 @@ $session_user_agent = escapeSql($_SERVER['HTTP_USER_AGENT'] ?? '');
 
 // IMPORTANT (Option B support): ensure this exists in this scope so logAudit() can use it
 $session_user_id = intval($_SESSION['user_id'] ?? 0);
+
+$login_surface = n45LoginSurfaceForHost($_SERVER['HTTP_HOST'] ?? '');
+$is_customer_login = $login_surface === 'customer';
+$is_technician_login = $login_surface === 'technician';
+$login_user_filter = n45LoginUserFilter($login_surface);
 
 // The count below and the logAudit() failure write that feeds it are far apart, with
 // password_verify() in between, so a burst of parallel attempts would all read the
@@ -200,10 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['login']) || isset($_
             WHERE user_email = '$email'
               AND user_archived_at IS NULL
               AND user_status = 1
-              AND (
-                    user_type = 1
-                    OR (user_type = 2 AND client_archived_at IS NULL)
-                  )
+              AND $login_user_filter
         ");
 
         $agentRow  = null;
@@ -689,6 +692,7 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
 $agent_login_key_valid = !$config_login_key_required
     || (isset($_GET['key']) && hash_equals((string)$config_login_key_secret, (string)$_GET['key']));
 $show_agent_sso = $show_login_form
+    && !$is_customer_login
     && $agent_login_key_valid
     && $azure_agent_sso_enable === 1
     && entraGuidIsValid($azure_client_id)
@@ -713,7 +717,7 @@ if (!empty($agent_sso_params)) {
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title><?= escapeHtml($company_name) ?> | Login</title>
+    <title><?= escapeHtml($company_name) ?> | <?= $is_customer_login ? 'Client Portal' : ($is_technician_login ? 'Technician Sign In' : 'Login') ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
 
@@ -748,6 +752,12 @@ if (!empty($agent_sso_params)) {
                 <?php } elseif ($show_mfa_form) { ?>
                     <h1>Verify your identity</h1>
                     <p>Enter the current code from your authenticator app.</p>
+                <?php } elseif ($is_customer_login) { ?>
+                    <h1>Client portal</h1>
+                    <p>Sign in to request support, follow tickets, and review your organization’s technology.</p>
+                <?php } elseif ($is_technician_login) { ?>
+                    <h1>Technician workspace</h1>
+                    <p>Sign in to manage service delivery, clients, and operations.</p>
                 <?php } else { ?>
                     <h1>Service operations</h1>
                     <p>Sign in to manage clients, tickets, assets, and automation.</p>
@@ -841,7 +851,7 @@ if (!empty($agent_sso_params)) {
                 </a>
             <?php } ?>
 
-            <?php if($config_client_portal_enable == 1){ ?>
+            <?php if($config_client_portal_enable == 1 && !$is_technician_login){ ?>
                 <hr>
                 <?php if (!empty($config_smtp_provider)) { ?>
                     <a href="client/login_reset.php">Forgot password?</a>
