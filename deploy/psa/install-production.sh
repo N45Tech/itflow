@@ -72,7 +72,7 @@ if ! compose run --rm --no-deps web test -f /var/lib/itflow/config.php >/dev/nul
         --locale=en_US \
         --timezone=America/New_York \
         --currency=USD \
-        --company-name='N45 Technologies' \
+        --company-name='N45 Technology Solutions' \
         --country='United States' \
         --company-email=hello@n45tech.com \
         --website=https://n45tech.com \
@@ -110,4 +110,3 @@ fi
 
 compose ps
 echo "ITFlow containers are healthy on 127.0.0.1:8088."
-

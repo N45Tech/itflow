@@ -1,7 +1,7 @@
 {
   "monitor": {
     "id": 42,
-    "name": "N45 Technologies :: Infrastructure :: PSA",
+    "name": "N45 Technology Solutions :: Infrastructure :: PSA",
     "type": "http",
     "url": "https://psa.n45tech.com"
   },

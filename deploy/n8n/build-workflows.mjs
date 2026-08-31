@@ -53,9 +53,38 @@ const bool = (value, fallback = false) => {
   if (value === undefined || value === null || value === '') return fallback;
   return value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 };
+const clientAliases = new Map([
+  ['n45 technologies', 'N45 Technology Solutions'],
+  ['n45 tech solutions', 'N45 Technology Solutions'],
+  ['n45 technology solutions', 'N45 Technology Solutions'],
+]);
+const canonicalClientName = (value) => {
+  const original = text(value);
+  return clientAliases.get(original.toLowerCase()) || original;
+};
+const hardenIdentity = (identityInput = {}) => {
+  const identity = identityInput && typeof identityInput === 'object' ? { ...identityInput } : {};
+  const originalClientName = text(identity.client?.name);
+  const mappedClientName = canonicalClientName(originalClientName);
+  const options = identity.options && typeof identity.options === 'object' ? identity.options : {};
+  const identityMetadata = identity.metadata && typeof identity.metadata === 'object' ? identity.metadata : {};
+  identity.client = { ...(identity.client || {}), name: mappedClientName };
+  identity.options = {
+    ...options,
+    create_client: bool(options.create_client, false),
+    create_location: bool(options.create_location, false),
+    create_asset: bool(options.create_asset, false),
+  };
+  identity.metadata = {
+    ...identityMetadata,
+    original_client_name: originalClientName,
+    client_alias_applied: originalClientName !== mappedClientName,
+  };
+  return identity;
+};
 
 if (body.identity && body.source && body.event_id && body.incident_key) {
-  return [{ json: body }];
+  return [{ json: { ...body, identity: hardenIdentity(body.identity) } }];
 }
 
 let source = text(body.source || header('x-n45-source')).toLowerCase().replace(/[^a-z0-9._-]/g, '_');
@@ -69,7 +98,8 @@ const monitorName = text(monitor.name || body.monitor_name || body.service_name 
 const parts = monitorName.split(/\s+::\s+/).map((part) => part.trim()).filter(Boolean);
 const explicitClient = text(body.client_name || header('x-itflow-client'));
 const explicitLocation = text(body.location_name || header('x-itflow-location'));
-const clientName = explicitClient || (parts.length >= 3 ? parts[0] : '');
+const originalClientName = explicitClient || (parts.length >= 3 ? parts[0] : '');
+const clientName = canonicalClientName(originalClientName);
 const locationName = explicitLocation || (parts.length >= 3 ? parts[1] : '');
 const serviceName = parts.length >= 3 ? parts.slice(2).join(' :: ') : monitorName;
 
@@ -113,11 +143,16 @@ const event = {
     location: { name: locationName },
     asset: host ? { name: host, uri: sourceUrl } : {},
     options: {
-      create_client: bool(body.create_client ?? header('x-itflow-create-client'), explicitClient !== '' || parts.length >= 3),
-      create_location: bool(body.create_location ?? header('x-itflow-create-location'), locationName !== ''),
+      create_client: bool(body.create_client ?? header('x-itflow-create-client'), false),
+      create_location: bool(body.create_location ?? header('x-itflow-create-location'), false),
       create_asset: bool(body.create_asset ?? header('x-itflow-create-asset'), false),
     },
-    metadata: { monitor_type: monitor.type || '', raw_status: rawStatus ?? '' },
+    metadata: {
+      monitor_type: monitor.type || '',
+      raw_status: rawStatus ?? '',
+      original_client_name: originalClientName,
+      client_alias_applied: originalClientName !== clientName,
+    },
   },
   metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
 };
@@ -127,7 +162,7 @@ return [{ json: event }];
 const normalizeNetBoxDevices = String.raw`
 const response = $input.first().json;
 const devices = response.results || response.data?.results || [];
-const DEFAULT_CLIENT = 'N45 Technologies';
+const DEFAULT_CLIENT = 'N45 Technology Solutions';
 const CREATE_CLIENTS_FROM_TENANTS = true;
 if (!Array.isArray(devices)) throw new Error('NetBox did not return a device results array.');
 return devices.map((device) => {
@@ -179,7 +214,7 @@ const model = String(body.model || body.object_type || '').toLowerCase();
 if (!model.includes('device') && !device.device_type) return [];
 const site = device.site || {};
 const tenant = device.tenant || site.tenant || {};
-const clientName = device.custom_fields?.itflow_client || tenant.name || 'N45 Technologies';
+const clientName = device.custom_fields?.itflow_client || tenant.name || 'N45 Technology Solutions';
 const primaryIp = String(device.primary_ip?.address || '').split('/')[0];
 return [{ json: {
   source: 'netbox', entity_type: 'device', external_id: String(device.id),
@@ -203,7 +238,7 @@ const normalizeCloudflareZones = String.raw`
 const response = $input.first().json;
 const zones = response.result || [];
 const CLIENT_BY_ZONE = {
-  'n45tech.com': 'N45 Technologies',
+  'n45tech.com': 'N45 Technology Solutions',
 };
 if (!Array.isArray(zones)) throw new Error('Cloudflare did not return a zone result array.');
 return zones.filter((zone) => CLIENT_BY_ZONE[String(zone.name).toLowerCase()]).map((zone) => ({ json: {
@@ -237,8 +272,8 @@ return [{ json: {
   url: execution.url || '', auto_resolve: false,
   identity: {
     external_id: workflowId, external_name: workflow.name || workflowId,
-    client: { name: 'N45 Technologies' }, location: { name: 'Infrastructure' },
-    options: { create_client: true, create_location: true, create_asset: false },
+    client: { name: 'N45 Technology Solutions' }, location: { name: 'Infrastructure' },
+    options: { create_client: false, create_location: false, create_asset: false },
     metadata: { execution_id: executionId, last_node: execution.lastNodeExecuted || '' },
   },
 } }];
@@ -284,7 +319,7 @@ const cloudflareReconciliation = workflow('N45 - Cloudflare Domain Reconciliatio
 const n8nErrorWorkflow = workflow('N45 - Automation Failure to ITFlow', [
   node({ id: 'cb44be91-41cd-4b32-a69a-ce2ad33d6ab7', name: 'Workflow Error', type: 'n8n-nodes-base.errorTrigger', typeVersion: 1, position: [-460, 0], parameters: {} }),
   node({ id: 'db633e22-451f-4796-a19c-14d0bea75343', name: 'Normalize n8n Error', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-200, 0], parameters: { jsCode: normalizeN8nError } }),
-  node({ id: '02b2831b-e105-4ef3-a978-fe0adea1caf5', name: 'Open ITFlow Incident', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [60, 0], nodeCredentials: credentials.itflow, parameters: { method: 'POST', url: 'https://psa.n45tech.com/api/v1/integrations/automation/event.php', authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify($json) }}', options: {} } }),
+  node({ id: '02b2831b-e105-4ef3-a978-fe0adea1caf5', name: 'Open ITFlow Incident', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [60, 0], nodeCredentials: credentials.webhook, parameters: { method: 'POST', url: 'https://automate.n45tech.com/webhook/n45-itflow-events', authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify($json) }}', options: {} } }),
 ], connect('Workflow Error', 'Normalize n8n Error', 'Open ITFlow Incident'));
 
 const workflows = [

@@ -80,7 +80,7 @@ Example:
   "identity": {
     "external_id": "infra01:psa",
     "external_name": "PSA backup",
-    "client": { "name": "N45 Technologies" },
+    "client": { "name": "N45 Technology Solutions" },
     "location": { "name": "Infrastructure" },
     "options": {
       "create_client": true,

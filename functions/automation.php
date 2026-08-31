@@ -38,6 +38,16 @@ function automationNormalizeName($value): string
     return trim(preg_replace('/[^a-z0-9]+/', ' ', $value));
 }
 
+function automationCanonicalClientName($value): string
+{
+    $name = automationLimitText($value, 200);
+    $aliases = [
+        'n45 technologies' => 'N45 Technology Solutions',
+        'n45 tech solutions' => 'N45 Technology Solutions',
+    ];
+    return $aliases[automationNormalizeName($name)] ?? $name;
+}
+
 function automationBool($value, bool $default = false): bool
 {
     if ($value === null) {
@@ -111,7 +121,7 @@ function automationClientRow(int $client_id): ?array
 function automationFindClientByName(string $name): array
 {
     global $mysqli;
-    $normalized = automationNormalizeName($name);
+    $normalized = automationNormalizeName(automationCanonicalClientName($name));
     if ($normalized === '') {
         return [];
     }
@@ -134,7 +144,7 @@ function automationCreateClient(array $client): array
     if (empty($session_is_admin)) {
         throw new AutomationConflictException('Automatic client creation requires an administrator API user');
     }
-    $name = automationLimitText($client['name'] ?? '', 200);
+    $name = automationCanonicalClientName($client['name'] ?? '');
     if ($name === '') {
         throw new InvalidArgumentException('A client name is required before a client can be created');
     }
@@ -419,6 +429,49 @@ function automationSaveMapping(string $source, string $entity_type, string $exte
         'Could not save the external entity mapping');
 }
 
+/**
+ * Remove the Operations incident and event history tied to a ticket.
+ *
+ * The caller may wrap this helper and the ticket DELETE in a transaction so
+ * the ticket and its Operations record are always removed together.
+ */
+function automationDeleteTicketOperations(int $ticket_id): int
+{
+    global $mysqli;
+    if ($ticket_id < 1) {
+        return 0;
+    }
+
+    $incident_keys = [];
+    $sql_incidents = automationDbQuery("SELECT automation_incident_source,
+        automation_incident_key FROM automation_incidents
+        WHERE automation_incident_ticket_id = $ticket_id",
+        'Could not find the Operations records associated with the ticket');
+    while ($incident = mysqli_fetch_assoc($sql_incidents)) {
+        $incident_keys[] = [
+            automationDbEscape($incident['automation_incident_source']),
+            automationDbEscape($incident['automation_incident_key']),
+        ];
+    }
+
+    foreach ($incident_keys as [$source, $incident_key]) {
+        automationDbQuery("DELETE FROM automation_events
+            WHERE automation_event_source = '$source'
+            AND automation_event_incident_key = '$incident_key'",
+            'Could not delete the Operations event history associated with the ticket');
+    }
+
+    // Also remove any standalone event rows left by an interrupted incident write.
+    automationDbQuery("DELETE FROM automation_events
+        WHERE automation_event_ticket_id = $ticket_id",
+        'Could not delete the Operations events associated with the ticket');
+    automationDbQuery("DELETE FROM automation_incidents
+        WHERE automation_incident_ticket_id = $ticket_id",
+        'Could not delete the Operations incident associated with the ticket');
+
+    return mysqli_affected_rows($mysqli);
+}
+
 function automationResolveIdentityUnlocked(array $input): array
 {
     $source = automationSource($input['source'] ?? '');
@@ -429,6 +482,9 @@ function automationResolveIdentityUnlocked(array $input): array
         throw new InvalidArgumentException('external_id is required for durable mapping');
     }
     $client = is_array($input['client'] ?? null) ? $input['client'] : [];
+    if (trim((string) ($client['name'] ?? '')) !== '') {
+        $client['name'] = automationCanonicalClientName($client['name']);
+    }
     $location = is_array($input['location'] ?? null) ? $input['location'] : [];
     $asset = is_array($input['asset'] ?? null) ? $input['asset'] : [];
     $domain = is_array($input['domain'] ?? null) ? $input['domain'] : [];
@@ -645,6 +701,10 @@ function automationResolveIdentity(array $input): array
         throw new InvalidArgumentException('external_id is required for durable mapping');
     }
     $client = is_array($input['client'] ?? null) ? $input['client'] : [];
+    if (trim((string) ($client['name'] ?? '')) !== '') {
+        $client['name'] = automationCanonicalClientName($client['name']);
+        $input['client'] = $client;
+    }
     $domain = is_array($input['domain'] ?? null) ? $input['domain'] : [];
     $identity_locks = [sha1('mapping:' . $source . ':' . $entity_type . ':' . $external_id)];
     $client_name = automationNormalizeName($client['name'] ?? '');

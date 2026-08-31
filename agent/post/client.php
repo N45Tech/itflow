@@ -335,6 +335,7 @@ if (isset($_GET['delete_client'])) {
     $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_client_id = $client_id");
     while($row = mysqli_fetch_assoc($sql)) {
         $ticket_id = $row['ticket_id'];
+        automationDeleteTicketOperations(intval($ticket_id));
         mysqli_query($mysqli, "DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id");
         mysqli_query($mysqli, "DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id");
     }

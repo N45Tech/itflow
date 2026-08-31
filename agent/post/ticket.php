@@ -993,7 +993,18 @@ if (isset($_GET['delete_ticket'])) {
     }
 
     if (empty($ticket_closed_at)) {
-        mysqli_query($mysqli, "DELETE FROM tickets WHERE ticket_id = $ticket_id");
+        try {
+            mysqli_begin_transaction($mysqli);
+            automationDeleteTicketOperations($ticket_id);
+            automationDbQuery("DELETE FROM tickets WHERE ticket_id = $ticket_id",
+                'Could not delete the ticket');
+            mysqli_commit($mysqli);
+        } catch (Throwable $e) {
+            mysqli_rollback($mysqli);
+            error_log("Ticket $ticket_id could not be deleted: " . $e->getMessage());
+            flashAlert('The ticket and its Operations record could not be deleted.', 'error');
+            redirect();
+        }
 
         // Delete all ticket replies
         mysqli_query($mysqli, "DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id");
@@ -1043,7 +1054,17 @@ if (isset($_POST['bulk_delete_tickets'])) {
                 enforceClientAccess();
             }
 
-            mysqli_query($mysqli, "DELETE FROM tickets WHERE ticket_id = $ticket_id");
+            try {
+                mysqli_begin_transaction($mysqli);
+                automationDeleteTicketOperations($ticket_id);
+                automationDbQuery("DELETE FROM tickets WHERE ticket_id = $ticket_id",
+                    'Could not delete the ticket');
+                mysqli_commit($mysqli);
+            } catch (Throwable $e) {
+                mysqli_rollback($mysqli);
+                error_log("Ticket $ticket_id could not be deleted during bulk deletion: " . $e->getMessage());
+                throw $e;
+            }
 
             // Delete all ticket replies
             mysqli_query($mysqli, "DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id");

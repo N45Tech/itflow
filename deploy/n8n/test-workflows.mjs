@@ -49,7 +49,8 @@ assert.equal(down[0].json.state, 'open');
 assert.equal(down[0].json.identity.client.name, 'Acme Dental');
 assert.equal(down[0].json.identity.location.name, 'Main Office');
 assert.equal(down[0].json.identity.external_name, 'Internet');
-assert.equal(down[0].json.identity.options.create_client, true);
+assert.equal(down[0].json.identity.options.create_client, false);
+assert.equal(down[0].json.identity.options.create_location, false);
 assert.equal(down[0].json.identity.options.create_asset, false);
 
 const recovered = code(broker, 'Normalize Event', {
@@ -64,9 +65,14 @@ assert.equal(recovered[0].json.incident_key, down[0].json.incident_key);
 
 const canonical = {
   source: 'backup', event_id: 'backup-1', incident_key: 'backup:infra01',
-  state: 'open', identity: { external_id: 'infra01' },
+  state: 'open', identity: { external_id: 'infra01', client: { name: 'N45 Technologies' } },
 };
-assert.deepEqual(code(broker, 'Normalize Event', { body: canonical })[0].json, canonical);
+const hardenedCanonical = code(broker, 'Normalize Event', { body: canonical })[0].json;
+assert.equal(hardenedCanonical.source, canonical.source);
+assert.equal(hardenedCanonical.identity.client.name, 'N45 Technology Solutions');
+assert.equal(hardenedCanonical.identity.options.create_client, false);
+assert.equal(hardenedCanonical.identity.options.create_location, false);
+assert.equal(hardenedCanonical.identity.metadata.client_alias_applied, true);
 
 const netbox = code('N45 - NetBox Entity Reconciliation', 'Normalize NetBox Devices', {
   results: [{
@@ -98,5 +104,8 @@ const error = code('N45 - Automation Failure to ITFlow', 'Normalize n8n Error', 
 assert.equal(error[0].json.event_id, 'execution:99');
 assert.equal(error[0].json.incident_key, 'workflow:7');
 assert.match(error[0].json.description, /Connection refused/);
+assert.equal(error[0].json.identity.client.name, 'N45 Technology Solutions');
+assert.equal(error[0].json.identity.options.create_client, false);
+assert.equal(error[0].json.identity.options.create_location, false);
 
 console.log(`Validated ${files.length} workflows and representative source payloads.`);
