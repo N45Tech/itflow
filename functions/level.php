@@ -445,6 +445,436 @@ function levelDeviceOperatingSystem(array $device): string
     return levelLimitText($device['platform'] ?? '', 200);
 }
 
+function levelNormalizeMacAddress($value): string
+{
+    $compact = strtolower((string) preg_replace('/[^0-9a-f]/i', '', trim((string) $value)));
+    if (strlen($compact) !== 12
+        || $compact === str_repeat('0', 12)
+        || $compact === str_repeat('f', 12)) {
+        return '';
+    }
+
+    return implode(':', str_split($compact, 2));
+}
+
+function levelNormalizeIpAddress($value): string
+{
+    if (!is_string($value)) {
+        return '';
+    }
+
+    $address = trim($value);
+    if ($address === '') {
+        return '';
+    }
+
+    // Level normally returns bare addresses, but tolerate scope identifiers and
+    // CIDR suffixes so a platform-specific response cannot create duplicates.
+    $address = trim($address, '[]');
+    if (str_contains($address, '/')) {
+        $address = explode('/', $address, 2)[0];
+    }
+    if (str_contains($address, '%')) {
+        $address = explode('%', $address, 2)[0];
+    }
+
+    $packed = @inet_pton($address);
+    if ($packed === false) {
+        return '';
+    }
+
+    return strtolower((string) inet_ntop($packed));
+}
+
+function levelIpAddressIsUsable(string $address): bool
+{
+    $packed = @inet_pton($address);
+    if ($packed === false) {
+        return false;
+    }
+
+    if (strlen($packed) === 4) {
+        $first = ord($packed[0]);
+        return $address !== '0.0.0.0' && $first !== 127;
+    }
+
+    return $packed !== str_repeat("\0", 16)
+        && $packed !== (str_repeat("\0", 15) . "\1");
+}
+
+function levelIpAddressIsLinkLocal(string $address): bool
+{
+    $packed = @inet_pton($address);
+    if ($packed === false) {
+        return false;
+    }
+
+    if (strlen($packed) === 4) {
+        return ord($packed[0]) === 169 && ord($packed[1]) === 254;
+    }
+
+    return ord($packed[0]) === 0xfe && (ord($packed[1]) & 0xc0) === 0x80;
+}
+
+function levelNetworkInterfaceType(array $interface): string
+{
+    $text = strtolower(trim((string) (($interface['label'] ?? '') . ' ' . ($interface['description'] ?? ''))));
+
+    if (str_contains($text, 'loopback')) {
+        return 'Loopback';
+    }
+    if (preg_match('/\b(virtual|vpn|tunnel|wireguard|tailscale|zerotier|tap|tun|hyper-v|vmware|virtualbox)\b/', $text)) {
+        return 'Virtual';
+    }
+    if (preg_match('/\b(wi-?fi|wireless|wlan|802\.11|airport)\b/', $text)) {
+        return 'Wireless';
+    }
+    if (preg_match('/\b(ethernet|gigabit|gbe|802\.3|eth\d*|eno\d*|enp\w*)\b/', $text)) {
+        return 'Ethernet';
+    }
+
+    return '';
+}
+
+function levelNetworkInterfaceKey(array $interface, int $position): string
+{
+    $level_interface = strtolower(levelLimitText($interface['interface'] ?? '', 220));
+    if ($level_interface !== '') {
+        return 'interface:' . $level_interface;
+    }
+
+    $mac = levelNormalizeMacAddress($interface['mac_address'] ?? '');
+    if ($mac !== '') {
+        return 'mac:' . $mac;
+    }
+
+    $identity = [
+        levelLimitText($interface['label'] ?? '', 200),
+        levelLimitText($interface['description'] ?? '', 200),
+        $position,
+    ];
+
+    return 'snapshot:' . hash('sha256', json_encode($identity, JSON_UNESCAPED_SLASHES));
+}
+
+function levelNormalizeNetworkInterfaces(array $device): array
+{
+    $raw_interfaces = $device['network_interfaces'] ?? [];
+    if (!is_array($raw_interfaces)) {
+        return [];
+    }
+
+    $interfaces = [];
+    $key_counts = [];
+
+    foreach ($raw_interfaces as $position => $raw_interface) {
+        if (!is_array($raw_interface)) {
+            continue;
+        }
+
+        $mac = levelNormalizeMacAddress($raw_interface['mac_address'] ?? '');
+        $ipv4_addresses = [];
+        $ipv6_addresses = [];
+        $raw_addresses = $raw_interface['ip_addresses'] ?? [];
+        if (!is_array($raw_addresses)) {
+            $raw_addresses = [];
+        }
+        foreach ($raw_addresses as $raw_address) {
+            $address = levelNormalizeIpAddress($raw_address);
+            if ($address === '' || !levelIpAddressIsUsable($address)) {
+                continue;
+            }
+
+            if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                $ipv4_addresses[$address] = true;
+            } else {
+                $ipv6_addresses[$address] = true;
+            }
+        }
+
+        $ipv4_addresses = array_keys($ipv4_addresses);
+        $ipv6_addresses = array_keys($ipv6_addresses);
+
+        // Empty and loopback-only pseudo-adapters are not useful ITFlow assets.
+        if ($mac === '' && !$ipv4_addresses && !$ipv6_addresses) {
+            continue;
+        }
+
+        usort($ipv4_addresses, fn ($a, $b) => intval(levelIpAddressIsLinkLocal($a)) <=> intval(levelIpAddressIsLinkLocal($b)));
+        usort($ipv6_addresses, fn ($a, $b) => intval(levelIpAddressIsLinkLocal($a)) <=> intval(levelIpAddressIsLinkLocal($b)));
+
+        $ipv4 = (string) ($ipv4_addresses[0] ?? '');
+        $ipv6 = (string) ($ipv6_addresses[0] ?? '');
+        $additional_addresses = array_merge(array_slice($ipv4_addresses, 1), array_slice($ipv6_addresses, 1));
+
+        $label = levelLimitText($raw_interface['label'] ?? '', 200);
+        $level_interface = levelLimitText($raw_interface['interface'] ?? '', 200);
+        $description = levelLimitText($raw_interface['description'] ?? '', 200);
+        $name = $label ?: ($level_interface ?: ($description ?: 'Interface ' . (intval($position) + 1)));
+        $type = levelNetworkInterfaceType($raw_interface);
+
+        $gateway = levelNormalizeIpAddress($raw_interface['gateway'] ?? '');
+        if ($gateway !== '' && !levelIpAddressIsUsable($gateway)) {
+            $gateway = '';
+        }
+        $dhcp_server = levelNormalizeIpAddress($raw_interface['dhcp_server'] ?? '');
+        if ($dhcp_server !== '' && !levelIpAddressIsUsable($dhcp_server)) {
+            $dhcp_server = '';
+        }
+        $dns_servers = $raw_interface['dns_servers'] ?? '';
+        if (is_array($dns_servers)) {
+            $dns_servers = implode(', ', array_filter(array_map('strval', $dns_servers)));
+        }
+        $dns_servers = levelLimitText($dns_servers, 500);
+        $domain = levelLimitText($raw_interface['domain'] ?? '', 255);
+
+        $notes = ['Managed by Level.io.'];
+        if ($level_interface !== '' && $level_interface !== $name) {
+            $notes[] = 'Level interface: ' . $level_interface;
+        }
+        if ($gateway !== '') {
+            $notes[] = 'Gateway: ' . $gateway;
+        }
+        if ($dhcp_server !== '') {
+            $notes[] = 'DHCP server: ' . $dhcp_server;
+        }
+        if ($dns_servers !== '') {
+            $notes[] = 'DNS servers: ' . $dns_servers;
+        }
+        if ($domain !== '') {
+            $notes[] = 'Domain: ' . $domain;
+        }
+        if ($additional_addresses) {
+            $notes[] = 'Additional addresses: ' . implode(', ', $additional_addresses);
+        }
+
+        $key = levelNetworkInterfaceKey($raw_interface, intval($position));
+        $key_counts[$key] = ($key_counts[$key] ?? 0) + 1;
+        if ($key_counts[$key] > 1) {
+            $key = levelLimitText($key, 235) . '#' . $key_counts[$key];
+        }
+
+        $primary_score = 0;
+        if ($ipv4 !== '') {
+            $primary_score += levelIpAddressIsLinkLocal($ipv4) ? 80 : 120;
+        }
+        if ($ipv6 !== '') {
+            $primary_score += levelIpAddressIsLinkLocal($ipv6) ? 10 : 30;
+        }
+        if ($gateway !== '') {
+            $primary_score += 60;
+        }
+        if ($type === 'Virtual') {
+            $primary_score -= 40;
+        }
+
+        $interfaces[] = [
+            'key' => $key,
+            'name' => $name,
+            'description' => $description,
+            'type' => $type,
+            'mac' => $mac,
+            'ipv4' => $ipv4,
+            'ipv6' => $ipv6,
+            'notes' => implode("\n", $notes),
+            'primary_score' => $primary_score,
+            'primary' => false,
+        ];
+    }
+
+    if ($interfaces) {
+        $primary_index = 0;
+        foreach ($interfaces as $index => $interface) {
+            if ($interface['primary_score'] > $interfaces[$primary_index]['primary_score']) {
+                $primary_index = $index;
+            }
+        }
+        $interfaces[$primary_index]['primary'] = true;
+    }
+
+    return $interfaces;
+}
+
+function levelFindBlankAssetInterface(int $asset_id): int
+{
+    global $mysqli;
+
+    $sql = mysqli_query($mysqli, "SELECT ai.interface_id FROM asset_interfaces ai
+        LEFT JOIN level_interface_links lil ON lil.level_asset_interface_id = ai.interface_id
+        LEFT JOIN asset_interface_links ail
+            ON ail.interface_a_id = ai.interface_id OR ail.interface_b_id = ai.interface_id
+        WHERE ai.interface_asset_id = $asset_id
+        AND ai.interface_archived_at IS NULL
+        AND ai.interface_name IN ('1', '01')
+        AND COALESCE(ai.interface_description, '') = ''
+        AND COALESCE(ai.interface_type, '') = ''
+        AND COALESCE(ai.interface_mac, '') = ''
+        AND COALESCE(ai.interface_ip, '') = ''
+        AND COALESCE(ai.interface_nat_ip, '') = ''
+        AND COALESCE(ai.interface_ipv6, '') = ''
+        AND COALESCE(ai.interface_notes, '') = ''
+        AND COALESCE(ai.interface_network_id, 0) = 0
+        AND lil.level_interface_link_id IS NULL
+        AND ail.interface_link_id IS NULL
+        LIMIT 2 FOR UPDATE");
+    if (!$sql) {
+        throw new RuntimeException('Could not inspect the ITFlow asset interface placeholder');
+    }
+
+    if (mysqli_num_rows($sql) !== 1) {
+        return 0;
+    }
+
+    return intval(mysqli_fetch_assoc($sql)['interface_id']);
+}
+
+function levelReconcileAssetInterfaces(int $asset_id, string $device_id, array $device): array
+{
+    global $mysqli;
+
+    $interfaces = levelNormalizeNetworkInterfaces($device);
+    $device_id_sql = levelDbEscape(levelLimitText($device_id, 255));
+    $existing = [];
+
+    $mapping_sql = mysqli_query($mysqli, "SELECT lil.level_interface_key, lil.level_asset_interface_id,
+        ai.interface_asset_id FROM level_interface_links lil
+        INNER JOIN asset_interfaces ai ON ai.interface_id = lil.level_asset_interface_id
+        WHERE lil.level_device_id = '$device_id_sql' FOR UPDATE");
+    if (!$mapping_sql) {
+        throw new RuntimeException('Could not read Level-managed ITFlow interfaces');
+    }
+    while ($mapping = mysqli_fetch_assoc($mapping_sql)) {
+        $existing[(string) $mapping['level_interface_key']] = $mapping;
+    }
+
+    $placeholder_id = $interfaces ? levelFindBlankAssetInterface($asset_id) : 0;
+    $manual_primary_sql = mysqli_query($mysqli, "SELECT ai.interface_id FROM asset_interfaces ai
+        LEFT JOIN level_interface_links lil ON lil.level_asset_interface_id = ai.interface_id
+        WHERE ai.interface_asset_id = $asset_id
+        AND ai.interface_archived_at IS NULL
+        AND ai.interface_primary = 1
+        AND lil.level_interface_link_id IS NULL
+        " . ($placeholder_id > 0 ? "AND ai.interface_id <> $placeholder_id" : '') . "
+        LIMIT 1 FOR UPDATE");
+    if (!$manual_primary_sql) {
+        throw new RuntimeException('Could not determine the ITFlow primary interface');
+    }
+    $manual_primary_exists = mysqli_num_rows($manual_primary_sql) > 0;
+
+    $seen_keys = [];
+    $summary = ['total' => count($interfaces), 'created' => 0, 'updated' => 0, 'archived' => 0];
+
+    foreach ($interfaces as $interface) {
+        $key = (string) $interface['key'];
+        $key_sql = levelDbEscape($key);
+        $mapping = $existing[$key] ?? null;
+        $interface_id = intval($mapping['level_asset_interface_id'] ?? 0);
+
+        if ($mapping && intval($mapping['interface_asset_id']) !== $asset_id) {
+            throw new RuntimeException('A Level interface mapping points to a different ITFlow asset');
+        }
+
+        if ($interface_id === 0) {
+            if ($placeholder_id > 0) {
+                $interface_id = $placeholder_id;
+                $placeholder_id = 0;
+            } else {
+                $name_sql = levelDbEscape($interface['name']);
+                if (!mysqli_query($mysqli, "INSERT INTO asset_interfaces SET
+                    interface_name = '$name_sql', interface_asset_id = $asset_id")) {
+                    throw new RuntimeException('Could not create the ITFlow asset interface');
+                }
+                $interface_id = mysqli_insert_id($mysqli);
+            }
+
+            if (!mysqli_query($mysqli, "INSERT INTO level_interface_links SET
+                level_device_id = '$device_id_sql',
+                level_interface_key = '$key_sql',
+                level_asset_interface_id = $interface_id,
+                level_interface_last_seen_at = NOW(),
+                level_interface_deleted_at = NULL")) {
+                throw new RuntimeException('Could not create the Level interface mapping');
+            }
+            $summary['created']++;
+        } else {
+            $summary['updated']++;
+        }
+
+        $name_sql = levelDbEscape($interface['name']);
+        $description_sql = levelNullableSql($interface['description']);
+        $type_sql = levelNullableSql($interface['type']);
+        $mac_sql = levelNullableSql($interface['mac']);
+        $ipv4_sql = levelNullableSql($interface['ipv4']);
+        $ipv6_sql = levelNullableSql($interface['ipv6']);
+        $notes_sql = levelNullableSql($interface['notes']);
+        $primary = !$manual_primary_exists && !empty($interface['primary']) ? 1 : 0;
+
+        if (!mysqli_query($mysqli, "UPDATE asset_interfaces SET
+            interface_name = '$name_sql',
+            interface_description = $description_sql,
+            interface_type = $type_sql,
+            interface_mac = $mac_sql,
+            interface_ip = $ipv4_sql,
+            interface_ipv6 = $ipv6_sql,
+            interface_notes = $notes_sql,
+            interface_primary = $primary,
+            interface_archived_at = NULL
+            WHERE interface_id = $interface_id AND interface_asset_id = $asset_id")) {
+            throw new RuntimeException('Could not update the ITFlow asset interface');
+        }
+
+        if (!mysqli_query($mysqli, "UPDATE level_interface_links SET
+            level_interface_last_seen_at = NOW(), level_interface_deleted_at = NULL
+            WHERE level_device_id = '$device_id_sql' AND level_interface_key = '$key_sql'")) {
+            throw new RuntimeException('Could not update the Level interface mapping');
+        }
+
+        $seen_keys[$key] = true;
+    }
+
+    foreach ($existing as $key => $mapping) {
+        if (isset($seen_keys[$key])) {
+            continue;
+        }
+
+        $interface_id = intval($mapping['level_asset_interface_id']);
+        $key_sql = levelDbEscape($key);
+        if (!mysqli_query($mysqli, "UPDATE asset_interfaces SET
+            interface_primary = 0,
+            interface_archived_at = COALESCE(interface_archived_at, NOW())
+            WHERE interface_id = $interface_id AND interface_asset_id = $asset_id")) {
+            throw new RuntimeException('Could not archive the stale ITFlow asset interface');
+        }
+        if (!mysqli_query($mysqli, "UPDATE level_interface_links SET
+            level_interface_deleted_at = COALESCE(level_interface_deleted_at, NOW())
+            WHERE level_device_id = '$device_id_sql' AND level_interface_key = '$key_sql'")) {
+            throw new RuntimeException('Could not archive the stale Level interface mapping');
+        }
+        $summary['archived']++;
+    }
+
+    return $summary;
+}
+
+function levelArchiveDeviceInterfaces(string $device_id): void
+{
+    global $mysqli;
+
+    $device_id_sql = levelDbEscape(levelLimitText($device_id, 255));
+    if ($device_id_sql === '') {
+        return;
+    }
+
+    if (!mysqli_query($mysqli, "UPDATE asset_interfaces ai
+        INNER JOIN level_interface_links lil ON lil.level_asset_interface_id = ai.interface_id
+        SET ai.interface_primary = 0,
+            ai.interface_archived_at = COALESCE(ai.interface_archived_at, NOW()),
+            lil.level_interface_deleted_at = COALESCE(lil.level_interface_deleted_at, NOW())
+        WHERE lil.level_device_id = '$device_id_sql'")) {
+        throw new RuntimeException('Could not archive Level-managed ITFlow interfaces');
+    }
+}
+
 function levelSyncDevice(array $device): array
 {
     global $mysqli;
@@ -556,7 +986,6 @@ function levelSyncDevice(array $device): array
                 }
 
                 $asset_id = mysqli_insert_id($mysqli);
-                mysqli_query($mysqli, "INSERT INTO asset_interfaces SET interface_name = '01', interface_primary = 1, interface_asset_id = $asset_id");
                 mysqli_query($mysqli, "INSERT INTO asset_history SET asset_history_status = 'Deployed',
                     asset_history_description = 'Level.io created $name_sql', asset_history_asset_id = $asset_id");
             } else {
@@ -596,6 +1025,8 @@ function levelSyncDevice(array $device): array
                     throw new RuntimeException('Could not update the ITFlow asset');
                 }
             }
+
+            $interface_summary = levelReconcileAssetInterfaces($asset_id, $device_id, $device);
 
             $group_sql = levelNullableSql($group_id === '' ? null : $group_id);
             $hostname_sql = levelDbEscape($hostname);
@@ -652,7 +1083,12 @@ function levelSyncDevice(array $device): array
             logApp('Level.io', 'info', "Created ITFlow asset $asset_id for Level device $hostname");
         }
 
-        return ['result' => $result, 'asset_id' => $asset_id, 'device_id' => $device_id];
+        return [
+            'result' => $result,
+            'asset_id' => $asset_id,
+            'device_id' => $device_id,
+            'interfaces' => $interface_summary,
+        ];
     } finally {
         levelReleaseDeviceLock($device_id);
     }
@@ -705,6 +1141,7 @@ function levelMarkDeviceDeleted($device_id): void
     mysqli_query($mysqli, "UPDATE level_asset_links SET level_device_online = 0,
         level_device_deleted_at = NOW(), level_device_last_synced_at = NOW()
         WHERE level_device_id = '$device_id_sql'");
+    levelArchiveDeviceInterfaces($device_id);
 
     if ($row) {
         $asset_id = intval($row['level_asset_id']);
@@ -1131,6 +1568,15 @@ function levelRunFullSync(): array
     // A webhook may be missed during downtime. A complete API list is also the
     // reconciliation authority for devices no longer present in Level.
     $device_sync_started_sql = levelDbEscape($device_sync_started);
+    if (!mysqli_query($mysqli, "UPDATE asset_interfaces ai
+        INNER JOIN level_interface_links lil ON lil.level_asset_interface_id = ai.interface_id
+        INNER JOIN level_asset_links lal ON lal.level_device_id = lil.level_device_id
+        SET ai.interface_primary = 0,
+            ai.interface_archived_at = COALESCE(ai.interface_archived_at, NOW()),
+            lil.level_interface_deleted_at = COALESCE(lil.level_interface_deleted_at, NOW())
+        WHERE lal.level_device_last_synced_at < '$device_sync_started_sql'")) {
+        throw new RuntimeException('Could not archive interfaces for Level devices missing from reconciliation');
+    }
     mysqli_query($mysqli, "UPDATE level_asset_links SET
         level_device_online = 0,
         level_device_deleted_at = COALESCE(level_device_deleted_at, NOW())

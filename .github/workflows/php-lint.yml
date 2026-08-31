@@ -13,3 +13,8 @@ jobs:
 
     - name: Check PHP syntax errors
       uses: overtrue/phplint@9.4.1
+
+    - name: Run Level integration regression tests
+      run: |
+        php tests/level_webhook_test.php
+        php tests/level_interface_test.php
