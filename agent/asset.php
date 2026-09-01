@@ -541,7 +541,7 @@ if (isset($_GET['asset_id'])) {
 
                 <div class="card card-dark">
                     <div class="card-header py-2">
-                        <h3 class="card-title mt-1"><i class="fa fa-fw fa-ethernet mr-2"></i>Interfaces</h3>
+                        <h3 class="card-title mt-1"><i class="fa fa-fw fa-ethernet mr-2"></i>Network Interfaces</h3>
                         <div class="card-tools">
                             <div class="btn-group">
                                 <button type="button" class="btn btn-tool ajax-modal" data-modal-url="modals/asset/asset_interface_add.php?&asset_id=<?= $asset_id ?>">
@@ -700,6 +700,7 @@ if (isset($_GET['asset_id'])) {
                             </table>
                         </div>
                     </form>
+                    <?php require __DIR__ . '/includes/inc_asset_network_observations.php'; ?>
                 </div>
 
                 <?php if (lookupUserPermission('module_credential')) { // Begin Credential Enforcement ?>
