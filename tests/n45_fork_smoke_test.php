@@ -15,6 +15,12 @@ $assertContains = function (string $needle, string $contents, string $message) u
     }
 };
 
+$assertNotContains = function (string $needle, string $contents, string $message) use (&$failures): void {
+    if (str_contains($contents, $needle)) {
+        $failures[] = $message . " (found '$needle')";
+    }
+};
+
 $assertOrdered = function (string $contents, array $needles, string $message) use (&$failures): void {
     $position = -1;
     foreach ($needles as $needle) {
