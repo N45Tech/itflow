@@ -188,6 +188,10 @@ $assertThrows(
     'An integration migration reservation was consumed out of order'
 );
 $skipped_reservation = $definitions;
+unset(
+    $skipped_reservation['n45-0014-agreement-entitlements'],
+    $skipped_reservation['n45-0015-documentation-evidence-reference-index']
+);
 $skipped_reservation['n45-0016-future-feature'] = ['legacy_version' => null];
 $assertThrows(
     static function () use ($skipped_reservation): void {
@@ -201,6 +205,34 @@ foreach ($definitions as $id => $definition) {
 }
 
 $endpoint_definition = $definitions['n45-0012-unified-endpoint-network'] ?? [];
+$external_identity_definition = $definitions['n45-0008-external-identity-lifecycle'] ?? [];
+$historical_endpoint_snapshot_index = [
+    'unique' => true,
+    'columns' => [
+        'automation_snapshot_source',
+        'automation_snapshot_entity_type',
+        'automation_snapshot_external_id',
+        'automation_snapshot_payload_hash',
+    ],
+];
+$assertTrue(
+    ($external_identity_definition['fingerprint']['indexes']['automation_entity_snapshots']['automation_snapshot_source_entity_hash'] ?? [])
+        === $expected_endpoint_snapshot_index,
+    'The external-identity final fingerprint does not reflect binding-safe replay uniqueness'
+);
+$assertTrue(
+    ($external_identity_definition['legacy_bridge_fingerprint']['indexes']['automation_entity_snapshots']['automation_snapshot_source_entity_hash'] ?? [])
+        === $historical_endpoint_snapshot_index,
+    'The external-identity legacy bridge no longer accepts its released snapshot uniqueness shape'
+);
+$assertTrue(
+    n45MigrationBridgeFingerprintName($external_identity_definition, '2.7.8') === 'legacy_bridge_fingerprint',
+    'Pre-endpoint legacy markers no longer validate the released external-identity index'
+);
+$assertTrue(
+    n45MigrationBridgeFingerprintName($external_identity_definition, '2.7.9') === 'fingerprint',
+    'Endpoint-era legacy markers still validate the superseded external-identity index'
+);
 $assertTrue(
     [
         'legacy_version' => $endpoint_definition['legacy_version'] ?? null,
@@ -639,6 +671,23 @@ $malformed_definitions = [
         'record_identity' => ['unique' => true, 'columns' => ['tenant_id' => 'external_id']],
     ]]]],
     ['fingerprint' => ['failure_queries' => ['UPDATE records SET tenant_id = 0']]],
+    [
+        'legacy_version' => '2.7.5',
+        'fingerprint' => ['tables' => ['records']],
+        'legacy_bridge_fingerprint_until' => '2.7.8',
+    ],
+    [
+        'legacy_version' => '2.7.5',
+        'fingerprint' => ['tables' => ['records']],
+        'legacy_bridge_fingerprint' => ['tables' => ['records']],
+        'legacy_bridge_fingerprint_until' => 'not-a-version',
+    ],
+    [
+        'legacy_version' => '2.7.5',
+        'fingerprint' => ['tables' => ['records']],
+        'legacy_bridge_fingerprint' => ['tables' => ['records']],
+        'legacy_bridge_fingerprint_until' => '2.7.4',
+    ],
 ];
 foreach ($malformed_definitions as $position => $malformed_definition) {
     $assertFails(n45ValidateFingerprintDefinition('malformed-' . $position, $malformed_definition), "Malformed fingerprint fixture $position did not fail closed");

@@ -675,7 +675,32 @@ function n45ValidateFingerprintDefinition(string $id, array $definition): array
             n45ValidateFingerprintContract("$id legacy bridge", $definition['legacy_bridge_fingerprint'])
         );
     }
+    if (array_key_exists('legacy_bridge_fingerprint_until', $definition)) {
+        $until = $definition['legacy_bridge_fingerprint_until'];
+        $legacy_version = $definition['legacy_version'] ?? null;
+        if (!array_key_exists('legacy_bridge_fingerprint', $definition)
+            || !is_string($until)
+            || preg_match('/^\d+(?:\.\d+)+$/', $until) !== 1
+            || !is_string($legacy_version)
+            || version_compare($until, $legacy_version, '<')) {
+            $failures[] = "$id has an invalid legacy bridge fingerprint boundary";
+        }
+    }
     return $failures;
+}
+
+function n45MigrationBridgeFingerprintName(array $definition, string $legacy_marker): string
+{
+    if (!array_key_exists('legacy_bridge_fingerprint', $definition)) {
+        return 'fingerprint';
+    }
+
+    $until = $definition['legacy_bridge_fingerprint_until'] ?? null;
+    if (is_string($until) && $until !== '' && version_compare($legacy_marker, $until, '>')) {
+        return 'fingerprint';
+    }
+
+    return 'legacy_bridge_fingerprint';
 }
 
 function n45NormalizeFingerprintType($type): string
@@ -1140,9 +1165,7 @@ function n45BridgeLegacyMigrations($mysqli): array
             if (!$is_foundation && (!is_string($legacy_version) || $legacy_version === '' || version_compare($legacy_version, $legacy_marker, '>'))) {
                 continue;
             }
-            $bridge_fingerprint = array_key_exists('legacy_bridge_fingerprint', $definition)
-                ? 'legacy_bridge_fingerprint'
-                : 'fingerprint';
+            $bridge_fingerprint = n45MigrationBridgeFingerprintName($definition, $legacy_marker);
             $fingerprint_failures = n45ValidateMigrationFingerprint($mysqli, $id, $definition, $bridge_fingerprint);
             if ($fingerprint_failures) {
                 throw new RuntimeException('Legacy bridge refused: ' . implode('; ', $fingerprint_failures));

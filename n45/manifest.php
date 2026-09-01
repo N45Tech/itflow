@@ -14,6 +14,50 @@ $index_fingerprint = static function (bool $unique, array $columns): array {
     return ['unique' => $unique, 'columns' => $columns];
 };
 
+$external_identity_fingerprint = [
+    'tables' => ['automation_entity_snapshots'],
+    'columns' => [
+        'automation_entity_mappings' => [
+            'automation_mapping_external_parent_id' => $column_fingerprint('varchar(255)', true, null),
+            'automation_mapping_state' => $column_fingerprint('varchar(20)', false, 'unresolved'),
+            'automation_mapping_confidence' => $column_fingerprint('decimal(5,2)', false, '0.00'),
+            'automation_mapping_last_synced_at' => $column_fingerprint('datetime', true, null),
+            'automation_mapping_last_success_at' => $column_fingerprint('datetime', true, null),
+            'automation_mapping_last_error' => $column_fingerprint('text', true, null),
+            'automation_mapping_confirmed_at' => $column_fingerprint('datetime', true, null),
+        ],
+        'automation_entity_snapshots' => [
+            'automation_snapshot_payload_hash' => $column_fingerprint('char(64)', false, null),
+            'automation_snapshot_payload' => $column_fingerprint('longtext', false, null),
+            'automation_snapshot_observed_at' => $column_fingerprint('datetime', false, null),
+        ],
+    ],
+    'indexes' => [
+        'automation_entity_mappings' => [
+            'automation_mapping_source_entity_state' => $index_fingerprint(false, ['automation_mapping_source', 'automation_mapping_entity_type', 'automation_mapping_state']),
+            'automation_mapping_state' => $index_fingerprint(false, ['automation_mapping_state']),
+        ],
+        'automation_entity_snapshots' => [
+            'automation_snapshot_source_entity_hash' => $index_fingerprint(true, [
+                'automation_snapshot_source',
+                'automation_snapshot_entity_type',
+                'automation_snapshot_external_id',
+                'automation_snapshot_client_id',
+                'automation_snapshot_asset_id',
+                'automation_snapshot_payload_hash',
+            ]),
+        ],
+    ],
+];
+$external_identity_legacy_bridge_fingerprint = $external_identity_fingerprint;
+$external_identity_legacy_bridge_fingerprint['indexes']['automation_entity_snapshots']['automation_snapshot_source_entity_hash']
+    = $index_fingerprint(true, [
+        'automation_snapshot_source',
+        'automation_snapshot_entity_type',
+        'automation_snapshot_external_id',
+        'automation_snapshot_payload_hash',
+    ]);
+
 return [
     'schema_version' => 2,
     'maintenance' => [
@@ -446,34 +490,9 @@ return [
             'summary' => 'Add source-neutral identity lifecycle fields and immutable source snapshots.',
             'data_change' => true,
             'rollback' => 'Restore the pre-upgrade snapshot; initialized identity state is not down-migrated.',
-            'fingerprint' => [
-                'tables' => ['automation_entity_snapshots'],
-                'columns' => [
-                    'automation_entity_mappings' => [
-                        'automation_mapping_external_parent_id' => $column_fingerprint('varchar(255)', true, null),
-                        'automation_mapping_state' => $column_fingerprint('varchar(20)', false, 'unresolved'),
-                        'automation_mapping_confidence' => $column_fingerprint('decimal(5,2)', false, '0.00'),
-                        'automation_mapping_last_synced_at' => $column_fingerprint('datetime', true, null),
-                        'automation_mapping_last_success_at' => $column_fingerprint('datetime', true, null),
-                        'automation_mapping_last_error' => $column_fingerprint('text', true, null),
-                        'automation_mapping_confirmed_at' => $column_fingerprint('datetime', true, null),
-                    ],
-                    'automation_entity_snapshots' => [
-                        'automation_snapshot_payload_hash' => $column_fingerprint('char(64)', false, null),
-                        'automation_snapshot_payload' => $column_fingerprint('longtext', false, null),
-                        'automation_snapshot_observed_at' => $column_fingerprint('datetime', false, null),
-                    ],
-                ],
-                'indexes' => [
-                    'automation_entity_mappings' => [
-                        'automation_mapping_source_entity_state' => $index_fingerprint(false, ['automation_mapping_source', 'automation_mapping_entity_type', 'automation_mapping_state']),
-                        'automation_mapping_state' => $index_fingerprint(false, ['automation_mapping_state']),
-                    ],
-                    'automation_entity_snapshots' => [
-                        'automation_snapshot_source_entity_hash' => $index_fingerprint(true, ['automation_snapshot_source', 'automation_snapshot_entity_type', 'automation_snapshot_external_id', 'automation_snapshot_payload_hash']),
-                    ],
-                ],
-            ],
+            'fingerprint' => $external_identity_fingerprint,
+            'legacy_bridge_fingerprint' => $external_identity_legacy_bridge_fingerprint,
+            'legacy_bridge_fingerprint_until' => '2.7.8',
         ],
         'n45-0009-automation-event-lifecycle' => [
             'module' => 'automation', 'legacy_version' => '2.7.6',
