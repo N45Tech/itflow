@@ -53,7 +53,7 @@ $assertContains('documentationTicketCanResolve(', $runbooks, 'The composite life
 $assertContains('return ticketLifecycleCanResolve($ticket_id, false);', $runbooks, 'Legacy gate callers do not reach the composite lifecycle gate');
 $assertContains("require_once __DIR__ . '/documentation_lifecycle.php';", $runbooks, 'Documentation lifecycle helpers are not loaded');
 
-$assertContains('ticket_configuration_change', $ticket_add, 'New agent tickets do not explicitly assess configuration change');
+$assertContains('name="configuration_change"', $ticket_add, 'New agent tickets do not explicitly assess configuration change');
 $assertContains('documentation_impact', $ticket_add, 'New agent tickets do not explicitly assess documentation impact');
 $assertContains('ticket_documentation_impact =', $ticket_post, 'Agent ticket creation does not persist documentation assessment');
 $assertContains('ticket_documentation_assessed_at = NOW()', $ticket_post, 'Agent ticket creation does not timestamp documentation assessment');
@@ -98,7 +98,7 @@ $assertContains('documentationDocumentHasObligations($document_id)', $document_p
 $assertContains('documentationTicketHasAuditRecords($ticket_id)', $ticket_post, 'Tickets with documentation history can be permanently deleted');
 $assertContains('documentationTicketCanTransfer($ticket_id, $client_id)', $ticket_post, 'Ticket transfer does not preserve client-bound documentation history');
 $assertContains('documentationClientHasAuditRecords($client_id)', $client_post, 'Clients with documentation history can be permanently deleted');
-$assertContains('FOR UPDATE', $lifecycle, 'Documentation lifecycle mutation helpers do not lock their ticket context');
+$assertContains('runbookLockOpenTicket($ticket_id)', $lifecycle, 'Documentation lifecycle mutation helpers do not lock their ticket context');
 
 $assertContains('documentationSaveRequirementDraft(', $admin_requirement_post, 'Administrators cannot save a requirement draft through the immutable core API');
 $assertContains('documentationPublishRequirement(', $admin_requirement_post, 'Administrators cannot publish an immutable requirement version');
