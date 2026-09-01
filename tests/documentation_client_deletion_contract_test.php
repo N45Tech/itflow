@@ -23,7 +23,7 @@ if ($start === false || $end === false || $end <= $start) {
 
 $ordered_needles = [
     'mysqli_begin_transaction($mysqli)',
-    'SELECT client_name FROM clients WHERE client_id = $client_id LIMIT 1 FOR UPDATE',
+    'portalRequestLockClientForAuditRetention($client_id)',
     'SELECT ticket_id FROM tickets WHERE ticket_client_id = $client_id FOR UPDATE',
     'documentationClientHasAuditRecords($client_id)',
     'DELETE FROM certificates WHERE certificate_client_id = $client_id',
