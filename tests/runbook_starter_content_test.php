@@ -28,6 +28,20 @@ foreach (starterContentTicketTemplates() as $template) {
 }
 
 $contracts = [
+    'access-change' => [
+        'name' => 'Access Change',
+        'type' => 'standard',
+        'prefix' => 'ACC',
+        'last' => 70,
+        'count' => 7,
+    ],
+    'scheduled-work' => [
+        'name' => 'Scheduled Work',
+        'type' => 'standard',
+        'prefix' => 'SCH',
+        'last' => 80,
+        'count' => 8,
+    ],
     'managed-care-onboarding' => [
         'name' => 'Managed Care Onboarding',
         'type' => 'onboarding',
@@ -127,6 +141,17 @@ foreach ($contracts as $runbook_key => $contract) {
         count(array_filter($tasks, static fn ($task) => $task['approval_scope'] !== '')) > 0,
         "$runbook_key no longer contains an approval gate"
     );
+
+    if ($runbook_key === 'access-change') {
+        $tasks_by_key = array_column($tasks, null, 'key');
+        $validation = $tasks_by_key['acc-060'] ?? [];
+        $assertTrue(
+            str_contains(strtolower((string) ($validation['instructions'] ?? '')), 'execute the approved rollback')
+                && str_contains(strtolower((string) ($validation['instructions'] ?? '')), 'revalidate the restored baseline')
+                && str_contains(strtolower((string) ($validation['evidence_prompt'] ?? '')), 'rollback'),
+            'access-change validation no longer executes, revalidates and records the approved rollback path'
+        );
+    }
 }
 
 if ($failures) {
@@ -134,4 +159,4 @@ if ($failures) {
     exit(1);
 }
 
-echo "Canonical onboarding and offboarding starter runbooks passed.\n";
+echo "Canonical portal, onboarding and offboarding starter runbooks passed.\n";

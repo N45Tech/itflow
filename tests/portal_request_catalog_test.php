@@ -45,6 +45,7 @@ $schema = $read('db.sql');
 $migration = $read('n45/migrations/n45-0013-portal-request-catalog.php');
 $migration_docs = $read('docs/n45/migrations.md');
 $service = $read('functions/portal_requests.php');
+$starter_content = $read('admin/post/starter_content_model.php');
 $loader = $read('functions.php');
 $admin_handler = $read('admin/post/portal_request_catalog.php');
 $admin_item = $read('admin/portal_request_catalog_item.php');
@@ -356,6 +357,28 @@ $assertContains("error_log('Portal catalog request validation failed:", $client_
 foreach (['New user', 'Employee termination', 'New device', 'Access change', 'Report an incident', 'Schedule work'] as $starter) {
     $assertContains("'$starter'", $service, "Starter catalog does not include $starter");
 }
+foreach (['access-change', 'scheduled-work'] as $runbook_key) {
+    $assertContains("'runbook_key' => '$runbook_key'", $starter_content,
+        "Starter content does not provide the compatible $runbook_key runbook");
+}
+$starter_install_at = strpos($service, 'function portalRequestInstallStarters(');
+if ($starter_install_at === false) {
+    $failures[] = 'Could not isolate the starter request installer';
+} else {
+    $starter_install = substr($service, $starter_install_at);
+    $assertNotContains('portal_request_catalog_item_ticket_template_id =', $starter_install,
+        'Starter request installation bypasses operator review by binding a runbook');
+    $assertNotContains('portal_request_catalog_item_published_version_id =', $starter_install,
+        'Starter request installation bypasses operator review by publishing a catalog release');
+    $assertNotContains('portalRequestPublish(', $starter_install,
+        'Starter request installation invokes catalog publication automatically');
+}
+$assertContains('Select a published runbook', $admin_item,
+    'Catalog activation does not require an operator to select a published runbook');
+$assertContains('name="ticket_template_id" required', $admin_item,
+    'Catalog activation does not require an operator-reviewed runbook binding');
+$assertContains('INNER JOIN runbook_versions ON runbook_version_id = ticket_template_published_version_id', $admin_item,
+    'Catalog binding can select an unpublished ticket-template draft');
 
 require_once $root . '/n45/bootstrap.php';
 n45RequireModule('runbooks');
