@@ -14,7 +14,7 @@ $index_fingerprint = static function (bool $unique, array $columns): array {
     return ['unique' => $unique, 'columns' => $columns];
 };
 
-$external_identity_fingerprint = [
+$external_identity_final_fingerprint = [
     'tables' => ['automation_entity_snapshots'],
     'columns' => [
         'automation_entity_mappings' => [
@@ -49,8 +49,8 @@ $external_identity_fingerprint = [
         ],
     ],
 ];
-$external_identity_legacy_bridge_fingerprint = $external_identity_fingerprint;
-$external_identity_legacy_bridge_fingerprint['indexes']['automation_entity_snapshots']['automation_snapshot_source_entity_hash']
+$external_identity_historical_fingerprint = $external_identity_final_fingerprint;
+$external_identity_historical_fingerprint['indexes']['automation_entity_snapshots']['automation_snapshot_source_entity_hash']
     = $index_fingerprint(true, [
         'automation_snapshot_source',
         'automation_snapshot_entity_type',
@@ -490,8 +490,9 @@ return [
             'summary' => 'Add source-neutral identity lifecycle fields and immutable source snapshots.',
             'data_change' => true,
             'rollback' => 'Restore the pre-upgrade snapshot; initialized identity state is not down-migrated.',
-            'fingerprint' => $external_identity_fingerprint,
-            'legacy_bridge_fingerprint' => $external_identity_legacy_bridge_fingerprint,
+            'fingerprint' => $external_identity_final_fingerprint,
+            'runner_fingerprint' => $external_identity_historical_fingerprint,
+            'legacy_bridge_fingerprint' => $external_identity_historical_fingerprint,
             'legacy_bridge_fingerprint_until' => '2.7.8',
         ],
         'n45-0009-automation-event-lifecycle' => [

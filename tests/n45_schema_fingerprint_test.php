@@ -221,9 +221,22 @@ $assertTrue(
     'The external-identity final fingerprint does not reflect binding-safe replay uniqueness'
 );
 $assertTrue(
+    ($external_identity_definition['runner_fingerprint']['indexes']['automation_entity_snapshots']['automation_snapshot_source_entity_hash'] ?? [])
+        === $historical_endpoint_snapshot_index,
+    'The external-identity runner no longer validates its immediate released snapshot uniqueness shape'
+);
+$assertTrue(
     ($external_identity_definition['legacy_bridge_fingerprint']['indexes']['automation_entity_snapshots']['automation_snapshot_source_entity_hash'] ?? [])
         === $historical_endpoint_snapshot_index,
     'The external-identity legacy bridge no longer accepts its released snapshot uniqueness shape'
+);
+$assertTrue(
+    n45MigrationRunnerFingerprintName($external_identity_definition) === 'runner_fingerprint',
+    'The external-identity migration runner validates the later endpoint index too early'
+);
+$assertTrue(
+    n45MigrationRunnerFingerprintName($endpoint_definition) === 'fingerprint',
+    'The endpoint migration runner does not validate its final post-migration contract'
 );
 $assertTrue(
     n45MigrationBridgeFingerprintName($external_identity_definition, '2.7.8') === 'legacy_bridge_fingerprint',
@@ -688,6 +701,10 @@ $malformed_definitions = [
         'legacy_version' => '2.7.5',
         'fingerprint' => ['tables' => ['records']],
         'legacy_bridge_fingerprint_until' => '2.7.8',
+    ],
+    [
+        'fingerprint' => ['tables' => ['records']],
+        'runner_fingerprint' => ['tables' => []],
     ],
     [
         'legacy_version' => '2.7.5',

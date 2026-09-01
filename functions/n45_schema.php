@@ -669,6 +669,12 @@ function n45ValidateFingerprintContract(string $id, $fingerprint): array
 function n45ValidateFingerprintDefinition(string $id, array $definition): array
 {
     $failures = n45ValidateFingerprintContract($id, $definition['fingerprint'] ?? null);
+    if (array_key_exists('runner_fingerprint', $definition)) {
+        $failures = array_merge(
+            $failures,
+            n45ValidateFingerprintContract("$id runner", $definition['runner_fingerprint'])
+        );
+    }
     if (array_key_exists('legacy_bridge_fingerprint', $definition)) {
         $failures = array_merge(
             $failures,
@@ -687,6 +693,13 @@ function n45ValidateFingerprintDefinition(string $id, array $definition): array
         }
     }
     return $failures;
+}
+
+function n45MigrationRunnerFingerprintName(array $definition): string
+{
+    return array_key_exists('runner_fingerprint', $definition)
+        ? 'runner_fingerprint'
+        : 'fingerprint';
 }
 
 function n45MigrationBridgeFingerprintName(array $definition, string $legacy_marker): string
@@ -794,7 +807,7 @@ function n45CompareIndexFingerprint(string $id, string $table, string $index, ar
 
 function n45ValidateMigrationFingerprint($mysqli, string $id, array $definition, string $fingerprint_name = 'fingerprint'): array
 {
-    if (!in_array($fingerprint_name, ['fingerprint', 'legacy_bridge_fingerprint'], true)) {
+    if (!in_array($fingerprint_name, ['fingerprint', 'runner_fingerprint', 'legacy_bridge_fingerprint'], true)) {
         return ["$id requested an unknown fingerprint contract"];
     }
     $fingerprint = $definition[$fingerprint_name] ?? null;
@@ -1107,7 +1120,8 @@ function n45PrepareMigrationNamespace($mysqli): array
             define('FROM_N45_DB_UPDATER', true);
         }
         require n45MigrationFile($foundation_id, $definition);
-        $fingerprint_failures = n45ValidateMigrationFingerprint($mysqli, $foundation_id, $definition);
+        $runner_fingerprint = n45MigrationRunnerFingerprintName($definition);
+        $fingerprint_failures = n45ValidateMigrationFingerprint($mysqli, $foundation_id, $definition, $runner_fingerprint);
         if ($fingerprint_failures) {
             throw new RuntimeException(implode('; ', $fingerprint_failures));
         }
@@ -1134,7 +1148,8 @@ function n45RunMigrations($mysqli): array
         foreach ($status['pending'] as $id) {
             $definition = $definitions[$id];
             require n45MigrationFile($id, $definition);
-            $fingerprint_failures = n45ValidateMigrationFingerprint($mysqli, $id, $definition);
+            $runner_fingerprint = n45MigrationRunnerFingerprintName($definition);
+            $fingerprint_failures = n45ValidateMigrationFingerprint($mysqli, $id, $definition, $runner_fingerprint);
             if ($fingerprint_failures) {
                 throw new RuntimeException(implode('; ', $fingerprint_failures));
             }
