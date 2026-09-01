@@ -666,6 +666,23 @@ function n45ValidateFingerprintContract(string $id, $fingerprint): array
     return $failures;
 }
 
+function n45FingerprintInventory(array $fingerprint): array
+{
+    $inventory = [
+        'tables' => $fingerprint['tables'] ?? [],
+        'columns' => [],
+        'indexes' => [],
+        'failure_queries' => $fingerprint['failure_queries'] ?? [],
+    ];
+    foreach (($fingerprint['columns'] ?? []) as $table => $columns) {
+        $inventory['columns'][$table] = is_array($columns) ? array_keys($columns) : null;
+    }
+    foreach (($fingerprint['indexes'] ?? []) as $table => $indexes) {
+        $inventory['indexes'][$table] = is_array($indexes) ? array_keys($indexes) : null;
+    }
+    return $inventory;
+}
+
 function n45ValidateFingerprintDefinition(string $id, array $definition): array
 {
     $failures = n45ValidateFingerprintContract($id, $definition['fingerprint'] ?? null);
@@ -674,6 +691,12 @@ function n45ValidateFingerprintDefinition(string $id, array $definition): array
             $failures,
             n45ValidateFingerprintContract("$id runner", $definition['runner_fingerprint'])
         );
+        if (is_array($definition['fingerprint'] ?? null)
+            && is_array($definition['runner_fingerprint'])
+            && n45FingerprintInventory($definition['runner_fingerprint'])
+                !== n45FingerprintInventory($definition['fingerprint'])) {
+            $failures[] = "$id runner fingerprint changes the final fingerprint inventory";
+        }
     }
     if (array_key_exists('legacy_bridge_fingerprint', $definition)) {
         $failures = array_merge(
@@ -695,11 +718,13 @@ function n45ValidateFingerprintDefinition(string $id, array $definition): array
     return $failures;
 }
 
-function n45MigrationRunnerFingerprintName(array $definition): string
+function n45MigrationRunnerFingerprintNames(array $definition): array
 {
-    return array_key_exists('runner_fingerprint', $definition)
-        ? 'runner_fingerprint'
-        : 'fingerprint';
+    $fingerprints = ['fingerprint'];
+    if (array_key_exists('runner_fingerprint', $definition)) {
+        $fingerprints[] = 'runner_fingerprint';
+    }
+    return $fingerprints;
 }
 
 function n45MigrationBridgeFingerprintName(array $definition, string $legacy_marker): string
@@ -897,6 +922,18 @@ function n45ValidateMigrationFingerprint($mysqli, string $id, array $definition,
         }
     }
 
+    return $failures;
+}
+
+function n45ValidateMigrationRunnerFingerprint($mysqli, string $id, array $definition): array
+{
+    $failures = [];
+    foreach (n45MigrationRunnerFingerprintNames($definition) as $fingerprint_name) {
+        $failures = n45ValidateMigrationFingerprint($mysqli, $id, $definition, $fingerprint_name);
+        if (!$failures) {
+            return [];
+        }
+    }
     return $failures;
 }
 
@@ -1120,8 +1157,7 @@ function n45PrepareMigrationNamespace($mysqli): array
             define('FROM_N45_DB_UPDATER', true);
         }
         require n45MigrationFile($foundation_id, $definition);
-        $runner_fingerprint = n45MigrationRunnerFingerprintName($definition);
-        $fingerprint_failures = n45ValidateMigrationFingerprint($mysqli, $foundation_id, $definition, $runner_fingerprint);
+        $fingerprint_failures = n45ValidateMigrationRunnerFingerprint($mysqli, $foundation_id, $definition);
         if ($fingerprint_failures) {
             throw new RuntimeException(implode('; ', $fingerprint_failures));
         }
@@ -1148,8 +1184,7 @@ function n45RunMigrations($mysqli): array
         foreach ($status['pending'] as $id) {
             $definition = $definitions[$id];
             require n45MigrationFile($id, $definition);
-            $runner_fingerprint = n45MigrationRunnerFingerprintName($definition);
-            $fingerprint_failures = n45ValidateMigrationFingerprint($mysqli, $id, $definition, $runner_fingerprint);
+            $fingerprint_failures = n45ValidateMigrationRunnerFingerprint($mysqli, $id, $definition);
             if ($fingerprint_failures) {
                 throw new RuntimeException(implode('; ', $fingerprint_failures));
             }
