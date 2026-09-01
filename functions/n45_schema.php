@@ -713,12 +713,15 @@ function n45NormalizeFingerprintType($type): string
     return $normalized;
 }
 
-function n45NormalizeFingerprintDefault($default)
+function n45NormalizeFingerprintDefault($default, bool $information_schema = false)
 {
     if ($default === null) {
         return null;
     }
     $normalized = trim((string) $default);
+    if ($information_schema && strcasecmp($normalized, 'NULL') === 0) {
+        return null;
+    }
     if (strlen($normalized) >= 2
         && (($normalized[0] === "'" && substr($normalized, -1) === "'")
             || ($normalized[0] === '"' && substr($normalized, -1) === '"'))) {
@@ -756,7 +759,7 @@ function n45CompareColumnFingerprint(string $id, string $table, string $column, 
     if ($observed['nullable'] !== $expected['nullable']) {
         $failures[] = "$id has the wrong nullability for $table.$column";
     }
-    if (n45NormalizeFingerprintDefault($observed['default']) !== n45NormalizeFingerprintDefault($expected['default'])) {
+    if (n45NormalizeFingerprintDefault($observed['default'], true) !== n45NormalizeFingerprintDefault($expected['default'])) {
         $failures[] = "$id has the wrong default for $table.$column";
     }
     if (n45NormalizeFingerprintExtra($observed['extra']) !== n45NormalizeFingerprintExtra($expected['extra'])) {

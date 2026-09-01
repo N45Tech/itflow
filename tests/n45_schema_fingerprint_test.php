@@ -617,6 +617,19 @@ $column_contract = ['type' => 'bigint(20)', 'nullable' => false, 'default' => 0,
 $observed_column = ['type' => 'bigint', 'nullable' => false, 'default' => '0', 'extra' => 'AUTO_INCREMENT'];
 $assertTrue(n45CompareColumnFingerprint('test', 'records', 'record_id', $column_contract, $observed_column) === [], 'Equivalent column metadata did not normalize consistently');
 
+$nullable_contract = ['type' => 'varchar(20)', 'nullable' => true, 'default' => null, 'extra' => ''];
+$mariadb_nullable_column = ['type' => 'varchar(20)', 'nullable' => true, 'default' => 'NULL', 'extra' => ''];
+$assertTrue(
+    n45CompareColumnFingerprint('test', 'records', 'nullable_value', $nullable_contract, $mariadb_nullable_column) === [],
+    'MariaDB textual SQL NULL metadata did not normalize to a null default'
+);
+$literal_null_contract = ['type' => 'varchar(20)', 'nullable' => false, 'default' => 'NULL', 'extra' => ''];
+$literal_null_column = ['type' => 'varchar(20)', 'nullable' => false, 'default' => "'NULL'", 'extra' => ''];
+$assertTrue(
+    n45CompareColumnFingerprint('test', 'records', 'literal_null', $literal_null_contract, $literal_null_column) === [],
+    'A quoted literal NULL default was confused with SQL NULL metadata'
+);
+
 $wrong_type = $observed_column;
 $wrong_type['type'] = 'int(11)';
 $assertFails(n45CompareColumnFingerprint('test', 'records', 'record_id', $column_contract, $wrong_type), 'A wrong column type passed its fingerprint');
