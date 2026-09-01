@@ -326,7 +326,7 @@ $assertContains('integrationIdentityRecordDecisionUnlocked', $identity, 'Mapping
 $assertContains('Identity conflict quarantine stopped because endpoint state diverged', $identity, 'Mapping conflicts leave formerly trusted endpoint posture active');
 $assertContains('retired_identity_reappeared', $identity, 'Repeated polling can silently resurrect a retired durable identity');
 $assertContains('Replaying the last old sighting is not source recovery', $identity, 'An equal-watermark replay can falsely clear identity staleness');
-$assertContains('converge on the safer review state', $identity, 'Equal-watermark mapping assessments are delivery-order dependent');
+$assertContains('safer review state regardless of delivery order', $identity, 'Equal-watermark mapping assessments are delivery-order dependent');
 $assertContains('function integrationIdentityReconcileStaleness', $identity, 'Scheduled identity staleness reconciliation is not implemented');
 $assertContains('integrationIdentityReconcileOrphans()', $identity_cron, 'Identity cron does not quarantine orphaned or cross-tenant bindings');
 $assertContains("name=\"mapping_ids[]\"", $operations, 'Operations does not render a bulk identity review queue');
