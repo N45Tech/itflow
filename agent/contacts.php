@@ -3,6 +3,7 @@
 // Default Column Sortby Filter
 $sort = "contact_name";
 $order = "ASC";
+$client_id = 0;
 
 // If client_id is in URI then show client Side Bar and client header
 if (isset($_GET['client_id'])) {
