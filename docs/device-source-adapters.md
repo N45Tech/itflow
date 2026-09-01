@@ -1,6 +1,6 @@
 # Intune, Entra, and SentinelOne device-source adapters
 
-These adapters keep Microsoft Intune, Microsoft Entra ID, CIPP, and SentinelOne in their specialized roles. n8n schedules and paginates source reads, converts only approved fields, and publishes the normalized device contract to ITFlow. ITFlow remains authoritative for client, location, and asset identity.
+These adapters keep Microsoft Intune, Microsoft Entra ID, CIPP, and SentinelOne in their specialized roles. n8n schedules and paginates source reads, converts only approved fields, and publishes the normalized device contract to ITFlow. ITFlow remains authoritative for client, location, and asset identity. CIPP is the Microsoft Graph access and pagination broker: CIPP-brokered reads emit `intune` or `entra` identities rather than a separate `cipp` device identity. Checkmk host and service identities belong to the alert/event pipeline; alert silence is not an endpoint inventory heartbeat and therefore does not participate in endpoint staleness or coverage.
 
 No additional database migration is required. The implementation uses the existing `automation_entity_mappings`, `automation_entity_snapshots`, `asset_endpoint_states`, `asset_network_observations`, and `asset_change_events` tables.
 
