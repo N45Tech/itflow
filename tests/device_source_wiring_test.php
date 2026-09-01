@@ -51,7 +51,7 @@ $assertContains("automation_mapping_last_synced_at < '\$cutoff_sql'", $service, 
 $assertContains('integrationIdentityFindMapping($source, \'device\', $external_id)', $service, 'Retirement does not re-read candidates');
 $assertContains('integrationIdentityRetireMapping(', $service, 'Missing source identities are not retired through the safe cascade');
 $assertContains('retirement guard blocked', $service, 'Unexpected source shrinkage is not guarded');
-$assertContains("integrationIdentityAcquireLock($source, 'sync_scope', $scope_id)", $service, 'A source scope can complete concurrently');
+$assertContains("integrationIdentityAcquireLock(\$source, 'sync_scope', \$scope_id)", $service, 'A source scope can complete concurrently');
 $assertOrder('integrationIdentityUpsertMapping([', 'endpointReconcileAssetSourceUnlocked([', $service, 'Endpoint posture is published before its identity mapping');
 $assertContains('integrationIdentityRecordSnapshot([', $service, 'Source snapshots are not persisted');
 $assertContains("n45RequireModule('endpoint');", $loader, 'Device source service is not loaded through the N45 endpoint module');
