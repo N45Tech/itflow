@@ -28,6 +28,140 @@ function endpointPositiveInt($value): int
     return 0;
 }
 
+/**
+ * Collapse interface and connection query results into one row per interface.
+ *
+ * Connection joins are intentionally kept out of the base interface query. An
+ * interface can have more than one historical or topology link, and joining
+ * those edges directly makes the asset view repeat the interface row.
+ */
+function endpointGroupAssetInterfaceRows(array $interface_rows, array $connection_rows): array
+{
+    $interfaces = [];
+    $connection_ids = [];
+
+    foreach ($interface_rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $interface_id = endpointPositiveInt($row['interface_id'] ?? 0);
+        if ($interface_id < 1 || isset($interfaces[$interface_id])) {
+            continue;
+        }
+        $row['connections'] = [];
+        $interfaces[$interface_id] = $row;
+        $connection_ids[$interface_id] = [];
+    }
+
+    foreach ($connection_rows as $connection) {
+        if (!is_array($connection)) {
+            continue;
+        }
+        $interface_id = endpointPositiveInt($connection['interface_id'] ?? 0);
+        $connected_interface_id = endpointPositiveInt($connection['connected_interface_id'] ?? 0);
+        if (!isset($interfaces[$interface_id]) || $connected_interface_id < 1
+            || isset($connection_ids[$interface_id][$connected_interface_id])) {
+            continue;
+        }
+        $interfaces[$interface_id]['connections'][] = $connection;
+        $connection_ids[$interface_id][$connected_interface_id] = true;
+    }
+
+    return array_values($interfaces);
+}
+
+function endpointAssetInterfaceRows(int $asset_id): array
+{
+    global $mysqli;
+
+    $asset_id = max(0, $asset_id);
+    if ($asset_id < 1) {
+        return [];
+    }
+
+    $interface_rows = [];
+    $sql = mysqli_query($mysqli, "SELECT
+        ai.interface_id,
+        ai.interface_name,
+        ai.interface_description,
+        ai.interface_type,
+        ai.interface_mac,
+        ai.interface_ip,
+        ai.interface_nat_ip,
+        ai.interface_ipv6,
+        ai.interface_primary,
+        ai.interface_notes,
+        n.network_name,
+        n.network_id
+        FROM asset_interfaces ai
+        LEFT JOIN networks n ON n.network_id = ai.interface_network_id
+        WHERE ai.interface_asset_id = $asset_id
+        AND ai.interface_archived_at IS NULL
+        ORDER BY ai.interface_name ASC, ai.interface_id ASC");
+    if (!$sql) {
+        throw new RuntimeException('Could not load asset interfaces');
+    }
+    while ($row = mysqli_fetch_assoc($sql)) {
+        $interface_rows[] = $row;
+    }
+    if (!$interface_rows) {
+        return [];
+    }
+
+    $interface_ids = array_values(array_unique(array_map(
+        static fn ($row) => endpointPositiveInt($row['interface_id'] ?? 0),
+        $interface_rows
+    )));
+    $interface_ids = array_values(array_filter($interface_ids, static fn ($id) => $id > 0));
+    if (!$interface_ids) {
+        return endpointGroupAssetInterfaceRows($interface_rows, []);
+    }
+    $interface_ids_sql = implode(',', $interface_ids);
+
+    $connection_rows = [];
+    $connection_sql = mysqli_query($mysqli, "SELECT connection_rows.* FROM (
+        SELECT ail.interface_link_id,
+            ail.interface_a_id AS interface_id,
+            connected_interfaces.interface_id AS connected_interface_id,
+            connected_interfaces.interface_name AS connected_interface_name,
+            connected_assets.asset_name AS connected_asset_name,
+            connected_assets.asset_id AS connected_asset_id,
+            connected_assets.asset_type AS connected_asset_type
+        FROM asset_interface_links ail
+        INNER JOIN asset_interfaces connected_interfaces
+            ON connected_interfaces.interface_id = ail.interface_b_id
+        INNER JOIN assets connected_assets
+            ON connected_assets.asset_id = connected_interfaces.interface_asset_id
+        WHERE ail.interface_a_id IN ($interface_ids_sql)
+        UNION ALL
+        SELECT ail.interface_link_id,
+            ail.interface_b_id AS interface_id,
+            connected_interfaces.interface_id AS connected_interface_id,
+            connected_interfaces.interface_name AS connected_interface_name,
+            connected_assets.asset_name AS connected_asset_name,
+            connected_assets.asset_id AS connected_asset_id,
+            connected_assets.asset_type AS connected_asset_type
+        FROM asset_interface_links ail
+        INNER JOIN asset_interfaces connected_interfaces
+            ON connected_interfaces.interface_id = ail.interface_a_id
+        INNER JOIN assets connected_assets
+            ON connected_assets.asset_id = connected_interfaces.interface_asset_id
+        WHERE ail.interface_b_id IN ($interface_ids_sql)
+    ) connection_rows
+    ORDER BY connection_rows.interface_id ASC,
+        connection_rows.connected_asset_name ASC,
+        connection_rows.connected_interface_name ASC,
+        connection_rows.interface_link_id ASC");
+    if (!$connection_sql) {
+        throw new RuntimeException('Could not load asset interface connections');
+    }
+    while ($connection = mysqli_fetch_assoc($connection_sql)) {
+        $connection_rows[] = $connection;
+    }
+
+    return endpointGroupAssetInterfaceRows($interface_rows, $connection_rows);
+}
+
 function endpointSource($value): string
 {
     if (is_array($value) || is_object($value) || is_resource($value)) {

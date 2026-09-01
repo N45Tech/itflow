@@ -12,6 +12,7 @@ const workflows = new Map();
 for (const file of files) {
   const raw = await readFile(join(workflowDirectory, file), 'utf8');
   assert(!/(Bearer\s+[A-Za-z0-9_-]{20,}|Token\s+[A-Za-z0-9_-]{20,})/.test(raw), `${file} contains a credential-like value`);
+  assert(!/new URL(?:SearchParams)?\s*\(/.test(raw), `${file} uses URL globals unavailable in the n8n task runner`);
   const workflow = JSON.parse(raw);
   workflows.set(workflow.name, workflow);
   const names = new Set(workflow.nodes.map((node) => node.name));

@@ -127,6 +127,19 @@ $assertInvalid(
     ])),
     'The aggregate address cap was not enforced'
 );
+$grouped_interfaces = endpointGroupAssetInterfaceRows([
+    ['interface_id' => 10, 'interface_name' => 'Ethernet'],
+    ['interface_id' => 10, 'interface_name' => 'Duplicate join row'],
+    ['interface_id' => 20, 'interface_name' => 'Wi-Fi'],
+], [
+    ['interface_id' => 10, 'connected_interface_id' => 101, 'connected_asset_name' => 'Switch'],
+    ['interface_id' => 10, 'connected_interface_id' => 102, 'connected_asset_name' => 'Firewall'],
+    ['interface_id' => 10, 'connected_interface_id' => 101, 'connected_asset_name' => 'Duplicate edge'],
+]);
+$assertSame(2, count($grouped_interfaces), 'Connection fan-out duplicated an asset interface row');
+$assertSame('Ethernet', $grouped_interfaces[0]['interface_name'], 'The first canonical interface row was not preserved');
+$assertSame(2, count($grouped_interfaces[0]['connections']), 'Distinct interface connections were not grouped');
+$assertSame(0, count($grouped_interfaces[1]['connections']), 'A connection leaked to another interface');
 $empty_network_hash = endpointNetworkSnapshotHash([]);
 $active_tuple = endpointDeliveryTuple(
     'active',

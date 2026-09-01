@@ -34,13 +34,15 @@ const parseMappings = (source) => {
 };
 const httpsBase = (value, label) => {
   const base = text(value).replace(/\/+$/, '');
-  let url;
-  try { url = new URL(base); } catch { throw new Error(label + ' must be an absolute HTTPS URL.'); }
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+  const match = base.match(/^https:\/\/([^/?#\s]+)(\/[^?#\s]*)?$/i);
+  if (!match || match[1].includes('@')) {
     throw new Error(label + ' must be an HTTPS origin or base path without credentials or query parameters.');
   }
   return base;
 };
+const queryString = (parameters) => Object.entries(parameters)
+  .map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(text(value)))
+  .join('&');
 `.trim();
 
 export function loadCippSourceConfig(source, endpoint, select) {
@@ -49,7 +51,7 @@ ${mappingHelpers}
 const SOURCE = '${source}';
 const base = httpsBase($vars.N45_CIPP_BASE_URL, 'N45_CIPP_BASE_URL');
 return parseMappings(SOURCE).map((scope) => {
-  const query = new URLSearchParams({
+  const query = queryString({
     TenantFilter: scope.tenant_filter,
     Endpoint: '${endpoint}',
     Version: 'v1.0',
@@ -57,7 +59,7 @@ return parseMappings(SOURCE).map((scope) => {
     '$top': '999',
     '$select': '${select}',
   });
-  return { json: { ...scope, request_url: base + '/api/ListGraphRequest?' + query.toString() } };
+  return { json: { ...scope, request_url: base + '/api/ListGraphRequest?' + query } };
 });
 `.trim();
 }
@@ -227,13 +229,13 @@ const SOURCE = 'sentinelone';
 const base = httpsBase($vars.N45_SENTINELONE_BASE_URL, 'N45_SENTINELONE_BASE_URL');
 const scopes = parseMappings(SOURCE);
 const siteIds = scopes.map((scope) => scope.site_id);
-const query = new URLSearchParams({ limit: '1000', siteIds: siteIds.join(',') });
+const query = queryString({ limit: '1000', siteIds: siteIds.join(',') });
 return [{ json: {
   source: SOURCE, site_ids: siteIds, site_ids_csv: siteIds.join(','),
-  sites_url: base + '/web/api/v2.1/sites?' + query.toString(),
-  agents_url: base + '/web/api/v2.1/agents?' + new URLSearchParams({
+  sites_url: base + '/web/api/v2.1/sites?' + query,
+  agents_url: base + '/web/api/v2.1/agents?' + queryString({
     limit: '1000', siteIds: siteIds.join(','), isDecommissioned: 'false',
-  }).toString(),
+  }),
 } }];
 `.trim();
 
@@ -260,9 +262,9 @@ const base = httpsBase($vars.N45_SENTINELONE_BASE_URL, 'N45_SENTINELONE_BASE_URL
 const siteIds = [...expected];
 return [{ json: {
   source: SOURCE, site_ids: siteIds, observed_sites: Object.fromEntries(observed),
-  agents_url: base + '/web/api/v2.1/agents?' + new URLSearchParams({
+  agents_url: base + '/web/api/v2.1/agents?' + queryString({
     limit: '1000', siteIds: siteIds.join(','), isDecommissioned: 'false',
-  }).toString(),
+  }),
 } }];
 `.trim();
 
