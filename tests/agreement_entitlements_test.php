@@ -432,7 +432,7 @@ $assertContains("n45RequireModule('agreements');", $functions_loader, 'Agreement
 $assertContains('agreementResolveRequestTypeKey($row)', $sla, 'Ticket SLA application must use the Goal 7-compatible request-type seam');
 $assertContains('catch (Throwable $e)', $agreement_helpers, 'An optional request-catalog adapter failure must fall back without breaking ticket creation');
 $assertContains('SELECT tickets.ticket_id, ticket_client_id', $sla, 'Goal 7 request keys require the immutable submission link to resolve by ticket ID');
-$assertContains("'source' => 'manual_override'", $sla, 'A technician SLA override must replace stale selection rationale with a traceable decision');
+$assertContains("'source' => \$manual ? 'manual_override' : 'forced_restamp'", $sla, 'A technician SLA override must replace stale selection rationale with a traceable decision');
 $assertContains('agreementRecordTicketDecision($ticket_id', $sla, 'Ticket SLA selection must leave an append-only explanation');
 $assertContains('bool $caller_transaction = false', $sla, 'Ticket creation transactions must be able to own the atomic SLA decision boundary');
 $assertContains('LIMIT 1 FOR UPDATE', $sla, 'Ticket SLA selection must lock its ticket/client inputs');
@@ -467,7 +467,7 @@ foreach ([$recurring_ticket_handler, $nightly_tasks] as $recurring_creation_path
 }
 $assertSame(2, substr_count($recurring_ticket_handler, $recurring_copy),
     'Both interactive recurring creation paths must copy devices before entitlement selection');
-$assertContains("agreement_version_status !== 'Draft'", $handler, 'Published agreement rows must be rejected by edit handlers');
+$assertContains("['agreement_version_status'] !== 'Draft'", $handler, 'Published agreement rows must be rejected by edit handlers');
 $assertContains('agreementVersionContext($version_id, true)', $handler, 'Draft child mutations must share the publication row lock');
 $assertContains('Could not lock the agreement for draft mutation', $handler, 'Draft mutation and publication must use the same contract-first lock order');
 $assertContains('agreementEntitlementScopeLabel($client_id', $handler, 'Specific entitlement records must snapshot their canonical tenant-owned label');
