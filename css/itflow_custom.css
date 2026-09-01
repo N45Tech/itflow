@@ -3720,7 +3720,7 @@ label,
     border: 1px solid var(--n45-border);
     border-radius: 12px;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     margin-bottom: 1rem;
     overflow: hidden;
 }
@@ -3938,6 +3938,19 @@ label,
 
 .n45-health-row > .badge {
     flex: 0 0 auto;
+}
+
+.n45-health-list {
+    max-height: 18rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+.n45-health-list:focus-visible {
+    outline: 3px solid var(--n45-accent);
+    outline: 3px solid color-mix(in srgb, var(--n45-accent) 35%, transparent);
+    outline-offset: -3px;
 }
 
 .n45-activity-row > .text-right {
@@ -4257,7 +4270,7 @@ label,
         border-right: 0;
     }
 
-    .n45-kpi-strip > a:last-child,
+    .n45-kpi-strip > a:nth-last-child(-n+2),
     .n45-tech-pulse-grid a:nth-last-child(-n+2) {
         border-bottom: 0;
     }

@@ -534,7 +534,7 @@ foreach ($coverage_rows as $coverage_row) {
                     </div>
                     <?php if ($session_is_admin) { ?><a href="/admin/integration_automation.php">Manage events <i class="fas fa-cog ml-1"></i></a><?php } ?>
                 </div>
-                <div class="n45-health-list">
+                <div class="n45-health-list" tabindex="0" aria-label="Integration health details; scroll for additional sources">
                     <div class="n45-health-row">
                         <span class="n45-system-icon"><i class="fas fa-stream"></i></span>
                         <div>

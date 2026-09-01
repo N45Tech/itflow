@@ -156,45 +156,8 @@ if (isset($_GET['asset_id'])) {
         $asset_tags_display = implode('', $asset_tag_name_display_array);
 
         // Network Interfaces
-        $sql_related_interfaces = mysqli_query($mysqli, "
-            SELECT
-                ai.interface_id,
-                ai.interface_name,
-                ai.interface_description,
-                ai.interface_type,
-                ai.interface_mac,
-                ai.interface_ip,
-                ai.interface_nat_ip,
-                ai.interface_ipv6,
-                ai.interface_primary,
-                ai.interface_notes,
-                n.network_name,
-                n.network_id,
-                connected_interfaces.interface_id AS connected_interface_id,
-                connected_interfaces.interface_name AS connected_interface_name,
-                connected_assets.asset_name AS connected_asset_name,
-                connected_assets.asset_id AS connected_asset_id,
-                connected_assets.asset_type AS connected_asset_type
-            FROM asset_interfaces AS ai
-            LEFT JOIN networks AS n
-              ON n.network_id = ai.interface_network_id
-            LEFT JOIN asset_interface_links AS ail
-              ON (ail.interface_a_id = ai.interface_id OR ail.interface_b_id = ai.interface_id)
-            LEFT JOIN asset_interfaces AS connected_interfaces
-              ON (
-                  (ail.interface_a_id = ai.interface_id AND ail.interface_b_id = connected_interfaces.interface_id)
-                  OR
-                  (ail.interface_b_id = ai.interface_id AND ail.interface_a_id = connected_interfaces.interface_id)
-              )
-            LEFT JOIN assets AS connected_assets
-              ON connected_assets.asset_id = connected_interfaces.interface_asset_id
-            WHERE
-                ai.interface_asset_id = $asset_id
-                AND ai.interface_archived_at IS NULL
-            ORDER BY ai.interface_name ASC
-        ");
-
-        $interface_count = mysqli_num_rows($sql_related_interfaces);
+        $related_interfaces = endpointAssetInterfaceRows($asset_id);
+        $interface_count = count($related_interfaces);
 
         // Related Files
         $sql_related_files = mysqli_query($mysqli, "SELECT file_created_at, file_description, file_ext, files.file_id, file_name FROM asset_files
@@ -651,7 +614,7 @@ if (isset($_GET['asset_id'])) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                <?php while ($row = mysqli_fetch_assoc($sql_related_interfaces)) { ?>
+                                <?php foreach ($related_interfaces as $row) { ?>
                                     <?php
                                         $interface_id       = intval($row['interface_id']);
                                         $interface_name     = escapeHtml($row['interface_name']);
@@ -674,24 +637,22 @@ if (isset($_GET['asset_id'])) {
                                             ? "<i class='fas fa-fw fa-network-wired mr-1'></i>$network_name"
                                             : '-';
 
-                                        // Connected interface details
-                                        $connected_asset_id = intval($row['connected_asset_id']);
-                                        $connected_asset_name = escapeHtml($row['connected_asset_name']);
-                                        $connected_asset_type = escapeHtml($row['connected_asset_type']);
-                                        $connected_asset_icon = getAssetIcon($connected_asset_type);
-                                        $connected_interface_name = escapeHtml($row['connected_interface_name']);
-
-
-                                        // Show either "-" or "AssetName - Port"
-                                        if ($connected_asset_name) {
-                                            $connected_to_display = "<a class='ajax-modal' href='#'
-                                                data-modal-size='lg'
-                                                data-modal-url='modals/asset/asset.php?id=$connected_asset_id'>
-                                                <strong><i class='fa fa-fw text-dark fa-$connected_asset_icon mr-1'></i>$connected_asset_name</strong> - $connected_interface_name
-                                            </a>";
-                                        } else {
-                                            $connected_to_display = "-";
+                                        $connected_to_links = [];
+                                        foreach ($row['connections'] ?? [] as $connection) {
+                                            $connected_asset_id = intval($connection['connected_asset_id']);
+                                            $connected_asset_name = escapeHtml($connection['connected_asset_name']);
+                                            $connected_asset_type = escapeHtml($connection['connected_asset_type']);
+                                            $connected_asset_icon = getAssetIcon($connected_asset_type);
+                                            $connected_interface_name = escapeHtml($connection['connected_interface_name']);
+                                            if ($connected_asset_name) {
+                                                $connected_to_links[] = "<a class='ajax-modal d-block' href='#'
+                                                    data-modal-size='lg'
+                                                    data-modal-url='modals/asset/asset.php?id=$connected_asset_id'>
+                                                    <strong><i class='fa fa-fw text-dark fa-$connected_asset_icon mr-1'></i>$connected_asset_name</strong> - $connected_interface_name
+                                                </a>";
+                                            }
                                         }
+                                        $connected_to_display = $connected_to_links ? implode('', $connected_to_links) : '-';
                                     ?>
                                     <tr>
                                         <td class="bg-light checkbox-column">
