@@ -439,8 +439,8 @@ $assertOrdered($client_delete, [
     'DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id',
     'DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id',
     'DELETE FROM tickets WHERE ticket_client_id = $client_id',
-    'if (!mysqli_commit($mysqli))',
     'DELETE FROM clients WHERE client_id = $client_id',
+    'if (!mysqli_commit($mysqli))',
     'removeDirectory("../uploads/clients/$client_id")',
 ], 'Client deletion does not preserve atomic ticket/Operations cleanup before filesystem deletion');
 $assertContains('mysqli_rollback($mysqli)', $client_delete, 'Client deletion cannot roll back failed ticket/Operations cleanup');
