@@ -1,5 +1,6 @@
 <?php
 
+// Guards the Operations layout regression observed after the production release.
 $root = dirname(__DIR__);
 $operations = file_get_contents($root . '/agent/operations.php');
 $css = file_get_contents($root . '/css/itflow_custom.css');
