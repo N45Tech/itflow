@@ -242,7 +242,8 @@ $assertTrue(!str_contains($status_contract, 'n45EnsureMigrationLedger(') && !str
 $assertContains("hash_file('sha256'", $schema_service, 'N45 migrations are not checksum verified');
 $assertContains("SELECT GET_LOCK('\$lock_sql', 0)", $schema_service, 'N45 migrations do not serialize on the database update lock');
 $assertContains('function n45ValidateMigrationFingerprint(', $schema_service, 'Legacy marker bridge does not validate schema/data fingerprints');
-$assertContains("? 'legacy_bridge_fingerprint'", $schema_service, 'Legacy bridge does not select an exact compatibility fingerprint');
+$assertContains('function n45MigrationBridgeFingerprintName(', $schema_service, 'Legacy bridge does not define compatibility fingerprint selection');
+$assertContains('n45MigrationBridgeFingerprintName($definition, $legacy_marker)', $schema_service, 'Legacy bridge does not select an exact compatibility fingerprint');
 $assertContains('Required post-integration migration', $schema_service, 'Final assembly does not require the documentation index repair');
 $assertContains("'Legacy bridge refused: '", $schema_service, 'Legacy marker bridge is not fail closed');
 $assertContains("WHERE company_id = 1 AND config_current_database_version = '\$legacy_marker_sql'", $schema_service, 'Legacy marker reset is not compare-and-set');
