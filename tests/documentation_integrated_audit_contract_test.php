@@ -123,7 +123,7 @@ $assertContains('documentationAssignObligationOwners(', $documentation_post, 'Ow
 // Open promises and approved exceptions/waivers remain explicitly actionable,
 // including after the ticket reaches a terminal state.
 $assertContains('$can_manage_promises = lookupUserPermission', $ticket_modal, 'Promise actions remain coupled to open-ticket editing');
-$assertMatches('/if \(\$can_manage_promises\).*?fulfill_documentation_promise/s', $ticket_modal,
+$assertMatches('/if \(\$can_manage_promises(?:\s*&&\s*\$projection_mutable)?\).*?fulfill_documentation_promise/s', $ticket_modal,
     'Terminal tickets do not expose promise fulfillment/cancellation');
 foreach (['revoke_documentation_exception', 'revoke_ticket_documentation_waiver'] as $revoke_action) {
     $assertContains($revoke_action, $documentation_post, "POST handler omits $revoke_action");
