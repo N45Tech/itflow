@@ -427,7 +427,7 @@ function levelResolveClientForGroupLocked($group_id): int
 {
     global $mysqli;
 
-    if (!($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS)) {
+    if (!n45DatabaseTransactionActive()) {
         throw new LogicException('Locked Level group resolution requires a transaction');
     }
 

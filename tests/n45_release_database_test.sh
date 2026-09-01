@@ -99,6 +99,7 @@ FINAL_TABLE_COUNT=$("${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "SELECT COUNT(*
 seed_marker "$FINAL_DATABASE" "$UPSTREAM_MARKER"
 run_update "$FINAL_DATABASE" "$TEMP_DIRECTORY/final-update.log"
 assert_current "$FINAL_DATABASE"
+php tests/n45_transaction_state_database_assert.php
 
 echo 'Upgrading the clean upstream 2.6.7 schema through the production CLI'
 reset_database "$UPGRADE_DATABASE"

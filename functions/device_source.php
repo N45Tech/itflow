@@ -420,7 +420,7 @@ function deviceSourceComplete(array $input): array
         ]);
         mysqli_commit($mysqli);
     } catch (Throwable $e) {
-        if ($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS) {
+        if (n45DatabaseTransactionActive()) {
             mysqli_rollback($mysqli);
         }
         throw $e;
@@ -493,7 +493,7 @@ function deviceSourceRecordFailure(array $input): array
         ]);
         mysqli_commit($mysqli);
     } catch (Throwable $e) {
-        if ($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS) {
+        if (n45DatabaseTransactionActive()) {
             mysqli_rollback($mysqli);
         }
         throw $e;

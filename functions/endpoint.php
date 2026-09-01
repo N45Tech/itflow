@@ -677,7 +677,7 @@ function endpointSupersedeDeliveryUnlocked(
 ): void {
     global $mysqli;
 
-    if (!($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS)) {
+    if (!n45DatabaseTransactionActive()) {
         throw new LogicException('Endpoint delivery supersession requires a transaction');
     }
     if (!preg_match('/^[a-f0-9]{64}$/', $delivery_key)) {
@@ -770,7 +770,7 @@ function endpointValidateChangeReferences(
     if ($ticket_id < 1 && $document_id < 1 && $evidence_id < 1) {
         return $labels;
     }
-    if (!($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS)) {
+    if (!n45DatabaseTransactionActive()) {
         throw new LogicException('Endpoint event references require a transaction');
     }
 

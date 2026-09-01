@@ -183,6 +183,32 @@ function integrationIdentityDbEscape($value): string
     return mysqli_real_escape_string($mysqli, (string) $value);
 }
 
+/**
+ * Report whether this connection currently owns an explicit transaction.
+ *
+ * mysqli does not expose its internal server-status flags as a portable PHP
+ * API. MariaDB and supported MySQL releases expose the same state through the
+ * read-only session variable, including immediately after START TRANSACTION.
+ */
+function n45DatabaseTransactionActive(): bool
+{
+    global $mysqli;
+
+    $result = mysqli_query($mysqli, 'SELECT @@SESSION.in_transaction');
+    if (!$result) {
+        throw new RuntimeException(
+            'Could not inspect the database transaction state: ' . mysqli_error($mysqli)
+        );
+    }
+    $row = mysqli_fetch_row($result);
+    mysqli_free_result($result);
+    if (!is_array($row) || !array_key_exists(0, $row)) {
+        throw new RuntimeException('The database returned no transaction state');
+    }
+
+    return intval($row[0]) === 1;
+}
+
 function integrationIdentityNullableSql($value): string
 {
     return $value === null || $value === ''
@@ -280,7 +306,7 @@ function integrationIdentityRecordDecisionUnlocked(
 ): int {
     global $mysqli;
 
-    if (!($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS)) {
+    if (!n45DatabaseTransactionActive()) {
         throw new LogicException('Identity mapping decisions require a transaction');
     }
     $after_view = integrationIdentityMappingAuditView($after);
@@ -435,7 +461,7 @@ function integrationIdentityUpsertMapping(array $input): array
         throw new RuntimeException('Could not obtain the external identity lock');
     }
 
-    $owns_transaction = !($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS);
+    $owns_transaction = !n45DatabaseTransactionActive();
     try {
         // Lock assets before mapping rows throughout the identity/endpoint/Level
         // subsystem. The advisory identity lock makes this preview stable while
@@ -737,7 +763,7 @@ function integrationIdentityUpsertMapping(array $input): array
         $mapping['integration_identity_conflicts'] = $mapping_conflicts;
         return $mapping;
     } catch (Throwable $e) {
-        if ($owns_transaction && ($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS)) {
+        if ($owns_transaction && n45DatabaseTransactionActive()) {
             mysqli_rollback($mysqli);
         }
         throw $e;
@@ -765,7 +791,7 @@ function integrationIdentityRecordSnapshot(array $input): array
     if (!integrationIdentityAcquireLock($source, $entity_type, $external_id)) {
         throw new RuntimeException('Could not obtain the external identity snapshot lock');
     }
-    $owns_transaction = !($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS);
+    $owns_transaction = !n45DatabaseTransactionActive();
     try {
         if ($owns_transaction) {
             mysqli_begin_transaction($mysqli);
@@ -827,7 +853,7 @@ function integrationIdentityRecordSnapshot(array $input): array
             'changed' => $changed,
         ];
     } catch (Throwable $e) {
-        if ($owns_transaction && ($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS)) {
+        if ($owns_transaction && n45DatabaseTransactionActive()) {
             mysqli_rollback($mysqli);
         }
         throw $e;
@@ -854,7 +880,7 @@ function integrationIdentityRetireMapping(
         throw new RuntimeException('Could not obtain the external identity lock');
     }
 
-    $owns_transaction = !($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS);
+    $owns_transaction = !n45DatabaseTransactionActive();
     try {
         $source_sql = integrationIdentityDbEscape($source);
         $entity_type_sql = integrationIdentityDbEscape($entity_type);
@@ -935,7 +961,7 @@ function integrationIdentityRetireMapping(
         }
         return true;
     } catch (Throwable $e) {
-        if ($owns_transaction && ($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS)) {
+        if ($owns_transaction && n45DatabaseTransactionActive()) {
             mysqli_rollback($mysqli);
         }
         throw $e;
@@ -1290,7 +1316,7 @@ function integrationIdentityReviewMapping(int $mapping_id, string $action, array
         mysqli_commit($mysqli);
         return $after;
     } catch (Throwable $e) {
-        if ($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS) {
+        if (n45DatabaseTransactionActive()) {
             mysqli_rollback($mysqli);
         }
         throw $e;
@@ -1462,7 +1488,7 @@ function integrationIdentityQuarantineOrphanMapping(int $mapping_id): bool
         mysqli_commit($mysqli);
         return true;
     } catch (Throwable $e) {
-        if ($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS) {
+        if (n45DatabaseTransactionActive()) {
             mysqli_rollback($mysqli);
         }
         throw $e;
@@ -1591,7 +1617,7 @@ function integrationIdentityMarkMappingStale(int $mapping_id, string $cutoff): b
         mysqli_commit($mysqli);
         return true;
     } catch (Throwable $e) {
-        if ($mysqli->server_status & MYSQLI_SERVER_STATUS_IN_TRANS) {
+        if (n45DatabaseTransactionActive()) {
             mysqli_rollback($mysqli);
         }
         throw $e;
