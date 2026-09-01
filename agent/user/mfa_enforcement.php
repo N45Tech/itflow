@@ -46,20 +46,22 @@ $data = "otpauth://totp/ITFlow:$session_email?secret=$token";
     <!-- Theme style -->
     <link rel="stylesheet" href="../../libs/adminlte/css/adminlte.min.css">
     <link href="../../libs/toastr/toastr.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/itflow_custom.css">
 
     <!-- jQuery -->
     <script src="../../libs/jquery/jquery.min.js"></script>
     <script src="../../libs/toastr/toastr.min.js"></script>
 
 </head>
-<body class="hold-transition login-page">
+<body class="hold-transition login-page n45-auth-page">
     <?php require_once "../../includes/inc_alert_feedback.php"; ?>
-    <div class="login-box">
-        <div class="login-logo">
+    <main class="login-box n45-auth-shell">
+        <div class="login-logo n45-auth-brand">
             <?php if (!empty($company_logo)) { ?>
-                <img alt="<?= escapeHtml($company_name)?> logo" height="110" width="380" class="img-fluid" src="<?= "../../uploads/settings/$company_logo" ?>">
+                <img alt="<?= escapeHtml($session_company_name)?> logo" height="110" width="380" class="img-fluid" src="<?= "../../uploads/settings/$company_logo" ?>">
             <?php } else { ?>
-                <span class="text-primary text-bold"><i class="fas fa-paper-plane mr-2"></i>IT</span>Flow
+                <span class="n45-auth-mark" aria-hidden="true"><i class="fas fa-layer-group"></i></span>
+                <span><?= escapeHtml($session_company_name) ?></span>
             <?php } ?>
         </div>
 
@@ -67,20 +69,24 @@ $data = "otpauth://totp/ITFlow:$session_email?secret=$token";
         <div class="card">
             <div class="card-body login-card-body text-center">
 
-                <p class="login-box-msg">Multi-Factor Authentication Enforced</p>
+                <div class="n45-auth-heading">
+                    <h1>Secure your account</h1>
+                    <p>Scan the QR code, then enter the six-digit code to finish setup.</p>
+                </div>
 
                 <form action="post.php" method="post" autocomplete="off">
                     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-                    <img src='../../libs/barcode/barcode.php?f=png&s=qr&d=<?= $data ?>' data-toggle="tooltip" title="Scan QR code into your MFA App">
+                    <img class="n45-auth-qr" alt="Authenticator setup QR code" src='../../libs/barcode/barcode.php?f=png&s=qr&d=<?= $data ?>' data-toggle="tooltip" title="Scan QR code into your MFA App">
 
                     <p>
                         <small data-toggle="tooltip" title="Can't Scan? Copy and paste this code into your app"><?= $token ?></small>
-                        <button type="button" class='btn btn-sm clipboardjs' data-clipboard-text='<?= $token ?>'><i class='far fa-copy text-secondary'></i></button>
+                        <button type="button" class='btn btn-sm clipboardjs' aria-label="Copy setup code" data-clipboard-text='<?= $token ?>'><i class='far fa-copy text-secondary' aria-hidden="true"></i></button>
                     </p>
 
                     <div class="input-group mb-3">
-                        <input type="text" class="form-control" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" name="verify_code" placeholder="Enter 6 digit code to verify MFA" required>
+                        <label class="sr-only" for="verify-code">Six-digit verification code</label>
+                        <input type="text" class="form-control" id="verify-code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" name="verify_code" placeholder="Six-digit verification code" autocomplete="one-time-code" required>
                         <div class="input-group-append">
                             <div class="input-group-text">
                                 <span class="fas fa-lock"></span>
@@ -94,7 +100,7 @@ $data = "otpauth://totp/ITFlow:$session_email?secret=$token";
             </div>
             <!-- /.login-card-body -->
         </div>
-    </div>
+    </main>
     <!-- /.login-box -->
 
     <!-- REQUIRED SCRIPTS -->

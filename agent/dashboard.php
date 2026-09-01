@@ -45,7 +45,7 @@ $sql_years_select = mysqli_query($mysqli, "
   } */
 </style>
 
-<div class="card card-body">
+<div class="n45-dashboard-controls">
     <form class="form-inline">
         <input type="hidden" name="enable_financial" value="0">
         <input type="hidden" name="enable_technical" value="0">
@@ -568,35 +568,64 @@ if ($user_config_dashboard_financial_enable == 1) {
 if ($user_config_dashboard_technical_enable == 1) {
 
     // Fetch technical data for the dashboard
-    $sql_clients = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(client_id) AS clients_added FROM clients WHERE YEAR(client_created_at) = $year"));
+    $dashboard_client_scope = clientScopeSql('client_id');
+    $dashboard_contact_scope = clientScopeSql('contact_client_id');
+    $dashboard_asset_scope = clientScopeSql('asset_client_id');
+    $dashboard_ticket_scope = clientScopeSql('ticket_client_id');
+    $dashboard_domain_scope = clientScopeSql('domain_client_id');
+    $dashboard_certificate_scope = clientScopeSql('certificate_client_id');
+    $dashboard_software_scope = clientScopeSql('software_client_id');
+
+    $sql_clients = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(client_id) AS clients_added FROM clients WHERE YEAR(client_created_at) = $year $dashboard_client_scope"));
     $clients_added = $sql_clients['clients_added'];
 
-    $sql_contacts = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(contact_id) AS contacts_added FROM contacts WHERE YEAR(contact_created_at) = $year"));
+    $sql_contacts = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(contact_id) AS contacts_added FROM contacts WHERE YEAR(contact_created_at) = $year $dashboard_contact_scope"));
     $contacts_added = $sql_contacts['contacts_added'];
 
-    $sql_assets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(asset_id) AS assets_added FROM assets WHERE YEAR(asset_created_at) = $year"));
+    $sql_assets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(asset_id) AS assets_added FROM assets WHERE YEAR(asset_created_at) = $year $dashboard_asset_scope"));
     $assets_added = $sql_assets['assets_added'];
 
-    $sql_tickets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS active_tickets FROM tickets WHERE ticket_closed_at IS NULL"));
+    $sql_tickets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS active_tickets FROM tickets WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
     $active_tickets = $sql_tickets['active_tickets'];
 
-    $sql_your_tickets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS your_tickets FROM tickets WHERE ticket_closed_at IS NULL AND ticket_assigned_to = $session_user_id"));
-    $your_tickets = $sql_your_tickets['your_tickets'];
+    $sql_your_ticket_count = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS your_tickets FROM tickets WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL AND ticket_assigned_to = $session_user_id $dashboard_ticket_scope"));
+    $your_ticket_count = intval($sql_your_ticket_count['your_tickets']);
 
-    $sql_domains_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(domain_id) AS expiring_domains FROM domains WHERE domain_expire IS NOT NULL AND domain_expire > CURRENT_DATE AND domain_expire < CURRENT_DATE + INTERVAL 30 DAY AND domain_archived_at IS NULL"));
+    $sql_domains_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(domain_id) AS expiring_domains FROM domains WHERE domain_expire IS NOT NULL AND domain_expire > CURRENT_DATE AND domain_expire < CURRENT_DATE + INTERVAL 30 DAY AND domain_archived_at IS NULL $dashboard_domain_scope"));
     $expiring_domains = $sql_domains_expiring['expiring_domains'];
 
-    $sql_certs_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(certificate_id) AS expiring_certs FROM certificates WHERE certificate_expire IS NOT NULL AND certificate_expire > CURRENT_DATE AND certificate_expire < CURRENT_DATE + INTERVAL 30 DAY AND certificate_archived_at IS NULL"));
+    $sql_certs_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(certificate_id) AS expiring_certs FROM certificates WHERE certificate_expire IS NOT NULL AND certificate_expire > CURRENT_DATE AND certificate_expire < CURRENT_DATE + INTERVAL 30 DAY AND certificate_archived_at IS NULL $dashboard_certificate_scope"));
     $expiring_certificates = $sql_certs_expiring['expiring_certs'];
 
-    $sql_licenses_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(software_id) AS expiring_licenses FROM software WHERE software_expire IS NOT NULL AND software_expire > CURRENT_DATE AND software_expire < CURRENT_DATE + INTERVAL 30 DAY AND software_archived_at IS NULL"));
+    $sql_licenses_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(software_id) AS expiring_licenses FROM software WHERE software_expire IS NOT NULL AND software_expire > CURRENT_DATE AND software_expire < CURRENT_DATE + INTERVAL 30 DAY AND software_archived_at IS NULL $dashboard_software_scope"));
     $expiring_licenses = $sql_licenses_expiring['expiring_licenses'];
 
-    $sql_licenses_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(software_id) AS expiring_licenses FROM software WHERE software_expire IS NOT NULL AND software_expire > CURRENT_DATE AND software_expire < CURRENT_DATE + INTERVAL 30 DAY AND software_archived_at IS NULL"));
-    $expiring_licenses = $sql_licenses_expiring['expiring_licenses'];
-
-    $sql_asset_warranty_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(asset_id) AS expiring_asset_warranties FROM assets WHERE asset_warranty_expire IS NOT NULL AND asset_warranty_expire > CURRENT_DATE AND asset_warranty_expire < CURRENT_DATE + INTERVAL 30 DAY AND asset_archived_at IS NULL"));
+    $sql_asset_warranty_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(asset_id) AS expiring_asset_warranties FROM assets WHERE asset_warranty_expire IS NOT NULL AND asset_warranty_expire > CURRENT_DATE AND asset_warranty_expire < CURRENT_DATE + INTERVAL 30 DAY AND asset_archived_at IS NULL $dashboard_asset_scope"));
     $expiring_asset_warranties = $sql_asset_warranty_expiring['expiring_asset_warranties'];
+
+    $operations_ticket_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
+        SUM(ticket_assigned_to = 0) AS unassigned_tickets,
+        SUM(ticket_sla_id > 0 AND COALESCE(ticket_status_pauses_sla, 0) = 0 AND (ticket_response_sla_alert_stage = 1 OR ticket_resolution_sla_alert_stage = 1)) AS sla_at_risk,
+        SUM(ticket_sla_id > 0 AND (ticket_response_sla_alert_stage = 2 OR ticket_resolution_sla_alert_stage = 2 OR ticket_response_sla_met = 0 OR ticket_resolution_sla_met = 0)) AS sla_breached
+        FROM tickets
+        LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
+        WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
+
+    $dashboard_incident_scope = clientScopeSql('automation_incident_client_id');
+    $automation_pulse = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
+        SUM(automation_incident_status = 'Open') AS open_incidents,
+        SUM(automation_incident_status = 'Open' AND LOWER(automation_incident_severity) IN ('high', 'critical', 'emergency')) AS high_open_incidents,
+        SUM(automation_incident_last_event_at >= NOW() - INTERVAL 24 HOUR) AS events_today
+        FROM automation_incidents WHERE 1 = 1 $dashboard_incident_scope"));
+
+    $dashboard_level_scope = clientScopeSql('assets.asset_client_id');
+    $level_pulse = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
+        COUNT(*) AS managed_assets,
+        SUM(level_device_online = 1) AS online_assets,
+        SUM(level_device_sync_status = 'Conflict') AS sync_conflicts
+        FROM level_asset_links
+        INNER JOIN assets ON level_asset_id = asset_id
+        WHERE level_device_deleted_at IS NULL $dashboard_level_scope"));
 
     $sql_your_tickets = mysqli_query($mysqli, "
         SELECT client_name, contact_name, ticket_client_id, ticket_contact_id, ticket_created_at,
@@ -606,121 +635,118 @@ if ($user_config_dashboard_technical_enable == 1) {
         LEFT JOIN clients ON ticket_client_id = client_id
         LEFT JOIN contacts ON ticket_contact_id = contact_id
         WHERE ticket_assigned_to = $session_user_id
-        AND ticket_closed_at IS NULL
+        AND ticket_archived_at IS NULL
+        AND ticket_resolved_at IS NULL
+        $dashboard_ticket_scope
         ORDER BY ticket_number DESC
     ");
 ?>
 
-<div class="card card-body">
-    <!-- Icon Cards-->
+<div>
+    <section class="n45-tech-pulse" aria-labelledby="operations-pulse-heading">
+        <div class="n45-tech-pulse-header">
+            <h2 id="operations-pulse-heading"><i class="fas fa-wave-square mr-2 text-primary"></i>Operations pulse</h2>
+            <a href="operations.php">Open workspace <i class="fas fa-arrow-right ml-1"></i></a>
+        </div>
+        <div class="n45-tech-pulse-grid">
+            <a href="tickets.php?assigned=<?= $session_user_id ?>">
+                <span>My queue</span>
+                <strong><?= $your_ticket_count ?></strong>
+                <small class="text-muted">open tickets</small>
+            </a>
+            <a href="tickets.php?assigned=unassigned">
+                <span>Unassigned</span>
+                <strong><?= intval($operations_ticket_stats['unassigned_tickets'] ?? 0) ?></strong>
+                <small class="text-muted">waiting for ownership</small>
+            </a>
+            <a href="tickets.php?sla=<?= intval($operations_ticket_stats['sla_breached'] ?? 0) ? 'breached' : 'at_risk' ?>">
+                <span>SLA pressure</span>
+                <strong><?= intval($operations_ticket_stats['sla_breached'] ?? 0) + intval($operations_ticket_stats['sla_at_risk'] ?? 0) ?></strong>
+                <small class="text-muted"><?= intval($operations_ticket_stats['sla_breached'] ?? 0) ?> breached</small>
+            </a>
+            <a href="operations.php#automation-incidents">
+                <span>Automation</span>
+                <strong><?= intval($automation_pulse['open_incidents'] ?? 0) ?></strong>
+                <small class="text-muted"><?= intval($automation_pulse['high_open_incidents'] ?? 0) ?> high severity</small>
+            </a>
+        </div>
+        <div class="n45-tech-pulse-footer">
+            <span><i class="fas fa-satellite mr-1"></i>Level.io <?= intval($level_pulse['online_assets'] ?? 0) ?>/<?= intval($level_pulse['managed_assets'] ?? 0) ?> online</span>
+            <span><i class="fas fa-random mr-1"></i><?= intval($level_pulse['sync_conflicts'] ?? 0) ?> mapping conflicts</span>
+            <span><i class="fas fa-bolt mr-1"></i><?= intval($automation_pulse['events_today'] ?? 0) ?> incidents updated today</span>
+        </div>
+    </section>
+
+    <!-- Workload and renewal summaries -->
     <div class="row">
-        <div class="col-lg-3 col-6">
-            <!-- small box -->
-            <a class="small-box bg-secondary" href="clients.php?dtf=<?= $year ?>-01-01&dtt=<?= $year ?>-12-31">
-                <div class="inner">
-                    <h3><?= $clients_added ?></h3>
-                    <p>New Clients</p>
+        <div class="col-lg-5">
+            <section class="n45-panel" aria-labelledby="workload-heading">
+                <div class="n45-panel-heading">
+                    <div>
+                        <h2 id="workload-heading">Workload and inventory</h2>
+                        <p>Current support demand and records added during <?= $year ?>.</p>
+                    </div>
                 </div>
-                <div class="icon">
-                    <i class="fa fa-users"></i>
+                <div class="n45-summary-list">
+                    <a class="n45-summary-row" href="tickets.php">
+                        <span class="n45-system-icon"><i class="fas fa-life-ring"></i></span>
+                        <div><strong>Active tickets</strong><span>All unresolved support work</span></div>
+                        <span class="n45-summary-value"><?= intval($active_tickets) ?></span>
+                    </a>
+                    <a class="n45-summary-row" href="clients.php?dtf=<?= $year ?>-01-01&dtt=<?= $year ?>-12-31">
+                        <span class="n45-system-icon"><i class="fas fa-user-friends"></i></span>
+                        <div><strong>New clients</strong><span>Added this year</span></div>
+                        <span class="n45-summary-value"><?= intval($clients_added) ?></span>
+                    </a>
+                    <a class="n45-summary-row" href="contacts.php">
+                        <span class="n45-system-icon"><i class="fas fa-address-book"></i></span>
+                        <div><strong>New contacts</strong><span>Added this year</span></div>
+                        <span class="n45-summary-value"><?= intval($contacts_added) ?></span>
+                    </a>
+                    <a class="n45-summary-row" href="assets.php">
+                        <span class="n45-system-icon"><i class="fas fa-desktop"></i></span>
+                        <div><strong>New assets</strong><span>Added this year</span></div>
+                        <span class="n45-summary-value"><?= intval($assets_added) ?></span>
+                    </a>
                 </div>
-            </a>
+            </section>
         </div>
-        <!-- ./col -->
 
-        <div class="col-lg-3 col-6">
-            <a class="small-box bg-success" href="contacts.php">
-                <div class="inner">
-                    <h3><?= $contacts_added ?></h3>
-                    <p>New Contacts</p>
+        <div class="col-lg-7">
+            <section class="n45-panel" aria-labelledby="renewals-heading">
+                <div class="n45-panel-heading">
+                    <div>
+                        <h2 id="renewals-heading">Renewal watch</h2>
+                        <p>Documentation and hardware dates due within 30 days.</p>
+                    </div>
                 </div>
-                <div class="icon">
-                    <i class="fa fa-user"></i>
+                <div class="n45-summary-list n45-summary-list-two-column">
+                    <a class="n45-summary-row" href="domains.php?expire_days=30&sort=domain_expire&order=ASC">
+                        <span class="n45-system-icon"><i class="fas fa-globe"></i></span>
+                        <div><strong>Domains</strong><span>Registration expiry</span></div>
+                        <span class="n45-summary-value <?= $expiring_domains ? 'n45-summary-value-warning' : '' ?>"><?= intval($expiring_domains) ?></span>
+                    </a>
+                    <a class="n45-summary-row" href="certificates.php?expire_days=30&sort=certificate_expire&order=ASC">
+                        <span class="n45-system-icon"><i class="fas fa-lock"></i></span>
+                        <div><strong>Certificates</strong><span>TLS and identity expiry</span></div>
+                        <span class="n45-summary-value <?= $expiring_certificates ? 'n45-summary-value-warning' : '' ?>"><?= intval($expiring_certificates) ?></span>
+                    </a>
+                    <a class="n45-summary-row" href="software.php?expire_days=30&sort=software_expire&order=ASC">
+                        <span class="n45-system-icon"><i class="fas fa-cube"></i></span>
+                        <div><strong>Licenses</strong><span>Software renewal</span></div>
+                        <span class="n45-summary-value <?= $expiring_licenses ? 'n45-summary-value-warning' : '' ?>"><?= intval($expiring_licenses) ?></span>
+                    </a>
+                    <a class="n45-summary-row" href="assets.php?expire_days=30&sort=asset_warranty_expire&order=ASC&show_column[]=Warranty_Expire">
+                        <span class="n45-system-icon"><i class="fas fa-shield-alt"></i></span>
+                        <div><strong>Warranties</strong><span>Asset coverage expiry</span></div>
+                        <span class="n45-summary-value <?= $expiring_asset_warranties ? 'n45-summary-value-warning' : '' ?>"><?= intval($expiring_asset_warranties) ?></span>
+                    </a>
                 </div>
-            </a>
+            </section>
         </div>
-        <!-- ./col -->
+    </div>
 
-        <div class="col-lg-3 col-6">
-            <a class="small-box bg-info" href="assets.php">
-                <div class="inner">
-                    <h3><?= $assets_added ?></h3>
-                    <p>New Assets</p>
-                </div>
-                <div class="icon">
-                    <i class="fa fa-desktop"></i>
-                </div>
-            </a>
-        </div>
-        <!-- ./col -->
-
-        <div class="col-lg-3 col-6">
-            <a class="small-box bg-danger" href="tickets.php">
-                <div class="inner">
-                    <h3><?= $active_tickets ?></h3>
-                    <p>Active Tickets</p>
-                </div>
-                <div class="icon">
-                    <i class="fa fa-ticket-alt"></i>
-                </div>
-            </a>
-        </div>
-        <!-- ./col -->
-
-        <div class="col-lg-3 col-6">
-            <a class="small-box bg-warning" href="domains.php?expire_days=30&sort=domain_expire&order=ASC">
-                <div class="inner">
-                    <h3><?= $expiring_domains ?></h3>
-                    <p>Expiring Domains <small>30 Day</small></p>
-                </div>
-                <div class="icon">
-                    <i class="fa fa-globe"></i>
-                </div>
-            </a>
-        </div>
-        <!-- ./col -->
-
-        <div class="col-lg-3 col-6">
-            <a class="small-box bg-primary" href="certificates.php?expire_days=30&sort=certificate_expire&order=ASC">
-                <div class="inner">
-                    <h3><?= $expiring_certificates ?></h3>
-                    <p>Expiring Certificates<small>30 Day</small></p>
-                </div>
-                <div class="icon">
-                    <i class="fa fa-lock"></i>
-                </div>
-            </a>
-        </div>
-        <!-- ./col -->
-
-        <div class="col-lg-3 col-6">
-            <a class="small-box bg-purple" href="software.php?expire_days=30&sort=software_expire&order=ASC">
-                <div class="inner">
-                    <h3><?= $expiring_licenses ?></h3>
-                    <p>Expiring Licenses<small>30 Day</small></p>
-                </div>
-                <div class="icon">
-                    <i class="fa fa-cube"></i>
-                </div>
-            </a>
-        </div>
-        <!-- ./col -->
-
-        <div class="col-lg-3 col-6">
-            <a class="small-box bg-olive" href="assets.php?expire_days=30&sort=asset_warranty_expire&order=ASC&show_column[]=Warranty_Expire">
-                <div class="inner">
-                    <h3><?= $expiring_asset_warranties ?></h3>
-                    <p>Expiring Asset Warranties<small>30 Day</small></p>
-                </div>
-                <div class="icon">
-                    <i class="fa fa-desktop"></i>
-                </div>
-            </a>
-        </div>
-        <!-- ./col -->
-    </div> <!-- row -->
-
-    <?php if ($your_tickets) { ?>
+    <?php if ($your_ticket_count) { ?>
         <div class="row">
             <div class="col-12">
                 <div class="card card-dark mb-3">
@@ -796,7 +822,7 @@ if ($user_config_dashboard_technical_enable == 1) {
             </div>
         </div>
     <?php } ?>
-</div> <!-- card -->
+</div>
 
 <?php } ?>
 
@@ -805,9 +831,16 @@ if ($user_config_dashboard_technical_enable == 1) {
 <?php if ($user_config_dashboard_financial_enable == 1) { ?>
 
 <script>
-    // Bootstrap-like defaults for Chart.js v4
+    // Keep charts aligned with the active N45 light/dark theme.
+    const n45DashboardTheme = getComputedStyle(document.body);
+    const n45ChartAccent = n45DashboardTheme.getPropertyValue('--n45-accent').trim() || '#1769aa';
+    const n45ChartSuccess = n45DashboardTheme.getPropertyValue('--n45-success').trim() || '#157347';
+    const n45ChartDanger = n45DashboardTheme.getPropertyValue('--n45-danger').trim() || '#b42318';
+    const n45ChartMuted = n45DashboardTheme.getPropertyValue('--n45-muted').trim() || '#586579';
+    const n45ChartBorder = n45DashboardTheme.getPropertyValue('--n45-border').trim() || '#d8dee7';
     Chart.defaults.font.family = '-apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif';
-    Chart.defaults.color = '#292b2c';
+    Chart.defaults.color = n45ChartMuted;
+    Chart.defaults.borderColor = n45ChartBorder;
 
     // CASH FLOW
     (function () {
@@ -822,11 +855,11 @@ if ($user_config_dashboard_technical_enable == 1) {
                     {
                         label: "Income",
                         fill: false,
-                        borderColor: "#007bff",
-                        pointBackgroundColor: "#007bff",
-                        pointBorderColor: "#007bff",
+                        borderColor: n45ChartAccent,
+                        pointBackgroundColor: n45ChartAccent,
+                        pointBorderColor: n45ChartAccent,
                         pointHoverRadius: 5,
-                        pointHoverBackgroundColor: "#007bff",
+                        pointHoverBackgroundColor: n45ChartAccent,
                         pointBorderWidth: 2,
                         data: [
                             <?php
@@ -852,11 +885,11 @@ if ($user_config_dashboard_technical_enable == 1) {
                     {
                         label: "LY Income",
                         fill: false,
-                        borderColor: "#9932CC",
-                        pointBackgroundColor: "#9932CC",
-                        pointBorderColor: "#9932CC",
+                        borderColor: n45ChartSuccess,
+                        pointBackgroundColor: n45ChartSuccess,
+                        pointBorderColor: n45ChartSuccess,
                         pointHoverRadius: 5,
-                        pointHoverBackgroundColor: "#9932CC",
+                        pointHoverBackgroundColor: n45ChartSuccess,
                         pointBorderWidth: 2,
                         data: [
                             <?php
@@ -882,11 +915,11 @@ if ($user_config_dashboard_technical_enable == 1) {
                     {
                         label: "Projected",
                         fill: false,
-                        borderColor: "black",
-                        pointBackgroundColor: "black",
-                        pointBorderColor: "black",
+                        borderColor: n45ChartMuted,
+                        pointBackgroundColor: n45ChartMuted,
+                        pointBorderColor: n45ChartMuted,
                         pointHoverRadius: 5,
-                        pointHoverBackgroundColor: "black",
+                        pointHoverBackgroundColor: n45ChartMuted,
                         pointBorderWidth: 2,
                         data: [
                             <?php
@@ -908,11 +941,11 @@ if ($user_config_dashboard_technical_enable == 1) {
                         label: "Expense",
                         tension: 0.3, // v4 name; v2 used lineTension
                         fill: false,
-                        borderColor: "#dc3545",
-                        pointBackgroundColor: "#dc3545",
-                        pointBorderColor: "#dc3545",
+                        borderColor: n45ChartDanger,
+                        pointBackgroundColor: n45ChartDanger,
+                        pointBorderColor: n45ChartDanger,
                         pointHoverRadius: 5,
-                        pointHoverBackgroundColor: "#dc3545",
+                        pointHoverBackgroundColor: n45ChartDanger,
                         pointBorderWidth: 2,
                         data: [
                             <?php
@@ -945,7 +978,7 @@ if ($user_config_dashboard_technical_enable == 1) {
                         min: 0,
                         max: <?php $max = max(1000, $largest_expense_month, $largest_income_month, $largest_invoice_month); echo roundUpToNearestMultiple($max); ?>,
                         ticks: { maxTicksLimit: 5 },
-                        grid: { color: "rgba(0, 0, 0, .125)" }
+                        grid: { color: n45ChartBorder }
                     }
                 },
                 plugins: {
@@ -968,13 +1001,13 @@ if ($user_config_dashboard_technical_enable == 1) {
                     label: "Trip",
                     tension: 0.3,
                     fill: false,
-                    backgroundColor: "red",
-                    borderColor: "darkred",
+                    backgroundColor: n45ChartDanger,
+                    borderColor: n45ChartDanger,
                     pointRadius: 5,
-                    pointBackgroundColor: "red",
-                    pointBorderColor: "red",
+                    pointBackgroundColor: n45ChartDanger,
+                    pointBorderColor: n45ChartDanger,
                     pointHoverRadius: 5,
-                    pointHoverBackgroundColor: "darkred",
+                    pointHoverBackgroundColor: n45ChartDanger,
                     pointBorderWidth: 2,
                     data: [
                         <?php
@@ -1006,7 +1039,7 @@ if ($user_config_dashboard_technical_enable == 1) {
                         min: 0,
                         max: <?php $max = max(1000, $largest_trip_miles_month); echo roundUpToNearestMultiple($max); ?>,
                         ticks: { maxTicksLimit: 5 },
-                        grid: { color: "rgba(0, 0, 0, .125)" }
+                        grid: { color: n45ChartBorder }
                     },
                 },
                 plugins: {

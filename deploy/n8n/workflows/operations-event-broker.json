@@ -1,0 +1,126 @@
+{
+  "name": "N45 - ITFlow Operations Event Broker",
+  "nodes": [
+    {
+      "id": "5de48c0c-a723-49ad-9b39-f276bc055e5e",
+      "name": "Operations Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -720,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "n45-itflow-events",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-webhook-auth",
+          "name": "N45 Integration Webhook"
+        }
+      }
+    },
+    {
+      "id": "1ce06b1c-76f2-43d4-a0ab-546a3ca85a7d",
+      "name": "Normalize Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst headers = Object.fromEntries(Object.entries(input.headers || {}).map(([key, value]) => [key.toLowerCase(), value]));\nconst header = (name) => String(headers[name.toLowerCase()] ?? '').trim();\nconst text = (value, fallback = '') => value === undefined || value === null ? fallback : String(value).trim();\nconst bool = (value, fallback = false) => {\n  if (value === undefined || value === null || value === '') return fallback;\n  return value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\n};\nconst clientAliases = new Map([\n  ['n45 technologies', 'N45 Technology Solutions'],\n  ['n45 tech solutions', 'N45 Technology Solutions'],\n  ['n45 technology solutions', 'N45 Technology Solutions'],\n]);\nconst canonicalClientName = (value) => {\n  const original = text(value);\n  return clientAliases.get(original.toLowerCase()) || original;\n};\nconst hardenIdentity = (identityInput = {}) => {\n  const identity = identityInput && typeof identityInput === 'object' ? { ...identityInput } : {};\n  const originalClientName = text(identity.client?.name);\n  const mappedClientName = canonicalClientName(originalClientName);\n  const options = identity.options && typeof identity.options === 'object' ? identity.options : {};\n  const identityMetadata = identity.metadata && typeof identity.metadata === 'object' ? identity.metadata : {};\n  identity.client = { ...(identity.client || {}), name: mappedClientName };\n  identity.options = {\n    ...options,\n    create_client: bool(options.create_client, false),\n    create_location: bool(options.create_location, false),\n    create_asset: bool(options.create_asset, false),\n  };\n  identity.metadata = {\n    ...identityMetadata,\n    original_client_name: originalClientName,\n    client_alias_applied: originalClientName !== mappedClientName,\n  };\n  return identity;\n};\n\nif (body.identity && body.source && body.event_id && body.incident_key) {\n  return [{ json: { ...body, identity: hardenIdentity(body.identity) } }];\n}\n\nlet source = text(body.source || header('x-n45-source')).toLowerCase().replace(/[^a-z0-9._-]/g, '_');\nif (!source && (body.monitor || body.heartbeat)) source = 'uptime_kuma';\nif (!source && (body.job || body.backup_job)) source = 'backup';\nif (!source) throw new Error('The event source is missing. Send x-n45-source or a canonical source field.');\n\nconst monitor = body.monitor || {};\nconst heartbeat = body.heartbeat || {};\nconst monitorName = text(monitor.name || body.monitor_name || body.service_name || body.name || body.job || body.backup_job, 'Unnamed service');\nconst parts = monitorName.split(/\\s+::\\s+/).map((part) => part.trim()).filter(Boolean);\nconst explicitClient = text(body.client_name || header('x-itflow-client'));\nconst explicitLocation = text(body.location_name || header('x-itflow-location'));\nconst originalClientName = explicitClient || (parts.length >= 3 ? parts[0] : '');\nconst clientName = canonicalClientName(originalClientName);\nconst locationName = explicitLocation || (parts.length >= 3 ? parts[1] : '');\nconst serviceName = parts.length >= 3 ? parts.slice(2).join(' :: ') : monitorName;\n\nconst rawStatus = body.state ?? body.status ?? heartbeat.status ?? body.result;\nconst normalizedStatus = typeof rawStatus === 'number'\n  ? ({ 0: 'open', 1: 'resolved', 2: 'update', 3: 'resolved' }[rawStatus] || '')\n  : text(rawStatus).toLowerCase();\nconst healthy = ['up', 'ok', 'healthy', 'success', 'successful', 'resolved', 'recovered', 'operational', 'passed'].includes(normalizedStatus);\nconst unhealthy = ['down', 'failed', 'failure', 'error', 'critical', 'unhealthy', 'open', 'alerting'].includes(normalizedStatus);\nif (!healthy && !unhealthy && normalizedStatus !== 'update') {\n  throw new Error('The event status could not be mapped to open, update, or resolved.');\n}\nconst state = healthy ? 'resolved' : (normalizedStatus === 'update' ? 'update' : 'open');\n\nconst externalId = text(monitor.id ?? monitor.monitorID ?? heartbeat.monitorID ?? body.monitor_id ?? body.job_id ?? body.workflow_id ?? body.external_id, serviceName);\nconst incidentKey = text(body.incident_key, source + ':' + externalId);\nconst occurredAt = text(body.occurred_at || heartbeat.time || body.time || body.timestamp, new Date().toISOString());\nconst eventId = text(body.event_id || heartbeat.id, incidentKey + ':' + state + ':' + occurredAt);\nconst sourceUrl = text(body.url || monitor.url || body.source_url);\nconst host = text(monitor.hostname || body.hostname || body.host);\nconst details = text(body.description || body.message || body.msg || heartbeat.msg,\n  serviceName + (state === 'resolved' ? ' recovered.' : ' reported ' + normalizedStatus + '.'));\n\nconst event = {\n  source,\n  event_id: eventId,\n  incident_key: incidentKey,\n  entity_type: source === 'uptime_kuma' ? 'monitor' : (source === 'backup' ? 'backup_job' : 'service'),\n  state,\n  severity: text(body.severity, state === 'resolved' ? 'low' : 'high'),\n  title: text(body.title, '[' + source.replaceAll('_', ' ') + '] ' + serviceName),\n  description: details,\n  occurred_at: occurredAt,\n  url: sourceUrl,\n  auto_resolve: bool(body.auto_resolve, true),\n  assigned_to: Number(body.assigned_to || 0),\n  identity: {\n    external_id: externalId,\n    external_name: serviceName,\n    client: { name: clientName },\n    location: { name: locationName },\n    asset: host ? { name: host, uri: sourceUrl } : {},\n    options: {\n      create_client: bool(body.create_client ?? header('x-itflow-create-client'), false),\n      create_location: bool(body.create_location ?? header('x-itflow-create-location'), false),\n      create_asset: bool(body.create_asset ?? header('x-itflow-create-asset'), false),\n    },\n    metadata: {\n      monitor_type: monitor.type || '',\n      raw_status: rawStatus ?? '',\n      original_client_name: originalClientName,\n      client_alias_applied: originalClientName !== clientName,\n    },\n  },\n  metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},\n};\nreturn [{ json: event }];"
+      }
+    },
+    {
+      "id": "b5b28290-c8f5-4f50-8dcc-d5369f0c5122",
+      "name": "Send to ITFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -200,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://psa.n45tech.com/api/v1/integrations/automation/event.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-itflow-api",
+          "name": "N45 ITFlow API"
+        }
+      }
+    },
+    {
+      "id": "65355185-a0ae-4ac6-a7a7-556309aafec9",
+      "name": "Acknowledge Event",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        60,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Operations Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Event": {
+      "main": [
+        [
+          {
+            "node": "Send to ITFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to ITFlow": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "active": false,
+  "tags": []
+}

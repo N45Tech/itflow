@@ -1,4 +1,15 @@
 $(document).ready(function () {
+    function insertAt(container, item, index) {
+        const siblings = Array.from(container.children).filter(child => child !== item);
+        container.insertBefore(item, siblings[index] || null);
+    }
+
+    function showMoveError(message) {
+        if (window.toastr) {
+            toastr.error(message);
+        }
+    }
+
     // -------------------------------
     // Drag: Kanban Columns (Statuses)
     // -------------------------------
@@ -6,20 +17,29 @@ $(document).ready(function () {
         animation: 150,
         handle: '.kanban-column-header',
         draggable: '.kanban-column',
-        onEnd: function () {
+        onEnd: function (evt) {
+            if (CONFIG_TICKET_MOVING_COLUMNS !== 1) {
+                insertAt(evt.from, evt.item, evt.oldIndex);
+                return;
+            }
+
             const columnPositions = Array.from(document.querySelectorAll('#kanban-board .kanban-column')).map((col, index) => ({
                 status_id: $(col).data('status-id'),
                 status_kanban: index
             }));
 
-            if (CONFIG_TICKET_MOVING_COLUMNS === 1) {
-                $.post('ajax.php', {
-                    update_kanban_status_position: true,
-                    positions: columnPositions
-                }).fail((xhr) => {
-                    console.error('Error updating status order:', xhr.responseText);
-                });
-            }
+            $(evt.item).addClass('is-syncing');
+            $.post('ajax.php', {
+                update_kanban_status_position: true,
+                csrf_token: CSRF_TOKEN,
+                positions: columnPositions
+            }).done(() => {
+                $(evt.item).removeClass('is-syncing');
+            }).fail(() => {
+                insertAt(evt.from, evt.item, evt.oldIndex);
+                $(evt.item).removeClass('is-syncing');
+                showMoveError('The column order could not be saved. Your previous order was restored.');
+            });
         }
     });
 
@@ -41,12 +61,13 @@ $(document).ready(function () {
 
                 // Disallow reordering in same column if config says so
                 if (CONFIG_TICKET_ORDERING === 0 && evt.from === evt.to) {
-                    evt.from.insertBefore(movedEl, evt.from.children[evt.oldIndex]);
+                    insertAt(evt.from, movedEl, evt.oldIndex);
                     showPlaceholders();
                     return;
                 }
 
                 const columnId = $(target).data('status-id');
+                const oldColumnId = $(movedEl).data('ticket-status-id');
 
                 const positions = Array.from(target.querySelectorAll('.task')).map((card, index) => {
                     const ticketId = $(card).data('ticket-id');
@@ -64,11 +85,18 @@ $(document).ready(function () {
                     };
                 });
 
+                $(movedEl).addClass('is-syncing');
                 $.post('ajax.php', {
                     update_kanban_ticket: true,
+                    csrf_token: CSRF_TOKEN,
                     positions: positions
-                }).fail((xhr) => {
-                    console.error('Error updating ticket positions:', xhr.responseText);
+                }).done(() => {
+                    $(movedEl).removeClass('is-syncing');
+                }).fail(() => {
+                    insertAt(evt.from, movedEl, evt.oldIndex);
+                    $(movedEl).data('ticket-status-id', oldColumnId).removeClass('is-syncing');
+                    showPlaceholders();
+                    showMoveError('The ticket could not be moved. Its previous position was restored.');
                 });
 
                 // Refresh placeholders after update

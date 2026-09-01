@@ -39,7 +39,15 @@ if (isset($_POST['edit_sla'])) {
     $restamped = 0;
     $sql_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_sla_id = $sla_id AND ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
     while ($ticket_row = mysqli_fetch_assoc($sql_tickets)) {
-        applyTicketSla($ticket_row['ticket_id'], $sla_id);
+        $restamp_ticket_id = intval($ticket_row['ticket_id']);
+        $decision = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_agreement_decision_source
+            FROM ticket_agreement_decisions WHERE ticket_agreement_decision_ticket_id = $restamp_ticket_id
+            ORDER BY ticket_agreement_decision_id DESC LIMIT 1"));
+        if (($decision['ticket_agreement_decision_source'] ?? '') === 'agreement_rule') {
+            applyTicketSla($restamp_ticket_id);
+        } else {
+            applyTicketSla($restamp_ticket_id, $sla_id);
+        }
         $restamped++;
     }
 
@@ -116,7 +124,15 @@ if (isset($_POST['edit_sla_settings'])) {
     $restamped = 0;
     $sql_tickets = mysqli_query($mysqli, "SELECT ticket_id, ticket_sla_id FROM tickets WHERE ticket_sla_id > 0 AND ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
     while ($ticket_row = mysqli_fetch_assoc($sql_tickets)) {
-        applyTicketSla($ticket_row['ticket_id'], $ticket_row['ticket_sla_id']);
+        $restamp_ticket_id = intval($ticket_row['ticket_id']);
+        $decision = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_agreement_decision_source
+            FROM ticket_agreement_decisions WHERE ticket_agreement_decision_ticket_id = $restamp_ticket_id
+            ORDER BY ticket_agreement_decision_id DESC LIMIT 1"));
+        if (($decision['ticket_agreement_decision_source'] ?? '') === 'agreement_rule') {
+            applyTicketSla($restamp_ticket_id);
+        } else {
+            applyTicketSla($restamp_ticket_id, intval($ticket_row['ticket_sla_id']));
+        }
         $restamped++;
     }
 
@@ -134,7 +150,7 @@ if (isset($_POST['save_sla_assignments'])) {
 
     // Global defaults - one select per priority; 0 means no SLA, which for the
     // global row is simply no assignment
-    foreach (['Low', 'Medium', 'High', 'Urgent'] as $priority) {
+    foreach (array_keys(ticketPriorityDefinitions()) as $priority) {
 
         $field = 'global_sla_' . strtolower($priority);
         $sla_id = intval($_POST[$field] ?? 0);

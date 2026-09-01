@@ -36,6 +36,23 @@ foreach (explode("\n", trim((string) $git_log)) as $commit_line) {
 // the plain comparison silently stops offering database updates once a minor reaches 10.
 $db_update_available = version_compare(LATEST_DATABASE_VERSION, CURRENT_DATABASE_VERSION, '>');
 $app_update_available = !empty($pending_commits);
+$n45_status = null;
+$n45_status_error = null;
+try {
+    $n45_status = n45MigrationStatus($mysqli);
+} catch (Throwable $e) {
+    $n45_status_error = $e->getMessage();
+}
+$n45_pending = is_array($n45_status) ? count($n45_status['pending'] ?? []) : 0;
+$n45_applied = is_array($n45_status) ? count($n45_status['applied'] ?? []) : 0;
+$n45_total = count(n45ForkManifest()['migrations'] ?? []);
+$n45_bridge_required = ($n45_status['state'] ?? '') === 'bridge_required';
+$n45_integrity_errors = $n45_status['errors'] ?? [];
+if ($n45_status_error !== null) {
+    $n45_integrity_errors[] = $n45_status_error;
+}
+$n45_update_available = $n45_pending > 0;
+$database_work_available = $db_update_available || $n45_update_available || $n45_bridge_required || !empty($n45_integrity_errors);
 
 ?>
 
@@ -60,11 +77,11 @@ $app_update_available = !empty($pending_commits);
         <?php } ?>
 
         <div class="row">
-            <div class="col-md-3 col-6 mb-3">
+            <div class="col-md-2 col-6 mb-3">
                 <small class="text-secondary text-uppercase">Release</small>
                 <div class="h5 mb-0"><?= escapeHtml(APP_VERSION) ?></div>
             </div>
-            <div class="col-md-3 col-6 mb-3">
+            <div class="col-md-2 col-6 mb-3">
                 <small class="text-secondary text-uppercase">Branch</small>
                 <div class="h5 mb-0"><?= escapeHtml($repo_branch) ?></div>
                 <?php if ($repo_branch !== 'master') { ?>
@@ -72,7 +89,7 @@ $app_update_available = !empty($pending_commits);
                 <?php } ?>
             </div>
             <div class="col-md-3 col-6 mb-3">
-                <small class="text-secondary text-uppercase">Database</small>
+                <small class="text-secondary text-uppercase">Upstream database</small>
                 <div class="h5 mb-0">
                     <?= escapeHtml(CURRENT_DATABASE_VERSION) ?>
                     <?php if ($db_update_available) { ?>
@@ -81,6 +98,15 @@ $app_update_available = !empty($pending_commits);
                 </div>
             </div>
             <div class="col-md-3 col-6 mb-3">
+                <small class="text-secondary text-uppercase">N45 schema</small>
+                <div class="h5 mb-0">
+                    <?= $n45_applied ?> / <?= $n45_total ?>
+                    <?php if ($n45_pending > 0) { ?>
+                        <small class="text-danger">(<?= $n45_pending ?> pending)</small>
+                    <?php } ?>
+                </div>
+            </div>
+            <div class="col-md-2 col-6 mb-3">
                 <small class="text-secondary text-uppercase">Commit</small>
                 <div class="h5 mb-0"><code><?= escapeHtml(substr((string) $current_version, 0, 7)) ?></code></div>
             </div>
@@ -88,7 +114,7 @@ $app_update_available = !empty($pending_commits);
 
         <hr>
 
-        <?php if (!$app_update_available && !$db_update_available) { ?>
+        <?php if (!$app_update_available && !$database_work_available) { ?>
 
             <div class="text-center py-3">
                 <i class="far fa-3x fa-smile-wink text-dark"></i>
@@ -115,7 +141,7 @@ $app_update_available = !empty($pending_commits);
                 first: some releases need manual steps, and this page will not do them for you.
             </div>
 
-            <?php if ($app_update_available && $db_update_available) { ?>
+            <?php if ($app_update_available && ($db_update_available || $n45_update_available)) { ?>
                 <p class="text-muted">
                     <i class="fas fa-fw fa-info-circle mr-1"></i>Both are pending. Update the application files first -
                     they bring the database migrations that the second step then applies.
@@ -145,13 +171,41 @@ $app_update_available = !empty($pending_commits);
                 </div>
             <?php } ?>
 
-            <?php if ($db_update_available) { ?>
+            <?php if (!empty($n45_integrity_errors)) { ?>
+                <div class="alert alert-danger">
+                    <h5><i class="fas fa-fw fa-shield-alt mr-2"></i>N45 migration integrity check failed</h5>
+                    The database updater is blocked until these ledger or inventory errors are resolved:
+                    <ul class="mb-0 mt-2">
+                        <?php foreach ($n45_integrity_errors as $n45_error) { ?>
+                            <li><?= escapeHtml($n45_error) ?></li>
+                        <?php } ?>
+                    </ul>
+                </div>
+            <?php } elseif ($n45_bridge_required) { ?>
+                <div class="alert alert-warning">
+                    <h5><i class="fas fa-fw fa-exclamation-triangle mr-2"></i>One-time N45 migration bridge required</h5>
+                    This install still uses a legacy fork version marker
+                    <strong><?= escapeHtml($n45_status['upstream_marker']) ?></strong>. In a maintenance window, after
+                    verifying a restorable database backup, run the bridge. It fingerprints the existing schema and
+                    data, writes checksum ledger entries, and restores only the upstream marker to
+                    <strong><?= escapeHtml($n45_status['upstream_marker_base']) ?></strong>. It does not roll back schema.
+                    <div class="mt-3">
+                        <a class="btn btn-warning confirm-link" href="post.php?bridge_n45_migrations&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                            <i class="fas fa-fw fa-link mr-2"></i>Bridge Legacy N45 Migrations
+                        </a>
+                    </div>
+                </div>
+            <?php } ?>
+
+            <?php if (($db_update_available || $n45_update_available) && !$n45_bridge_required && empty($n45_integrity_errors)) { ?>
                 <div class="mb-4">
                     <h6 class="text-uppercase text-secondary">Database</h6>
                     <p class="mb-2">
-                        Schema is at <strong><?= escapeHtml(CURRENT_DATABASE_VERSION) ?></strong> and this code expects
-                        <strong><?= escapeHtml(LATEST_DATABASE_VERSION) ?></strong>. Parts of the app will error until
-                        this is applied.
+                        Upstream schema marker: <strong><?= escapeHtml(CURRENT_DATABASE_VERSION) ?></strong> /
+                        <strong><?= escapeHtml(LATEST_DATABASE_VERSION) ?></strong>.
+                        N45 migrations: <strong><?= $n45_applied ?></strong> applied /
+                        <strong><?= $n45_pending ?></strong> pending. Upstream migrations run first, followed by the
+                        checksum-verified N45 stream.
                     </p>
                     <a class="btn btn-dark confirm-link" href="post.php?update_db&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                         <i class="fas fa-fw fa-database mr-2"></i>Update Database

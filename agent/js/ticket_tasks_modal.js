@@ -107,6 +107,21 @@
         return tasks;
     }
 
+    function setWorkflowLock(versionId) {
+
+        const hidden = document.getElementById('selectedRunbookVersion');
+        if (!hidden) {
+            return;
+        }
+
+        const locked = parseInt(versionId || 0, 10) > 0;
+        hidden.value = locked ? parseInt(versionId, 10) : 0;
+        $('#runbookWorkflowLock').toggleClass('d-none', !locked);
+        $('#ticketTaskAdd').prop('disabled', locked).toggleClass('d-none', locked);
+        $('#ticketTasksContainer input').prop('readonly', locked);
+        $('#ticketTasksContainer .ticket-task-remove').prop('disabled', locked).toggleClass('d-none', locked);
+    }
+
     $(document).off('click.ticketTasks').on('click.ticketTasks', '#ticketTaskAdd', function () {
         addTaskRow('', '');
     });
@@ -123,6 +138,7 @@
         // Selecting "- No Template -" only unlinks the template - it must not wipe
         // whatever the user has already written or added
         if (!parseInt($option.val(), 10)) {
+            setWorkflowLock(0);
             return;
         }
 
@@ -143,6 +159,12 @@
         }
 
         setTaskRows(readTemplateTasks($option));
+        setWorkflowLock($option.data('runbook-version') || 0);
     });
+
+    const $selectedTemplate = $('#ticket_template_select').find(':selected');
+    if ($selectedTemplate.length) {
+        setWorkflowLock($selectedTemplate.data('runbook-version') || 0);
+    }
 
 })();

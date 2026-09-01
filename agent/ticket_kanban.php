@@ -161,7 +161,7 @@ $kanban = array_values($statuses);
                                 <span class="badge badge-warning" title="SLA at risk"><i class="fas fa-fw fa-stopwatch"></i></span>
                             <?php } ?>
 
-                            <span class="drag-handle-class" title="Drag to move"><i class="fas fa-grip-vertical"></i></span>
+                            <span class="drag-handle-class" title="Drag to move" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                         </div>
 
                         <a href="ticket.php?ticket_id=<?= $item_ticket_id . $item_has_client ?>" class="kanban-card-subject">
@@ -214,6 +214,7 @@ $kanban = array_values($statuses);
 <script>
     const CONFIG_TICKET_MOVING_COLUMNS = <?= json_encode($config_ticket_moving_columns) ?>;
     const CONFIG_TICKET_ORDERING = <?= json_encode($config_ticket_ordering) ?>;
+    const CSRF_TOKEN = <?= json_encode($_SESSION['csrf_token']) ?>;
 </script>
 
 <script src="../libs/SortableJS/Sortable.min.js"></script>

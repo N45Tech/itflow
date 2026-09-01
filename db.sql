@@ -132,6 +132,44 @@ CREATE TABLE `asset_credentials` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `asset_change_events`
+--
+
+DROP TABLE IF EXISTS `asset_change_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `asset_change_events` (
+  `asset_change_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `asset_change_event_asset_id` int(11) NOT NULL,
+  `asset_change_event_client_id` int(11) NOT NULL,
+  `asset_change_event_source` varchar(40) NOT NULL,
+  `asset_change_event_type` varchar(40) NOT NULL,
+  `asset_change_event_external_key` varchar(255) DEFAULT NULL,
+  `asset_change_event_summary` varchar(500) NOT NULL,
+  `asset_change_event_before` longtext NOT NULL,
+  `asset_change_event_after` longtext NOT NULL,
+  `asset_change_event_fingerprint` char(64) NOT NULL,
+  `asset_change_event_delivery_key` char(64) NOT NULL DEFAULT '',
+  `asset_change_event_canonical` tinyint(1) NOT NULL DEFAULT 1,
+  `asset_change_event_superseded_at` datetime DEFAULT NULL,
+  `asset_change_event_occurred_at` datetime NOT NULL,
+  `asset_change_event_recorded_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `asset_change_event_ticket_id` int(11) NOT NULL DEFAULT 0,
+  `asset_change_event_ticket_label` varchar(500) DEFAULT NULL,
+  `asset_change_event_document_id` int(11) NOT NULL DEFAULT 0,
+  `asset_change_event_document_label` varchar(500) DEFAULT NULL,
+  `asset_change_event_evidence_id` bigint(20) NOT NULL DEFAULT 0,
+  `asset_change_event_evidence_label` varchar(500) DEFAULT NULL,
+  PRIMARY KEY (`asset_change_event_id`),
+  UNIQUE KEY `asset_change_event_fingerprint` (`asset_change_event_fingerprint`),
+  KEY `asset_change_event_asset_time` (`asset_change_event_asset_id`,`asset_change_event_occurred_at`),
+  KEY `asset_change_event_client_time` (`asset_change_event_client_id`,`asset_change_event_occurred_at`),
+  KEY `asset_change_event_ticket` (`asset_change_event_ticket_id`),
+  CONSTRAINT `asset_change_events_asset_fk` FOREIGN KEY (`asset_change_event_asset_id`) REFERENCES `assets` (`asset_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `asset_custom`
 --
 
@@ -163,6 +201,54 @@ CREATE TABLE `asset_documents` (
   KEY `document_id` (`document_id`),
   CONSTRAINT `asset_documents_ibfk_1` FOREIGN KEY (`asset_id`) REFERENCES `assets` (`asset_id`) ON DELETE CASCADE,
   CONSTRAINT `asset_documents_ibfk_2` FOREIGN KEY (`document_id`) REFERENCES `documents` (`document_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `asset_endpoint_states`
+--
+
+DROP TABLE IF EXISTS `asset_endpoint_states`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `asset_endpoint_states` (
+  `endpoint_state_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `endpoint_state_asset_id` int(11) NOT NULL,
+  `endpoint_state_client_id` int(11) NOT NULL,
+  `endpoint_state_source` varchar(40) NOT NULL,
+  `endpoint_state_external_id` varchar(255) NOT NULL,
+  `endpoint_state_status` varchar(20) NOT NULL DEFAULT 'active',
+  `endpoint_state_health` varchar(20) NOT NULL DEFAULT 'unknown',
+  `endpoint_state_compliance` varchar(20) NOT NULL DEFAULT 'unknown',
+  `endpoint_state_encryption` varchar(20) NOT NULL DEFAULT 'unknown',
+  `endpoint_state_secure_boot` varchar(20) NOT NULL DEFAULT 'unknown',
+  `endpoint_state_assigned_user_external_id` varchar(255) DEFAULT NULL,
+  `endpoint_state_assigned_user_name` varchar(255) DEFAULT NULL,
+  `endpoint_state_assigned_user_email` varchar(320) DEFAULT NULL,
+  `endpoint_state_entra_device_id` varchar(255) DEFAULT NULL,
+  `endpoint_state_intune_device_id` varchar(255) DEFAULT NULL,
+  `endpoint_state_os_name` varchar(200) DEFAULT NULL,
+  `endpoint_state_os_version` varchar(100) DEFAULT NULL,
+  `endpoint_state_os_build` varchar(100) DEFAULT NULL,
+  `endpoint_state_agent_version` varchar(100) DEFAULT NULL,
+  `endpoint_state_lifecycle` varchar(20) NOT NULL DEFAULT 'unknown',
+  `endpoint_state_payload_hash` char(64) NOT NULL,
+  `endpoint_state_payload` longtext NOT NULL,
+  `endpoint_state_network_hash` char(64) NOT NULL DEFAULT '',
+  `endpoint_state_network_observed_at` datetime DEFAULT NULL,
+  `endpoint_state_delivery_key` char(64) NOT NULL DEFAULT '',
+  `endpoint_state_delivery_baseline` longtext DEFAULT NULL,
+  `endpoint_state_first_observed_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `endpoint_state_observed_at` datetime NOT NULL,
+  `endpoint_state_last_seen_at` datetime DEFAULT NULL,
+  `endpoint_state_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  `endpoint_state_retired_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`endpoint_state_id`),
+  UNIQUE KEY `endpoint_state_source_external` (`endpoint_state_source`,`endpoint_state_external_id`),
+  UNIQUE KEY `endpoint_state_asset_source` (`endpoint_state_asset_id`,`endpoint_state_source`),
+  KEY `endpoint_state_client_status` (`endpoint_state_client_id`,`endpoint_state_status`,`endpoint_state_health`),
+  KEY `endpoint_state_observed` (`endpoint_state_observed_at`),
+  CONSTRAINT `asset_endpoint_states_asset_fk` FOREIGN KEY (`endpoint_state_asset_id`) REFERENCES `assets` (`asset_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -277,6 +363,45 @@ CREATE TABLE `asset_notes` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `asset_network_observations`
+--
+
+DROP TABLE IF EXISTS `asset_network_observations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `asset_network_observations` (
+  `network_observation_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `network_observation_asset_id` int(11) NOT NULL,
+  `network_observation_client_id` int(11) NOT NULL,
+  `network_observation_interface_id` int(11) DEFAULT NULL,
+  `network_observation_source` varchar(40) NOT NULL,
+  `network_observation_key` varchar(255) NOT NULL,
+  `network_observation_identity_hash` char(64) NOT NULL,
+  `network_observation_state_hash` char(64) NOT NULL,
+  `network_observation_payload` longtext NOT NULL,
+  `network_observation_created_delivery_key` char(64) NOT NULL DEFAULT '',
+  `network_observation_closed_delivery_key` char(64) DEFAULT NULL,
+  `network_observation_last_seen_delivery_key` char(64) DEFAULT NULL,
+  `network_observation_previous_last_seen_at` datetime DEFAULT NULL,
+  `network_observation_canonical` tinyint(1) NOT NULL DEFAULT 1,
+  `network_observation_superseded_at` datetime DEFAULT NULL,
+  `network_observation_first_seen_at` datetime NOT NULL,
+  `network_observation_last_seen_at` datetime NOT NULL,
+  `network_observation_active` tinyint(1) NOT NULL DEFAULT 1,
+  `network_observation_ended_at` datetime DEFAULT NULL,
+  `network_observation_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`network_observation_id`),
+  KEY `network_observation_asset_source_state` (`network_observation_asset_id`,`network_observation_source`,`network_observation_state_hash`),
+  KEY `network_observation_asset_current` (`network_observation_asset_id`,`network_observation_active`,`network_observation_last_seen_at`),
+  KEY `network_observation_client_current` (`network_observation_client_id`,`network_observation_active`),
+  KEY `network_observation_identity` (`network_observation_asset_id`,`network_observation_source`,`network_observation_identity_hash`),
+  KEY `network_observation_interface` (`network_observation_interface_id`),
+  CONSTRAINT `asset_network_observations_asset_fk` FOREIGN KEY (`network_observation_asset_id`) REFERENCES `assets` (`asset_id`) ON DELETE CASCADE,
+  CONSTRAINT `asset_network_observations_interface_fk` FOREIGN KEY (`network_observation_interface_id`) REFERENCES `asset_interfaces` (`interface_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `asset_tags`
 --
 
@@ -349,6 +474,234 @@ CREATE TABLE `auth_logs` (
   `auth_log_user_id` int(11) NOT NULL DEFAULT 0,
   `auth_log_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`auth_log_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `automation_entity_mappings`
+--
+
+DROP TABLE IF EXISTS `automation_entity_mappings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `automation_entity_mappings` (
+  `automation_mapping_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `automation_mapping_source` varchar(40) NOT NULL,
+  `automation_mapping_entity_type` varchar(40) NOT NULL,
+  `automation_mapping_external_id` varchar(255) NOT NULL,
+  `automation_mapping_external_parent_id` varchar(255) DEFAULT NULL,
+  `automation_mapping_external_name` varchar(255) DEFAULT NULL,
+  `automation_mapping_client_id` int(11) NOT NULL DEFAULT 0,
+  `automation_mapping_location_id` int(11) NOT NULL DEFAULT 0,
+  `automation_mapping_asset_id` int(11) NOT NULL DEFAULT 0,
+  `automation_mapping_domain_id` int(11) NOT NULL DEFAULT 0,
+  `automation_mapping_strategy` varchar(40) NOT NULL DEFAULT 'unresolved',
+  `automation_mapping_state` varchar(20) NOT NULL DEFAULT 'unresolved',
+  `automation_mapping_confidence` decimal(5,2) NOT NULL DEFAULT 0.00,
+  `automation_mapping_metadata` longtext DEFAULT NULL,
+  `automation_mapping_last_seen_at` datetime DEFAULT NULL,
+  `automation_mapping_last_synced_at` datetime DEFAULT NULL,
+  `automation_mapping_last_success_at` datetime DEFAULT NULL,
+  `automation_mapping_last_error` text DEFAULT NULL,
+  `automation_mapping_confirmed_at` datetime DEFAULT NULL,
+  `automation_mapping_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_mapping_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  `automation_mapping_deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`automation_mapping_id`),
+  UNIQUE KEY `automation_mapping_source_entity_external` (`automation_mapping_source`,`automation_mapping_entity_type`,`automation_mapping_external_id`),
+  KEY `automation_mapping_source_entity_state` (`automation_mapping_source`,`automation_mapping_entity_type`,`automation_mapping_state`),
+  KEY `automation_mapping_state` (`automation_mapping_state`),
+  KEY `automation_mapping_client` (`automation_mapping_client_id`),
+  KEY `automation_mapping_location` (`automation_mapping_location_id`),
+  KEY `automation_mapping_asset` (`automation_mapping_asset_id`),
+  KEY `automation_mapping_domain` (`automation_mapping_domain_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `automation_mapping_decisions`
+--
+
+DROP TABLE IF EXISTS `automation_mapping_decisions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `automation_mapping_decisions` (
+  `automation_mapping_decision_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `automation_mapping_decision_mapping_id` bigint(20) NOT NULL DEFAULT 0,
+  `automation_mapping_decision_source` varchar(40) NOT NULL,
+  `automation_mapping_decision_entity_type` varchar(40) NOT NULL,
+  `automation_mapping_decision_external_id` varchar(255) NOT NULL,
+  `automation_mapping_decision_action` varchar(40) NOT NULL,
+  `automation_mapping_decision_before` longtext NOT NULL,
+  `automation_mapping_decision_after` longtext NOT NULL,
+  `automation_mapping_decision_reason` varchar(1000) DEFAULT NULL,
+  `automation_mapping_decision_actor_user_id` int(11) NOT NULL DEFAULT 0,
+  `automation_mapping_decision_batch_key` char(64) NOT NULL DEFAULT '',
+  `automation_mapping_decision_occurred_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`automation_mapping_decision_id`),
+  KEY `automation_mapping_decision_mapping_time` (`automation_mapping_decision_mapping_id`,`automation_mapping_decision_occurred_at`),
+  KEY `automation_mapping_decision_source_action` (`automation_mapping_decision_source`,`automation_mapping_decision_action`),
+  KEY `automation_mapping_decision_actor` (`automation_mapping_decision_actor_user_id`,`automation_mapping_decision_occurred_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `automation_entity_snapshots`
+--
+
+DROP TABLE IF EXISTS `automation_entity_snapshots`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `automation_entity_snapshots` (
+  `automation_snapshot_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `automation_snapshot_source` varchar(40) NOT NULL,
+  `automation_snapshot_entity_type` varchar(40) NOT NULL,
+  `automation_snapshot_external_id` varchar(255) NOT NULL,
+  `automation_snapshot_client_id` int(11) NOT NULL DEFAULT 0,
+  `automation_snapshot_asset_id` int(11) NOT NULL DEFAULT 0,
+  `automation_snapshot_payload_hash` char(64) NOT NULL,
+  `automation_snapshot_payload` longtext NOT NULL,
+  `automation_snapshot_observed_at` datetime NOT NULL,
+  `automation_snapshot_first_seen_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_snapshot_last_seen_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`automation_snapshot_id`),
+  UNIQUE KEY `automation_snapshot_source_entity_hash` (`automation_snapshot_source`,`automation_snapshot_entity_type`,`automation_snapshot_external_id`,`automation_snapshot_client_id`,`automation_snapshot_asset_id`,`automation_snapshot_payload_hash`),
+  KEY `automation_snapshot_entity_observed` (`automation_snapshot_source`,`automation_snapshot_entity_type`,`automation_snapshot_external_id`,`automation_snapshot_observed_at`),
+  KEY `automation_snapshot_client` (`automation_snapshot_client_id`),
+  KEY `automation_snapshot_asset` (`automation_snapshot_asset_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `automation_events`
+--
+
+DROP TABLE IF EXISTS `automation_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `automation_events` (
+  `automation_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `automation_event_source` varchar(40) NOT NULL,
+  `automation_event_external_id` varchar(255) NOT NULL,
+  `automation_event_incident_key` varchar(255) NOT NULL,
+  `automation_event_fingerprint` char(64) DEFAULT NULL,
+  `automation_event_state` varchar(20) NOT NULL,
+  `automation_event_action` varchar(40) NOT NULL,
+  `automation_event_status` varchar(20) NOT NULL DEFAULT 'Processed',
+  `automation_event_delivery_count` int(11) NOT NULL DEFAULT 1,
+  `automation_event_process_attempts` int(11) NOT NULL DEFAULT 1,
+  `automation_event_max_attempts` int(11) NOT NULL DEFAULT 5,
+  `automation_event_processing_at` datetime DEFAULT NULL,
+  `automation_event_next_attempt_at` datetime DEFAULT NULL,
+  `automation_event_last_error` text DEFAULT NULL,
+  `automation_event_suppressed_reason` varchar(80) DEFAULT NULL,
+  `automation_event_maintenance_window_id` bigint(20) NOT NULL DEFAULT 0,
+  `automation_event_ticket_id` int(11) NOT NULL DEFAULT 0,
+  `automation_event_payload_hash` char(64) NOT NULL,
+  `automation_event_payload` longtext DEFAULT NULL,
+  `automation_event_occurred_at` datetime DEFAULT NULL,
+  `automation_event_received_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_event_last_received_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_event_processed_at` datetime DEFAULT NULL,
+  `automation_event_replay_count` int(11) NOT NULL DEFAULT 0,
+  `automation_event_replayed_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`automation_event_id`),
+  UNIQUE KEY `automation_event_source_external` (`automation_event_source`,`automation_event_external_id`),
+  KEY `automation_event_incident` (`automation_event_source`,`automation_event_incident_key`),
+  KEY `automation_event_fingerprint` (`automation_event_source`,`automation_event_incident_key`,`automation_event_fingerprint`),
+  KEY `automation_event_queue` (`automation_event_status`,`automation_event_next_attempt_at`,`automation_event_received_at`),
+  KEY `automation_event_ticket` (`automation_event_ticket_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `automation_incidents`
+--
+
+DROP TABLE IF EXISTS `automation_incidents`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `automation_incidents` (
+  `automation_incident_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `automation_incident_source` varchar(40) NOT NULL,
+  `automation_incident_key` varchar(255) NOT NULL,
+  `automation_incident_title` varchar(500) NOT NULL,
+  `automation_incident_status` varchar(20) NOT NULL DEFAULT 'Open',
+  `automation_incident_severity` varchar(20) NOT NULL DEFAULT 'low',
+  `automation_incident_ticket_id` int(11) NOT NULL DEFAULT 0,
+  `automation_incident_client_id` int(11) NOT NULL DEFAULT 0,
+  `automation_incident_location_id` int(11) NOT NULL DEFAULT 0,
+  `automation_incident_asset_id` int(11) NOT NULL DEFAULT 0,
+  `automation_incident_service_id` int(11) NOT NULL DEFAULT 0,
+  `automation_incident_event_count` int(11) NOT NULL DEFAULT 0,
+  `automation_incident_repeat_count` int(11) NOT NULL DEFAULT 0,
+  `automation_incident_suppressed_count` int(11) NOT NULL DEFAULT 0,
+  `automation_incident_last_event_hash` char(64) DEFAULT NULL,
+  `automation_incident_last_action` varchar(40) DEFAULT NULL,
+  `automation_incident_metadata` longtext DEFAULT NULL,
+  `automation_incident_first_event_at` datetime DEFAULT NULL,
+  `automation_incident_opened_at` datetime DEFAULT NULL,
+  `automation_incident_last_event_at` datetime DEFAULT NULL,
+  `automation_incident_resolved_at` datetime DEFAULT NULL,
+  `automation_incident_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_incident_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`automation_incident_id`),
+  UNIQUE KEY `automation_incident_source_key` (`automation_incident_source`,`automation_incident_key`),
+  KEY `automation_incident_ticket` (`automation_incident_ticket_id`),
+  KEY `automation_incident_service` (`automation_incident_service_id`),
+  KEY `automation_incident_status_last_event` (`automation_incident_status`,`automation_incident_last_event_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `automation_event_policies`
+--
+
+DROP TABLE IF EXISTS `automation_event_policies`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `automation_event_policies` (
+  `automation_policy_source` varchar(40) NOT NULL,
+  `automation_policy_enabled` tinyint(1) NOT NULL DEFAULT 1,
+  `automation_policy_ticket_enabled` tinyint(1) NOT NULL DEFAULT 1,
+  `automation_policy_auto_resolve` tinyint(1) NOT NULL DEFAULT 1,
+  `automation_policy_threshold_count` int(11) NOT NULL DEFAULT 1,
+  `automation_policy_threshold_window_minutes` int(11) NOT NULL DEFAULT 0,
+  `automation_policy_max_attempts` int(11) NOT NULL DEFAULT 5,
+  `automation_policy_retry_delay_seconds` int(11) NOT NULL DEFAULT 60,
+  `automation_policy_payload_retention_days` int(11) NOT NULL DEFAULT 30,
+  `automation_policy_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_policy_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`automation_policy_source`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `automation_maintenance_windows`
+--
+
+DROP TABLE IF EXISTS `automation_maintenance_windows`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `automation_maintenance_windows` (
+  `automation_maintenance_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `automation_maintenance_name` varchar(255) NOT NULL,
+  `automation_maintenance_source` varchar(40) NOT NULL DEFAULT '',
+  `automation_maintenance_client_id` int(11) NOT NULL DEFAULT 0,
+  `automation_maintenance_asset_id` int(11) NOT NULL DEFAULT 0,
+  `automation_maintenance_service_id` int(11) NOT NULL DEFAULT 0,
+  `automation_maintenance_starts_at` datetime NOT NULL,
+  `automation_maintenance_ends_at` datetime NOT NULL,
+  `automation_maintenance_reason` text DEFAULT NULL,
+  `automation_maintenance_created_by` int(11) NOT NULL DEFAULT 0,
+  `automation_maintenance_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_maintenance_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  `automation_maintenance_deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`automation_maintenance_id`),
+  KEY `automation_maintenance_active` (`automation_maintenance_starts_at`,`automation_maintenance_ends_at`,`automation_maintenance_deleted_at`),
+  KEY `automation_maintenance_client` (`automation_maintenance_client_id`),
+  KEY `automation_maintenance_asset` (`automation_maintenance_asset_id`),
+  KEY `automation_maintenance_service` (`automation_maintenance_service_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -813,6 +1166,9 @@ CREATE TABLE `contacts` (
   `contact_important` tinyint(1) NOT NULL DEFAULT 0,
   `contact_billing` tinyint(1) DEFAULT 0,
   `contact_technical` tinyint(1) DEFAULT 0,
+  `contact_portal_ticket_scope` varchar(20) NOT NULL DEFAULT 'own',
+  `contact_portal_asset_scope` varchar(20) NOT NULL DEFAULT 'assigned',
+  `contact_portal_manage_contacts` tinyint(1) NOT NULL DEFAULT 0,
   `contact_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `contact_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `contact_archived_at` datetime DEFAULT NULL,
@@ -894,12 +1250,227 @@ CREATE TABLE `contracts` (
   `contract_start_date` date DEFAULT NULL,
   `contract_end_date` date DEFAULT NULL,
   `contract_renewal_frequency` varchar(50) DEFAULT NULL,
+  `contract_published_version_id` bigint(20) NOT NULL DEFAULT 0,
+  `contract_review_cadence_months` int(11) NOT NULL DEFAULT 3,
+  `contract_next_review_at` date DEFAULT NULL,
   `contract_created_at` datetime DEFAULT current_timestamp(),
   `contract_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `contract_archived_at` datetime DEFAULT NULL,
   PRIMARY KEY (`contract_id`),
   KEY `contract_client_id` (`contract_client_id`),
+  KEY `contract_published_version` (`contract_published_version_id`),
+  KEY `contract_review_due` (`contract_status`,`contract_next_review_at`),
   CONSTRAINT `contracts_ibfk_1` FOREIGN KEY (`contract_client_id`) REFERENCES `clients` (`client_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `agreement_versions`
+--
+
+DROP TABLE IF EXISTS `agreement_versions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `agreement_versions` (
+  `agreement_version_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `agreement_version_contract_id` int(11) NOT NULL,
+  `agreement_version_number` int(11) NOT NULL,
+  `agreement_version_status` varchar(20) NOT NULL DEFAULT 'Draft',
+  `agreement_version_name` varchar(255) NOT NULL,
+  `agreement_version_type` varchar(50) NOT NULL,
+  `agreement_version_effective_from` date DEFAULT NULL,
+  `agreement_version_effective_until` date DEFAULT NULL,
+  `agreement_version_support_hours` varchar(100) DEFAULT NULL,
+  `agreement_version_review_cadence_months` int(11) NOT NULL DEFAULT 3,
+  `agreement_version_renewal_notice_days` int(11) NOT NULL DEFAULT 90,
+  `agreement_version_details` text DEFAULT NULL,
+  `agreement_version_definition_hash` char(64) DEFAULT NULL,
+  `agreement_version_created_by` int(11) NOT NULL DEFAULT 0,
+  `agreement_version_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `agreement_version_published_by` int(11) NOT NULL DEFAULT 0,
+  `agreement_version_published_at` datetime DEFAULT NULL,
+  `agreement_version_superseded_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`agreement_version_id`),
+  UNIQUE KEY `agreement_version_number` (`agreement_version_contract_id`,`agreement_version_number`),
+  KEY `agreement_version_contract_status` (`agreement_version_contract_id`,`agreement_version_status`),
+  KEY `agreement_version_effective` (`agreement_version_effective_from`,`agreement_version_effective_until`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `agreement_entitlements`
+--
+
+DROP TABLE IF EXISTS `agreement_entitlements`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `agreement_entitlements` (
+  `agreement_entitlement_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `agreement_entitlement_version_id` bigint(20) NOT NULL,
+  `agreement_entitlement_scope_type` varchar(20) NOT NULL,
+  `agreement_entitlement_scope_id` int(11) NOT NULL DEFAULT 0,
+  `agreement_entitlement_scope_key` varchar(100) NOT NULL DEFAULT '*',
+  `agreement_entitlement_scope_label` varchar(255) NOT NULL,
+  `agreement_entitlement_quantity_limit` decimal(12,2) DEFAULT NULL,
+  `agreement_entitlement_classification` varchar(20) NOT NULL,
+  `agreement_entitlement_notes` text DEFAULT NULL,
+  `agreement_entitlement_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`agreement_entitlement_id`),
+  UNIQUE KEY `agreement_entitlement_scope` (`agreement_entitlement_version_id`,`agreement_entitlement_scope_type`,`agreement_entitlement_scope_id`,`agreement_entitlement_scope_key`,`agreement_entitlement_classification`),
+  KEY `agreement_entitlement_version_class` (`agreement_entitlement_version_id`,`agreement_entitlement_classification`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `agreement_sla_rules`
+--
+
+DROP TABLE IF EXISTS `agreement_sla_rules`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `agreement_sla_rules` (
+  `agreement_sla_rule_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `agreement_sla_rule_version_id` bigint(20) NOT NULL,
+  `agreement_sla_rule_request_type_key` varchar(100) NOT NULL DEFAULT '*',
+  `agreement_sla_rule_priority` varchar(20) NOT NULL DEFAULT '*',
+  `agreement_sla_rule_sla_id` int(11) NOT NULL DEFAULT 0,
+  `agreement_sla_rule_sla_name` varchar(200) NOT NULL DEFAULT 'None',
+  `agreement_sla_rule_response_minutes` int(11) DEFAULT NULL,
+  `agreement_sla_rule_resolution_minutes` int(11) DEFAULT NULL,
+  `agreement_sla_rule_calendar_mode` varchar(20) NOT NULL DEFAULT 'none',
+  `agreement_sla_rule_business_days` varchar(20) DEFAULT NULL,
+  `agreement_sla_rule_business_hours_start` time DEFAULT NULL,
+  `agreement_sla_rule_business_hours_end` time DEFAULT NULL,
+  `agreement_sla_rule_timezone` varchar(64) NOT NULL DEFAULT 'UTC',
+  `agreement_sla_rule_classification` varchar(20) NOT NULL DEFAULT 'included',
+  `agreement_sla_rule_classification_basis` varchar(30) NOT NULL DEFAULT 'explicit_rule',
+  `agreement_sla_rule_behavior_version` int(11) NOT NULL DEFAULT 1,
+  `agreement_sla_rule_sla_eligible` tinyint(1) NOT NULL DEFAULT 1,
+  `agreement_sla_rule_ticket_onsite` tinyint(1) NOT NULL DEFAULT 0,
+  `agreement_sla_rule_ticket_billable` tinyint(1) NOT NULL DEFAULT 0,
+  `agreement_sla_rule_order` int(11) NOT NULL DEFAULT 0,
+  `agreement_sla_rule_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`agreement_sla_rule_id`),
+  UNIQUE KEY `agreement_sla_rule_match` (`agreement_sla_rule_version_id`,`agreement_sla_rule_request_type_key`,`agreement_sla_rule_priority`),
+  KEY `agreement_sla_rule_version_order` (`agreement_sla_rule_version_id`,`agreement_sla_rule_order`,`agreement_sla_rule_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `agreement_version_events`
+--
+
+DROP TABLE IF EXISTS `agreement_version_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `agreement_version_events` (
+  `agreement_version_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `agreement_version_event_contract_id` int(11) NOT NULL,
+  `agreement_version_event_version_id` bigint(20) NOT NULL,
+  `agreement_version_event_action` varchar(30) NOT NULL,
+  `agreement_version_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `agreement_version_event_reason` varchar(255) DEFAULT NULL,
+  `agreement_version_event_definition_hash` char(64) DEFAULT NULL,
+  `agreement_version_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`agreement_version_event_id`),
+  KEY `agreement_version_event_version` (`agreement_version_event_version_id`,`agreement_version_event_id`),
+  KEY `agreement_version_event_contract` (`agreement_version_event_contract_id`,`agreement_version_event_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `ticket_agreement_decisions`
+--
+
+DROP TABLE IF EXISTS `ticket_agreement_decisions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_agreement_decisions` (
+  `ticket_agreement_decision_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_agreement_decision_schema_version` int(11) NOT NULL DEFAULT 1,
+  `ticket_agreement_decision_ticket_id` int(11) NOT NULL,
+  `ticket_agreement_decision_client_id` int(11) NOT NULL,
+  `ticket_agreement_decision_contract_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_agreement_decision_version_id` bigint(20) NOT NULL DEFAULT 0,
+  `ticket_agreement_decision_rule_id` bigint(20) NOT NULL DEFAULT 0,
+  `ticket_agreement_decision_request_type_key` varchar(100) NOT NULL DEFAULT '*',
+  `ticket_agreement_decision_priority` varchar(20) NOT NULL,
+  `ticket_agreement_decision_sla_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_agreement_decision_sla_name` varchar(200) NOT NULL DEFAULT 'None',
+  `ticket_agreement_decision_response_minutes` int(11) DEFAULT NULL,
+  `ticket_agreement_decision_resolution_minutes` int(11) DEFAULT NULL,
+  `ticket_agreement_decision_calendar_mode` varchar(20) NOT NULL DEFAULT 'none',
+  `ticket_agreement_decision_business_days` varchar(20) DEFAULT NULL,
+  `ticket_agreement_decision_business_hours_start` time DEFAULT NULL,
+  `ticket_agreement_decision_business_hours_end` time DEFAULT NULL,
+  `ticket_agreement_decision_timezone` varchar(64) NOT NULL DEFAULT 'UTC',
+  `ticket_agreement_decision_classification` varchar(20) DEFAULT NULL,
+  `ticket_agreement_decision_classification_basis` varchar(30) DEFAULT NULL,
+  `ticket_agreement_decision_behavior_version` int(11) NOT NULL DEFAULT 0,
+  `ticket_agreement_decision_sla_eligible` tinyint(1) NOT NULL DEFAULT 0,
+  `ticket_agreement_decision_ticket_onsite` tinyint(1) NOT NULL DEFAULT 0,
+  `ticket_agreement_decision_ticket_billable` tinyint(1) NOT NULL DEFAULT 0,
+  `ticket_agreement_decision_entitlement_snapshot` longtext NOT NULL,
+  `ticket_agreement_decision_source` varchar(30) NOT NULL,
+  `ticket_agreement_decision_reason` varchar(500) NOT NULL,
+  `ticket_agreement_decision_hash` char(64) NOT NULL,
+  `ticket_agreement_decision_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`ticket_agreement_decision_id`),
+  KEY `ticket_agreement_decision_hash` (`ticket_agreement_decision_ticket_id`,`ticket_agreement_decision_hash`),
+  KEY `ticket_agreement_decision_ticket` (`ticket_agreement_decision_ticket_id`,`ticket_agreement_decision_id`),
+  KEY `ticket_agreement_decision_client` (`ticket_agreement_decision_client_id`,`ticket_agreement_decision_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `service_reviews`
+--
+
+DROP TABLE IF EXISTS `service_reviews`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `service_reviews` (
+  `service_review_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `service_review_client_id` int(11) NOT NULL,
+  `service_review_contract_id` int(11) NOT NULL DEFAULT 0,
+  `service_review_agreement_version_id` bigint(20) NOT NULL DEFAULT 0,
+  `service_review_period_start` date NOT NULL,
+  `service_review_period_end` date NOT NULL,
+  `service_review_status` varchar(20) NOT NULL DEFAULT 'Draft',
+  `service_review_source_snapshot` longtext NOT NULL,
+  `service_review_summary` text NOT NULL,
+  `service_review_recommendations` longtext NOT NULL,
+  `service_review_snapshot_hash` char(64) NOT NULL,
+  `service_review_generated_by` int(11) NOT NULL DEFAULT 0,
+  `service_review_generated_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `service_review_published_by` int(11) NOT NULL DEFAULT 0,
+  `service_review_published_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`service_review_id`),
+  UNIQUE KEY `service_review_snapshot_once` (`service_review_client_id`,`service_review_period_start`,`service_review_period_end`,`service_review_snapshot_hash`),
+  KEY `service_review_client_period` (`service_review_client_id`,`service_review_period_end`,`service_review_id`),
+  KEY `service_review_contract` (`service_review_contract_id`,`service_review_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `service_review_events`
+--
+
+DROP TABLE IF EXISTS `service_review_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `service_review_events` (
+  `service_review_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `service_review_event_review_id` bigint(20) NOT NULL,
+  `service_review_event_client_id` int(11) NOT NULL,
+  `service_review_event_action` varchar(30) NOT NULL,
+  `service_review_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `service_review_event_reason` varchar(255) DEFAULT NULL,
+  `service_review_event_snapshot_hash` char(64) NOT NULL,
+  `service_review_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`service_review_event_id`),
+  KEY `service_review_event_review` (`service_review_event_review_id`,`service_review_event_id`),
+  KEY `service_review_event_client` (`service_review_event_client_id`,`service_review_event_created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1079,6 +1650,312 @@ CREATE TABLE `discount_codes` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+-- Documentation requirements keep a mutable draft and one authoritative
+-- published pointer. Published versions and selectors are immutable.
+
+DROP TABLE IF EXISTS `documentation_requirements`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_requirements` (
+  `documentation_requirement_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_requirement_key` varchar(100) NOT NULL,
+  `documentation_requirement_draft_definition` longtext NOT NULL,
+  `documentation_requirement_published_version_id` bigint(20) NOT NULL DEFAULT 0,
+  `documentation_requirement_lifecycle` varchar(20) NOT NULL DEFAULT 'Draft',
+  `documentation_requirement_revision` int(11) NOT NULL DEFAULT 1,
+  `documentation_requirement_created_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_requirement_updated_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_requirement_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `documentation_requirement_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  `documentation_requirement_archived_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`documentation_requirement_id`),
+  UNIQUE KEY `documentation_requirement_key` (`documentation_requirement_key`),
+  KEY `documentation_requirement_published` (`documentation_requirement_published_version_id`,`documentation_requirement_lifecycle`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_requirement_versions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_requirement_versions` (
+  `documentation_requirement_version_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_requirement_version_requirement_id` bigint(20) NOT NULL,
+  `documentation_requirement_version_number` int(11) NOT NULL,
+  `documentation_requirement_version_definition_hash` char(64) NOT NULL,
+  `documentation_requirement_version_key` varchar(100) NOT NULL,
+  `documentation_requirement_version_name` varchar(200) NOT NULL,
+  `documentation_requirement_version_description` text DEFAULT NULL,
+  `documentation_requirement_version_record_type` varchar(40) NOT NULL,
+  `documentation_requirement_version_default_owner_role` varchar(40) NOT NULL DEFAULT 'documentation_owner',
+  `documentation_requirement_version_default_owner_user_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_requirement_version_default_reviewer_role` varchar(40) NOT NULL DEFAULT 'support_lead',
+  `documentation_requirement_version_default_reviewer_user_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_requirement_version_review_cadence_days` int(11) NOT NULL,
+  `documentation_requirement_version_warning_window_days` int(11) NOT NULL DEFAULT 30,
+  `documentation_requirement_version_blocks_readiness` tinyint(1) NOT NULL DEFAULT 1,
+  `documentation_requirement_version_blocks_ticket_resolution` tinyint(1) NOT NULL DEFAULT 1,
+  `documentation_requirement_version_evidence_policy` varchar(40) NOT NULL DEFAULT 'reference',
+  `documentation_requirement_version_exception_approval_policy` varchar(40) NOT NULL DEFAULT 'support3',
+  `documentation_requirement_version_applicability_mode` varchar(10) NOT NULL DEFAULT 'any',
+  `documentation_requirement_version_created_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_requirement_version_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`documentation_requirement_version_id`),
+  UNIQUE KEY `documentation_requirement_version_number` (`documentation_requirement_version_requirement_id`,`documentation_requirement_version_number`),
+  UNIQUE KEY `documentation_requirement_version_hash` (`documentation_requirement_version_requirement_id`,`documentation_requirement_version_definition_hash`),
+  KEY `documentation_requirement_version_key` (`documentation_requirement_version_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_requirement_version_selectors`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_requirement_version_selectors` (
+  `documentation_selector_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_selector_requirement_version_id` bigint(20) NOT NULL,
+  `documentation_selector_dimension` varchar(40) NOT NULL,
+  `documentation_selector_value` varchar(100) NOT NULL,
+  `documentation_selector_order` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`documentation_selector_id`),
+  UNIQUE KEY `documentation_selector_identity` (`documentation_selector_requirement_version_id`,`documentation_selector_dimension`,`documentation_selector_value`),
+  KEY `documentation_selector_lookup` (`documentation_selector_dimension`,`documentation_selector_value`,`documentation_selector_requirement_version_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `client_documentation_obligations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `client_documentation_obligations` (
+  `documentation_obligation_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_obligation_client_id` int(11) NOT NULL,
+  `documentation_obligation_requirement_id` bigint(20) NOT NULL,
+  `documentation_obligation_requirement_version_id` bigint(20) NOT NULL,
+  `documentation_obligation_document_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_applicable` tinyint(1) NOT NULL DEFAULT 1,
+  `documentation_obligation_base_status` varchar(20) NOT NULL DEFAULT 'Missing',
+  `documentation_obligation_owner_role` varchar(40) NOT NULL DEFAULT 'documentation_owner',
+  `documentation_obligation_owner_user_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_reviewer_role` varchar(40) NOT NULL DEFAULT 'support_lead',
+  `documentation_obligation_reviewer_user_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_last_verified_at` datetime DEFAULT NULL,
+  `documentation_obligation_next_review_at` datetime DEFAULT NULL,
+  `documentation_obligation_stale_at` datetime DEFAULT NULL,
+  `documentation_obligation_verification_source` varchar(40) DEFAULT NULL,
+  `documentation_obligation_verification_evidence_id` bigint(20) NOT NULL DEFAULT 0,
+  `documentation_obligation_verification_document_version_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_verification_document_hash` char(64) DEFAULT NULL,
+  `documentation_obligation_verification_ticket_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_evaluation_reason_code` varchar(60) NOT NULL DEFAULT 'not_evaluated',
+  `documentation_obligation_evaluated_at` datetime DEFAULT NULL,
+  `documentation_obligation_exception_id` bigint(20) NOT NULL DEFAULT 0,
+  `documentation_obligation_exception_status` varchar(20) DEFAULT NULL,
+  `documentation_obligation_exception_reason_redacted` varchar(255) DEFAULT NULL,
+  `documentation_obligation_exception_reason_hash` char(64) DEFAULT NULL,
+  `documentation_obligation_exception_requested_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_exception_requested_at` datetime DEFAULT NULL,
+  `documentation_obligation_exception_decided_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_exception_decided_at` datetime DEFAULT NULL,
+  `documentation_obligation_exception_expires_at` datetime DEFAULT NULL,
+  `documentation_obligation_exception_expired_event_at` datetime DEFAULT NULL,
+  `documentation_obligation_revision` int(11) NOT NULL DEFAULT 1,
+  `documentation_obligation_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `documentation_obligation_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`documentation_obligation_id`),
+  UNIQUE KEY `documentation_obligation_client_requirement` (`documentation_obligation_client_id`,`documentation_obligation_requirement_id`),
+  KEY `documentation_obligation_client_queue` (`documentation_obligation_client_id`,`documentation_obligation_applicable`,`documentation_obligation_base_status`),
+  KEY `documentation_obligation_requirement_version` (`documentation_obligation_requirement_version_id`),
+  KEY `documentation_obligation_document` (`documentation_obligation_document_id`),
+  KEY `documentation_obligation_owner_queue` (`documentation_obligation_owner_user_id`,`documentation_obligation_applicable`,`documentation_obligation_base_status`),
+  KEY `documentation_obligation_reviewer_queue` (`documentation_obligation_reviewer_user_id`,`documentation_obligation_applicable`,`documentation_obligation_base_status`),
+  KEY `documentation_obligation_review_queue` (`documentation_obligation_applicable`,`documentation_obligation_next_review_at`,`documentation_obligation_stale_at`),
+  KEY `documentation_obligation_exception_queue` (`documentation_obligation_exception_status`,`documentation_obligation_exception_expires_at`),
+  KEY `documentation_obligation_exception_pointer` (`documentation_obligation_exception_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_obligation_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_obligation_events` (
+  `documentation_obligation_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_obligation_event_obligation_id` bigint(20) NOT NULL,
+  `documentation_obligation_event_client_id` int(11) NOT NULL,
+  `documentation_obligation_event_requirement_version_id` bigint(20) NOT NULL,
+  `documentation_obligation_event_action` varchar(40) NOT NULL,
+  `documentation_obligation_event_from_base_status` varchar(20) DEFAULT NULL,
+  `documentation_obligation_event_to_base_status` varchar(20) DEFAULT NULL,
+  `documentation_obligation_event_from_effective_status` varchar(20) DEFAULT NULL,
+  `documentation_obligation_event_to_effective_status` varchar(20) DEFAULT NULL,
+  `documentation_obligation_event_actor_type` varchar(20) NOT NULL DEFAULT 'system',
+  `documentation_obligation_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_event_reason_code` varchar(60) NOT NULL,
+  `documentation_obligation_event_source_type` varchar(40) DEFAULT NULL,
+  `documentation_obligation_event_source_id` bigint(20) NOT NULL DEFAULT 0,
+  `documentation_obligation_event_context_hash` char(64) DEFAULT NULL,
+  `documentation_obligation_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`documentation_obligation_event_id`),
+  KEY `documentation_obligation_event_history` (`documentation_obligation_event_obligation_id`,`documentation_obligation_event_created_at`,`documentation_obligation_event_id`),
+  KEY `documentation_obligation_event_client` (`documentation_obligation_event_client_id`,`documentation_obligation_event_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_obligation_exceptions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_obligation_exceptions` (
+  `documentation_obligation_exception_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_obligation_exception_client_id` int(11) NOT NULL,
+  `documentation_obligation_exception_obligation_id` bigint(20) NOT NULL,
+  `documentation_obligation_exception_requirement_version_id` bigint(20) NOT NULL,
+  `documentation_obligation_exception_status` varchar(20) NOT NULL DEFAULT 'Pending',
+  `documentation_obligation_exception_reason_redacted` varchar(255) NOT NULL,
+  `documentation_obligation_exception_reason_hash` char(64) NOT NULL,
+  `documentation_obligation_exception_requested_by` int(11) NOT NULL,
+  `documentation_obligation_exception_requested_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `documentation_obligation_exception_decided_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_exception_decided_at` datetime DEFAULT NULL,
+  `documentation_obligation_exception_expires_at` datetime NOT NULL,
+  `documentation_obligation_exception_expired_at` datetime DEFAULT NULL,
+  `documentation_obligation_exception_revision` int(11) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`documentation_obligation_exception_id`),
+  KEY `documentation_obligation_exception_history` (`documentation_obligation_exception_obligation_id`,`documentation_obligation_exception_id`),
+  KEY `documentation_obligation_exception_queue` (`documentation_obligation_exception_status`,`documentation_obligation_exception_expires_at`),
+  KEY `documentation_obligation_exception_client` (`documentation_obligation_exception_client_id`,`documentation_obligation_exception_status`,`documentation_obligation_exception_expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_obligation_exception_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_obligation_exception_events` (
+  `documentation_obligation_exception_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_obligation_exception_event_exception_id` bigint(20) NOT NULL,
+  `documentation_obligation_exception_event_obligation_id` bigint(20) NOT NULL,
+  `documentation_obligation_exception_event_client_id` int(11) NOT NULL,
+  `documentation_obligation_exception_event_requirement_version_id` bigint(20) NOT NULL,
+  `documentation_obligation_exception_event_action` varchar(30) NOT NULL,
+  `documentation_obligation_exception_event_from_status` varchar(20) DEFAULT NULL,
+  `documentation_obligation_exception_event_to_status` varchar(20) NOT NULL,
+  `documentation_obligation_exception_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_obligation_exception_event_reason_code` varchar(60) NOT NULL,
+  `documentation_obligation_exception_event_context_hash` char(64) DEFAULT NULL,
+  `documentation_obligation_exception_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`documentation_obligation_exception_event_id`),
+  KEY `documentation_obligation_exception_event_history` (`documentation_obligation_exception_event_exception_id`,`documentation_obligation_exception_event_created_at`,`documentation_obligation_exception_event_id`),
+  KEY `documentation_obligation_exception_event_obligation` (`documentation_obligation_exception_event_obligation_id`,`documentation_obligation_exception_event_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_evidence_locker`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_evidence_locker` (
+  `documentation_evidence_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_evidence_client_id` int(11) NOT NULL,
+  `documentation_evidence_obligation_id` bigint(20) NOT NULL,
+  `documentation_evidence_requirement_version_id` bigint(20) NOT NULL,
+  `documentation_evidence_type` varchar(40) NOT NULL,
+  `documentation_evidence_reference_type` varchar(40) NOT NULL,
+  `documentation_evidence_reference_id` bigint(20) NOT NULL DEFAULT 0,
+  `documentation_evidence_reference_hash` char(64) NOT NULL,
+  `documentation_evidence_policy_result` varchar(20) NOT NULL DEFAULT 'accepted',
+  `documentation_evidence_source_ticket_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_evidence_recorded_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_evidence_recorded_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`documentation_evidence_id`),
+  KEY `documentation_evidence_reference` (`documentation_evidence_obligation_id`,`documentation_evidence_requirement_version_id`,`documentation_evidence_reference_type`,`documentation_evidence_reference_id`,`documentation_evidence_reference_hash`),
+  KEY `documentation_evidence_client` (`documentation_evidence_client_id`,`documentation_evidence_recorded_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_change_passports`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_change_passports` (
+  `documentation_change_passport_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_change_passport_client_id` int(11) NOT NULL,
+  `documentation_change_passport_ticket_id` int(11) NOT NULL,
+  `documentation_change_passport_resolution_sequence` int(11) NOT NULL,
+  `documentation_change_passport_ticket_status` int(11) NOT NULL,
+  `documentation_change_passport_change_key` char(64) NOT NULL,
+  `documentation_change_passport_obligation_set_hash` char(64) NOT NULL,
+  `documentation_change_passport_outcome_code` varchar(40) NOT NULL,
+  `documentation_change_passport_committed_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_change_passport_committed_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`documentation_change_passport_id`),
+  UNIQUE KEY `documentation_change_passport_key` (`documentation_change_passport_change_key`),
+  UNIQUE KEY `documentation_change_passport_sequence` (`documentation_change_passport_ticket_id`,`documentation_change_passport_resolution_sequence`),
+  KEY `documentation_change_passport_ticket` (`documentation_change_passport_ticket_id`,`documentation_change_passport_committed_at`),
+  KEY `documentation_change_passport_client` (`documentation_change_passport_client_id`,`documentation_change_passport_committed_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_change_passport_obligations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_change_passport_obligations` (
+  `documentation_change_passport_obligation_passport_id` bigint(20) NOT NULL,
+  `documentation_change_passport_obligation_link_id` bigint(20) NOT NULL,
+  `documentation_change_passport_obligation_obligation_id` bigint(20) NOT NULL,
+  `documentation_change_passport_obligation_task_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_change_passport_obligation_requirement_version_id` bigint(20) NOT NULL,
+  `documentation_change_passport_obligation_revision` int(11) NOT NULL,
+  `documentation_change_passport_obligation_base_status` varchar(20) NOT NULL,
+  `documentation_change_passport_obligation_effective_status` varchar(20) NOT NULL,
+  `documentation_change_passport_obligation_evidence_id` bigint(20) NOT NULL DEFAULT 0,
+  `documentation_change_passport_obligation_exception_id` bigint(20) NOT NULL DEFAULT 0,
+  `documentation_change_passport_obligation_waiver_id` bigint(20) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`documentation_change_passport_obligation_passport_id`,`documentation_change_passport_obligation_obligation_id`),
+  KEY `documentation_change_passport_obligation_source` (`documentation_change_passport_obligation_obligation_id`,`documentation_change_passport_obligation_passport_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_promise_ledger`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_promise_ledger` (
+  `documentation_promise_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_promise_client_id` int(11) NOT NULL,
+  `documentation_promise_obligation_id` bigint(20) NOT NULL,
+  `documentation_promise_ticket_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_promise_status` varchar(20) NOT NULL DEFAULT 'Open',
+  `documentation_promise_reason_code` varchar(60) NOT NULL,
+  `documentation_promise_reason_redacted` varchar(255) NOT NULL,
+  `documentation_promise_reason_hash` char(64) NOT NULL,
+  `documentation_promise_due_at` datetime NOT NULL,
+  `documentation_promise_promised_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_promise_promised_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `documentation_promise_fulfilled_by` int(11) NOT NULL DEFAULT 0,
+  `documentation_promise_fulfilled_at` datetime DEFAULT NULL,
+  `documentation_promise_revision` int(11) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`documentation_promise_id`),
+  KEY `documentation_promise_queue` (`documentation_promise_status`,`documentation_promise_due_at`),
+  KEY `documentation_promise_obligation` (`documentation_promise_obligation_id`,`documentation_promise_status`),
+  KEY `documentation_promise_ticket` (`documentation_promise_ticket_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `documentation_promise_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `documentation_promise_events` (
+  `documentation_promise_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `documentation_promise_event_promise_id` bigint(20) NOT NULL,
+  `documentation_promise_event_obligation_id` bigint(20) NOT NULL,
+  `documentation_promise_event_client_id` int(11) NOT NULL,
+  `documentation_promise_event_ticket_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_promise_event_action` varchar(30) NOT NULL,
+  `documentation_promise_event_from_status` varchar(20) DEFAULT NULL,
+  `documentation_promise_event_to_status` varchar(20) NOT NULL,
+  `documentation_promise_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `documentation_promise_event_reason_code` varchar(60) NOT NULL,
+  `documentation_promise_event_context_hash` char(64) DEFAULT NULL,
+  `documentation_promise_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`documentation_promise_event_id`),
+  KEY `documentation_promise_event_history` (`documentation_promise_event_promise_id`,`documentation_promise_event_created_at`,`documentation_promise_event_id`),
+  KEY `documentation_promise_event_obligation` (`documentation_promise_event_obligation_id`,`documentation_promise_event_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
 --
 -- Table structure for table `document_files`
 --
@@ -1232,6 +2109,8 @@ CREATE TABLE `email_queue` (
   `email_from_name` varchar(255) NOT NULL,
   `email_subject` varchar(255) NOT NULL,
   `email_content` longtext NOT NULL,
+  `email_content_plain` longtext DEFAULT NULL,
+  `email_template_key` varchar(100) DEFAULT NULL,
   `email_cal_str` varchar(1024) DEFAULT NULL,
   `email_attachments` text DEFAULT NULL,
   `email_queued_at` datetime NOT NULL DEFAULT current_timestamp(),
@@ -1482,6 +2361,23 @@ CREATE TABLE `modules` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `n45_schema_migrations`
+--
+
+DROP TABLE IF EXISTS `n45_schema_migrations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `n45_schema_migrations` (
+  `migration_id` varchar(100) NOT NULL,
+  `migration_checksum` char(64) NOT NULL,
+  `migration_legacy_version` varchar(20) DEFAULT NULL,
+  `migration_applied_by` varchar(20) NOT NULL,
+  `migration_applied_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`migration_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `networks`
 --
 
@@ -1598,6 +2494,220 @@ CREATE TABLE `payments` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `portal_request_catalog_fields`
+--
+
+DROP TABLE IF EXISTS `portal_request_catalog_fields`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `portal_request_catalog_fields` (
+  `portal_request_catalog_field_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `portal_request_catalog_field_item_id` int(11) NOT NULL,
+  `portal_request_catalog_field_key` varchar(100) NOT NULL,
+  `portal_request_catalog_field_label` varchar(200) NOT NULL,
+  `portal_request_catalog_field_help` varchar(500) DEFAULT NULL,
+  `portal_request_catalog_field_type` varchar(30) NOT NULL,
+  `portal_request_catalog_field_required` tinyint(1) NOT NULL DEFAULT 0,
+  `portal_request_catalog_field_options` longtext DEFAULT NULL,
+  `portal_request_catalog_field_max_length` int(11) NOT NULL DEFAULT 255,
+  `portal_request_catalog_field_min_value` bigint(20) DEFAULT NULL,
+  `portal_request_catalog_field_max_value` bigint(20) DEFAULT NULL,
+  `portal_request_catalog_field_order` int(11) NOT NULL DEFAULT 0,
+  `portal_request_catalog_field_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `portal_request_catalog_field_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`portal_request_catalog_field_id`),
+  UNIQUE KEY `portal_request_catalog_field_key` (`portal_request_catalog_field_item_id`,`portal_request_catalog_field_key`),
+  KEY `portal_request_catalog_field_order` (`portal_request_catalog_field_item_id`,`portal_request_catalog_field_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `portal_request_catalog_items`
+--
+
+DROP TABLE IF EXISTS `portal_request_catalog_items`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `portal_request_catalog_items` (
+  `portal_request_catalog_item_id` int(11) NOT NULL AUTO_INCREMENT,
+  `portal_request_catalog_item_key` varchar(100) NOT NULL,
+  `portal_request_catalog_item_type` varchar(30) NOT NULL DEFAULT 'other',
+  `portal_request_catalog_item_name` varchar(200) NOT NULL,
+  `portal_request_catalog_item_description` text DEFAULT NULL,
+  `portal_request_catalog_item_instructions` text DEFAULT NULL,
+  `portal_request_catalog_item_icon` varchar(60) NOT NULL DEFAULT 'far fa-list-alt',
+  `portal_request_catalog_item_category_id` int(11) NOT NULL DEFAULT 0,
+  `portal_request_catalog_item_ticket_template_id` int(11) NOT NULL DEFAULT 0,
+  `portal_request_catalog_item_published_version_id` bigint(20) NOT NULL DEFAULT 0,
+  `portal_request_catalog_item_permission_rule` varchar(30) NOT NULL DEFAULT 'any',
+  `portal_request_catalog_item_applicability_rule` varchar(30) NOT NULL DEFAULT 'all',
+  `portal_request_catalog_item_applicability_value` varchar(255) DEFAULT NULL,
+  `portal_request_catalog_item_approval_rule` varchar(30) NOT NULL DEFAULT 'none',
+  `portal_request_catalog_item_order` int(11) NOT NULL DEFAULT 0,
+  `portal_request_catalog_item_created_by` int(11) NOT NULL DEFAULT 0,
+  `portal_request_catalog_item_updated_by` int(11) NOT NULL DEFAULT 0,
+  `portal_request_catalog_item_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `portal_request_catalog_item_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  `portal_request_catalog_item_archived_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`portal_request_catalog_item_id`),
+  UNIQUE KEY `portal_request_catalog_item_key` (`portal_request_catalog_item_key`),
+  KEY `portal_request_catalog_item_release` (`portal_request_catalog_item_published_version_id`),
+  KEY `portal_request_catalog_item_template` (`portal_request_catalog_item_ticket_template_id`),
+  KEY `portal_request_catalog_item_active` (`portal_request_catalog_item_archived_at`,`portal_request_catalog_item_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `portal_request_catalog_version_fields`
+--
+
+DROP TABLE IF EXISTS `portal_request_catalog_version_fields`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `portal_request_catalog_version_fields` (
+  `portal_request_catalog_version_field_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `portal_request_catalog_version_field_version_id` bigint(20) NOT NULL,
+  `portal_request_catalog_version_field_key` varchar(100) NOT NULL,
+  `portal_request_catalog_version_field_label` varchar(200) NOT NULL,
+  `portal_request_catalog_version_field_help` varchar(500) DEFAULT NULL,
+  `portal_request_catalog_version_field_type` varchar(30) NOT NULL,
+  `portal_request_catalog_version_field_required` tinyint(1) NOT NULL DEFAULT 0,
+  `portal_request_catalog_version_field_options` longtext DEFAULT NULL,
+  `portal_request_catalog_version_field_max_length` int(11) NOT NULL DEFAULT 255,
+  `portal_request_catalog_version_field_min_value` bigint(20) DEFAULT NULL,
+  `portal_request_catalog_version_field_max_value` bigint(20) DEFAULT NULL,
+  `portal_request_catalog_version_field_order` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`portal_request_catalog_version_field_id`),
+  UNIQUE KEY `portal_request_catalog_version_field_key` (`portal_request_catalog_version_field_version_id`,`portal_request_catalog_version_field_key`),
+  KEY `portal_request_catalog_version_field_order` (`portal_request_catalog_version_field_version_id`,`portal_request_catalog_version_field_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `portal_request_catalog_versions`
+--
+
+DROP TABLE IF EXISTS `portal_request_catalog_versions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `portal_request_catalog_versions` (
+  `portal_request_catalog_version_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `portal_request_catalog_version_item_id` int(11) NOT NULL,
+  `portal_request_catalog_version_number` int(11) NOT NULL,
+  `portal_request_catalog_version_definition_hash` char(64) NOT NULL,
+  `portal_request_catalog_version_key` varchar(100) NOT NULL,
+  `portal_request_catalog_version_type` varchar(30) NOT NULL,
+  `portal_request_catalog_version_name` varchar(200) NOT NULL,
+  `portal_request_catalog_version_description` text DEFAULT NULL,
+  `portal_request_catalog_version_instructions` text DEFAULT NULL,
+  `portal_request_catalog_version_icon` varchar(60) NOT NULL,
+  `portal_request_catalog_version_category_id` int(11) NOT NULL DEFAULT 0,
+  `portal_request_catalog_version_ticket_template_id` int(11) NOT NULL,
+  `portal_request_catalog_version_runbook_version_id` bigint(20) NOT NULL,
+  `portal_request_catalog_version_permission_rule` varchar(30) NOT NULL,
+  `portal_request_catalog_version_applicability_rule` varchar(30) NOT NULL,
+  `portal_request_catalog_version_applicability_value` varchar(255) DEFAULT NULL,
+  `portal_request_catalog_version_approval_rule` varchar(30) NOT NULL,
+  `portal_request_catalog_version_order` int(11) NOT NULL DEFAULT 0,
+  `portal_request_catalog_version_notes` varchar(255) DEFAULT NULL,
+  `portal_request_catalog_version_created_by` int(11) NOT NULL DEFAULT 0,
+  `portal_request_catalog_version_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`portal_request_catalog_version_id`),
+  UNIQUE KEY `portal_request_catalog_version_number` (`portal_request_catalog_version_item_id`,`portal_request_catalog_version_number`),
+  UNIQUE KEY `portal_request_catalog_version_hash` (`portal_request_catalog_version_item_id`,`portal_request_catalog_version_definition_hash`),
+  KEY `portal_request_catalog_version_category` (`portal_request_catalog_version_category_id`),
+  KEY `portal_request_catalog_version_template` (`portal_request_catalog_version_ticket_template_id`),
+  KEY `portal_request_catalog_version_runbook` (`portal_request_catalog_version_runbook_version_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `portal_request_dispatch_outbox`
+--
+
+DROP TABLE IF EXISTS `portal_request_dispatch_outbox`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `portal_request_dispatch_outbox` (
+  `portal_request_dispatch_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `portal_request_dispatch_event_key` char(64) NOT NULL,
+  `portal_request_dispatch_submission_id` bigint(20) NOT NULL,
+  `portal_request_dispatch_ticket_id` int(11) NOT NULL,
+  `portal_request_dispatch_trigger` varchar(40) NOT NULL,
+  `portal_request_dispatch_status` varchar(20) NOT NULL DEFAULT 'Pending',
+  `portal_request_dispatch_attempts` int(11) NOT NULL DEFAULT 0,
+  `portal_request_dispatch_available_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `portal_request_dispatch_processing_at` datetime DEFAULT NULL,
+  `portal_request_dispatch_lease_token` char(64) DEFAULT NULL,
+  `portal_request_dispatch_delivered_at` datetime DEFAULT NULL,
+  `portal_request_dispatch_last_error` varchar(1000) DEFAULT NULL,
+  `portal_request_dispatch_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `portal_request_dispatch_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`portal_request_dispatch_id`),
+  UNIQUE KEY `portal_request_dispatch_event_key` (`portal_request_dispatch_event_key`),
+  UNIQUE KEY `portal_request_dispatch_submission_trigger` (`portal_request_dispatch_submission_id`,`portal_request_dispatch_trigger`),
+  KEY `portal_request_dispatch_status_available` (`portal_request_dispatch_status`,`portal_request_dispatch_available_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `portal_request_submission_events`
+--
+
+DROP TABLE IF EXISTS `portal_request_submission_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `portal_request_submission_events` (
+  `portal_request_submission_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `portal_request_submission_event_submission_id` bigint(20) NOT NULL,
+  `portal_request_submission_event_action` varchar(30) NOT NULL,
+  `portal_request_submission_event_from_status` varchar(30) DEFAULT NULL,
+  `portal_request_submission_event_to_status` varchar(30) NOT NULL,
+  `portal_request_submission_event_actor_type` varchar(20) NOT NULL,
+  `portal_request_submission_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `portal_request_submission_event_note` varchar(255) DEFAULT NULL,
+  `portal_request_submission_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`portal_request_submission_event_id`),
+  KEY `portal_request_submission_event_submission` (`portal_request_submission_event_submission_id`,`portal_request_submission_event_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `portal_request_submissions`
+--
+
+DROP TABLE IF EXISTS `portal_request_submissions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `portal_request_submissions` (
+  `portal_request_submission_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `portal_request_submission_item_id` int(11) NOT NULL,
+  `portal_request_submission_version_id` bigint(20) NOT NULL,
+  `portal_request_submission_client_id` int(11) NOT NULL,
+  `portal_request_submission_contact_id` int(11) NOT NULL,
+  `portal_request_submission_user_id` int(11) NOT NULL,
+  `portal_request_submission_ticket_id` int(11) DEFAULT NULL,
+  `portal_request_submission_status` varchar(30) NOT NULL,
+  `portal_request_submission_idempotency_hash` char(64) NOT NULL,
+  `portal_request_submission_request_hash` char(64) NOT NULL,
+  `portal_request_submission_responses` longtext NOT NULL,
+  `portal_request_submission_response_hash` char(64) NOT NULL,
+  `portal_request_submission_submitted_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `portal_request_submission_decided_by_type` varchar(20) DEFAULT NULL,
+  `portal_request_submission_decided_by_id` int(11) NOT NULL DEFAULT 0,
+  `portal_request_submission_decided_at` datetime DEFAULT NULL,
+  `portal_request_submission_initiated_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`portal_request_submission_id`),
+  UNIQUE KEY `portal_request_submission_idempotency` (`portal_request_submission_idempotency_hash`),
+  UNIQUE KEY `portal_request_submission_ticket` (`portal_request_submission_ticket_id`),
+  KEY `portal_request_submission_client_status` (`portal_request_submission_client_id`,`portal_request_submission_status`,`portal_request_submission_submitted_at`),
+  KEY `portal_request_submission_contact` (`portal_request_submission_contact_id`,`portal_request_submission_submitted_at`),
+  KEY `portal_request_submission_version` (`portal_request_submission_version_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+
 -- Table structure for table `product_stock`
 --
 
@@ -1652,7 +2762,9 @@ CREATE TABLE `project_template_ticket_templates` (
   `ticket_template_id` int(11) NOT NULL,
   `project_template_id` int(11) NOT NULL,
   `ticket_template_order` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`ticket_template_id`,`project_template_id`)
+  `ticket_template_runbook_version_id` bigint(20) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`ticket_template_id`,`project_template_id`),
+  KEY `ticket_template_runbook_version` (`ticket_template_runbook_version_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2062,6 +3174,105 @@ CREATE TABLE `revenues` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `runbook_versions`
+--
+
+DROP TABLE IF EXISTS `runbook_versions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `runbook_versions` (
+  `runbook_version_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `runbook_version_ticket_template_id` int(11) NOT NULL,
+  `runbook_version_number` int(11) NOT NULL,
+  `runbook_version_definition_hash` char(64) NOT NULL,
+  `runbook_version_key` varchar(100) NOT NULL,
+  `runbook_version_name` varchar(200) NOT NULL,
+  `runbook_version_description` text DEFAULT NULL,
+  `runbook_version_subject` varchar(500) DEFAULT NULL,
+  `runbook_version_details` longtext DEFAULT NULL,
+  `runbook_version_type` varchar(20) NOT NULL DEFAULT 'standard',
+  `runbook_version_notes` varchar(255) DEFAULT NULL,
+  `runbook_version_created_by` int(11) NOT NULL DEFAULT 0,
+  `runbook_version_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`runbook_version_id`),
+  UNIQUE KEY `runbook_version_number` (`runbook_version_ticket_template_id`,`runbook_version_number`),
+  UNIQUE KEY `runbook_version_hash` (`runbook_version_ticket_template_id`,`runbook_version_definition_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `runbook_version_tasks`
+--
+
+DROP TABLE IF EXISTS `runbook_version_tasks`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `runbook_version_tasks` (
+  `runbook_version_task_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `runbook_version_task_runbook_version_id` bigint(20) NOT NULL,
+  `runbook_version_task_source_id` int(11) NOT NULL DEFAULT 0,
+  `runbook_version_task_key` varchar(100) NOT NULL,
+  `runbook_version_task_name` varchar(255) NOT NULL,
+  `runbook_version_task_instructions` text DEFAULT NULL,
+  `runbook_version_task_order` int(11) NOT NULL DEFAULT 0,
+  `runbook_version_task_completion_estimate` int(11) NOT NULL DEFAULT 0,
+  `runbook_version_task_condition_type` varchar(40) NOT NULL DEFAULT 'always',
+  `runbook_version_task_condition_value` varchar(255) DEFAULT NULL,
+  `runbook_version_task_owner_type` varchar(40) NOT NULL DEFAULT 'unassigned',
+  `runbook_version_task_owner_user_id` int(11) NOT NULL DEFAULT 0,
+  `runbook_version_task_due_offset_minutes` int(11) NOT NULL DEFAULT 0,
+  `runbook_version_task_initial_state` varchar(20) NOT NULL DEFAULT 'Ready',
+  `runbook_version_task_approval_scope` varchar(20) DEFAULT NULL,
+  `runbook_version_task_approval_type` varchar(20) DEFAULT NULL,
+  `runbook_version_task_approval_user_id` int(11) NOT NULL DEFAULT 0,
+  `runbook_version_task_evidence_type` varchar(20) NOT NULL DEFAULT 'none',
+  `runbook_version_task_evidence_prompt` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`runbook_version_task_id`),
+  UNIQUE KEY `runbook_version_task_key` (`runbook_version_task_runbook_version_id`,`runbook_version_task_key`),
+  KEY `runbook_version_task_order` (`runbook_version_task_runbook_version_id`,`runbook_version_task_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `runbook_version_task_dependencies`
+--
+
+DROP TABLE IF EXISTS `runbook_version_task_dependencies`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `runbook_version_task_dependencies` (
+  `runbook_version_task_id` bigint(20) NOT NULL,
+  `depends_on_runbook_version_task_id` bigint(20) NOT NULL,
+  PRIMARY KEY (`runbook_version_task_id`,`depends_on_runbook_version_task_id`),
+  KEY `depends_on_runbook_version_task_id` (`depends_on_runbook_version_task_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `runbook_executions`
+--
+
+DROP TABLE IF EXISTS `runbook_executions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `runbook_executions` (
+  `runbook_execution_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `runbook_execution_version_id` bigint(20) NOT NULL,
+  `runbook_execution_ticket_id` int(11) NOT NULL,
+  `runbook_execution_status` varchar(20) NOT NULL DEFAULT 'Active',
+  `runbook_execution_context` longtext DEFAULT NULL,
+  `runbook_execution_snapshot` longtext NOT NULL,
+  `runbook_execution_snapshot_hash` char(64) NOT NULL,
+  `runbook_execution_started_by` int(11) NOT NULL DEFAULT 0,
+  `runbook_execution_started_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `runbook_execution_completed_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`runbook_execution_id`),
+  UNIQUE KEY `runbook_execution_ticket` (`runbook_execution_ticket_id`),
+  KEY `runbook_execution_version` (`runbook_execution_version_id`,`runbook_execution_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `service_assets`
 --
 
@@ -2279,6 +3490,13 @@ CREATE TABLE `settings` (
   `config_send_invoice_reminders` tinyint(1) NOT NULL DEFAULT 1,
   `config_azure_client_id` varchar(200) DEFAULT NULL,
   `config_azure_client_secret` varchar(200) DEFAULT NULL,
+  `config_azure_tenant_id` varchar(36) DEFAULT NULL,
+  `config_azure_agent_sso_enable` tinyint(1) NOT NULL DEFAULT 0,
+  `config_level_enable` tinyint(1) NOT NULL DEFAULT 0,
+  `config_level_api_key` varchar(255) DEFAULT NULL,
+  `config_level_webhook_secret` varchar(255) DEFAULT NULL,
+  `config_level_alert_ticket_enable` tinyint(1) NOT NULL DEFAULT 0,
+  `config_level_alert_assigned_to` int(11) NOT NULL DEFAULT 0,
   `config_module_enable_itdoc` tinyint(1) NOT NULL DEFAULT 1,
   `config_module_enable_accounting` tinyint(1) NOT NULL DEFAULT 1,
   `config_client_portal_enable` tinyint(1) NOT NULL DEFAULT 1,
@@ -2292,7 +3510,7 @@ CREATE TABLE `settings` (
   `config_telemetry` tinyint(1) DEFAULT 0,
   `config_timezone` varchar(200) NOT NULL DEFAULT 'America/New_York',
   `config_business_days` varchar(20) NOT NULL DEFAULT '1,2,3,4,5',
-  `config_business_hours_start` time NOT NULL DEFAULT '09:00:00',
+  `config_business_hours_start` time NOT NULL DEFAULT '08:00:00',
   `config_business_hours_end` time NOT NULL DEFAULT '17:00:00',
   `config_sla_warning_percent` tinyint(3) NOT NULL DEFAULT 75,
   `config_sla_notification_email` varchar(200) DEFAULT NULL,
@@ -2617,8 +3835,117 @@ CREATE TABLE `task_approvals` (
   `approval_created_by` int(11) NOT NULL,
   `approval_approved_by` varchar(255) DEFAULT NULL,
   `approval_url_key` varchar(200) NOT NULL,
+  `approval_url_expires_at` datetime DEFAULT NULL,
+  `approval_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `approval_decided_at` datetime DEFAULT NULL,
   `approval_task_id` int(11) NOT NULL,
-  PRIMARY KEY (`approval_id`)
+  PRIMARY KEY (`approval_id`),
+  KEY `approval_task_status` (`approval_task_id`,`approval_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `task_approval_events`
+--
+
+DROP TABLE IF EXISTS `task_approval_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `task_approval_events` (
+  `task_approval_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `task_approval_event_approval_id` int(11) NOT NULL,
+  `task_approval_event_task_id` int(11) NOT NULL,
+  `task_approval_event_action` varchar(30) NOT NULL,
+  `task_approval_event_from_status` varchar(20) DEFAULT NULL,
+  `task_approval_event_to_status` varchar(20) DEFAULT NULL,
+  `task_approval_event_from_scope` varchar(20) DEFAULT NULL,
+  `task_approval_event_to_scope` varchar(20) DEFAULT NULL,
+  `task_approval_event_from_type` varchar(20) DEFAULT NULL,
+  `task_approval_event_to_type` varchar(20) DEFAULT NULL,
+  `task_approval_event_from_required_user_id` int(11) NOT NULL DEFAULT 0,
+  `task_approval_event_to_required_user_id` int(11) NOT NULL DEFAULT 0,
+  `task_approval_event_actor_type` varchar(20) NOT NULL DEFAULT 'system',
+  `task_approval_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `task_approval_event_actor_label` varchar(255) DEFAULT NULL,
+  `task_approval_event_reason` varchar(255) DEFAULT NULL,
+  `task_approval_event_request_expires_at` datetime DEFAULT NULL,
+  `task_approval_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`task_approval_event_id`),
+  KEY `task_approval_event_approval` (`task_approval_event_approval_id`,`task_approval_event_id`),
+  KEY `task_approval_event_task` (`task_approval_event_task_id`,`task_approval_event_created_at`,`task_approval_event_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `task_dependencies`
+--
+
+DROP TABLE IF EXISTS `task_dependencies`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `task_dependencies` (
+  `task_id` int(11) NOT NULL,
+  `depends_on_task_id` int(11) NOT NULL,
+  PRIMARY KEY (`task_id`,`depends_on_task_id`),
+  KEY `depends_on_task_id` (`depends_on_task_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `task_evidence`
+--
+
+DROP TABLE IF EXISTS `task_evidence`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `task_evidence` (
+  `task_evidence_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `task_evidence_task_id` int(11) NOT NULL,
+  `task_evidence_type` varchar(20) NOT NULL,
+  `task_evidence_note` text DEFAULT NULL,
+  `task_evidence_url` varchar(1000) DEFAULT NULL,
+  `task_evidence_attachment_id` int(11) NOT NULL DEFAULT 0,
+  `task_evidence_submitted_by` int(11) NOT NULL DEFAULT 0,
+  `task_evidence_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`task_evidence_id`),
+  KEY `task_evidence_task` (`task_evidence_task_id`,`task_evidence_type`),
+  KEY `task_evidence_attachment` (`task_evidence_attachment_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `task_state_events`
+--
+
+DROP TABLE IF EXISTS `task_state_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `task_state_events` (
+  `task_state_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `task_state_event_task_id` int(11) NOT NULL,
+  `task_state_event_from_state` varchar(20) DEFAULT NULL,
+  `task_state_event_to_state` varchar(20) NOT NULL,
+  `task_state_event_reason` varchar(255) DEFAULT NULL,
+  `task_state_event_actor_type` varchar(20) NOT NULL DEFAULT 'system',
+  `task_state_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `task_state_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`task_state_event_id`),
+  KEY `task_state_event_task` (`task_state_event_task_id`,`task_state_event_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `task_template_dependencies`
+--
+
+DROP TABLE IF EXISTS `task_template_dependencies`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `task_template_dependencies` (
+  `task_template_id` int(11) NOT NULL,
+  `depends_on_task_template_id` int(11) NOT NULL,
+  PRIMARY KEY (`task_template_id`,`depends_on_task_template_id`),
+  KEY `depends_on_task_template_id` (`depends_on_task_template_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2632,13 +3959,27 @@ DROP TABLE IF EXISTS `task_templates`;
 CREATE TABLE `task_templates` (
   `task_template_id` int(11) NOT NULL AUTO_INCREMENT,
   `task_template_name` varchar(200) NOT NULL,
+  `task_template_key` varchar(100) DEFAULT NULL,
+  `task_template_instructions` text DEFAULT NULL,
   `task_template_order` int(11) NOT NULL DEFAULT 0,
   `task_template_completion_estimate` int(11) NOT NULL DEFAULT 0,
+  `task_template_condition_type` varchar(40) NOT NULL DEFAULT 'always',
+  `task_template_condition_value` varchar(255) DEFAULT NULL,
+  `task_template_owner_type` varchar(40) NOT NULL DEFAULT 'unassigned',
+  `task_template_owner_user_id` int(11) NOT NULL DEFAULT 0,
+  `task_template_due_offset_minutes` int(11) NOT NULL DEFAULT 0,
+  `task_template_initial_state` varchar(20) NOT NULL DEFAULT 'Ready',
+  `task_template_approval_scope` varchar(20) DEFAULT NULL,
+  `task_template_approval_type` varchar(20) DEFAULT NULL,
+  `task_template_approval_user_id` int(11) NOT NULL DEFAULT 0,
+  `task_template_evidence_type` varchar(20) NOT NULL DEFAULT 'none',
+  `task_template_evidence_prompt` varchar(255) DEFAULT NULL,
   `task_template_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `task_template_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `task_template_archived_at` datetime DEFAULT NULL,
   `task_template_ticket_template_id` int(11) NOT NULL,
-  PRIMARY KEY (`task_template_id`)
+  PRIMARY KEY (`task_template_id`),
+  UNIQUE KEY `task_template_key_unique` (`task_template_ticket_template_id`,`task_template_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2652,15 +3993,26 @@ DROP TABLE IF EXISTS `tasks`;
 CREATE TABLE `tasks` (
   `task_id` int(11) NOT NULL AUTO_INCREMENT,
   `task_name` varchar(255) NOT NULL,
+  `task_instructions` text DEFAULT NULL,
   `task_status` varchar(255) DEFAULT NULL,
+  `task_state` varchar(20) NOT NULL DEFAULT 'Ready',
   `task_order` int(11) NOT NULL DEFAULT 0,
   `task_completion_estimate` int(11) NOT NULL DEFAULT 0,
+  `task_assigned_to` int(11) NOT NULL DEFAULT 0,
+  `task_due_at` datetime DEFAULT NULL,
+  `task_waiting_reason` varchar(255) DEFAULT NULL,
+  `task_condition_result` varchar(20) NOT NULL DEFAULT 'Matched',
+  `task_evidence_required` varchar(20) NOT NULL DEFAULT 'none',
+  `task_evidence_prompt` varchar(255) DEFAULT NULL,
+  `task_runbook_version_task_id` bigint(20) NOT NULL DEFAULT 0,
   `task_completed_at` datetime DEFAULT NULL,
   `task_completed_by` int(11) DEFAULT NULL,
   `task_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `task_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `task_ticket_id` int(11) DEFAULT NULL,
-  PRIMARY KEY (`task_id`)
+  PRIMARY KEY (`task_id`),
+  KEY `task_runbook_state` (`task_ticket_id`,`task_state`,`task_due_at`),
+  KEY `task_assigned_to` (`task_assigned_to`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2775,6 +4127,70 @@ CREATE TABLE `ticket_statuses` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+-- Ticket documentation links and their append-only waiver decisions.
+
+DROP TABLE IF EXISTS `ticket_documentation_obligations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_documentation_obligations` (
+  `ticket_documentation_obligation_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_documentation_obligation_ticket_id` int(11) NOT NULL,
+  `ticket_documentation_obligation_obligation_id` bigint(20) NOT NULL,
+  `ticket_documentation_obligation_client_id` int(11) NOT NULL,
+  `ticket_documentation_obligation_task_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_documentation_obligation_blocks_resolution` tinyint(1) NOT NULL DEFAULT 1,
+  `ticket_documentation_obligation_linked_by` int(11) NOT NULL DEFAULT 0,
+  `ticket_documentation_obligation_linked_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `ticket_documentation_obligation_revision` int(11) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`ticket_documentation_obligation_id`),
+  UNIQUE KEY `ticket_documentation_obligation_identity` (`ticket_documentation_obligation_ticket_id`,`ticket_documentation_obligation_obligation_id`),
+  KEY `ticket_documentation_obligation_gate` (`ticket_documentation_obligation_ticket_id`,`ticket_documentation_obligation_blocks_resolution`),
+  KEY `ticket_documentation_obligation_client` (`ticket_documentation_obligation_client_id`,`ticket_documentation_obligation_obligation_id`),
+  KEY `ticket_documentation_obligation_task` (`ticket_documentation_obligation_task_id`,`ticket_documentation_obligation_ticket_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `ticket_documentation_waivers`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_documentation_waivers` (
+  `ticket_documentation_waiver_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_documentation_waiver_link_id` bigint(20) NOT NULL,
+  `ticket_documentation_waiver_status` varchar(20) NOT NULL DEFAULT 'Pending',
+  `ticket_documentation_waiver_reason_redacted` varchar(255) NOT NULL,
+  `ticket_documentation_waiver_reason_hash` char(64) NOT NULL,
+  `ticket_documentation_waiver_requested_by` int(11) NOT NULL,
+  `ticket_documentation_waiver_requested_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `ticket_documentation_waiver_decided_by` int(11) NOT NULL DEFAULT 0,
+  `ticket_documentation_waiver_decided_at` datetime DEFAULT NULL,
+  `ticket_documentation_waiver_expires_at` datetime NOT NULL,
+  `ticket_documentation_waiver_revision` int(11) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`ticket_documentation_waiver_id`),
+  KEY `ticket_documentation_waiver_link` (`ticket_documentation_waiver_link_id`,`ticket_documentation_waiver_status`,`ticket_documentation_waiver_expires_at`),
+  KEY `ticket_documentation_waiver_expiry` (`ticket_documentation_waiver_status`,`ticket_documentation_waiver_expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+DROP TABLE IF EXISTS `ticket_documentation_waiver_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_documentation_waiver_events` (
+  `ticket_documentation_waiver_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_documentation_waiver_event_waiver_id` bigint(20) NOT NULL,
+  `ticket_documentation_waiver_event_link_id` bigint(20) NOT NULL,
+  `ticket_documentation_waiver_event_action` varchar(30) NOT NULL,
+  `ticket_documentation_waiver_event_from_status` varchar(20) DEFAULT NULL,
+  `ticket_documentation_waiver_event_to_status` varchar(20) NOT NULL,
+  `ticket_documentation_waiver_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_documentation_waiver_event_reason_code` varchar(60) NOT NULL,
+  `ticket_documentation_waiver_event_context_hash` char(64) DEFAULT NULL,
+  `ticket_documentation_waiver_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`ticket_documentation_waiver_event_id`),
+  KEY `ticket_documentation_waiver_event_history` (`ticket_documentation_waiver_event_waiver_id`,`ticket_documentation_waiver_event_created_at`,`ticket_documentation_waiver_event_id`),
+  KEY `ticket_documentation_waiver_event_link` (`ticket_documentation_waiver_event_link_id`,`ticket_documentation_waiver_event_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
 --
 -- Table structure for table `ticket_templates`
 --
@@ -2788,10 +4204,15 @@ CREATE TABLE `ticket_templates` (
   `ticket_template_description` text DEFAULT NULL,
   `ticket_template_subject` varchar(500) DEFAULT NULL,
   `ticket_template_details` longtext DEFAULT NULL,
+  `ticket_template_runbook_key` varchar(100) DEFAULT NULL,
+  `ticket_template_runbook_type` varchar(20) NOT NULL DEFAULT 'standard',
+  `ticket_template_published_version_id` bigint(20) NOT NULL DEFAULT 0,
   `ticket_template_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `ticket_template_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `ticket_template_archived_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`ticket_template_id`)
+  PRIMARY KEY (`ticket_template_id`),
+  UNIQUE KEY `ticket_template_runbook_key_unique` (`ticket_template_runbook_key`),
+  KEY `ticket_template_published_version` (`ticket_template_published_version_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2840,14 +4261,26 @@ CREATE TABLE `tickets` (
   `ticket_number` int(11) NOT NULL,
   `ticket_source` varchar(255) DEFAULT NULL COMMENT 'Where the Ticket Came from\r\nEmail, Client Portal, In-App, Project Template',
   `ticket_category` varchar(200) DEFAULT NULL,
+  `ticket_request_type_key` varchar(100) NOT NULL DEFAULT '*',
   `ticket_subject` varchar(500) NOT NULL,
   `ticket_details` longtext NOT NULL,
   `ticket_priority` varchar(200) DEFAULT NULL,
   `ticket_status` int(11) NOT NULL,
   `ticket_sla_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_sla_response_minutes_snapshot` int(11) DEFAULT NULL,
+  `ticket_sla_resolution_minutes_snapshot` int(11) DEFAULT NULL,
+  `ticket_sla_calendar_mode` varchar(20) DEFAULT NULL,
+  `ticket_sla_business_days` varchar(20) DEFAULT NULL,
+  `ticket_sla_business_hours_start` time DEFAULT NULL,
+  `ticket_sla_business_hours_end` time DEFAULT NULL,
+  `ticket_sla_timezone` varchar(64) DEFAULT NULL,
   `ticket_billable` tinyint(1) NOT NULL DEFAULT 0,
   `ticket_schedule` datetime DEFAULT NULL,
   `ticket_onsite` tinyint(1) NOT NULL DEFAULT 0,
+  `ticket_configuration_change` tinyint(1) NOT NULL DEFAULT 0,
+  `ticket_documentation_impact` varchar(20) NOT NULL DEFAULT 'Unassessed',
+  `ticket_documentation_assessed_by` int(11) NOT NULL DEFAULT 0,
+  `ticket_documentation_assessed_at` datetime DEFAULT NULL,
   `ticket_vendor_ticket_number` varchar(255) DEFAULT NULL,
   `ticket_feedback` varchar(200) DEFAULT NULL,
   `ticket_url_key` varchar(200) DEFAULT NULL,
@@ -2858,7 +4291,9 @@ CREATE TABLE `tickets` (
   `ticket_archived_at` datetime DEFAULT NULL,
   `ticket_first_response_at` datetime DEFAULT NULL,
   `ticket_response_due_at` datetime DEFAULT NULL,
+  `ticket_response_due_at_utc` datetime DEFAULT NULL,
   `ticket_resolution_due_at` datetime DEFAULT NULL,
+  `ticket_resolution_due_at_utc` datetime DEFAULT NULL,
   `ticket_response_sla_met` tinyint(1) DEFAULT NULL,
   `ticket_resolution_sla_met` tinyint(1) DEFAULT NULL,
   `ticket_response_sla_alert_stage` tinyint(1) NOT NULL DEFAULT 0,
@@ -2879,7 +4314,144 @@ CREATE TABLE `tickets` (
   `ticket_order` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`ticket_id`),
   KEY `ticket_response_due_at` (`ticket_response_due_at`),
-  KEY `ticket_resolution_due_at` (`ticket_resolution_due_at`)
+  KEY `ticket_resolution_due_at` (`ticket_resolution_due_at`),
+  KEY `ticket_response_due_at_utc` (`ticket_response_due_at_utc`),
+  KEY `ticket_resolution_due_at_utc` (`ticket_resolution_due_at_utc`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `level_group_mappings`
+--
+
+DROP TABLE IF EXISTS `level_group_mappings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `level_group_mappings` (
+  `level_group_mapping_id` int(11) NOT NULL AUTO_INCREMENT,
+  `level_group_id` varchar(255) NOT NULL,
+  `level_group_name` varchar(255) NOT NULL,
+  `level_parent_group_id` varchar(255) DEFAULT NULL,
+  `level_group_device_count` int(11) NOT NULL DEFAULT 0,
+  `level_group_descendent_device_count` int(11) NOT NULL DEFAULT 0,
+  `level_group_client_id` int(11) NOT NULL DEFAULT 0,
+  `level_group_last_seen_at` datetime DEFAULT NULL,
+  `level_group_deleted_at` datetime DEFAULT NULL,
+  `level_group_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `level_group_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`level_group_mapping_id`),
+  UNIQUE KEY `level_group_id` (`level_group_id`),
+  KEY `level_group_client_id` (`level_group_client_id`),
+  KEY `level_parent_group_id` (`level_parent_group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `level_asset_links`
+--
+
+DROP TABLE IF EXISTS `level_asset_links`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `level_asset_links` (
+  `level_asset_link_id` int(11) NOT NULL AUTO_INCREMENT,
+  `level_device_id` varchar(255) NOT NULL,
+  `level_asset_id` int(11) NOT NULL,
+  `level_group_id` varchar(255) DEFAULT NULL,
+  `level_device_hostname` varchar(255) NOT NULL,
+  `level_device_online` tinyint(1) NOT NULL DEFAULT 0,
+  `level_device_last_seen_at` datetime DEFAULT NULL,
+  `level_device_security_score` int(11) DEFAULT NULL,
+  `level_device_snapshot` longtext DEFAULT NULL,
+  `level_device_sync_status` varchar(20) NOT NULL DEFAULT 'Synced',
+  `level_device_sync_message` varchar(255) DEFAULT NULL,
+  `level_device_last_synced_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `level_device_deleted_at` datetime DEFAULT NULL,
+  `level_asset_link_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `level_asset_link_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`level_asset_link_id`),
+  UNIQUE KEY `level_device_id` (`level_device_id`),
+  UNIQUE KEY `level_asset_id` (`level_asset_id`),
+  KEY `level_group_id` (`level_group_id`),
+  CONSTRAINT `level_asset_links_asset_fk` FOREIGN KEY (`level_asset_id`) REFERENCES `assets` (`asset_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `level_interface_links`
+--
+
+DROP TABLE IF EXISTS `level_interface_links`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `level_interface_links` (
+  `level_interface_link_id` int(11) NOT NULL AUTO_INCREMENT,
+  `level_device_id` varchar(255) NOT NULL,
+  `level_interface_key` varchar(255) NOT NULL,
+  `level_asset_interface_id` int(11) NOT NULL,
+  `level_interface_last_seen_at` datetime DEFAULT NULL,
+  `level_interface_deleted_at` datetime DEFAULT NULL,
+  `level_interface_link_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `level_interface_link_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`level_interface_link_id`),
+  UNIQUE KEY `level_device_interface` (`level_device_id`,`level_interface_key`),
+  UNIQUE KEY `level_asset_interface_id` (`level_asset_interface_id`),
+  CONSTRAINT `level_interface_links_interface_fk` FOREIGN KEY (`level_asset_interface_id`) REFERENCES `asset_interfaces` (`interface_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `level_alert_links`
+--
+
+DROP TABLE IF EXISTS `level_alert_links`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `level_alert_links` (
+  `level_alert_link_id` int(11) NOT NULL AUTO_INCREMENT,
+  `level_alert_id` varchar(255) NOT NULL,
+  `level_device_id` varchar(255) NOT NULL,
+  `level_ticket_id` int(11) DEFAULT NULL,
+  `level_asset_id` int(11) DEFAULT NULL,
+  `level_alert_name` varchar(255) NOT NULL,
+  `level_alert_severity` varchar(20) NOT NULL,
+  `level_alert_started_at` datetime DEFAULT NULL,
+  `level_alert_resolved_at` datetime DEFAULT NULL,
+  `level_alert_last_event_at` datetime DEFAULT NULL,
+  `level_alert_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `level_alert_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`level_alert_link_id`),
+  UNIQUE KEY `level_alert_id` (`level_alert_id`),
+  UNIQUE KEY `level_ticket_id` (`level_ticket_id`),
+  KEY `level_device_id` (`level_device_id`),
+  KEY `level_asset_id` (`level_asset_id`),
+  CONSTRAINT `level_alert_links_ticket_fk` FOREIGN KEY (`level_ticket_id`) REFERENCES `tickets` (`ticket_id`) ON DELETE SET NULL,
+  CONSTRAINT `level_alert_links_asset_fk` FOREIGN KEY (`level_asset_id`) REFERENCES `assets` (`asset_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `level_webhook_events`
+--
+
+DROP TABLE IF EXISTS `level_webhook_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `level_webhook_events` (
+  `level_webhook_event_id` varchar(64) NOT NULL,
+  `level_webhook_event_type` varchar(40) NOT NULL,
+  `level_webhook_occurred_at` datetime DEFAULT NULL,
+  `level_webhook_payload` longtext NOT NULL,
+  `level_webhook_status` varchar(20) NOT NULL DEFAULT 'Pending',
+  `level_webhook_delivery_count` int(11) NOT NULL DEFAULT 1,
+  `level_webhook_process_attempts` int(11) NOT NULL DEFAULT 0,
+  `level_webhook_last_error` text DEFAULT NULL,
+  `level_webhook_received_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `level_webhook_last_received_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `level_webhook_processing_at` datetime DEFAULT NULL,
+  `level_webhook_processed_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`level_webhook_event_id`),
+  KEY `level_webhook_status_received` (`level_webhook_status`,`level_webhook_received_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3011,6 +4583,8 @@ CREATE TABLE `users` (
   `user_email` varchar(200) NOT NULL,
   `user_password` varchar(200) NOT NULL,
   `user_auth_method` varchar(200) NOT NULL DEFAULT 'local',
+  `user_azure_oid` varchar(36) DEFAULT NULL,
+  `user_azure_tenant_id` varchar(36) DEFAULT NULL,
   `user_type` tinyint(1) NOT NULL DEFAULT 1,
   `user_status` tinyint(1) NOT NULL DEFAULT 1,
   `user_token` varchar(200) DEFAULT NULL,
@@ -3024,7 +4598,8 @@ CREATE TABLE `users` (
   `user_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `user_archived_at` datetime DEFAULT NULL,
   `user_role_id` int(11) DEFAULT 0,
-  PRIMARY KEY (`user_id`)
+  PRIMARY KEY (`user_id`),
+  UNIQUE KEY `user_azure_identity` (`user_azure_tenant_id`,`user_azure_oid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

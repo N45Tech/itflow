@@ -7,7 +7,7 @@
 require_once 'includes/inc_all.php';
 
 
-if ($session_contact_primary == 0 && !$session_contact_is_technical_contact) {
+if (!contactCan('tickets_all')) {
     header("Location: post.php?logout");
     exit();
 }
@@ -28,19 +28,22 @@ if (!isset($_GET['status']) || ($_GET['status']) == 'Open') {
 $all_tickets = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number, ticket_subject, ticket_status_name, contact_name FROM tickets LEFT JOIN contacts ON ticket_contact_id = contact_id LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id WHERE $ticket_status_snippet AND ticket_client_id = $session_client_id ORDER BY ticket_id DESC");
 ?>
 
-    <h2>All tickets</h2>
-    <div class="col-md-2">
-        <div class="form-group">
+    <header class="n45-page-header">
+        <div>
+            <h1>Organization tickets</h1>
+            <p>Support activity submitted by contacts across your organization.</p>
+        </div>
+        <div class="n45-page-header-actions">
             <form method="get">
-                <label>Ticket Status</label>
-                <select class="form-control" name="status" onchange="this.form.submit()">
-                    <option value="%" <?php if ($status == "%") {echo "selected";}?> >Any</option>
+                <label class="sr-only" for="ticketStatus">Ticket status</label>
+                <select class="form-control" id="ticketStatus" name="status" onchange="this.form.submit()">
+                    <option value="%" <?php if ($status == "%") {echo "selected";}?> >Any status</option>
                     <option value="Open" <?php if ($status == "Open") {echo "selected";}?> >Open</option>
                     <option value="Closed" <?php if ($status == "Closed") {echo "selected";}?> >Closed</option>
                 </select>
             </form>
         </div>
-    </div>
+    </header>
     <table class="table">
         <thead>
         <tr>
@@ -71,7 +74,6 @@ $all_tickets = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_nu
         ?>
         </tbody>
     </table>
-    </div>
 
 <?php
 require_once 'includes/footer.php';

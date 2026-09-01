@@ -128,6 +128,12 @@
                             <p>SLA by Client</p>
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a href="/agent/reports/service_reviews.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "service_reviews.php") { echo "active"; } ?>">
+                            <i class="nav-icon fas fa-chart-line"></i>
+                            <p>Service Reviews</p>
+                        </a>
+                    </li>
                 <?php } ?>
                 <?php if (lookupUserPermission("module_credential") >= 1) { ?>
                     <li class="nav-item">

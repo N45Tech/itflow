@@ -4,7 +4,7 @@ require_once '../../includes/modal_header.php';
 
 $user_id = intval($_GET['id']);
 
-$sql = mysqli_query($mysqli, "SELECT user_avatar, user_config_force_mfa, user_email, user_name, user_role_id, user_token FROM users
+$sql = mysqli_query($mysqli, "SELECT user_auth_method, user_avatar, user_azure_oid, user_config_force_mfa, user_email, user_name, user_role_id, user_token FROM users
     LEFT JOIN user_settings ON users.user_id = user_settings.user_id
     WHERE users.user_id = $user_id LIMIT 1"
 );
@@ -16,6 +16,8 @@ $user_avatar = escapeHtml($row['user_avatar']);
 $user_token = escapeHtml($row['user_token']);
 $user_config_force_mfa = intval($row['user_config_force_mfa']);
 $user_role_id = intval($row['user_role_id']);
+$user_auth_method = $row['user_auth_method'];
+$user_azure_oid = $row['user_azure_oid'];
 $user_initials = escapeHtml(initials($user_name));
 
 // Get User Client Access Permissions (allow + deny)
@@ -95,7 +97,7 @@ ob_start();
                 </div>
 
                 <div class="form-group">
-                    <label>New Password</label>
+                    <label>New local / vault password</label>
                     <div class="input-group">
                         <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-lock"></i></span>
@@ -109,6 +111,7 @@ ob_start();
                             <span class="btn btn-default"><i class="fa fa-fw fa-question" onclick="generatePassword()"></i></span>
                         </div>
                     </div>
+                    <small class="form-text text-muted">Entra users enter this only to unlock the credential vault after SSO, or for emergency local access.</small>
                 </div>
 
                 <div class="form-group">
@@ -139,9 +142,25 @@ ob_start();
 
                 <div class="form-group">
                     <div class="custom-control custom-checkbox">
+                        <input class="custom-control-input" type="checkbox" id="entraSsoCheckBox<?= $user_id ?>" name="entra_sso" value="1" <?php if ($user_auth_method === 'azure') { echo 'checked'; } ?>>
+                        <label for="entraSsoCheckBox<?= $user_id ?>" class="custom-control-label">
+                            Allow Microsoft Entra SSO
+                        </label>
+                    </div>
+                    <?php if (!empty($user_azure_oid)) { ?>
+                        <small class="form-text text-success"><i class="fas fa-link mr-1"></i>Linked to an Entra identity</small>
+                    <?php } elseif (!$config_azure_agent_sso_enable) { ?>
+                        <small class="form-text text-warning">Technician SSO is currently disabled in Identity Providers.</small>
+                    <?php } else { ?>
+                        <small class="form-text text-muted">The identity is linked on the first successful email match.</small>
+                    <?php } ?>
+                </div>
+
+                <div class="form-group">
+                    <div class="custom-control custom-checkbox">
                         <input class="custom-control-input" type="checkbox" id="forceMFACheckBox<?= $user_id ?>" name="force_mfa" value="1" <?php if($user_config_force_mfa == 1){ echo "checked"; } ?>>
                         <label for="forceMFACheckBox<?= $user_id ?>" class="custom-control-label">
-                            Force MFA
+                            Force ITFlow MFA for local sign-in
                         </label>
                     </div>
                 </div>

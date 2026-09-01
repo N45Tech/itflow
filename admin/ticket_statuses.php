@@ -20,13 +20,14 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
 <div class="card card-dark">
     <div class="card-header py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-fw fa-info-circle mr-2"></i>Tickets Statuses</h3>
+        <h3 class="card-title mt-2"><i class="fas fa-fw fa-info-circle mr-2"></i>Ticket Statuses</h3>
         <div class="card-tools">
             <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/ticket_status/ticket_status_add.php"><i class="fas fa-plus mr-2"></i>New Ticket Status</button>
         </div>
     </div>
 
     <div class="card-body">
+        <p class="text-muted">Keep status focused on who has the next action. Assignment identifies the owner, priority records impact, and category records the type of work.</p>
         <div class="row">
             <div class="col-sm-4 mb-2">
                 <form autocomplete="off">
@@ -52,6 +53,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                             Name <?php if ($sort == 'ticket_status_name') { echo $order_icon; } ?>
                         </a>
                     </th>
+                    <th>Use when</th>
                     <th>
                         <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=ticket_status_color&order=<?= $disp ?>">
                             Color <?php if ($sort == 'ticket_status_color') { echo $order_icon; } ?>
@@ -71,7 +73,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
                 while ($row = mysqli_fetch_assoc($sql)) {
                     $ticket_status_id = intval($row['ticket_status_id']);
-                    $ticket_status_name = escapeHtml($row['ticket_status_name']);
+                    $ticket_status_name_raw = $row['ticket_status_name'];
+                    $ticket_status_name = escapeHtml($ticket_status_name_raw);
                     $ticket_status_color = escapeHtml($row['ticket_status_color']);
                     $ticket_status_active = intval($row['ticket_status_active']);
                     $ticket_status_pauses_sla = intval($row['ticket_status_pauses_sla']);
@@ -92,8 +95,10 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                                 <?= $ticket_status_name ?>
                             </a>
                         </td>
+                        <td><small class="text-muted"><?= escapeHtml(ticketStatusGuidance($ticket_status_name_raw)) ?></small></td>
                         <td>
                             <span class='badge badge-pill text-light p-2' style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                        </td>
                         <td><?= $ticket_status_display ?></td>
                         <td>
                             <?php if ($ticket_status_pauses_sla) { ?>

@@ -64,6 +64,7 @@ ob_start();
                             <span class="btn btn-default"><i class="fa fa-fw fa-question" onclick="generatePassword()"></i></span>
                         </div>
                     </div>
+                    <small class="form-text text-muted">Used to unlock the credential vault after Entra sign-in and for emergency local access.</small>
                 </div>
 
                 <div class="form-group">
@@ -103,9 +104,21 @@ ob_start();
 
                 <div class="form-group">
                     <div class="custom-control custom-checkbox">
+                        <input class="custom-control-input" type="checkbox" id="entraSsoCheckBox" name="entra_sso" value="1">
+                        <label for="entraSsoCheckBox" class="custom-control-label">
+                            Allow Microsoft Entra SSO
+                        </label>
+                    </div>
+                    <?php if (!$config_azure_agent_sso_enable) { ?>
+                        <small class="form-text text-warning">Technician SSO is currently disabled in Identity Providers.</small>
+                    <?php } ?>
+                </div>
+
+                <div class="form-group">
+                    <div class="custom-control custom-checkbox">
                         <input class="custom-control-input" type="checkbox" id="forceMFACheckBox" name="force_mfa" value=1>
                         <label for="forceMFACheckBox" class="custom-control-label">
-                            Force MFA
+                            Force ITFlow MFA for local sign-in
                         </label>
                     </div>
                 </div>

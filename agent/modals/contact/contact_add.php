@@ -264,11 +264,25 @@ ob_start();
                             <div class="custom-control custom-checkbox">
                                 <input type="checkbox" class="custom-control-input" id="contactTechnicalCheckbox" name="contact_technical" value="1">
                                 <label class="custom-control-label" for="contactTechnicalCheckbox">Technical</label>
-                                <p class="text-secondary"><small>Access </small></p>
+                                <p class="text-secondary"><small>Service notifications and technical records</small></p>
                             </div>
                         </div>
                     </div>
 
+                </div>
+
+                <div class="form-group">
+                    <label for="contactPortalRole">Client portal access</label>
+                    <select class="form-control" id="contactPortalRole" name="contact_portal_role">
+                        <option value="user">Portal user — own tickets and assigned assets</option>
+                        <option value="manager">Portal manager — all client tickets and assets</option>
+                    </select>
+                    <small class="form-text text-muted">Billing, technical contact status, and contact management are assigned separately.</small>
+                </div>
+
+                <div class="custom-control custom-checkbox mb-3">
+                    <input type="checkbox" class="custom-control-input" id="contactManageContactsCheckbox" name="contact_portal_manage_contacts" value="1">
+                    <label class="custom-control-label" for="contactManageContactsCheckbox">Can manage client portal contacts and permissions</label>
                 </div>
 
             </div>

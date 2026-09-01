@@ -87,20 +87,75 @@ function getTicketStatusName($ticket_status) {
  * @param int $ticket_id          The ticket to attach the tasks to.
  * @param int $ticket_template_id The template to copy tasks from. 0 = no-op.
  *
+ * @param int  $runbook_version_id Optional pinned runbook version (project releases).
+ * @param bool $caller_transaction When true, propagate failures so the caller can
+ *                                 roll back the ticket and workflow together.
+ *
  * @return int The number of tasks created.
  */
-function addTasksFromTicketTemplate($ticket_id, $ticket_template_id) {
+function addTasksFromTicketTemplate($ticket_id, $ticket_template_id, $runbook_version_id = 0, $caller_transaction = false) {
 
     global $mysqli;
 
     $ticket_id = intval($ticket_id);
     $ticket_template_id = intval($ticket_template_id);
+    $runbook_version_id = intval($runbook_version_id);
+    $caller_transaction = (bool) $caller_transaction;
 
     if (!$ticket_id || !$ticket_template_id) {
         return 0;
     }
 
+    // The template's published pointer is authoritative. Never guess a
+    // historical version if that pointer was cleared or corrupted: doing so
+    // could execute an older release against mutable draft content.
+    $published_version_id = $runbook_version_id;
+    if (!$published_version_id && function_exists('instantiateRunbookForTicket')) {
+        $release = mysqli_query($mysqli, "SELECT ticket_template_published_version_id,
+            ticket_template_archived_at,
+            (SELECT COUNT(*) FROM runbook_versions history
+                WHERE history.runbook_version_ticket_template_id = ticket_template_id) AS runbook_version_count
+            FROM ticket_templates WHERE ticket_template_id = $ticket_template_id LIMIT 1");
+        if (!$release) {
+            if ($caller_transaction) {
+                throw new RuntimeException('Could not validate the ticket template release: ' . mysqli_error($mysqli));
+            }
+            return 0;
+        }
+        $release_row = mysqli_fetch_assoc($release);
+        if (!$release_row || !empty($release_row['ticket_template_archived_at'])) {
+            if ($caller_transaction) {
+                throw new RuntimeException('The ticket template is unavailable or archived');
+            }
+            error_log("Ticket template $ticket_template_id is unavailable or archived");
+            return 0;
+        }
+        $published_version_id = intval($release_row['ticket_template_published_version_id'] ?? 0);
+        if (!$published_version_id && intval($release_row['runbook_version_count'] ?? 0) > 0) {
+            if ($caller_transaction) {
+                throw new RuntimeException('The ticket template has runbook history but no published release');
+            }
+            error_log("Ticket template $ticket_template_id has runbook history but no published release");
+            return 0;
+        }
+    }
+
+    // Published runbooks carry an immutable task snapshot plus workflow
+    // metadata. The explicit version is validated again by the instantiator.
+    if ($published_version_id) {
+        return instantiateRunbookForTicket($ticket_id, $ticket_template_id, [
+            'version_id' => $published_version_id,
+            'caller_transaction' => $caller_transaction,
+        ]);
+    }
+
     $sql_task_templates = mysqli_query($mysqli, "SELECT task_template_completion_estimate, task_template_name, task_template_order FROM task_templates WHERE task_template_ticket_template_id = $ticket_template_id ORDER BY task_template_order ASC");
+    if (!$sql_task_templates) {
+        if ($caller_transaction) {
+            throw new RuntimeException('Could not load ticket template tasks: ' . mysqli_error($mysqli));
+        }
+        return 0;
+    }
 
     $tasks_added = 0;
 
@@ -109,13 +164,151 @@ function addTasksFromTicketTemplate($ticket_id, $ticket_template_id) {
         $task_name = escapeSql($row['task_template_name']);
         $task_completion_estimate = intval($row['task_template_completion_estimate']);
 
-        mysqli_query($mysqli, "INSERT INTO tasks SET task_name = '$task_name', task_order = $task_order, task_completion_estimate = $task_completion_estimate, task_ticket_id = $ticket_id");
+        $inserted = mysqli_query($mysqli, "INSERT INTO tasks SET task_name = '$task_name', task_order = $task_order, task_completion_estimate = $task_completion_estimate, task_ticket_id = $ticket_id");
+        if (!$inserted) {
+            if ($caller_transaction) {
+                throw new RuntimeException('Could not create a ticket template task: ' . mysqli_error($mysqli));
+            }
+            break;
+        }
 
         $tasks_added++;
     }
 
     return $tasks_added;
 
+}
+
+/**
+ * Run a write needed to create a ticket/project and fail loudly enough for an
+ * outer transaction to roll the whole creation back.
+ */
+function ticketCreationDbQuery($query, $message) {
+
+    global $mysqli;
+
+    $result = mysqli_query($mysqli, $query);
+    if ($result === false) {
+        throw new RuntimeException($message . ': ' . mysqli_error($mysqli));
+    }
+
+    return $result;
+}
+
+/**
+ * Change a ticket's project without racing project completion. Project
+ * transitions use the same project-before-ticket lock order as project close.
+ *
+ * The caller must enforce access to the ticket's client before calling this.
+ * Set $preserve_updated_at when attaching a closed historical ticket so the
+ * relationship change does not rewrite its last operational activity time.
+ */
+function ticketAssignProjectSafely($ticket_id, $target_project_id, $preserve_updated_at = false) {
+
+    global $mysqli;
+
+    $ticket_id = intval($ticket_id);
+    $target_project_id = intval($target_project_id);
+    $preserve_updated_at = (bool) $preserve_updated_at;
+    $ticket = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT ticket_client_id,
+        ticket_project_id, ticket_prefix, ticket_number, ticket_subject FROM tickets
+        WHERE ticket_id = $ticket_id LIMIT 1", 'Could not load the ticket project assignment'));
+    if (!$ticket) {
+        throw new RuntimeException('The ticket is unavailable');
+    }
+
+    $client_id = intval($ticket['ticket_client_id']);
+    $source_project_id = intval($ticket['ticket_project_id']);
+    $result = [
+        'client_id' => $client_id,
+        'source_project_id' => $source_project_id,
+        'target_project_id' => $target_project_id,
+        'project_name' => $target_project_id ? '' : 'No project',
+        'ticket_prefix' => (string) $ticket['ticket_prefix'],
+        'ticket_number' => intval($ticket['ticket_number']),
+        'ticket_subject' => (string) $ticket['ticket_subject'],
+        'changed' => false,
+    ];
+
+    if ($source_project_id === $target_project_id) {
+        if ($target_project_id) {
+            $project = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT project_name,
+                project_client_id, project_completed_at, project_archived_at FROM projects
+                WHERE project_id = $target_project_id " . clientScopeSql('project_client_id') . " LIMIT 1",
+                'Could not validate the selected ticket project'));
+            if (!$project || intval($project['project_client_id']) !== $client_id
+                || !empty($project['project_completed_at']) || !empty($project['project_archived_at'])) {
+                throw new RuntimeException('The selected project is unavailable, complete, archived, or belongs to another client');
+            }
+            $result['project_name'] = (string) $project['project_name'];
+        }
+        return $result;
+    }
+
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the ticket project transaction');
+        }
+        $transaction_started = true;
+
+        $project_ids = array_values(array_unique(array_filter([$source_project_id, $target_project_id])));
+        sort($project_ids, SORT_NUMERIC);
+        foreach ($project_ids as $project_id) {
+            $project = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT project_name,
+                project_client_id, project_completed_at, project_archived_at FROM projects
+                WHERE project_id = $project_id " . clientScopeSql('project_client_id') . " FOR UPDATE",
+                'Could not lock a ticket project'));
+            if (!$project || intval($project['project_client_id']) !== $client_id
+                || !empty($project['project_completed_at']) || !empty($project['project_archived_at'])) {
+                throw new RuntimeException('A ticket project is unavailable, complete, archived, or belongs to another client');
+            }
+            if ($project_id === $target_project_id) {
+                $result['project_name'] = (string) $project['project_name'];
+            }
+        }
+
+        $locked_ticket = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT ticket_client_id,
+            ticket_project_id, ticket_updated_at FROM tickets WHERE ticket_id = $ticket_id FOR UPDATE",
+            'Could not lock the ticket project assignment'));
+        if (!$locked_ticket || intval($locked_ticket['ticket_client_id']) !== $client_id
+            || intval($locked_ticket['ticket_project_id']) !== $source_project_id) {
+            throw new RuntimeException('The ticket project changed while it was being assigned');
+        }
+
+        $execution_count = intval(mysqli_fetch_row(ticketCreationDbQuery("SELECT COUNT(*)
+            FROM runbook_executions WHERE runbook_execution_ticket_id = $ticket_id",
+            'Could not verify the ticket workflow project binding'))[0] ?? 0);
+        if ($execution_count) {
+            throw new RuntimeException('A versioned workflow ticket cannot change projects because its execution context is immutable');
+        }
+
+        $updated_at_assignment = '';
+        if ($preserve_updated_at) {
+            $updated_at_assignment = empty($locked_ticket['ticket_updated_at'])
+                ? ', ticket_updated_at = NULL'
+                : ", ticket_updated_at = '" . mysqli_real_escape_string($mysqli, $locked_ticket['ticket_updated_at']) . "'";
+        }
+        ticketCreationDbQuery("UPDATE tickets SET ticket_project_id = $target_project_id
+            $updated_at_assignment
+            WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+            AND ticket_project_id = $source_project_id", 'Could not assign the ticket project');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The ticket project assignment was not changed');
+        }
+
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the ticket project assignment');
+        }
+        $transaction_started = false;
+        $result['changed'] = true;
+        return $result;
+    } catch (Throwable $exception) {
+        if ($transaction_started && !mysqli_rollback($mysqli)) {
+            error_log("Ticket $ticket_id project assignment rollback failed");
+        }
+        throw $exception;
+    }
 }
 
 /**
@@ -375,6 +568,8 @@ function addToMailQueue($data) {
         $recipient_name = strval($email['recipient_name']);
         $subject = strval($email['subject']);
         $body = strval($email['body']);
+        $body_plain = strval($email['body_plain'] ?? '');
+        $template_key = strval($email['template_key'] ?? 'legacy');
 
         $cal_str = '';
         if (isset($email['cal_str'])) {
@@ -409,7 +604,7 @@ function addToMailQueue($data) {
             $queued_at = 'CURRENT_TIMESTAMP()';
         }
 
-        mysqli_query($mysqli, "INSERT INTO email_queue SET email_recipient = '$recipient', email_recipient_name = '$recipient_name', email_from = '$from', email_from_name = '$from_name', email_subject = '$subject', email_content = '$body', email_queued_at = $queued_at, email_cal_str = '$cal_str', email_attachments = '$attachments'");
+        mysqli_query($mysqli, "INSERT INTO email_queue SET email_recipient = '$recipient', email_recipient_name = '$recipient_name', email_from = '$from', email_from_name = '$from_name', email_subject = '$subject', email_content = '$body', email_content_plain = '$body_plain', email_template_key = '$template_key', email_queued_at = $queued_at, email_cal_str = '$cal_str', email_attachments = '$attachments'");
     }
 
     return true;

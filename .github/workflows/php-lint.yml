@@ -1,7 +1,14 @@
 
 name: PHPLint
 
-on: [pull_request]
+on:
+  pull_request:
+  push:
+    branches:
+      - 'codex/**'
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -9,7 +16,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.3'
+        extensions: mysqli
+        coverage: none
 
     - name: Check PHP syntax errors
       uses: overtrue/phplint@9.4.1
+
+    - name: Run PHP regression tests
+      run: |
+        set -e
+        for test_file in tests/*_test.php; do
+          echo "Running ${test_file}"
+          php "${test_file}"
+        done

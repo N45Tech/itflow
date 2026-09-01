@@ -35,7 +35,7 @@ if (isset($_POST['add_contact'])) {
         $user_id = mysqli_insert_id($mysqli);
     }
 
-    mysqli_query($mysqli,"INSERT INTO contacts SET contact_name = '$name', contact_title = '$title', contact_phone_country_code = '$phone_country_code', contact_phone = '$phone', contact_extension = '$extension', contact_mobile_country_code = '$mobile_country_code', contact_mobile = '$mobile', contact_email = '$email', contact_pin = '$pin', contact_notes = '$notes', contact_important = $contact_important, contact_billing = $contact_billing, contact_technical = $contact_technical, contact_department = '$department', contact_location_id = $location_id, contact_user_id = $user_id, contact_client_id = $client_id");
+    mysqli_query($mysqli,"INSERT INTO contacts SET contact_name = '$name', contact_title = '$title', contact_phone_country_code = '$phone_country_code', contact_phone = '$phone', contact_extension = '$extension', contact_mobile_country_code = '$mobile_country_code', contact_mobile = '$mobile', contact_email = '$email', contact_pin = '$pin', contact_notes = '$notes', contact_important = $contact_important, contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_department = '$department', contact_location_id = $location_id, contact_user_id = $user_id, contact_client_id = $client_id");
 
     $contact_id = mysqli_insert_id($mysqli);
 
@@ -132,7 +132,7 @@ if (isset($_POST['edit_contact'])) {
 
     }
 
-    mysqli_query($mysqli,"UPDATE contacts SET contact_name = '$name', contact_title = '$title', contact_phone_country_code = '$phone_country_code', contact_phone = '$phone', contact_extension = '$extension', contact_mobile_country_code = '$mobile_country_code', contact_mobile = '$mobile', contact_email = '$email', contact_pin = '$pin', contact_notes = '$notes', contact_important = $contact_important, contact_billing = $contact_billing, contact_technical = $contact_technical, contact_department = '$department', contact_location_id = $location_id, contact_user_id = $contact_user_id WHERE contact_id = $contact_id");
+    mysqli_query($mysqli,"UPDATE contacts SET contact_name = '$name', contact_title = '$title', contact_phone_country_code = '$phone_country_code', contact_phone = '$phone', contact_extension = '$extension', contact_mobile_country_code = '$mobile_country_code', contact_mobile = '$mobile', contact_email = '$email', contact_pin = '$pin', contact_notes = '$notes', contact_important = $contact_important, contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_department = '$department', contact_location_id = $location_id, contact_user_id = $contact_user_id WHERE contact_id = $contact_id");
 
     // Upload Photo
     if (isset($_FILES['file']['tmp_name'])) {
@@ -719,37 +719,76 @@ if (isset($_POST['bulk_delete_contacts'])) {
 
     if (isset($_POST['contact_ids'])) {
 
-        // Get Selected Contacts Count
-        $count = count($_POST['contact_ids']);
+        $count = 0;
+        $blocked = 0;
+        $failed = 0;
+        $last_client_id = 0;
 
         // Cycle through array and delete each record
         foreach ($_POST['contact_ids'] as $contact_id) {
 
             $contact_id = intval($contact_id);
 
-            // Get Name and Client ID for logging and alert message
-            $sql = mysqli_query($mysqli,"SELECT contact_name, contact_client_id, contact_user_id FROM contacts WHERE contact_id = $contact_id");
-            $row = mysqli_fetch_assoc($sql);
-            $contact_name = escapeSql($row['contact_name']);
-            $client_id = intval($row['contact_client_id']);
-            $contact_user_id = intval($row['contact_user_id']);
-
-            enforceClientAccess();
-
-            // Delete Contact User
-            if ($contact_user_id > 0) {
-                mysqli_query($mysqli,"DELETE FROM users WHERE user_id = $contact_user_id");
+            // Resolve scope before starting a transaction; the same tenant link
+            // is then revalidated under the client/contact row locks.
+            $scope = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT contact_client_id
+                FROM contacts WHERE contact_id = $contact_id LIMIT 1"));
+            $client_id = intval($scope['contact_client_id'] ?? 0);
+            if (!$client_id) {
+                $failed++;
+                continue;
             }
+            enforceClientAccess($client_id);
+            $last_client_id = $client_id;
 
-            mysqli_query($mysqli, "DELETE FROM contacts WHERE contact_id = $contact_id AND contact_client_id = $client_id");
+            if (!mysqli_begin_transaction($mysqli)) {
+                $failed++;
+                continue;
+            }
+            try {
+                $row = portalRequestLockContactForAuditRetention($contact_id, $client_id);
+                if (!$row) {
+                    throw new RuntimeException('The contact no longer exists for this client');
+                }
+                if (portalRequestContactHasAuditHistory($contact_id, $client_id)) {
+                    mysqli_rollback($mysqli);
+                    $blocked++;
+                    continue;
+                }
+                $contact_name = escapeSql($row['contact_name']);
+                $contact_user_id = intval($row['contact_user_id']);
 
-            logAudit("Contact", "Delete", "$session_name deleted $contact_name", $client_id);
+                // Delete Contact User
+                if ($contact_user_id > 0) {
+                    portalRequestDbQuery("DELETE FROM users WHERE user_id = $contact_user_id",
+                        'Could not delete the contact portal user');
+                }
+
+                portalRequestDbQuery("DELETE FROM contacts
+                    WHERE contact_id = $contact_id AND contact_client_id = $client_id LIMIT 1",
+                    'Could not permanently delete the contact');
+                if (mysqli_affected_rows($mysqli) !== 1 || !mysqli_commit($mysqli)) {
+                    throw new RuntimeException('The contact deletion did not commit');
+                }
+
+                logAudit("Contact", "Delete", "$session_name deleted $contact_name", $client_id);
+                $count++;
+            } catch (Throwable $exception) {
+                mysqli_rollback($mysqli);
+                error_log("Bulk contact deletion failed for contact $contact_id: " . $exception->getMessage());
+                $failed++;
+            }
 
         }
 
-        logAudit("Contact", "Bulk Delete", "$session_name deleted $count contacts", $client_id);
+        if ($last_client_id) {
+            logAudit("Contact", "Bulk Delete", "$session_name deleted $count contacts", $last_client_id);
+        }
 
-        flashAlert("You deleted <strong>$count</strong> contact(s)");
+        flashAlert("Deleted <strong>$count</strong> contact(s)."
+            . ($blocked ? " <strong>$blocked</strong> retained because portal request audit history exists." : '')
+            . ($failed ? " <strong>$failed</strong> could not be deleted." : ''),
+            ($blocked || $failed) ? 'warning' : 'success');
 
     }
 
@@ -765,97 +804,144 @@ if (isset($_GET['anonymize_contact'])) {
 
     $contact_id = intval($_GET['anonymize_contact']);
 
-    // Get contact & client info
-    $sql = mysqli_query($mysqli,"SELECT contact_name, contact_email, contact_phone, contact_client_id, contact_user_id FROM contacts WHERE contact_id = $contact_id");
-    $row = mysqli_fetch_assoc($sql);
-
-    $contact_name = escapeSql($row['contact_name']);
-    $contact_first_name = explode(" ", $contact_name)[0];
-    $contact_email = escapeSql($row['contact_email']);
-    $contact_phone = escapeSql($row['contact_phone']);
-    $info_to_redact = array($contact_name, $contact_first_name, $contact_email, $contact_phone);
-
-    $client_id = intval($row['contact_client_id']);
-    $contact_user_id = intval($row['contact_user_id']);
-
-    enforceClientAccess();
-
-    // Redact name with asterisks
-    mysqli_query($mysqli,"UPDATE contacts SET contact_name = '*****' WHERE contact_id = $contact_id");
-
-    // Remove all other contact information
-    // Doing redactions field by field to ensure that an error updating one field doesn't break the entire query
-    mysqli_query($mysqli,"UPDATE contacts SET contact_title = '' WHERE contact_id = $contact_id");
-    mysqli_query($mysqli,"UPDATE contacts SET contact_department = '' WHERE contact_id = $contact_id");
-    mysqli_query($mysqli,"UPDATE contacts SET contact_email = '' WHERE contact_id = $contact_id");
-    mysqli_query($mysqli,"UPDATE contacts SET contact_phone = '' WHERE contact_id = $contact_id");
-    mysqli_query($mysqli,"UPDATE contacts SET contact_extension = '' WHERE contact_id = $contact_id");
-    mysqli_query($mysqli,"UPDATE contacts SET contact_mobile = '' WHERE contact_id = $contact_id");
-    mysqli_query($mysqli,"UPDATE contacts SET contact_photo = '' WHERE contact_id = $contact_id");
-    mysqli_query($mysqli,"UPDATE contacts SET contact_pin = '' WHERE contact_id = $contact_id");
-    mysqli_query($mysqli,"UPDATE contacts SET contact_notes = '' WHERE contact_id = $contact_id");
-    mysqli_query($mysqli,"UPDATE contacts SET contact_location_id = '0' WHERE contact_id = $contact_id");
-
-    // Remove Billing, Technical, Important Roles
-    mysqli_query($mysqli,"UPDATE contacts SET contact_important = 0, contact_billing = 0, contact_technical = 0 WHERE contact_id = $contact_id");
-
-    // Archive Contact User
-    if ($contact_user_id > 0) {
-        $unix_timestamp = time();
-
-        mysqli_query($mysqli,"UPDATE users SET user_name = 'Archived - $unix_timestamp', user_email = 'Archived - $unix_timestamp', user_archived_at = NOW() WHERE user_id = $contact_user_id");
+    try {
+        $scope = mysqli_fetch_assoc(portalRequestDbQuery("SELECT contact_client_id
+            FROM contacts WHERE contact_id = $contact_id LIMIT 1",
+            'Could not resolve the contact anonymization scope'));
+    } catch (Throwable $exception) {
+        error_log("Contact $contact_id anonymization scope failed: " . $exception->getMessage());
+        flashAlert('The contact could not be anonymized. No contact data was changed.', 'error');
+        redirect();
     }
-
-
-    // Redact audit logs
-    $log_sql = mysqli_query($mysqli, "SELECT log_description, log_id FROM logs WHERE log_client_id =  $client_id");
-    while ($log = mysqli_fetch_assoc($log_sql)) {
-        $log_id = intval($log['log_id']);
-        $description = $log['log_description'];
-        $description = str_ireplace($info_to_redact, "*****", $description);
-        $description = escapeSql($description);
-
-        mysqli_query($mysqli,"UPDATE logs SET log_description = '$description' WHERE log_id = $log_id AND log_client_id = $client_id");
+    $client_id = intval($scope['contact_client_id'] ?? 0);
+    if (!$client_id) {
+        flashAlert('The contact no longer exists.', 'warning');
+        redirect();
     }
+    enforceClientAccess($client_id);
 
-
-    // Get all tickets this contact raised
-    $contact_tickets_sql = mysqli_query($mysqli, "SELECT ticket_details, ticket_id, ticket_subject FROM tickets WHERE ticket_client_id = $client_id AND ticket_contact_id =  $contact_id");
-    while ($ticket = mysqli_fetch_assoc($contact_tickets_sql)) {
-
-        $ticket_id = intval($ticket['ticket_id']);
-
-        // Redact contact name or email in the subject of all tickets they raised
-        $subject = $ticket['ticket_subject'];
-        $subject = str_ireplace($info_to_redact, "*****", $subject);
-        $subject = escapeSql($subject);
-        mysqli_query($mysqli,"UPDATE tickets SET ticket_subject = '$subject' WHERE ticket_id = $ticket_id");
-
-        // Redact contact name or email in the description of all tickets they raised
-        $details = $ticket['ticket_details'];
-
-        $details = str_ireplace($info_to_redact, "*****", $details);
-        $details = escapeSql($details);
-        mysqli_query($mysqli,"UPDATE tickets SET ticket_details = '$details' WHERE ticket_id = $ticket_id");
-
-        // Redact contact name or email in the replies of all tickets they raised
-        $ticket_replies_sql = mysqli_query($mysqli, "SELECT ticket_reply, ticket_reply_id FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id");
-
-        while($ticket_reply = mysqli_fetch_assoc($ticket_replies_sql)) {
-            $ticket_reply_id = intval($ticket_reply['ticket_reply_id']);
-            $ticket_reply_details = $ticket_reply['ticket_reply'];
-            $ticket_reply_details = str_ireplace($info_to_redact, "*****", $ticket_reply_details);
-            $ticket_reply_details = escapeSql($ticket_reply_details);
-
-            mysqli_query($mysqli,"UPDATE ticket_replies SET ticket_reply = '$ticket_reply_details'
-                WHERE ticket_reply_id = $ticket_reply_id"
-            );
+    if (!mysqli_begin_transaction($mysqli)) {
+        flashAlert('Contact anonymization could not start. No contact data was changed.', 'error');
+        redirect();
+    }
+    try {
+        $row = portalRequestLockContactForAuditRetention($contact_id, $client_id);
+        if (!$row) {
+            throw new RuntimeException('The contact no longer exists for this client');
         }
 
-    }
+        $contact_name_raw = (string) $row['contact_name'];
+        $contact_first_name = explode(' ', trim($contact_name_raw))[0] ?? '';
+        $contact_email_raw = (string) $row['contact_email'];
+        $contact_phone_raw = (string) $row['contact_phone'];
+        $info_to_redact = array_values(array_unique(array_filter([
+            $contact_name_raw,
+            $contact_first_name,
+            $contact_email_raw,
+            $contact_phone_raw,
+        ], static function ($value) {
+            return $value !== '';
+        })));
+        $contact_name = escapeSql($contact_name_raw);
+        $contact_user_id = intval($row['contact_user_id']);
 
-    // Archive contact
-    mysqli_query($mysqli,"UPDATE contacts SET contact_archived_at = NOW() WHERE contact_id = $contact_id");
+        if (portalRequestContactHasAuditHistory($contact_id, $client_id)) {
+            mysqli_rollback($mysqli);
+            flashAlert('This contact has portal request audit records and cannot be anonymized. Archive the contact without anonymizing it to preserve the request history.', 'error');
+            redirect();
+        }
+
+        // Archive the linked portal identity under the same tenant/contact scope.
+        if ($contact_user_id > 0) {
+            $unix_timestamp = time();
+            portalRequestDbQuery("UPDATE users u
+                INNER JOIN contacts c ON c.contact_user_id = u.user_id
+                SET u.user_name = 'Archived - $unix_timestamp',
+                    u.user_email = 'Archived - $unix_timestamp', u.user_archived_at = NOW()
+                WHERE u.user_id = $contact_user_id AND c.contact_id = $contact_id
+                AND c.contact_client_id = $client_id",
+                'Could not anonymize the contact portal user');
+        }
+
+        // Redact tenant audit text while holding every selected row until commit.
+        $log_sql = portalRequestDbQuery("SELECT log_description, log_id FROM logs
+            WHERE log_client_id = $client_id FOR UPDATE",
+            'Could not lock contact audit logs for anonymization');
+        while ($log = mysqli_fetch_assoc($log_sql)) {
+            $log_id = intval($log['log_id']);
+            $description = escapeSql(str_ireplace(
+                $info_to_redact,
+                '*****',
+                (string) $log['log_description']
+            ));
+            portalRequestDbQuery("UPDATE logs SET log_description = '$description'
+                WHERE log_id = $log_id AND log_client_id = $client_id LIMIT 1",
+                'Could not anonymize a contact audit log');
+        }
+
+        // Lock and redact only tickets raised by this contact for this client.
+        $contact_tickets_sql = portalRequestDbQuery("SELECT ticket_details, ticket_id, ticket_subject
+            FROM tickets WHERE ticket_client_id = $client_id AND ticket_contact_id = $contact_id
+            FOR UPDATE",
+            'Could not lock contact tickets for anonymization');
+        while ($ticket = mysqli_fetch_assoc($contact_tickets_sql)) {
+            $ticket_id = intval($ticket['ticket_id']);
+            $subject = escapeSql(str_ireplace(
+                $info_to_redact,
+                '*****',
+                (string) $ticket['ticket_subject']
+            ));
+            $details = escapeSql(str_ireplace(
+                $info_to_redact,
+                '*****',
+                (string) $ticket['ticket_details']
+            ));
+            portalRequestDbQuery("UPDATE tickets SET ticket_subject = '$subject', ticket_details = '$details'
+                WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                AND ticket_contact_id = $contact_id LIMIT 1",
+                'Could not anonymize a contact ticket');
+
+            $ticket_replies_sql = portalRequestDbQuery("SELECT ticket_reply, ticket_reply_id
+                FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id FOR UPDATE",
+                'Could not lock contact ticket replies for anonymization');
+            while ($ticket_reply = mysqli_fetch_assoc($ticket_replies_sql)) {
+                $ticket_reply_id = intval($ticket_reply['ticket_reply_id']);
+                $ticket_reply_details = escapeSql(str_ireplace(
+                    $info_to_redact,
+                    '*****',
+                    (string) $ticket_reply['ticket_reply']
+                ));
+                portalRequestDbQuery("UPDATE ticket_replies tr
+                    INNER JOIN tickets t ON t.ticket_id = tr.ticket_reply_ticket_id
+                    SET tr.ticket_reply = '$ticket_reply_details'
+                    WHERE tr.ticket_reply_id = $ticket_reply_id
+                    AND tr.ticket_reply_ticket_id = $ticket_id
+                    AND t.ticket_client_id = $client_id AND t.ticket_contact_id = $contact_id",
+                    'Could not anonymize a contact ticket reply');
+            }
+        }
+
+        // One scoped mutation replaces the previous best-effort field updates.
+        portalRequestDbQuery("UPDATE contacts SET contact_name = '*****', contact_title = '',
+            contact_department = '', contact_email = '', contact_phone = '', contact_extension = '',
+            contact_mobile = '', contact_photo = '', contact_pin = '', contact_notes = '',
+            contact_location_id = 0, contact_important = 0, contact_billing = 0,
+            contact_technical = 0, contact_archived_at = NOW()
+            WHERE contact_id = $contact_id AND contact_client_id = $client_id LIMIT 1",
+            'Could not anonymize and archive the contact');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The contact changed before anonymization completed');
+        }
+
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Contact anonymization did not commit');
+        }
+    } catch (Throwable $exception) {
+        mysqli_rollback($mysqli);
+        error_log("Contact $contact_id anonymization failed: " . $exception->getMessage());
+        flashAlert('The contact could not be anonymized. No portal request history was changed.', 'error');
+        redirect();
+    }
 
     logAudit("Contact", "Archive", "$session_name archived and anonymized contact", $client_id, $contact_id);
 
@@ -937,21 +1023,50 @@ if (isset($_GET['delete_contact'])) {
 
     $contact_id = intval($_GET['delete_contact']);
 
-    // Get Contact Name and Client ID for logging and alert message
-    $sql = mysqli_query($mysqli,"SELECT contact_name, contact_client_id, contact_user_id FROM contacts WHERE contact_id = $contact_id");
-    $row = mysqli_fetch_assoc($sql);
-    $contact_name = escapeSql($row['contact_name']);
-    $client_id = intval($row['contact_client_id']);
-    $contact_user_id = intval($row['contact_user_id']);
-
-    enforceClientAccess();
-
-    // Delete User
-    if ($contact_user_id > 0) {
-        mysqli_query($mysqli,"DELETE FROM users WHERE user_id = $contact_user_id");
+    $scope = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT contact_client_id
+        FROM contacts WHERE contact_id = $contact_id LIMIT 1"));
+    $client_id = intval($scope['contact_client_id'] ?? 0);
+    if (!$client_id) {
+        flashAlert('The contact no longer exists.', 'warning');
+        redirect();
     }
+    enforceClientAccess($client_id);
 
-    mysqli_query($mysqli,"DELETE FROM contacts WHERE contact_id = $contact_id");
+    if (!mysqli_begin_transaction($mysqli)) {
+        flashAlert('The contact deletion could not start. No contact data was deleted.', 'error');
+        redirect();
+    }
+    try {
+        $row = portalRequestLockContactForAuditRetention($contact_id, $client_id);
+        if (!$row) {
+            throw new RuntimeException('The contact no longer exists for this client');
+        }
+        if (portalRequestContactHasAuditHistory($contact_id, $client_id)) {
+            mysqli_rollback($mysqli);
+            flashAlert('This contact has portal request audit records and cannot be permanently deleted. Archive the contact to preserve the request history.', 'error');
+            redirect();
+        }
+        $contact_name = escapeSql($row['contact_name']);
+        $contact_user_id = intval($row['contact_user_id']);
+
+        // Delete User
+        if ($contact_user_id > 0) {
+            portalRequestDbQuery("DELETE FROM users WHERE user_id = $contact_user_id",
+                'Could not delete the contact portal user');
+        }
+
+        portalRequestDbQuery("DELETE FROM contacts
+            WHERE contact_id = $contact_id AND contact_client_id = $client_id LIMIT 1",
+            'Could not permanently delete the contact');
+        if (mysqli_affected_rows($mysqli) !== 1 || !mysqli_commit($mysqli)) {
+            throw new RuntimeException('The contact deletion did not commit');
+        }
+    } catch (Throwable $exception) {
+        mysqli_rollback($mysqli);
+        error_log("Contact $contact_id hard deletion failed: " . $exception->getMessage());
+        flashAlert('The contact could not be permanently deleted. No portal request history was removed.', 'error');
+        redirect();
+    }
 
     logAudit("Contact", "Delete", "$session_name deleted contact $contact_name", $client_id);
 

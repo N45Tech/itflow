@@ -22,57 +22,75 @@ enforceContactCan('contacts');
         <li class="breadcrumb-item active">Add Contact</li>
     </ol>
 
-    <div class="col-md-6">
+    <div class="n45-form-surface">
+        <div class="n45-form-intro">
+            <h1>Add a contact</h1>
+            <p>Create a portal contact and choose which client responsibilities they can manage.</p>
+        </div>
         <form action="post.php" method="post">
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
             <div class="form-group">
-                <label>Name <strong class="text-danger">*</strong></label>
+                <label for="contactName">Name <strong class="text-danger">*</strong></label>
                 <div class="input-group">
                     <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
                     </div>
-                    <input type="text" class="form-control" name="contact_name" placeholder="Name" required maxlength="200">
+                    <input type="text" class="form-control" id="contactName" name="contact_name" placeholder="Full name" required maxlength="200">
                 </div>
             </div>
 
             <div class="form-group">
-                <label>Email <strong class="text-danger">*</strong></label>
+                <label for="contactEmail">Email <strong class="text-danger">*</strong></label>
                 <div class="input-group">
                     <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-envelope"></i></span>
                     </div>
-                    <input type="email" class="form-control" name="contact_email" placeholder="Email" required maxlength="200">
+                    <input type="email" class="form-control" id="contactEmail" name="contact_email" placeholder="name@company.com" required maxlength="200">
                 </div>
             </div>
 
-            <label>Roles:</label>
-            <div class="form-row">
-                <div class="col-md-4">
-                    <div class="form-group">
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="contactBillingCheckbox" name="contact_billing" value="1">
-                            <label class="custom-control-label" for="contactBillingCheckbox">Billing</label>
-                        </div>
+            <fieldset class="n45-permission-group">
+                <legend>Portal access</legend>
+                <p class="n45-field-help">Choose what support and inventory information this person can see.</p>
+                <div class="n45-choice-row">
+                    <label class="n45-choice-option" for="portalRoleUser">
+                        <input type="radio" id="portalRoleUser" name="contact_portal_role" value="user" checked>
+                        <span><strong>Portal user</strong><small>Only their tickets and assigned assets</small></span>
+                    </label>
+                    <label class="n45-choice-option" for="portalRoleManager">
+                        <input type="radio" id="portalRoleManager" name="contact_portal_role" value="manager">
+                        <span><strong>Portal manager</strong><small>All organization tickets and assets</small></span>
+                    </label>
+                </div>
+            </fieldset>
+
+            <fieldset class="n45-permission-group">
+                <legend>Additional permissions</legend>
+                <p class="n45-field-help">These permissions are independent of the portal access role.</p>
+                <div class="n45-permission-grid">
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="contactBillingCheckbox" name="contact_billing" value="1">
+                        <label class="custom-control-label" for="contactBillingCheckbox"><span><strong>Billing</strong><small>Invoices, quotes, and payment methods</small></span></label>
+                    </div>
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="contactTechnicalCheckbox" name="contact_technical" value="1">
+                        <label class="custom-control-label" for="contactTechnicalCheckbox"><span><strong>Technical contact</strong><small>Technical records and service notifications</small></span></label>
+                    </div>
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="contactManageContactsCheckbox" name="contact_portal_manage_contacts" value="1">
+                        <label class="custom-control-label" for="contactManageContactsCheckbox"><span><strong>Manage contacts</strong><small>Create contacts and assign portal permissions</small></span></label>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="form-group">
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="contactTechnicalCheckbox" name="contact_technical" value="1">
-                            <label class="custom-control-label" for="contactTechnicalCheckbox">Technical</label>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            </fieldset>
 
             <div class="form-group">
-                <label>Portal authentication</label>
+                <label for="contactAuthMethod">Portal authentication</label>
                 <div class="input-group">
                     <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-user-circle"></i></span>
                     </div>
-                    <select class="form-control select2 authMethod" name="contact_auth_method">
+                    <select class="form-control select2 authMethod" id="contactAuthMethod" name="contact_auth_method">
                         <option value="">- No portal access -</option>
                         <option value="local">Local (Email and password)</option>
                         <?php if (!empty($config_azure_client_id)) { ?>
@@ -82,7 +100,10 @@ enforceContactCan('contacts');
                 </div>
             </div>
 
-            <button class="btn btn-primary" name="add_contact">Add</button>
+            <div class="n45-form-actions">
+                <button class="btn btn-primary" name="add_contact"><i class="fas fa-user-plus" aria-hidden="true"></i>Add contact</button>
+                <a class="btn btn-secondary" href="contacts.php">Cancel</a>
+            </div>
         </form>
     </div>
 

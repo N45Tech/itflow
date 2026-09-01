@@ -13,21 +13,22 @@ enforceContactCan('itdoc');
 $documents_sql = mysqli_query($mysqli, "SELECT document_id, document_name, document_created_at, folder_name FROM documents LEFT JOIN folders ON document_folder_id = folder_id WHERE document_client_visible = 1 AND document_client_id = $session_client_id AND document_archived_at IS NULL ORDER BY folder_id, document_name DESC");
 ?>
 
-<div class="row">
-    <div class="col">
-        <h3><i class="fas fa-file-alt mr-2"></i>Documents</h3>
+<header class="n45-page-header">
+    <div>
+        <h1>Documents</h1>
+        <p>Access shared technical records, procedures, and files for your organization.</p>
     </div>
-    <div class="col-auto">
+    <div class="n45-page-header-actions">
         <div class="btn-group">
             <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#uploadDocumentModal">
-                <i class="fas fa-plus mr-2"></i>New Document
+                <i class="fas fa-plus" aria-hidden="true"></i>New document
             </button>
             <button type="button" class="btn btn-secondary" data-toggle="modal" data-target="#uploadFileDocumentModal">
-                <i class="fas fa-upload mr-2"></i>Upload File
+                <i class="fas fa-upload" aria-hidden="true"></i>Upload file
             </button>
         </div>
     </div>
-</div>
+</header>
 
 <div class="row mt-3">
     <div class="col-md-12">
@@ -82,36 +83,36 @@ $documents_sql = mysqli_query($mysqli, "SELECT document_id, document_name, docum
         <div class="modal-content bg-dark">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="fa fa-fw fa-file-alt mr-2"></i>Create New Document</h5>
-                <button type="button" class="close text-white" data-dismiss="modal">
-                    <span>&times;</span>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close create document dialog">
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <form action="post.php" method="post" autocomplete="off">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <div class="modal-body bg-white">
                     <div class="form-group">
-                        <label>Document Name <strong class="text-danger">*</strong></label>
+                        <label for="documentName">Document name <strong class="text-danger">*</strong></label>
                         <div class="input-group">
                             <div class="input-group-prepend">
                                 <span class="input-group-text"><i class="fa fa-fw fa-file-alt"></i></span>
                             </div>
-                            <input type="text" class="form-control" name="document_name" placeholder="Enter document name" required maxlength="200">
+                            <input type="text" class="form-control" id="documentName" name="document_name" placeholder="Enter document name" required maxlength="200">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Description</label>
+                        <label for="documentDescription">Description</label>
                         <div class="input-group">
                             <div class="input-group-prepend">
                                 <span class="input-group-text"><i class="fa fa-fw fa-align-left"></i></span>
                             </div>
-                            <input type="text" class="form-control" name="document_description" placeholder="Brief description (optional)" maxlength="255">
+                            <input type="text" class="form-control" id="documentDescription" name="document_description" placeholder="Brief description (optional)" maxlength="255">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Content <strong class="text-danger">*</strong></label>
-                        <textarea class="form-control" name="document_content" rows="8" placeholder="Enter document content..." required></textarea>
+                        <label for="documentContent">Content <strong class="text-danger">*</strong></label>
+                        <textarea class="form-control" id="documentContent" name="document_content" rows="8" placeholder="Enter document content" required></textarea>
                     </div>
                 </div>
                 <div class="modal-footer bg-white">
@@ -129,35 +130,35 @@ $documents_sql = mysqli_query($mysqli, "SELECT document_id, document_name, docum
         <div class="modal-content bg-dark">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="fa fa-fw fa-upload mr-2"></i>Upload Document File</h5>
-                <button type="button" class="close text-white" data-dismiss="modal">
-                    <span>&times;</span>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close upload document dialog">
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <div class="modal-body bg-white">
                     <div class="form-group">
-                        <label>Document Name <strong class="text-danger">*</strong></label>
+                        <label for="uploadDocumentName">Document name <strong class="text-danger">*</strong></label>
                         <div class="input-group">
                             <div class="input-group-prepend">
                                 <span class="input-group-text"><i class="fa fa-fw fa-file-alt"></i></span>
                             </div>
-                            <input type="text" class="form-control" name="document_name" placeholder="Enter document name" required maxlength="200">
+                            <input type="text" class="form-control" id="uploadDocumentName" name="document_name" placeholder="Enter document name" required maxlength="200">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Description</label>
+                        <label for="uploadDocumentDescription">Description</label>
                         <div class="input-group">
                             <div class="input-group-prepend">
                                 <span class="input-group-text"><i class="fa fa-fw fa-align-left"></i></span>
                             </div>
-                            <input type="text" class="form-control" name="document_description" placeholder="Brief description (optional)" maxlength="255">
+                            <input type="text" class="form-control" id="uploadDocumentDescription" name="document_description" placeholder="Brief description (optional)" maxlength="255">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Upload File <strong class="text-danger">*</strong></label>
+                        <label for="documentFileInput">Upload file <strong class="text-danger">*</strong></label>
                         <input type="file" class="form-control-file" name="document_file" id="documentFileInput"
                                accept=".pdf,.doc,.docx,.txt,.md,.odt,.rtf" required>
                         <small class="text-secondary">Supported formats: PDF, Word documents, text files</small>

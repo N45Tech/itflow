@@ -1,9 +1,12 @@
 <!-- Main Sidebar Container -->
 <aside class="main-sidebar sidebar-dark-<?= escapeHtml($config_theme) ?> d-print-none">
 
-    <a class="brand-link" href="/agent/dashboard.php">
-        <div class="brand-image"></div>
-        <span class="brand-text h4"><?= escapeHtml($session_company_name) ?></span>
+    <a class="brand-link n45-sidebar-brand-link" href="/agent/dashboard.php" aria-label="<?= escapeHtml($session_company_name) ?> dashboard">
+        <span class="n45-sidebar-brand" aria-hidden="true">
+            <img class="n45-sidebar-lockup n45-sidebar-lockup-light-bg" src="/assets/branding/n45-lockup-dark.svg" alt="">
+            <img class="n45-sidebar-lockup n45-sidebar-lockup-dark-bg" src="/assets/branding/n45-lockup-light.svg" alt="">
+            <img class="n45-sidebar-mark" src="/assets/branding/n45-mark.svg" alt="">
+        </span>
     </a>
 
     <!-- Sidebar -->
@@ -30,13 +33,6 @@
                             </p>
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a href="/agent/contacts.php" class="nav-link">
-                            <i class="fas fa-layer-group nav-icon"></i>
-                            <p>All Client Docs</p>
-                            <i class="fas fa-angle-right nav-icon float-right"></i>
-                        </a>
-                    </li>
                 <?php } ?>
 
                 <li class="nav-item">
@@ -57,6 +53,28 @@
                     <?php if ($config_module_enable_ticketing == 1) { ?>
                         <li class="nav-header mt-3">SUPPORT</li>
                         <li class="nav-item">
+                            <a href="/agent/operations.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "operations.php") { echo "active"; } ?>">
+                                <i class="nav-icon fas fa-wave-square"></i>
+                                <p>
+                                    Operations
+                                    <?php if ($num_operations_attention) { ?>
+                                        <span class="right badge badge-warning" data-toggle="tooltip" title="Operational exceptions"><?= $num_operations_attention ?></span>
+                                    <?php } ?>
+                                </p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="/agent/documentation.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "documentation.php") { echo "active"; } ?>">
+                                <i class="nav-icon fas fa-book-medical"></i>
+                                <p>
+                                    Documentation
+                                    <?php if ($num_documentation_attention) { ?>
+                                        <span class="right badge badge-warning" data-toggle="tooltip" title="Documentation obligations needing attention"><?= $num_documentation_attention ?></span>
+                                    <?php } ?>
+                                </p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a href="/agent/tickets.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "tickets.php" || basename($_SERVER["PHP_SELF"]) == "ticket.php") { echo "active"; } ?>">
                                 <i class="nav-icon fas fa-life-ring"></i>
                                 <p>
@@ -65,6 +83,12 @@
                                         <span class="right badge text-light" data-toggle="tooltip" title="Open Tickets"><?= $num_active_tickets ?></span>
                                     <?php } ?>
                                 </p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="/agent/portal_requests.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "portal_requests.php") { echo "active"; } ?>">
+                                <i class="nav-icon fas fa-clipboard-check"></i>
+                                <p>Portal Requests</p>
                             </a>
                         </li>
                         <li class="nav-item">
@@ -86,6 +110,15 @@
                                     <?php if ($num_active_projects) { ?>
                                         <span class="right badge text-light" data-toggle="tooltip" title="Open Projects"><?= $num_active_projects ?></span>
                                     <?php } ?>
+                                </p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="/agent/agreements.php" class="nav-link <?php if (in_array(basename($_SERVER["PHP_SELF"]), ["agreements.php", "agreement.php", "service_review.php"])) { echo "active"; } ?>">
+                                <i class="nav-icon fas fa-file-contract"></i>
+                                <p>
+                                    Agreements
+                                    <?php if ($num_agreements) { ?><span class="right badge text-light"><?= $num_agreements ?></span><?php } ?>
                                 </p>
                             </a>
                         </li>

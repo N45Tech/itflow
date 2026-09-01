@@ -74,6 +74,9 @@ if (isset($_GET['ticket_id'])) {
         $ticket_billable = intval($ticket['ticket_billable']);
         $ticket_scheduled_for = escapeHtml($ticket['ticket_schedule']);
         $ticket_onsite = intval($ticket['ticket_onsite']);
+        $ticket_configuration_change = intval($ticket['ticket_configuration_change']);
+        $ticket_documentation_impact = escapeHtml($ticket['ticket_documentation_impact']);
+        $ticket_documentation_assessed_at = escapeHtml($ticket['ticket_documentation_assessed_at']);
         if ($ticket_scheduled_for) {
             $ticket_scheduled_wording = date('M d, Y • g:i A', strtotime($ticket_scheduled_for));
         } else {
@@ -116,6 +119,37 @@ if (isset($_GET['ticket_id'])) {
             $sla_name_sql = mysqli_query($mysqli, "SELECT sla_name FROM slas WHERE sla_id = $ticket_sla_id");
             if (mysqli_num_rows($sla_name_sql)) {
                 $ticket_sla_name = escapeHtml(mysqli_fetch_assoc($sla_name_sql)['sla_name']);
+            }
+        }
+        $ticket_agreement_decision_sql = mysqli_query($mysqli, "SELECT
+            ticket_agreement_decisions.*, agreement_version_number, agreement_version_name
+            FROM ticket_agreement_decisions
+            LEFT JOIN agreement_versions
+                ON agreement_version_id = ticket_agreement_decision_version_id
+                AND agreement_version_contract_id = ticket_agreement_decision_contract_id
+            WHERE ticket_agreement_decision_ticket_id = $ticket_id
+            AND ticket_agreement_decision_client_id = $client_id
+            ORDER BY ticket_agreement_decision_id DESC LIMIT 1");
+        $ticket_agreement_decision = $ticket_agreement_decision_sql
+            ? mysqli_fetch_assoc($ticket_agreement_decision_sql) : null;
+        $ticket_agreement_decision_integrity_failed = false;
+        $ticket_entitlement_evidence = null;
+        if ($ticket_agreement_decision && !agreementVerifyTicketDecision($ticket_agreement_decision)) {
+            $ticket_agreement_decision_integrity_failed = true;
+            error_log("Ticket $ticket_id SLA decision hash failed verification");
+            $ticket_agreement_decision = null;
+        } elseif ($ticket_agreement_decision) {
+            try {
+                $ticket_entitlement_evidence = json_decode(
+                    (string) $ticket_agreement_decision['ticket_agreement_decision_entitlement_snapshot'],
+                    true,
+                    512,
+                    JSON_THROW_ON_ERROR
+                );
+            } catch (Throwable $e) {
+                $ticket_agreement_decision_integrity_failed = true;
+                $ticket_agreement_decision = null;
+                error_log("Ticket $ticket_id SLA entitlement evidence could not be decoded");
             }
         }
         $ticket_resolved_at = escapeHtml($ticket['ticket_resolved_at']);
@@ -305,9 +339,44 @@ if (isset($_GET['ticket_id'])) {
             AND assets.asset_id != $asset_id"
         );
 
-        // Get Tasks
-        $sql_tasks = mysqli_query($mysqli, "SELECT task_completed_at, task_completion_estimate, task_id, task_name FROM tasks WHERE task_ticket_id = $ticket_id ORDER BY task_order ASC, task_id ASC");
+        // Get Tasks, including immutable runbook execution metadata when present.
+        $sql_tasks = mysqli_query($mysqli, "SELECT tasks.*, user_name
+            FROM tasks
+            LEFT JOIN users ON user_id = task_assigned_to
+            WHERE task_ticket_id = $ticket_id
+            ORDER BY task_order ASC, task_id ASC");
         $task_count = mysqli_num_rows($sql_tasks);
+
+        $runbook_execution = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT runbook_execution_id,
+            runbook_execution_status, runbook_execution_started_at,
+            runbook_execution_snapshot_hash, runbook_version_id, runbook_version_number,
+            runbook_version_name, runbook_version_type
+            FROM runbook_executions
+            INNER JOIN runbook_versions ON runbook_version_id = runbook_execution_version_id
+            WHERE runbook_execution_ticket_id = $ticket_id LIMIT 1"));
+
+        $task_evidence = [];
+        $sql_task_evidence = mysqli_query($mysqli, "SELECT task_evidence.*, ticket_attachment_name, user_name
+            FROM task_evidence
+            INNER JOIN tasks ON task_id = task_evidence_task_id
+            LEFT JOIN ticket_attachments ON ticket_attachment_id = task_evidence_attachment_id
+            LEFT JOIN users ON user_id = task_evidence_submitted_by
+            WHERE task_ticket_id = $ticket_id ORDER BY task_evidence_created_at, task_evidence_id");
+        while ($evidence_row = mysqli_fetch_assoc($sql_task_evidence)) {
+            $task_evidence[intval($evidence_row['task_evidence_task_id'])][] = $evidence_row;
+        }
+
+        $task_dependencies = [];
+        $sql_task_dependencies = mysqli_query($mysqli, "SELECT d.task_id, dependency.task_name,
+            dependency.task_state, dependency.task_completed_at
+            FROM task_dependencies d
+            INNER JOIN tasks dependency ON dependency.task_id = d.depends_on_task_id
+            INNER JOIN tasks child ON child.task_id = d.task_id
+            WHERE child.task_ticket_id = $ticket_id
+            ORDER BY dependency.task_order, dependency.task_id");
+        while ($dependency_row = mysqli_fetch_assoc($sql_task_dependencies)) {
+            $task_dependencies[intval($dependency_row['task_id'])][] = $dependency_row;
+        }
 
         $completed_task_count = intval(mysqli_fetch_row(mysqli_query(
             $mysqli,
@@ -321,7 +390,13 @@ if (isset($_GET['ticket_id'])) {
         }
 
         // Tasks still open block resolving the ticket - the page says so rather than just hiding the button
-        $tasks_block_resolve = $task_count !== $completed_task_count;
+        [$ticket_tasks_allow_resolve, $ticket_resolution_gate_error] = ticketLifecycleCanResolve($ticket_id, true);
+        $tasks_block_resolve = !$ticket_tasks_allow_resolve;
+
+        $ticket_documentation_link_count = intval(mysqli_fetch_row(mysqli_query($mysqli,
+            "SELECT COUNT(*) FROM ticket_documentation_obligations
+            WHERE ticket_documentation_obligation_ticket_id = $ticket_id"
+        ))[0] ?? 0);
 
         /*
          * All approvals for this ticket's tasks in one query. The task loop used
@@ -335,8 +410,7 @@ if (isset($_GET['ticket_id'])) {
                     approval_required_user_id, approval_created_by, approval_status
                 FROM task_approvals
                 INNER JOIN tasks ON approval_task_id = task_id
-                WHERE task_ticket_id = $ticket_id
-                AND approval_status IN ('pending','declined')"
+                WHERE task_ticket_id = $ticket_id"
             );
             while ($approval_row = mysqli_fetch_assoc($sql_task_approvals)) {
                 $task_approvals[intval($approval_row['approval_task_id'])][] = $approval_row;
@@ -355,6 +429,35 @@ if (isset($_GET['ticket_id'])) {
         );
         $ticket_history_count = mysqli_num_rows($sql_ticket_history);
 
+        // Level.io alert context for tickets opened by the RMM integration.
+        $level_alert_link = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT level_alert_id,
+            level_alert_last_event_at, level_alert_name, level_alert_resolved_at,
+            level_alert_severity, level_alert_started_at, level_asset_id, level_device_id
+            FROM level_alert_links WHERE level_ticket_id = $ticket_id LIMIT 1"));
+
+        // Automation broker context: keep the correlated incident and its latest signals beside the ticket.
+        $automation_incident = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT automation_incidents.*,
+            services.service_name
+            FROM automation_incidents
+            LEFT JOIN services ON automation_incident_service_id = service_id
+            WHERE automation_incident_ticket_id = $ticket_id LIMIT 1"));
+        $automation_incident_events = [];
+        if ($automation_incident) {
+            $automation_source_sql = escapeSql($automation_incident['automation_incident_source']);
+            $automation_key_sql = escapeSql($automation_incident['automation_incident_key']);
+            $sql_automation_incident_events = mysqli_query($mysqli, "SELECT automation_event_action,
+                automation_event_delivery_count, automation_event_last_received_at,
+                automation_event_received_at, automation_event_state, automation_event_status,
+                automation_event_suppressed_reason
+                FROM automation_events
+                WHERE automation_event_source = '$automation_source_sql'
+                AND automation_event_incident_key = '$automation_key_sql'
+                ORDER BY automation_event_last_received_at DESC LIMIT 5");
+            while ($automation_event = mysqli_fetch_assoc($sql_automation_incident_events)) {
+                $automation_incident_events[] = $automation_event;
+            }
+        }
+
         /*
          * The single most useful thing on the page: which clock is running and
          * how long is left. Everything else about the SLA is detail.
@@ -370,7 +473,7 @@ if (isset($_GET['ticket_id'])) {
          * agent/tickets.php so an install that does not use SLAs never sees them.
          * The count is only queried when the ticket has no SLA of its own.
          */
-        $sla_in_use = $ticket_sla_id > 0;
+        $sla_in_use = $ticket_sla_id > 0 || !is_null($ticket_agreement_decision);
         if (!$sla_in_use && $can_edit_ticket) {
             $sla_in_use = mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(sla_id) FROM slas WHERE sla_archived_at IS NULL"))[0] > 0;
         }
@@ -502,7 +605,7 @@ if (isset($_GET['ticket_id'])) {
                                             class="btn btn-dark confirm-link <?php if ($tasks_block_resolve) { echo "disabled"; } ?>"
                                             id="ticket_close"
                                             <?php if ($tasks_block_resolve) { ?>
-                                                title="<?= $task_count - $completed_task_count ?> task<?= ($task_count - $completed_task_count) == 1 ? '' : 's' ?> still open"
+                                                title="<?= escapeHtml($ticket_resolution_gate_error) ?>"
                                                 onclick="return false;"
                                             <?php } ?>
                                         >
@@ -582,7 +685,7 @@ if (isset($_GET['ticket_id'])) {
                         <div class="ticket-field">
                             <div class="ticket-field-label">SLA</div>
                             <div class="ticket-field-value">
-                                <a href="#" title="SLA plan: <?= $ticket_sla_name ?>"
+                                <a href="#" title="SLA plan: <?= $ticket_sla_name ?><?= $ticket_agreement_decision ? ' — ' . escapeHtml($ticket_agreement_decision['ticket_agreement_decision_reason']) : '' ?>"
                                     class="text-decoration-none<?php if ($can_edit_ticket && !$ticket_is_closed) { echo " ajax-modal"; } ?>"
                                     <?php if ($can_edit_ticket && !$ticket_is_closed) { ?>
                                         data-modal-url="modals/ticket/ticket_sla.php?id=<?= $ticket_id ?>"
@@ -938,6 +1041,24 @@ if (isset($_GET['ticket_id'])) {
 
             <div class="col-lg-3">
 
+                <div class="card card-outline card-<?= documentationTicketImpactBadge($ticket['ticket_documentation_impact']) ?>">
+                    <div class="card-header px-3 py-2">
+                        <h5 class="card-title mt-1"><i class="fas fa-fw fa-book-medical mr-2"></i>Documentation</h5>
+                        <div class="card-tools"><a href="#" class="btn btn-tool ajax-modal" data-modal-size="lg" data-modal-url="modals/ticket/ticket_documentation.php?ticket_id=<?= $ticket_id ?>" title="Review documentation impact"><i class="fas fa-external-link-alt"></i></a></div>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>Impact</span>
+                            <span class="badge badge-<?= documentationTicketImpactBadge($ticket['ticket_documentation_impact']) ?>"><?= $ticket_documentation_impact ?></span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-2"><span>Affected records</span><strong><?= $ticket_documentation_link_count ?></strong></div>
+                        <?php if ($ticket_configuration_change) { ?><div class="small text-dark mt-2"><i class="fas fa-cogs mr-1"></i>Configuration-changing work</div><?php } ?>
+                        <?php if ($ticket_documentation_assessed_at) { ?><div class="small text-muted mt-2">Assessed <?= escapeHtml(timeAgo($ticket['ticket_documentation_assessed_at'])) ?></div><?php } ?>
+                        <?php if ($tasks_block_resolve && stripos($ticket_resolution_gate_error, 'document') !== false) { ?><div class="alert alert-warning py-2 px-2 mt-3 mb-0 small"><i class="fas fa-lock mr-1"></i><?= escapeHtml($ticket_resolution_gate_error) ?></div><?php } ?>
+                        <a href="#" class="btn btn-sm btn-outline-primary btn-block mt-3 ajax-modal" data-modal-size="lg" data-modal-url="modals/ticket/ticket_documentation.php?ticket_id=<?= $ticket_id ?>">Review impact and links</a>
+                    </div>
+                </div>
+
                 <!-- Tasks -->
                 <?php if (!$ticket_is_resolved || $task_count) { ?>
                     <div class="card">
@@ -968,6 +1089,29 @@ if (isset($_GET['ticket_id'])) {
                         </div>
                         <div class="card-body p-0">
 
+                            <?php if ($runbook_execution) { ?>
+                                <div class="px-3 py-2 border-bottom bg-light small">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span>
+                                            <i class="fas fa-code-branch mr-1"></i>
+                                            <?= escapeHtml($runbook_execution['runbook_version_name']) ?>
+                                            <strong>v<?= intval($runbook_execution['runbook_version_number']) ?></strong>
+                                            <span class="badge badge-<?= $runbook_execution['runbook_execution_status'] === 'Completed' ? 'success' : 'primary' ?> ml-1"><?= escapeHtml($runbook_execution['runbook_execution_status']) ?></span>
+                                        </span>
+                                        <?php if ($runbook_execution['runbook_execution_status'] === 'Completed') { ?>
+                                            <a href="runbook_export.php?ticket_id=<?= $ticket_id ?>" title="Download completed runbook closeout">
+                                                <i class="fas fa-download mr-1"></i>Export closeout
+                                            </a>
+                                        <?php } else { ?>
+                                            <span class="text-muted" title="Closeout export becomes available after every runbook task reaches a terminal state">
+                                                <i class="fas fa-lock mr-1"></i>Closeout pending
+                                            </span>
+                                        <?php } ?>
+                                    </div>
+                                    <div class="text-muted">Snapshot <?= escapeHtml(substr($runbook_execution['runbook_execution_snapshot_hash'], 0, 12)) ?></div>
+                                </div>
+                            <?php } ?>
+
                             <?php if (!$ticket_is_resolved && $can_edit_ticket) { ?>
                                 <form action="post.php" method="post" autocomplete="off">
                                     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
@@ -997,17 +1141,47 @@ if (isset($_GET['ticket_id'])) {
                                     $task_name = escapeHtml($task_row['task_name']);
                                     $task_completion_estimate = intval($task_row['task_completion_estimate']);
                                     $task_completed_at = escapeHtml($task_row['task_completed_at']);
+                                    $task_state = $task_row['task_state'] ?: ($task_completed_at ? 'Completed' : 'Ready');
+                                    $task_instructions = escapeHtml($task_row['task_instructions']);
+                                    $task_assigned_name = escapeHtml($task_row['user_name']);
+                                    $task_due_at = escapeHtml($task_row['task_due_at']);
+                                    $task_waiting_reason = escapeHtml($task_row['task_waiting_reason']);
+                                    $task_condition_result = $task_row['task_condition_result'];
+                                    $task_evidence_required = $task_row['task_evidence_required'] ?: 'none';
+                                    $task_evidence_prompt = escapeHtml($task_row['task_evidence_prompt']);
+                                    $task_evidence_items = $task_evidence[$task_id] ?? [];
+                                    $task_dependencies_list = $task_dependencies[$task_id] ?? [];
+                                    $task_evidence_satisfied = runbookTaskEvidenceSatisfied($task_id, $task_evidence_required);
 
                                     // Approvals came from the single batched query above
-                                    $task_needs_approval = isset($task_approvals[$task_id]);
+                                    $task_has_approvals = isset($task_approvals[$task_id]);
+                                    $task_needs_approval = false;
                                     $approval_id = 0;
+                                    $unresolved_approval_id = 0;
+                                    $declined_approval_id = 0;
+                                    $approval_approved_count = 0;
+                                    $approval_pending_count = 0;
+                                    $approval_declined_count = 0;
                                     $user_can_approve = false;
 
-                                    if ($task_needs_approval) {
+                                    if ($task_has_approvals) {
                                         foreach ($task_approvals[$task_id] as $approval) {
+                                            if ($approval['approval_status'] === 'approved') {
+                                                $approval_approved_count++;
+                                                continue;
+                                            }
+                                            $task_needs_approval = true;
+                                            if (!$unresolved_approval_id) {
+                                                $unresolved_approval_id = intval($approval['approval_id']);
+                                            }
+                                            if ($approval['approval_status'] === 'declined') {
+                                                $declined_approval_id = intval($approval['approval_id']);
+                                                $approval_declined_count++;
+                                            }
                                             if ($approval['approval_status'] !== 'pending') {
                                                 continue;
                                             }
+                                            $approval_pending_count++;
 
                                             $scope = escapeHtml($approval['approval_scope']);
                                             $type = escapeHtml($approval['approval_type']);
@@ -1033,19 +1207,42 @@ if (isset($_GET['ticket_id'])) {
                                     ?>
                                     <tr data-task-id="<?= $task_id ?>">
                                         <td class="px-3">
-                                            <?php if ($task_completed_at) { ?>
+                                            <?php if ($task_state === 'Skipped') { ?>
+                                                <i class="fas fa-minus-circle text-muted" title="Skipped: <?= $task_waiting_reason ?>"></i>
+                                            <?php } elseif ($task_state === 'Completed' || $task_completed_at) { ?>
                                                 <i class="far fa-check-square text-success" title="Completed <?= $task_completed_at ?>"></i>
                                             <?php } elseif ($can_edit_ticket) { ?>
 
-                                                <?php if ($task_needs_approval) { ?>
+                                                <?php if ($task_state === 'Blocked') { ?>
+                                                    <i class="fas fa-lock text-secondary" title="Blocked by incomplete prerequisites"></i>
+                                                <?php } elseif ($task_state === 'Waiting') { ?>
+                                                    <i class="fas fa-pause-circle text-warning" title="Waiting: <?= $task_waiting_reason ?>"></i>
+                                                <?php } elseif ($task_needs_approval) { ?>
                                                     <i class="fas fa-shield-alt text-warning" title="Approval required"></i>
 
                                                     <?php if ($user_can_approve) { ?>
-                                                        <a class="confirm-link" href="post.php?approve_ticket_task=<?= $task_id ?>&approval_id=<?= $approval_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                                            <i class="fas fa-thumbs-up text-green" title="Approve task"></i>
+                                                        <form action="post.php" method="post" class="d-inline">
+                                                            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                                            <input type="hidden" name="task_id" value="<?= $task_id ?>">
+                                                            <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
+                                                            <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0" title="Approve" onclick="this.form.decision.value='approved'">
+                                                                <i class="fas fa-thumbs-up text-success"></i>
+                                                            </button>
+                                                            <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0 ml-1" title="Decline" onclick="this.form.decision.value='declined'">
+                                                                <i class="fas fa-thumbs-down text-danger"></i>
+                                                            </button>
+                                                            <input type="hidden" name="decision" value="approved">
+                                                        </form>
+                                                    <?php } elseif ($declined_approval_id && lookupUserPermission('module_support') >= 3) { ?>
+                                                        <a class="ajax-modal text-danger" href="#"
+                                                           data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $declined_approval_id ?>"
+                                                           title="Reroute or re-request this approval">
+                                                            <i class="fas fa-redo mr-1"></i>Manage approval
                                                         </a>
                                                     <?php } ?>
 
+                                                <?php } elseif (!$task_evidence_satisfied) { ?>
+                                                    <i class="fas fa-paperclip text-danger" title="Required <?= escapeHtml($task_evidence_required) ?> evidence is missing"></i>
                                                 <?php } else { ?>
                                                     <a href="post.php?complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" title="Mark complete">
                                                         <i class="far fa-square text-dark"></i>
@@ -1053,11 +1250,37 @@ if (isset($_GET['ticket_id'])) {
                                                 <?php } ?>
 
                                             <?php } ?>
-                                            <span class="ml-2 <?= $task_completed_at ? 'text-muted' : 'text-dark' ?>"><?= $task_name ?></span>
+                                            <span class="ml-2 <?= in_array($task_state, ['Completed','Skipped'], true) ? 'text-muted' : 'text-dark' ?>"><?= $task_name ?></span>
+                                            <div class="ml-4 mt-1 small">
+                                                <span class="badge badge-<?= runbookTaskStateBadge($task_state) ?>"><?= escapeHtml($task_state) ?></span>
+                                                <?php if ($task_condition_result !== 'Matched') { ?><span class="badge badge-light ml-1"><?= escapeHtml($task_condition_result) ?></span><?php } ?>
+                                                <?php if ($task_assigned_name) { ?><span class="text-muted ml-1"><i class="fas fa-user mr-1"></i><?= $task_assigned_name ?></span><?php } ?>
+                                                <?php if ($task_due_at) { ?><span class="<?= strtotime($task_due_at) < time() && !in_array($task_state, ['Completed','Skipped'], true) ? 'text-danger' : 'text-muted' ?> ml-1"><i class="far fa-calendar mr-1"></i><?= $task_due_at ?></span><?php } ?>
+                                                <?php if ($task_evidence_required !== 'none') { ?><span class="<?= $task_evidence_satisfied ? 'text-success' : 'text-danger' ?> ml-1"><i class="fas fa-paperclip mr-1"></i><?= count($task_evidence_items) ?>/<?= escapeHtml($task_evidence_required) ?></span><?php } ?>
+                                                <?php if ($task_has_approvals) { ?>
+                                                    <span class="<?= $task_needs_approval ? 'text-warning' : 'text-success' ?> ml-1" title="<?= $approval_approved_count ?> approved, <?= $approval_pending_count ?> pending, <?= $approval_declined_count ?> declined">
+                                                        <i class="fas fa-shield-alt mr-1"></i><?= $task_needs_approval ? ($approval_pending_count . ' pending' . ($approval_declined_count ? ', ' . $approval_declined_count . ' declined' : '')) : 'approved' ?>
+                                                    </span>
+                                                    <?php if ($unresolved_approval_id && lookupUserPermission('module_support') >= 3 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
+                                                        <a class="ajax-modal ml-1" href="#" data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $unresolved_approval_id ?>">Manage</a>
+                                                    <?php } ?>
+                                                <?php } ?>
+                                                <?php if ($task_completion_estimate) { ?><span class="text-muted ml-1"><?= $task_completion_estimate ?>m</span><?php } ?>
+                                            </div>
+                                            <?php if ($task_instructions) { ?><div class="ml-4 small text-muted mt-1"><?= $task_instructions ?></div><?php } ?>
+                                            <?php if ($task_waiting_reason && in_array($task_state, ['Waiting','Skipped'], true)) { ?><div class="ml-4 small text-warning mt-1"><?= $task_waiting_reason ?></div><?php } ?>
+                                            <?php if ($task_state === 'Blocked' && $task_dependencies_list) { ?>
+                                                <div class="ml-4 small text-muted mt-1">Blocked by:
+                                                    <?= escapeHtml(implode(', ', array_map(static fn($dependency) => $dependency['task_name'], array_filter($task_dependencies_list, static fn($dependency) => empty($dependency['task_completed_at']) && $dependency['task_state'] !== 'Skipped')))) ?>
+                                                </div>
+                                            <?php } ?>
+                                            <?php if ($task_evidence_prompt && !$task_evidence_satisfied) { ?><div class="ml-4 small text-danger mt-1"><?= $task_evidence_prompt ?></div><?php } ?>
                                         </td>
                                         <td class="px-2 text-right text-nowrap">
                                             <div class="btn-group">
-                                                <button class="btn btn-sm btn-link drag-handle" title="Drag to reorder"><i class="fas fa-bars text-muted"></i></button>
+                                                <?php if (intval($task_row['task_runbook_version_task_id']) === 0) { ?>
+                                                    <button class="btn btn-sm btn-link drag-handle" title="Drag to reorder"><i class="fas fa-bars text-muted"></i></button>
+                                                <?php } ?>
 
                                                 <?php if (!$ticket_is_resolved && $can_edit_ticket) { ?>
                                                     <div class="dropdown dropleft text-center">
@@ -1068,11 +1291,19 @@ if (isset($_GET['ticket_id'])) {
                                                             <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_edit.php?id=<?= $task_id ?>">
                                                                 <i class="fas fa-fw fa-edit mr-2"></i>Edit
                                                             </a>
-                                                            <?php if (!$task_completed_at) { ?>
+                                                            <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_evidence_add.php?id=<?= $task_id ?>">
+                                                                <i class="fas fa-fw fa-paperclip mr-2"></i>Evidence
+                                                            </a>
+                                                            <?php if ($task_row['task_runbook_version_task_id'] > 0 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
+                                                                <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_state.php?id=<?= $task_id ?>">
+                                                                    <i class="fas fa-fw fa-hourglass-half mr-2"></i>Waiting / applicability
+                                                                </a>
+                                                            <?php } ?>
+                                                            <?php if (intval($task_row['task_runbook_version_task_id']) === 0 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
                                                                 <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_approver_add.php?id=<?= $task_id ?>">
                                                                     <i class="fas fa-fw fa-shield-alt mr-2"></i>Add Approvers
                                                                 </a>
-                                                            <?php } else { ?>
+                                                            <?php } elseif ($task_state === 'Completed') { ?>
                                                                 <a class="dropdown-item" href="post.php?undo_complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                                                                     <i class="fas fa-fw fa-arrow-circle-left mr-2"></i>Mark incomplete
                                                                 </a>
@@ -1092,6 +1323,129 @@ if (isset($_GET['ticket_id'])) {
                                 ?>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                <?php } ?>
+
+                <?php if ($level_alert_link) {
+                    $level_alert_id = escapeHtml($level_alert_link['level_alert_id']);
+                    $level_alert_name = escapeHtml($level_alert_link['level_alert_name']);
+                    $level_alert_severity = escapeHtml(ucfirst($level_alert_link['level_alert_severity']));
+                    $level_alert_started_at = escapeHtml($level_alert_link['level_alert_started_at']);
+                    $level_alert_resolved_at = escapeHtml($level_alert_link['level_alert_resolved_at']);
+                    $level_alert_asset_id = intval($level_alert_link['level_asset_id']);
+                    $level_severity_badge = match (strtolower($level_alert_link['level_alert_severity'])) {
+                        'emergency' => 'dark',
+                        'critical' => 'danger',
+                        'warning' => 'warning',
+                        default => 'info',
+                    };
+                    ?>
+                    <div class="card">
+                        <div class="card-header px-3 py-2">
+                            <h5 class="card-title mt-1"><i class="fas fa-fw fa-satellite mr-2"></i>Level.io Alert</h5>
+                            <div class="card-tools">
+                                <span class="badge badge-<?= $level_alert_resolved_at ? 'success' : $level_severity_badge ?>"><?= $level_alert_resolved_at ? 'Resolved' : $level_alert_severity ?></span>
+                            </div>
+                        </div>
+                        <div class="card-body p-3">
+                            <strong><?= $level_alert_name ?></strong>
+                            <?php if ($level_alert_started_at) { ?>
+                                <div class="mt-2" title="<?= $level_alert_started_at ?>"><i class="fas fa-fw fa-clock text-secondary mr-2"></i>Started <?= escapeHtml(timeAgo($level_alert_started_at)) ?></div>
+                            <?php } ?>
+                            <?php if ($level_alert_resolved_at) { ?>
+                                <div class="mt-2" title="<?= $level_alert_resolved_at ?>"><i class="fas fa-fw fa-check text-success mr-2"></i>Resolved <?= escapeHtml(timeAgo($level_alert_resolved_at)) ?></div>
+                            <?php } ?>
+                            <?php if ($level_alert_asset_id) { ?>
+                                <div class="mt-2"><i class="fas fa-fw fa-desktop text-secondary mr-2"></i><a href="asset.php?asset_id=<?= $level_alert_asset_id ?>">Open managed asset</a></div>
+                            <?php } ?>
+                            <div class="mt-2 text-muted small text-truncate" title="<?= $level_alert_id ?>">Alert ID: <?= $level_alert_id ?></div>
+                            <div class="mt-3 pt-2 border-top">
+                                <a href="https://app.level.io/devices" target="_blank" rel="noopener noreferrer">Open Level devices <i class="fas fa-external-link-alt ml-1"></i></a>
+                            </div>
+                        </div>
+                    </div>
+                <?php } ?>
+
+                <?php if ($automation_incident) {
+                    $automation_source_raw = strtolower($automation_incident['automation_incident_source']);
+                    $automation_source_name = match ($automation_source_raw) {
+                        'uptime_kuma' => 'Uptime Kuma',
+                        'netbox' => 'NetBox',
+                        'n8n' => 'n8n',
+                        'backup' => 'Backups',
+                        'checkmk' => 'Checkmk',
+                        'cipp' => 'CIPP',
+                        'entra' => 'Microsoft Entra',
+                        'infrastructure' => 'Infrastructure',
+                        'intune' => 'Microsoft Intune',
+                        'level', 'level_io' => 'Level.io',
+                        'sentinelone' => 'SentinelOne',
+                        default => ucwords(str_replace(['_', '-'], ' ', $automation_source_raw)),
+                    };
+                    $automation_source_icon = match ($automation_source_raw) {
+                        'uptime_kuma' => 'fa-heartbeat',
+                        'netbox' => 'fa-project-diagram',
+                        'n8n' => 'fa-random',
+                        'backup' => 'fa-database',
+                        'checkmk' => 'fa-heartbeat',
+                        'cipp', 'entra', 'intune' => 'fa-cloud',
+                        'infrastructure' => 'fa-server',
+                        'level', 'level_io' => 'fa-satellite',
+                        'sentinelone' => 'fa-shield-alt',
+                        default => 'fa-bolt',
+                    };
+                    $automation_incident_severity = strtolower($automation_incident['automation_incident_severity']);
+                    $automation_incident_open = strtolower($automation_incident['automation_incident_status']) === 'open';
+                    $automation_incident_badge = !$automation_incident_open ? 'success' : match ($automation_incident_severity) {
+                        'emergency', 'critical' => 'danger',
+                        'high', 'medium' => 'warning',
+                        default => 'info',
+                    };
+                    ?>
+                    <div class="card n45-automation-ticket-card">
+                        <div class="card-header px-3 py-2">
+                            <h5 class="card-title mt-1"><i class="fas fa-fw <?= $automation_source_icon ?> mr-2"></i>Automation incident</h5>
+                            <div class="card-tools">
+                                <span class="badge badge-<?= $automation_incident_badge ?>"><?= $automation_incident_open ? escapeHtml(ucfirst($automation_incident_severity)) . ' · Open' : 'Recovered' ?></span>
+                            </div>
+                        </div>
+                        <div class="card-body p-3">
+                            <strong><?= escapeHtml($automation_incident['automation_incident_title']) ?></strong>
+                            <div class="text-muted small mt-1"><?= escapeHtml($automation_source_name) ?> · <?= intval($automation_incident['automation_incident_event_count']) ?> correlated event<?= intval($automation_incident['automation_incident_event_count']) === 1 ? '' : 's' ?><?= intval($automation_incident['automation_incident_repeat_count'] ?? 0) ? ' · ' . intval($automation_incident['automation_incident_repeat_count']) . ' repeats' : '' ?><?= intval($automation_incident['automation_incident_suppressed_count'] ?? 0) ? ' · ' . intval($automation_incident['automation_incident_suppressed_count']) . ' suppressed' : '' ?></div>
+                            <?php if (!empty($automation_incident['service_name'])) { ?><div class="small mt-2"><i class="fas fa-fw fa-cube text-secondary mr-1"></i><?= escapeHtml($automation_incident['service_name']) ?></div><?php } ?>
+
+                            <div class="n45-incident-facts mt-3">
+                                <div>
+                                    <span>Opened</span>
+                                    <strong title="<?= escapeHtml($automation_incident['automation_incident_opened_at']) ?>"><?= $automation_incident['automation_incident_opened_at'] ? escapeHtml(timeAgo($automation_incident['automation_incident_opened_at'])) : 'Unknown' ?></strong>
+                                </div>
+                                <div>
+                                    <span>Last signal</span>
+                                    <strong title="<?= escapeHtml($automation_incident['automation_incident_last_event_at']) ?>"><?= $automation_incident['automation_incident_last_event_at'] ? escapeHtml(timeAgo($automation_incident['automation_incident_last_event_at'])) : 'Unknown' ?></strong>
+                                </div>
+                            </div>
+
+                            <?php if ($automation_incident_events) { ?>
+                                <div class="n45-incident-events">
+                                    <span class="mb-1">Latest signals</span>
+                                    <?php foreach ($automation_incident_events as $automation_event) {
+                                        $event_state = strtolower($automation_event['automation_event_state']);
+                                        $event_status = strtolower($automation_event['automation_event_status'] ?? 'processed');
+                                        $event_badge = $event_status === 'dead' ? 'danger' : ($event_status === 'failed' ? 'warning' : ($event_state === 'resolved' ? 'success' : ($event_state === 'open' ? 'danger' : 'secondary')));
+                                        $event_time = $automation_event['automation_event_last_received_at'] ?: $automation_event['automation_event_received_at'];
+                                        ?>
+                                        <div class="n45-incident-event">
+                                            <div><span class="badge badge-<?= $event_badge ?> mr-1"><?= escapeHtml($event_status === 'processed' ? ucfirst($event_state) : ucfirst($event_status)) ?></span><?= escapeHtml(ucwords(str_replace('_', ' ', $automation_event['automation_event_action']))) ?><?= intval($automation_event['automation_event_delivery_count'] ?? 1) > 1 ? ' · ' . intval($automation_event['automation_event_delivery_count']) . ' deliveries' : '' ?><?= !empty($automation_event['automation_event_suppressed_reason']) ? ' · ' . escapeHtml(str_replace('_', ' ', $automation_event['automation_event_suppressed_reason'])) : '' ?></div>
+                                            <small class="text-muted" title="<?= escapeHtml($event_time) ?>"><?= escapeHtml(timeAgo($event_time)) ?></small>
+                                        </div>
+                                    <?php } ?>
+                                </div>
+                            <?php } ?>
+
+                            <div class="mt-3 pt-2 border-top">
+                                <a href="operations.php?source=<?= urlencode($automation_source_raw) ?><?= $automation_incident_open ? '#incident-' . intval($automation_incident['automation_incident_id']) : '#recent-activity' ?>">Open in Operations <i class="fas fa-arrow-right ml-1"></i></a>
+                            </div>
                         </div>
                     </div>
                 <?php } ?>
@@ -1333,6 +1687,49 @@ if (isset($_GET['ticket_id'])) {
                             </div>
                         <?php } ?>
 
+                        <?php if ($ticket_agreement_decision) { ?>
+                            <div class="mt-2">
+                                <i class="fas fa-fw fa-file-contract text-secondary mr-1"></i><strong class="mr-1">SLA decision:</strong>
+                                <?= escapeHtml($ticket_agreement_decision['ticket_agreement_decision_reason']) ?>
+                                <?php if (intval($ticket_agreement_decision['ticket_agreement_decision_contract_id']) > 0) { ?>
+                                    <a class="ml-1" href="agreement.php?agreement_id=<?= intval($ticket_agreement_decision['ticket_agreement_decision_contract_id']) ?>&version_id=<?= intval($ticket_agreement_decision['ticket_agreement_decision_version_id']) ?>">
+                                        <?= escapeHtml($ticket_agreement_decision['agreement_version_name'] ?: 'Agreement') ?> v<?= intval($ticket_agreement_decision['agreement_version_number']) ?>
+                                    </a>
+                                <?php } ?>
+                                <div class="text-muted small ml-4">
+                                    Request <code><?= escapeHtml($ticket_agreement_decision['ticket_agreement_decision_request_type_key']) ?></code>,
+                                    priority <?= escapeHtml($ticket_agreement_decision['ticket_agreement_decision_priority']) ?>,
+                                    SLA <?= escapeHtml($ticket_agreement_decision['ticket_agreement_decision_sla_name']) ?>
+                                    (<?= is_null($ticket_agreement_decision['ticket_agreement_decision_response_minutes']) ? 'no' : intval($ticket_agreement_decision['ticket_agreement_decision_response_minutes']) . 'm' ?> response,
+                                    <?= is_null($ticket_agreement_decision['ticket_agreement_decision_resolution_minutes']) ? 'no' : intval($ticket_agreement_decision['ticket_agreement_decision_resolution_minutes']) . 'm' ?> resolution,
+                                    <?= escapeHtml($ticket_agreement_decision['ticket_agreement_decision_calendar_mode']) ?>),
+                                    source <?= escapeHtml($ticket_agreement_decision['ticket_agreement_decision_source']) ?>
+                                    <?php if (!empty($ticket_agreement_decision['ticket_agreement_decision_classification'])) { ?>,
+                                        <?= escapeHtml($ticket_agreement_decision['ticket_agreement_decision_classification']) ?>;
+                                    <?php } ?>
+                                    <?php if (intval($ticket_agreement_decision['ticket_agreement_decision_schema_version']) === 1) { ?>
+                                        SLA eligible <?= intval($ticket_agreement_decision['ticket_agreement_decision_sla_eligible']) ? 'yes' : 'no' ?>,
+                                        onsite <?= intval($ticket_agreement_decision['ticket_agreement_decision_ticket_onsite']) ? 'yes' : 'no' ?>,
+                                        billable <?= intval($ticket_agreement_decision['ticket_agreement_decision_ticket_billable']) ? 'yes' : 'no' ?>
+                                    <?php } ?>
+                                </div>
+                                <?php foreach (($ticket_entitlement_evidence['resolution']['scopes'] ?? []) as $scope => $scope_evidence) { ?>
+                                    <div class="text-muted small ml-4">
+                                        <?= escapeHtml(ucfirst($scope)) ?>:
+                                        <?= escapeHtml($scope_evidence['classification'] ?? 'unknown') ?> via
+                                        <?= escapeHtml($scope_evidence['basis'] ?? 'unknown') ?>
+                                        (measured <?= floatval($scope_evidence['measured_quantity'] ?? 0) ?><?php if (!is_null($scope_evidence['quantity_limit'] ?? null)) { ?>,
+                                            limit <?= floatval($scope_evidence['quantity_limit']) ?><?php } ?>)
+                                    </div>
+                                <?php } ?>
+                            </div>
+                        <?php } elseif ($ticket_agreement_decision_integrity_failed) { ?>
+                            <div class="alert alert-danger mt-2 mb-0">
+                                <i class="fas fa-fw fa-exclamation-triangle mr-1"></i>
+                                The latest SLA decision failed its ticket-bound integrity check and was not displayed.
+                            </div>
+                        <?php } ?>
+
                         <?php if ($ticket_collaborators) { ?>
                             <div class="mt-2">
                                 <i class="fas fa-fw fa-users text-secondary mr-1"></i><strong class="mr-1">Worked by:</strong><?= $ticket_collaborators ?>
@@ -1413,7 +1810,7 @@ require_once "../includes/footer.php";
 (function () {
     // Task reordering
     const taskTable = document.querySelector('table#tasks tbody');
-    if (taskTable) {
+    if (taskTable && <?= $runbook_execution ? 'false' : 'true' ?>) {
         new Sortable(taskTable, {
             handle: '.drag-handle',
             animation: 150,

@@ -122,6 +122,9 @@ $resource_module = [
     'products'      => 'module_sales',
     'expenses'      => 'module_financial',
     'credentials'   => 'module_credential',
+    'automation'    => 'module_support',
+    'endpoint'      => 'module_support',
+    'device_source' => 'module_support',
 ];
 
 // Operation -> required permission level (read = 1, create/update = 2, delete = 3).

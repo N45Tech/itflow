@@ -113,7 +113,13 @@ function sendSlaAlert($ticket, $subject_line, $body_line)
 
 // --- Response SLA track ---
 // Open tickets awaiting a first response, not yet marked breached
-$sql_response = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number, ticket_subject, ticket_client_id, ticket_created_at, ticket_response_due_at, ticket_response_sla_alert_stage, sla_response_minutes, user_email, user_name
+$sql_response = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number,
+    ticket_subject, ticket_client_id, ticket_created_at, ticket_response_due_at,
+    ticket_response_due_at_utc,
+    ticket_response_sla_alert_stage, ticket_sla_response_minutes_snapshot,
+    ticket_sla_calendar_mode, ticket_sla_business_days,
+    ticket_sla_business_hours_start, ticket_sla_business_hours_end,
+    ticket_sla_timezone, sla_response_minutes, user_email, user_name
     FROM tickets
     LEFT JOIN slas ON ticket_sla_id = sla_id
     LEFT JOIN users ON ticket_assigned_to = user_id
@@ -130,7 +136,7 @@ while ($ticket = mysqli_fetch_assoc($sql_response)) {
 
     $ticket_id = intval($ticket['ticket_id']);
     $stage = intval($ticket['ticket_response_sla_alert_stage']);
-    $due = strtotime($ticket['ticket_response_due_at']);
+    $due = slaTicketDueEpoch($ticket, 'response');
 
     if ($now >= $due) {
         // Breached without a response - the verdict is final, record the miss
@@ -138,7 +144,17 @@ while ($ticket = mysqli_fetch_assoc($sql_response)) {
         sendSlaAlert($ticket, "Response SLA breached", "The response SLA on this ticket was missed (due {$ticket['ticket_response_due_at']}).");
 
     } elseif ($stage < 1 && $warning_percent) {
-        $warn_at = strtotime(addBusinessMinutes($ticket['ticket_created_at'], floor(intval($ticket['sla_response_minutes']) * $warning_percent / 100)));
+        $calendar = slaCalendarFromTicket($ticket);
+        $response_minutes = intval(slaTicketTargetMinutes($ticket, 'response'));
+        $warn_deadline = slaAddBusinessMinutesFromAppTimestamp(
+            $ticket['ticket_created_at'],
+            floor($response_minutes * $warning_percent / 100),
+            $calendar
+        );
+        $warn_at = slaTicketDueEpoch(
+            ['ticket_response_due_at_utc' => $warn_deadline['utc']],
+            'response'
+        );
         if ($now >= $warn_at) {
             mysqli_query($mysqli, "UPDATE tickets SET ticket_response_sla_alert_stage = 1 WHERE ticket_id = $ticket_id");
             sendSlaAlert($ticket, "Response SLA at risk", "This ticket is approaching its response SLA (due {$ticket['ticket_response_due_at']}).");
@@ -148,7 +164,13 @@ while ($ticket = mysqli_fetch_assoc($sql_response)) {
 
 // --- Resolution SLA track ---
 // Open tickets with a resolution target, not yet resolved or marked breached
-$sql_resolution = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number, ticket_subject, ticket_client_id, ticket_created_at, ticket_resolution_due_at, ticket_resolution_sla_alert_stage, sla_resolution_minutes, user_email, user_name
+$sql_resolution = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number,
+    ticket_subject, ticket_client_id, ticket_created_at, ticket_resolution_due_at,
+    ticket_resolution_due_at_utc,
+    ticket_resolution_sla_alert_stage, ticket_sla_resolution_minutes_snapshot,
+    ticket_sla_calendar_mode, ticket_sla_business_days,
+    ticket_sla_business_hours_start, ticket_sla_business_hours_end,
+    ticket_sla_timezone, sla_resolution_minutes, user_email, user_name
     FROM tickets
     LEFT JOIN slas ON ticket_sla_id = sla_id
     LEFT JOIN users ON ticket_assigned_to = user_id
@@ -166,7 +188,7 @@ while ($ticket = mysqli_fetch_assoc($sql_resolution)) {
 
     $ticket_id = intval($ticket['ticket_id']);
     $stage = intval($ticket['ticket_resolution_sla_alert_stage']);
-    $due = strtotime($ticket['ticket_resolution_due_at']);
+    $due = slaTicketDueEpoch($ticket, 'resolution');
 
     if ($now >= $due) {
         mysqli_query($mysqli, "UPDATE tickets SET ticket_resolution_sla_alert_stage = 2, ticket_resolution_sla_met = 0 WHERE ticket_id = $ticket_id");
@@ -174,8 +196,10 @@ while ($ticket = mysqli_fetch_assoc($sql_resolution)) {
 
     } elseif ($stage < 1 && $warning_percent) {
         // Measured against consumed clock time, so paused spells don't warn early
-        $warn_after_minutes = floor(intval($ticket['sla_resolution_minutes']) * $warning_percent / 100);
-        if (getTicketSlaConsumedMinutes($ticket_id) >= $warn_after_minutes) {
+        $calendar = slaCalendarFromTicket($ticket);
+        $resolution_minutes = intval(slaTicketTargetMinutes($ticket, 'resolution'));
+        $warn_after_minutes = floor($resolution_minutes * $warning_percent / 100);
+        if (getTicketSlaConsumedMinutes($ticket_id, $calendar) >= $warn_after_minutes) {
             mysqli_query($mysqli, "UPDATE tickets SET ticket_resolution_sla_alert_stage = 1 WHERE ticket_id = $ticket_id");
             sendSlaAlert($ticket, "Resolution SLA at risk", "This ticket is approaching its resolution SLA (due {$ticket['ticket_resolution_due_at']}).");
         }

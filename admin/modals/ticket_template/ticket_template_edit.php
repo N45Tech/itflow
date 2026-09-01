@@ -48,6 +48,24 @@
                         </div>
                     </div>
 
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>Runbook Key</label>
+                            <input type="text" class="form-control" name="runbook_key" maxlength="100" value="<?= $ticket_template_runbook_key ?>" required <?= mysqli_num_rows($sql_version_history) ? 'readonly' : '' ?>>
+                            <?php if (mysqli_num_rows($sql_version_history)) { ?>
+                                <small class="form-text text-muted">The stable key is locked after the first publication.</small>
+                            <?php } ?>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Workflow Type</label>
+                            <select class="form-control" name="runbook_type">
+                                <option value="standard" <?= $ticket_template_runbook_type === 'standard' ? 'selected' : '' ?>>Standard</option>
+                                <option value="onboarding" <?= $ticket_template_runbook_type === 'onboarding' ? 'selected' : '' ?>>Onboarding</option>
+                                <option value="offboarding" <?= $ticket_template_runbook_type === 'offboarding' ? 'selected' : '' ?>>Offboarding</option>
+                            </select>
+                        </div>
+                    </div>
+
                 </div>
                 <div class="modal-footer">
                     <button type="submit" name="edit_ticket_template" class="btn btn-primary text-bold"><i class="fa fa-check mr-2"></i>Save</button>

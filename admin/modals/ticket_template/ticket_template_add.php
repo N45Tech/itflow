@@ -2,6 +2,8 @@
 
 require_once '../../includes/modal_header.php';
 
+enforceAdminPermission();
+
 ob_start();
 
 ?>
@@ -47,6 +49,22 @@ ob_start();
                     <span class="input-group-text"><i class="fa fa-fw fa-angle-right"></i></span>
                 </div>
                 <input type="text" class="form-control" name="description" placeholder="Short description">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group col-md-6">
+                <label>Runbook Key</label>
+                <input type="text" class="form-control" name="runbook_key" maxlength="100" placeholder="Generated from the name">
+                <small class="form-text text-muted">Stable identifier used across published versions.</small>
+            </div>
+            <div class="form-group col-md-6">
+                <label>Workflow Type</label>
+                <select class="form-control" name="runbook_type">
+                    <option value="standard">Standard</option>
+                    <option value="onboarding">Onboarding</option>
+                    <option value="offboarding">Offboarding</option>
+                </select>
             </div>
         </div>
 

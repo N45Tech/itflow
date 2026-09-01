@@ -159,6 +159,33 @@ if (isset($_GET['client_id'])) {
         $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('service_id') AS num FROM services WHERE service_client_id = $client_id"));
         $num_services = $row['num'];
 
+        $documentation_validity = documentationObligationValiditySql('o');
+        $documentation_rows = documentationDbQuery("SELECT o.*, {$documentation_validity['select']}
+            FROM client_documentation_obligations o
+            {$documentation_validity['joins']}
+            WHERE o.documentation_obligation_client_id = $client_id",
+            'Could not project the client documentation attention count');
+        $num_documentation_attention = 0;
+        while ($documentation_row = mysqli_fetch_assoc($documentation_rows)) {
+            $documentation_row = documentationApplyCurrentRequirementMetadata($documentation_row);
+            $projection = documentationProjectObligationValidity($documentation_row);
+            if (in_array($projection['effective_status'], ['Missing', 'Draft', 'Due Soon', 'Stale', 'Exception'], true)) {
+                $num_documentation_attention++;
+            }
+        }
+        $documentation_client = mysqli_fetch_assoc(documentationDbQuery("SELECT client_id, client_name,
+            client_type, client_archived_at FROM clients WHERE client_id = $client_id LIMIT 1",
+            'Could not load the client for pending documentation attention'));
+        foreach (documentationPendingObligationRowsForClients($documentation_client ? [$documentation_client] : [], 0) as $documentation_row) {
+            $projection = documentationProjectObligationValidity($documentation_row);
+            if (in_array($projection['effective_status'], ['Missing', 'Draft', 'Due Soon', 'Stale', 'Exception'], true)) {
+                $num_documentation_attention++;
+            }
+        }
+
+        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('contract_id') AS num FROM contracts WHERE contract_archived_at IS NULL AND contract_client_id = $client_id"));
+        $num_agreements = intval($row['num'] ?? 0);
+
         $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('vendor_id') AS num FROM vendors WHERE vendor_archived_at IS NULL AND vendor_client_id = $client_id"));
         $num_vendors = $row['num'];
 

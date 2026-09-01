@@ -15,7 +15,12 @@ $invoices_sql = mysqli_query($mysqli, "SELECT invoice_amount, invoice_date, invo
     invoice_scope, invoice_status, invoice_url_key FROM invoices WHERE invoice_client_id = $session_client_id AND invoice_status != 'Draft' ORDER BY invoice_date DESC");
 ?>
 
-<h3>Invoices</h3>
+<header class="n45-page-header">
+    <div>
+        <h1>Invoices</h1>
+        <p>Review issued invoices, due dates, balances, and payment status.</p>
+    </div>
+</header>
 <div class="row">
 
     <div class="col-md-10">

@@ -120,10 +120,9 @@ ob_start();
                                     <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
                                 </div>
                                 <select class="form-control select2" name="priority" required>
-                                    <option <?php if ($recurring_ticket_priority == "Low") { echo "selected"; } ?> >Low</option>
-                                    <option <?php if ($recurring_ticket_priority == "Medium") { echo "selected"; } ?> >Medium</option>
-                                    <option <?php if ($recurring_ticket_priority == "High") { echo "selected"; } ?> >High</option>
-                                    <option <?php if ($recurring_ticket_priority == "Urgent") { echo "selected"; } ?> >Urgent</option>
+                                    <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
+                                        <option value="<?= escapeHtml($priority) ?>" <?php if ($recurring_ticket_priority == $priority) { echo "selected"; } ?>><?= escapeHtml("$priority — " . $definition['short']) ?></option>
+                                    <?php } ?>
                                 </select>
                             </div>
                         </div>

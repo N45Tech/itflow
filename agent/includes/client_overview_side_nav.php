@@ -13,6 +13,9 @@ $num_assets = $row['num'];
 $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('service_id') AS num FROM services LEFT JOIN clients ON service_client_id = client_id WHERE client_archived_at IS NULL " . clientScopeSql('service_client_id') . ""));
 $num_services = $row['num'];
 
+$row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('contract_id') AS num FROM contracts LEFT JOIN clients ON contract_client_id = client_id WHERE contract_archived_at IS NULL AND client_archived_at IS NULL " . clientScopeSql('contract_client_id') . ""));
+$num_agreements = intval($row['num'] ?? 0);
+
 $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('credential_id') AS num FROM credentials LEFT JOIN clients ON credential_client_id = client_id WHERE credential_archived_at IS NULL AND client_archived_at IS NULL " . clientScopeSql('credential_client_id') . ""));
 $num_credentials = $row['num'];
 
@@ -165,6 +168,16 @@ $num_software = $row['num'];
                                 if ($num_services > 0) { ?>
                                     <span class="right badge text-light"><?= $num_services ?></span>
                                 <?php } ?>
+                            </p>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a href="agreements.php" class="nav-link <?php if (in_array(basename($_SERVER["PHP_SELF"]), ["agreements.php", "agreement.php", "service_review.php"])) { echo "active"; } ?>">
+                            <i class="nav-icon fas fa-file-contract"></i>
+                            <p>
+                                Agreements
+                                <?php if ($num_agreements > 0) { ?><span class="right badge text-light"><?= $num_agreements ?></span><?php } ?>
                             </p>
                         </a>
                     </li>

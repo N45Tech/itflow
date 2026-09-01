@@ -46,6 +46,23 @@ $document_archived_at = escapeHtml($row['document_archived_at']);
 $document_folder_id = intval($row['document_folder_id']);
 $document_client_visible = intval($row['document_client_visible']);
 
+$document_obligations = [];
+$documentation_validity = documentationObligationValiditySql('o');
+$sql_document_obligations = mysqli_query($mysqli, "SELECT o.*,
+    {$documentation_validity['select']}
+    FROM client_documentation_obligations o
+    {$documentation_validity['joins']}
+    WHERE o.documentation_obligation_document_id = $document_id
+    AND o.documentation_obligation_client_id = $client_id
+    ORDER BY documentation_current_requirement_version_name");
+while ($document_obligation = mysqli_fetch_assoc($sql_document_obligations)) {
+    $document_obligation = documentationApplyCurrentRequirementMetadata($document_obligation);
+    $projection = documentationProjectObligationValidity($document_obligation);
+    $document_obligation['effective_status'] = $projection['effective_status'];
+    $document_obligations[] = $document_obligation;
+}
+$document_has_obligations = !empty($document_obligations);
+
 // Override Tab Title // No Sanitizing needed as this var will opnly be used in the tab title
 $page_title = $row['document_name'];
 
@@ -197,10 +214,24 @@ $page_title = $row['document_name'];
                 </button>
                 <a class="btn btn-success mr-1" href="post.php?export_document=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class='fas fa-fw fa-file-pdf' title="PDF Export"></i></a>
                 <button type="button" class="btn btn-secondary mr-4" onclick="window.print();"><i class="fas fa-fw fa-print" title="Print"></i></button>
-                <a class="btn btn-warning mr-1 confirm-link" href="post.php?archive_document=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" title="Archive"><i class='fas fa-fw fa-archive'></i></a>
-                <a class="btn btn-danger confirm-link" href="post.php?delete_document=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>&from=document_details" title="Delete"><i class='fas fa-fw fa-trash-alt'></i></a>
+                <a class="btn btn-warning mr-1 confirm-link <?= $document_has_obligations ? 'disabled' : '' ?>" href="<?= $document_has_obligations ? '#' : "post.php?archive_document=$document_id&csrf_token=" . urlencode($_SESSION['csrf_token']) ?>" title="<?= $document_has_obligations ? 'Relink documentation obligations before archiving' : 'Archive' ?>" <?= $document_has_obligations ? 'onclick="return false;" aria-disabled="true"' : '' ?>><i class='fas fa-fw fa-archive'></i></a>
+                <a class="btn btn-danger confirm-link <?= $document_has_obligations ? 'disabled' : '' ?>" href="<?= $document_has_obligations ? '#' : "post.php?delete_document=$document_id&csrf_token=" . urlencode($_SESSION['csrf_token']) . '&from=document_details' ?>" title="<?= $document_has_obligations ? 'Canonical documentation evidence cannot be deleted' : 'Delete' ?>" <?= $document_has_obligations ? 'onclick="return false;" aria-disabled="true"' : '' ?>><i class='fas fa-fw fa-trash-alt'></i></a>
             </div>
         </div>
+        <?php if ($document_obligations) { ?>
+            <div class="card card-outline card-primary">
+                <div class="card-header py-2"><h5 class="card-title mt-1"><i class="fas fa-book-medical mr-2"></i>Readiness obligations</h5></div>
+                <div class="card-body p-3">
+                    <?php foreach ($document_obligations as $obligation) { ?>
+                        <a href="#" class="d-flex justify-content-between align-items-start mb-2 ajax-modal" data-modal-size="lg" data-modal-url="modals/documentation/obligation.php?id=<?= intval($obligation['documentation_obligation_id']) ?>">
+                            <span><?= escapeHtml($obligation['documentation_requirement_version_name']) ?><span class="small text-muted d-block"><code><?= escapeHtml($obligation['documentation_requirement_version_key']) ?></code></span></span>
+                            <span class="badge badge-<?= documentationLifecycleStatusBadge($obligation['effective_status']) ?> ml-2"><?= escapeHtml($obligation['effective_status']) ?></span>
+                        </a>
+                    <?php } ?>
+                    <div class="small text-muted mt-2"><i class="fas fa-lock mr-1"></i>Relink these obligations before archiving or deleting this canonical record.</div>
+                </div>
+            </div>
+        <?php } ?>
         <div class="card card-body bg-light">
             <h5 class="mb-3"><i class="fas fa-tags mr-2"></i>Related Items</h5>
             <h6>

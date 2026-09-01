@@ -30,7 +30,8 @@ function printHelp() {
     echo "  --help          Show this help message.\n";
     echo "  --update        Perform a git pull to update the application.\n";
     echo "  --force_update  Perform a git fetch and hard reset to the branch this install tracks.\n";
-    echo "  --update_db     Update the database structure to the latest version.\n";
+    echo "  --update_db     Apply upstream and N45 database migrations.\n";
+    echo "  --bridge_n45_migrations  Maintenance-only bridge for legacy N45 version markers.\n";
     echo "\nIf no options are provided, a standard update (git pull) is performed.\n";
 }
 
@@ -39,11 +40,12 @@ $allowed_options = [
     'help',
     'update',
     'force_update',
-    'update_db'
+    'update_db',
+    'bridge_n45_migrations'
 ];
 
 // Parse command-line options
-$options = getopt('', ['update', 'force_update', 'update_db', 'help']);
+$options = getopt('', ['update', 'force_update', 'update_db', 'bridge_n45_migrations', 'help']);
 
 // Check for invalid options by comparing argv against allowed options
 $argv_copy = $argv;
@@ -103,8 +105,33 @@ if (isset($options['update']) || isset($options['force_update'])) {
     }
 }
 
+// The bridge is deliberately separate from a normal update. It proves that
+// legacy N45 schema/data is present before restoring the upstream marker base.
+if (isset($options['bridge_n45_migrations'])) {
+    try {
+        $bridged_migrations = n45BridgeLegacyMigrations($mysqli);
+        foreach ($bridged_migrations as $migration_id) {
+            echo "Bridged legacy N45 migration $migration_id\n";
+        }
+        echo "Legacy N45 migration bridge completed.\n";
+    } catch (Throwable $e) {
+        fwrite(STDERR, "Error: legacy N45 migration bridge refused: " . $e->getMessage() . "\n");
+        exit(1);
+    }
+}
+
 // If "update_db" is requested
 if (isset($options['update_db'])) {
+    try {
+        $prepared_migrations = n45PrepareMigrationNamespace($mysqli);
+        foreach ($prepared_migrations as $migration_id) {
+            echo "Prepared N45 database namespace with $migration_id\n";
+        }
+    } catch (Throwable $e) {
+        fwrite(STDERR, "Error: N45 database update preflight failed: " . $e->getMessage() . "\n");
+        exit(1);
+    }
+
     require_once "../includes/database_version.php";
 
     $latest_db_version = LATEST_DATABASE_VERSION;
@@ -115,7 +142,7 @@ if (isset($options['update_db'])) {
     DEFINE("CURRENT_DATABASE_VERSION", $row['config_current_database_version']);
     $old_db_version = $row['config_current_database_version'];
 
-    // Run the migrations - populates $database_updates_applied and $database_updates_error
+    // Upstream and N45 use the same advisory lock and separate durable markers.
     require_once "../admin/database_updates.php";
 
     foreach ($database_updates_applied as $applied_version) {
@@ -129,7 +156,18 @@ if (isset($options['update_db'])) {
         exit(1);
     }
 
-    if (count($database_updates_applied) > 0) {
+    try {
+        $n45_database_updates_applied = n45RunMigrations($mysqli);
+        foreach ($n45_database_updates_applied as $migration_id) {
+            echo "Applied N45 database migration $migration_id\n";
+        }
+    } catch (Throwable $e) {
+        fwrite(STDERR, "Error: N45 database update failed: " . $e->getMessage() . "\n");
+        fwrite(STDERR, "Re-running is safe after correcting the reported integrity or schema problem.\n");
+        exit(1);
+    }
+
+    if (count($database_updates_applied) > 0 || count($n45_database_updates_applied) > 0) {
         echo "Database updated from version $old_db_version to $latest_db_version.\n";
     } else {
         echo "Database is already at the latest version ($latest_db_version). No updates were applied.\n";

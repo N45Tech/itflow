@@ -264,6 +264,15 @@ Two standing exceptions: junction tables (`client_tags`, `service_assets`, …) 
 That is the whole job. `LATEST_DATABASE_VERSION` is derived from the highest-numbered filename in `admin/database_updates/`, and the runner (`admin/database_updates.php`) steps `config_current_database_version` after each file succeeds — so there is no constant to bump and no version-bump query to write. Each migration file needs the standard `defined('FROM_DB_UPDATER') || die(...)` guard at the top; copy an existing file's header.
 
 A single update run applies every pending migration in order, stopping at the first failure with the version left at the last file that completed, so a re-run resumes at the one that broke.
+
+### N45 fork boundary
+
+The numeric migration instructions above describe upstream ITFlow. N45-owned schema must never be added to `admin/database_updates/` or advance `settings.config_current_database_version`. It uses the independently ordered files in `n45/migrations/`, with stable IDs, checksums, detailed schema/data fingerprints, and explicit rollback contracts declared in `n45/manifest.php`. Follow [the N45 migration policy](docs/n45/migrations.md) and update `db.sql`, the migration file, manifest, operator inventory, and regression coverage together.
+
+Keep N45 services additive and declare their runtime files under a module in `n45/manifest.php`; load them through `n45RequireModule()` in the stable `n45/bootstrap.php` boundary. Prefer a narrow upstream call-site hook over copying an upstream handler. Feature flags are allowed only for optional ingress or processing and must fail closed. Authentication, authorization, lifecycle gates, referential cleanup, and audit integrity are not emergency switches.
+
+Before an upstream sync or release, run `scripts/n45-upstream-review.sh` against the fetched authoritative upstream ref and follow [the upstream parity review](docs/n45/upstream-parity.md). A clean merge is not enough: resolve security-sensitive overlap explicitly, run the complete PHP regression suite and N45 smoke contract, and record a verified database restore point.
+
 **After acting, log and notify.** State changes call `logAudit($type, $action, $description, $client_id, $entity_id)` for the audit trail. User-facing events may also call `appNotify()`. Fire `triggerCustomAction()` where a site might reasonably want a hook. Then call `flashAlert($message, $type)` and `redirect()` (defaults to the referer) rather than setting session keys or `header()` manually.
 
 **Function names (post-rename).** Helpers were renamed for clarity in 2026; the old names **no longer exist** — code calling them fatals. If you're rebasing an old PR or following an old tutorial, translate: `sanitizeInput` → `escapeSql`, `nullable_htmlentities` → `escapeHtml`, `logAction` → `logAudit`, `flash_alert` → `flashAlert`, `customAction` → `triggerCustomAction`, `encryptLoginEntry`/`decryptLoginEntry` → `encryptCredentialEntry`/`decryptCredentialEntry`, `strtoAZaz09` → `toAlphanumeric`, `fetchUpdates` → `checkForUpdates`, `sanitize_url` → `escapeUrl`.

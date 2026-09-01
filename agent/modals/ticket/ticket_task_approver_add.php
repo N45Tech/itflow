@@ -6,13 +6,19 @@ enforceUserPermission('module_support', 2);
 
 $task_id = intval($_GET['id']);
 
-$sql = mysqli_query($mysqli, "SELECT task_name, ticket_client_id FROM tasks
+$sql = mysqli_query($mysqli, "SELECT task_name, task_state, task_runbook_version_task_id, ticket_client_id FROM tasks
     LEFT JOIN tickets ON task_ticket_id = ticket_id
     WHERE task_id = $task_id
     LIMIT 1"
 );
 
 $row = mysqli_fetch_assoc($sql);
+if (!$row || intval($row['task_runbook_version_task_id']) > 0
+    || in_array($row['task_state'], ['Completed', 'Skipped'], true)) {
+    http_response_code(409);
+    echo json_encode(['error' => 'This task does not accept manual approval gates']);
+    exit;
+}
 $task_name = escapeHtml($row['task_name']);
 $client_id = intval($row['ticket_client_id']);
 

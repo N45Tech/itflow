@@ -26,11 +26,12 @@
     <link rel="stylesheet" href="/libs/select2/css/select2.min.css">
     <link rel="stylesheet" href="/libs/select2-bootstrap4-theme/select2-bootstrap4.min.css">
     <link rel="stylesheet" href='/libs/daterangepicker/daterangepicker.css'>
+    <link rel="stylesheet" href="/css/itflow_custom.css">
 
     <!-- Scripts -->
     <script src="/libs/jquery/jquery.min.js"></script>
     <script src="/libs/toastr/toastr.min.js"></script>
 
 </head>
-<body class="layout-top-nav">
+<body class="layout-top-nav n45-guest-portal">
     <div class="wrapper text-sm">

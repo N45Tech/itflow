@@ -74,17 +74,6 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
     global $mysqli, $config_app_name, $company_name, $company_phone, $config_ticket_prefix, $config_ticket_client_general_notifications, $config_ticket_new_ticket_notification_email, $config_base_url, $config_ticket_from_name, $config_ticket_from_email, $config_ticket_default_billable, $allowed_extensions;
     $bad_pattern = "/do[\W_]*not[\W_]*reply|no[\W_]*reply/i"; // Email addresses to ignore
 
-    // Atomically increment and get the new ticket number
-    mysqli_query($mysqli, "
-        UPDATE settings
-        SET
-            config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
-            config_ticket_next_number = config_ticket_next_number + 1
-        WHERE company_id = 1
-    ");
-
-    $ticket_number = mysqli_insert_id($mysqli);
-
     // Clean up the message
     $message = trim($message);
     // Remove DOCTYPE and meta tags
@@ -106,9 +95,45 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
 
     $url_key = randomString(32);
 
-    mysqli_query($mysqli, "INSERT INTO tickets SET ticket_prefix = '$ticket_prefix_esc', ticket_number = $ticket_number, ticket_source = 'Email', ticket_subject = '$subject', ticket_details = '$message_esc', ticket_priority = 'Low', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = 0, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id");
-    $id = mysqli_insert_id($mysqli);
-    applyTicketSla($id);
+    $ticket_transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the parsed-email ticket transaction');
+        }
+        $ticket_transaction_started = true;
+        if ($client_id > 0 && !agreementLockClientForAuditRetention($client_id)) {
+            throw new RuntimeException('The parsed-email ticket client is no longer available');
+        }
+
+        ticketCreationDbQuery("
+            UPDATE settings
+            SET
+                config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
+                config_ticket_next_number = config_ticket_next_number + 1
+            WHERE company_id = 1
+        ", 'Could not allocate a parsed-email ticket number');
+        $ticket_number = intval(mysqli_insert_id($mysqli));
+        if (!$ticket_number) {
+            throw new RuntimeException('The parsed-email ticket number allocation returned no number');
+        }
+
+        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$ticket_prefix_esc', ticket_number = $ticket_number, ticket_source = 'Email', ticket_subject = '$subject', ticket_details = '$message_esc', ticket_priority = 'Low', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = 0, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id", 'Could not create the parsed-email ticket');
+        $id = intval(mysqli_insert_id($mysqli));
+        if (!$id) {
+            throw new RuntimeException('The parsed-email ticket did not receive an ID');
+        }
+        applyTicketSla($id, null, null, true);
+
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the parsed-email ticket and SLA decision');
+        }
+        $ticket_transaction_started = false;
+    } catch (Throwable $exception) {
+        if ($ticket_transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        throw $exception;
+    }
 
     // Logging
     logAudit("Ticket", "Create", "Email parser: Client contact $contact_email_esc created ticket $ticket_prefix_esc$ticket_number ($subject) ($id)", $client_id, $id);
@@ -160,16 +185,23 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
     // External email
     $data = [];
     if ($config_ticket_client_general_notifications == 1 && !preg_match($bad_pattern, $contact_email)) {
-        $subject_email = "Ticket created - [$config_ticket_prefix$ticket_number] - $subject";
-        $body = "<i style='color: #808080'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Thank you for your email. A ticket regarding \"$subject\" has been automatically created for you.<br><br>Ticket: $config_ticket_prefix$ticket_number<br>Subject: $subject<br>Status: New<br>Portal: <a href='https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$id&url_key=$url_key'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
-        $data[] = [
+        $ticket_email = renderN45Email('ticket.created', [
+            'company_name' => escapeSql($company_name),
+            'contact_name' => escapeSql($contact_name),
+            'ticket_number' => escapeSql($config_ticket_prefix) . $ticket_number,
+            'ticket_subject' => $subject,
+            'ticket_status' => 'New',
+            'message_html' => $message_esc,
+            'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$id&url_key=$url_key",
+            'footer_email' => escapeSql($config_ticket_from_email),
+            'footer_phone' => escapeSql($company_phone),
+        ]);
+        $data[] = array_merge([
             'from' => $config_ticket_from_email,
             'from_name' => $config_ticket_from_name,
             'recipient' => $contact_email,
             'recipient_name' => $contact_name,
-            'subject' => $subject_email,
-            'body' => mysqli_real_escape_string($mysqli, $body)
-        ];
+        ], n45EmailQueueFields($ticket_email));
     }
 
     // Internal email
@@ -217,6 +249,12 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
     );
 
     // 2) Clean up the remaining message
+
+    // Branded messages include a complete HTML head before the reply marker.
+    // Some mail clients retain that head when quoting the original message, so
+    // remove it as a unit instead of leaving its CSS in the stored client reply.
+    $message = preg_replace('/<head\b[^>]*>.*?<\/head>/is', '', $message);
+    $message = preg_replace('/<style\b[^>]*>.*?<\/style>/is', '', $message);
 
     // Remove DOCTYPE and meta tags
     $message = preg_replace('/<!DOCTYPE[^>]*>/i', '', $message);
@@ -298,8 +336,47 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
             }
         }
 
-        mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = '$message_esc', ticket_reply_type = '$ticket_reply_type', ticket_reply_time_worked = '00:00:00', ticket_reply_by = $ticket_reply_contact, ticket_reply_ticket_id = $ticket_id");
-        $reply_id = mysqli_insert_id($mysqli);
+        try {
+            if (!mysqli_begin_transaction($mysqli)) {
+                throw new RuntimeException('Could not begin the inbound ticket-reply transaction');
+            }
+            // Inbound mail reopens every non-closed ticket to Open. Follow the
+            // project-aware lock order so a late email cannot reopen a child of
+            // a completed or archived project.
+            $locked_ticket = runbookLockTicketForReopen($ticket_id);
+            if (intval($locked_ticket['ticket_client_id']) !== $client_id) {
+                throw new RuntimeException('The ticket client changed while the inbound reply was processed');
+            }
+            $ticket_status = intval($locked_ticket['ticket_status']);
+
+            $insert_reply = mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = '$message_esc', ticket_reply_type = '$ticket_reply_type', ticket_reply_time_worked = '00:00:00', ticket_reply_by = $ticket_reply_contact, ticket_reply_ticket_id = $ticket_id");
+            if (!$insert_reply) {
+                throw new RuntimeException('Could not save the inbound ticket reply');
+            }
+            $reply_id = mysqli_insert_id($mysqli);
+
+            $needs_reopen = $ticket_status !== 2 || !empty($locked_ticket['ticket_resolved_at']);
+            if ($needs_reopen) {
+                $resolved_at_predicate = empty($locked_ticket['ticket_resolved_at'])
+                    ? 'ticket_resolved_at IS NULL'
+                    : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
+                $reopen_sql = mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
+                    WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                    AND ticket_status = $ticket_status AND $resolved_at_predicate
+                    AND ticket_closed_at IS NULL LIMIT 1");
+                if (!$reopen_sql || mysqli_affected_rows($mysqli) !== 1) {
+                    throw new RuntimeException('The ticket changed before the inbound reply could reopen it');
+                }
+            }
+
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the inbound ticket reply');
+            }
+        } catch (Throwable $e) {
+            mysqli_rollback($mysqli);
+            logApp('Cron-Email-Parser', 'warning', "Inbound reply for ticket $ticket_id failed closed: " . escapeSql($e->getMessage()));
+            return false;
+        }
 
         $ticket_dir = "../uploads/tickets/" . $ticket_id . "/";
         mkdirMissing($ticket_dir);
@@ -353,7 +430,6 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
             }
         }
 
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id LIMIT 1");
         resetTicketResolutionSla($ticket_id);
 
         // Only record the reopen when the ticket was not already open

@@ -1,0 +1,7 @@
+.git
+.github
+.codex-tmp
+deploy/psa/.env
+config.php
+uploads/*
+!uploads/.htaccess

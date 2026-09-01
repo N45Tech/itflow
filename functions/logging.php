@@ -4,15 +4,26 @@
 // Split from the former monolithic functions.php
 
 
-function triggerCustomAction($trigger, $entity) {
-    $original_dir = getcwd(); // Save
+function triggerCustomAction($trigger, $entity, $custom_action_idempotency_key = '') {
+    $original_dir = getcwd() ?: __DIR__; // Save
+    $executed = true;
 
-    chdir(dirname(__FILE__));
-    if (file_exists(__DIR__ . "/custom/custom_action_handler.php")) {
-        include_once __DIR__ . "/custom/custom_action_handler.php";
+    try {
+        chdir(dirname(__FILE__));
+        $handler = __DIR__ . "/custom/custom_action_handler.php";
+        if (file_exists($handler)) {
+            // Included handlers can forward this stable key to a downstream system
+            // when the caller uses a durable at-least-once delivery queue. Existing
+            // two-argument callers continue to expose an empty key.
+            $custom_action_idempotency_key = (string) $custom_action_idempotency_key;
+            $handler_path = realpath($handler) ?: $handler;
+            $executed = !in_array($handler_path, get_included_files(), true);
+            include_once $handler;
+        }
+    } finally {
+        chdir($original_dir); // Restore original working directory even if the hook fails
     }
-
-    chdir($original_dir); // Restore original working directory
+    return $executed;
 }
 
 function appNotify($type, $details, $action = null, $client_id = 0, $entity_id = 0) {

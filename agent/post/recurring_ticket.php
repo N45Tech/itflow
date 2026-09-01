@@ -95,6 +95,8 @@ if (isset($_POST['bulk_force_recurring_tickets'])) {
     enforceUserPermission('module_support', 2);
 
     if (isset($_POST['recurring_ticket_ids'])) {
+        $count = 0;
+        $failure_count = 0;
 
         // Cycle through array and pop each recurring scheduled ticket
         foreach ($_POST['recurring_ticket_ids'] as $recurring_ticket_id) {
@@ -134,30 +136,60 @@ if (isset($_POST['bulk_force_recurring_tickets'])) {
                 $config_ticket_from_email = escapeSql($config_ticket_from_email);
                 $config_base_url = escapeSql($config_base_url);
 
-                // Atomically increment and get the new ticket number
-                mysqli_query($mysqli, "
-                    UPDATE settings
-                    SET
-                        config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
-                        config_ticket_next_number = config_ticket_next_number + 1
-                    WHERE company_id = 1
-                ");
+                $ticket_transaction_started = false;
+                try {
+                    if (!mysqli_begin_transaction($mysqli)) {
+                        throw new RuntimeException('Could not begin the bulk recurring ticket transaction');
+                    }
+                    $ticket_transaction_started = true;
+                    if ($client_id > 0 && !agreementLockClientForAuditRetention($client_id)) {
+                        throw new RuntimeException('The bulk recurring ticket client is no longer available');
+                    }
 
-                $ticket_number = mysqli_insert_id($mysqli);
+                    ticketCreationDbQuery("
+                        UPDATE settings
+                        SET
+                            config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
+                            config_ticket_next_number = config_ticket_next_number + 1
+                        WHERE company_id = 1
+                    ", 'Could not allocate a bulk recurring ticket number');
+                    $ticket_number = intval(mysqli_insert_id($mysqli));
+                    if (!$ticket_number) {
+                        throw new RuntimeException('The bulk recurring ticket number allocation returned no number');
+                    }
 
-                // Raise the ticket
-                mysqli_query($mysqli, "INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id");
-                $id = mysqli_insert_id($mysqli);
-                applyTicketSla($id);
+                    ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id", 'Could not create the bulk recurring ticket');
+                    $id = intval(mysqli_insert_id($mysqli));
+                    if (!$id) {
+                        throw new RuntimeException('The bulk recurring ticket did not receive an ID');
+                    }
 
-                // Copy Additional Assets from Recurring ticket to new ticket
-                mysqli_query($mysqli, "INSERT INTO ticket_assets (ticket_id, asset_id)
-                SELECT $id, asset_id
-                FROM recurring_ticket_assets
-                WHERE recurring_ticket_id = $recurring_ticket_id");
+                    // Entitlement selection must see the complete recurring-ticket
+                    // device set before it writes immutable decision evidence.
+                    ticketCreationDbQuery("INSERT INTO ticket_assets (ticket_id, asset_id)
+                    SELECT $id, recurring_ticket_assets.asset_id
+                    FROM recurring_ticket_assets
+                    JOIN assets ON assets.asset_id = recurring_ticket_assets.asset_id
+                        AND asset_client_id = $client_id AND asset_archived_at IS NULL
+                    WHERE recurring_ticket_id = $recurring_ticket_id", 'Could not link the bulk recurring ticket assets');
+                    applyTicketSla($id, null, null, true);
 
-                // Copy Tasks from the schedule's own task list
-                addTasksFromRecurringTicket($id, $recurring_ticket_id);
+                    // Copy Tasks from the schedule's own task list before publication.
+                    addTasksFromRecurringTicket($id, $recurring_ticket_id);
+
+                    if (!mysqli_commit($mysqli)) {
+                        throw new RuntimeException('Could not commit the bulk recurring ticket and SLA decision');
+                    }
+                    $ticket_transaction_started = false;
+                    $count++;
+                } catch (Throwable $exception) {
+                    if ($ticket_transaction_started) {
+                        mysqli_rollback($mysqli);
+                    }
+                    $failure_count++;
+                    error_log("Bulk recurring ticket $recurring_ticket_id failed before notification: " . $exception->getMessage());
+                    continue;
+                }
 
                 // Notifications
 
@@ -189,17 +221,24 @@ if (isset($_POST['bulk_force_recurring_tickets'])) {
                 // Notify client by email their ticket has been raised, if general notifications are turned on & there is a valid contact email
                 if (!empty($config_smtp_provider) && $config_ticket_client_general_notifications == 1 && filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-                    $email_subject = "Ticket Created - [$ticket_prefix$ticket_number] - $ticket_subject (scheduled)";
-                    $email_body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>A ticket regarding \"$ticket_subject\" has been automatically created for you.<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: Open<br>Portal: https://$config_base_url/client/ticket.php?id=$id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+                    $ticket_email = renderN45Email('ticket.created', [
+                        'company_name' => $company_name,
+                        'contact_name' => $contact_name,
+                        'ticket_number' => $ticket_prefix . $ticket_number,
+                        'ticket_subject' => $ticket_subject,
+                        'ticket_status' => 'Open',
+                        'message_html' => $ticket_details,
+                        'action_url' => "https://$config_base_url/client/ticket.php?id=$id",
+                        'footer_email' => $config_ticket_from_email,
+                        'footer_phone' => $company_phone,
+                    ]);
 
-                    $email = [
+                    $email = array_merge([
                         'from' => $config_ticket_from_email,
                         'from_name' => $config_ticket_from_name,
                         'recipient' => $contact_email,
                         'recipient_name' => $contact_name,
-                        'subject' => $email_subject,
-                        'body' => $email_body
-                    ];
+                    ], n45EmailQueueFields($ticket_email));
 
                     $data[] = $email;
 
@@ -232,7 +271,11 @@ if (isset($_POST['bulk_force_recurring_tickets'])) {
 
         }
 
-        flashAlert("$count Recurring Tickets Forced");
+        if ($failure_count) {
+            flashAlert("$count recurring tickets were forced; $failure_count failed before SLA publication", 'error');
+        } else {
+            flashAlert("$count Recurring Tickets Forced");
+        }
     }
 
     redirect();
@@ -281,30 +324,59 @@ if (isset($_GET['force_recurring_ticket'])) {
         $config_ticket_from_email = escapeSql($config_ticket_from_email);
         $config_base_url = escapeSql($config_base_url);
 
-        // Atomically increment and get the new ticket number
-        mysqli_query($mysqli, "
-            UPDATE settings
-            SET
-                config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
-                config_ticket_next_number = config_ticket_next_number + 1
-            WHERE company_id = 1
-        ");
+        $ticket_transaction_started = false;
+        try {
+            if (!mysqli_begin_transaction($mysqli)) {
+                throw new RuntimeException('Could not begin the forced recurring ticket transaction');
+            }
+            $ticket_transaction_started = true;
+            if ($client_id > 0 && !agreementLockClientForAuditRetention($client_id)) {
+                throw new RuntimeException('The forced recurring ticket client is no longer available');
+            }
 
-        $ticket_number = mysqli_insert_id($mysqli);
+            ticketCreationDbQuery("
+                UPDATE settings
+                SET
+                    config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
+                    config_ticket_next_number = config_ticket_next_number + 1
+                WHERE company_id = 1
+            ", 'Could not allocate a forced recurring ticket number');
+            $ticket_number = intval(mysqli_insert_id($mysqli));
+            if (!$ticket_number) {
+                throw new RuntimeException('The forced recurring ticket number allocation returned no number');
+            }
 
-        // Raise the ticket
-        mysqli_query($mysqli, "INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id");
-        $id = mysqli_insert_id($mysqli);
-        applyTicketSla($id);
+            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id", 'Could not create the forced recurring ticket');
+            $id = intval(mysqli_insert_id($mysqli));
+            if (!$id) {
+                throw new RuntimeException('The forced recurring ticket did not receive an ID');
+            }
 
-        // Copy Additional Assets from Recurring ticket to new ticket
-        mysqli_query($mysqli, "INSERT INTO ticket_assets (ticket_id, asset_id)
-        SELECT $id, asset_id
-        FROM recurring_ticket_assets
-        WHERE recurring_ticket_id = $recurring_ticket_id");
+            // Entitlement selection must see the complete recurring-ticket device
+            // set before it writes immutable decision evidence.
+            ticketCreationDbQuery("INSERT INTO ticket_assets (ticket_id, asset_id)
+            SELECT $id, recurring_ticket_assets.asset_id
+            FROM recurring_ticket_assets
+            JOIN assets ON assets.asset_id = recurring_ticket_assets.asset_id
+                AND asset_client_id = $client_id AND asset_archived_at IS NULL
+            WHERE recurring_ticket_id = $recurring_ticket_id", 'Could not link the forced recurring ticket assets');
+            applyTicketSla($id, null, null, true);
 
-        // Copy Tasks from the schedule's own task list
-        addTasksFromRecurringTicket($id, $recurring_ticket_id);
+            // Copy Tasks from the schedule's own task list before publication.
+            addTasksFromRecurringTicket($id, $recurring_ticket_id);
+
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the forced recurring ticket and SLA decision');
+            }
+            $ticket_transaction_started = false;
+        } catch (Throwable $exception) {
+            if ($ticket_transaction_started) {
+                mysqli_rollback($mysqli);
+            }
+            error_log("Forced recurring ticket $recurring_ticket_id failed before notification: " . $exception->getMessage());
+            flashAlert('The recurring ticket was not forced because its SLA decision could not be recorded safely', 'error');
+            redirect();
+        }
 
         // Notifications
 
@@ -336,17 +408,24 @@ if (isset($_GET['force_recurring_ticket'])) {
         // Notify client by email their ticket has been raised, if general notifications are turned on & there is a valid contact email
         if (!empty($config_smtp_provider) && $config_ticket_client_general_notifications == 1 && filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-            $email_subject = "Ticket created - [$ticket_prefix$ticket_number] - $ticket_subject (scheduled)";
-            $email_body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>A ticket regarding \"$ticket_subject\" has been automatically created for you.<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: Open<br>Portal: https://$config_base_url/client/ticket.php?id=$id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+            $ticket_email = renderN45Email('ticket.created', [
+                'company_name' => $company_name,
+                'contact_name' => $contact_name,
+                'ticket_number' => $ticket_prefix . $ticket_number,
+                'ticket_subject' => $ticket_subject,
+                'ticket_status' => 'Open',
+                'message_html' => $ticket_details,
+                'action_url' => "https://$config_base_url/client/ticket.php?id=$id",
+                'footer_email' => $config_ticket_from_email,
+                'footer_phone' => $company_phone,
+            ]);
 
-            $email = [
+            $email = array_merge([
                 'from' => $config_ticket_from_email,
                 'from_name' => $config_ticket_from_name,
                 'recipient' => $contact_email,
                 'recipient_name' => $contact_name,
-                'subject' => $email_subject,
-                'body' => $email_body
-            ];
+            ], n45EmailQueueFields($ticket_email));
 
             $data[] = $email;
 

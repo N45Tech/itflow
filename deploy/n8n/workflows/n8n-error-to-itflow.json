@@ -1,0 +1,153 @@
+{
+  "name": "N45 - Automation Failure to ITFlow",
+  "nodes": [
+    {
+      "id": "cb44be91-41cd-4b32-a69a-ce2ad33d6ab7",
+      "name": "Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "db633e22-451f-4796-a19c-14d0bea75343",
+      "name": "Normalize n8n Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst execution = input.execution || {};\nconst workflow = input.workflow || {};\nconst trigger = input.trigger || {};\nconst error = execution.error || trigger.error || input.error || {};\nconst executionId = String(execution.id || Date.now());\nconst workflowId = String(workflow.id || 'unknown');\nconst redact = (value) => String(value || '')\n  .replace(/\\b(Bearer|Basic|ApiToken)\\s+[^\\s,;]+/gi, '$1 [redacted]')\n  .replace(/([?&](?:access_token|api[_-]?key|authorization|client_secret|code|password|refresh_token|secret|token)=)[^&\\s]*/gi, '$1[redacted]')\n  .slice(0, 2000);\nreturn [{ json: {\n  source: 'n8n', event_id: 'execution:' + executionId,\n  incident_key: 'workflow:' + workflowId, entity_type: 'workflow', state: 'open', severity: 'high',\n  title: '[n8n] Workflow failed: ' + (workflow.name || workflowId),\n  description: redact(error.message || error.description || 'The n8n workflow failed.') +\n    (execution.lastNodeExecuted ? '\\nLast node: ' + execution.lastNodeExecuted : ''),\n  occurred_at: new Date().toISOString(),\n  url: execution.url || '', auto_resolve: false,\n  identity: {\n    external_id: workflowId, external_name: workflow.name || workflowId,\n    client: { name: 'N45 Technology Solutions' }, location: { name: 'Infrastructure' },\n    options: { create_client: false, create_location: false, create_asset: false },\n    metadata: { execution_id: executionId, last_node: execution.lastNodeExecuted || '' },\n  },\n} }];"
+      }
+    },
+    {
+      "id": "02b2831b-e105-4ef3-a978-fe0adea1caf5",
+      "name": "Open ITFlow Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        60,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://automate.n45tech.com/webhook/n45-itflow-events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-webhook-auth",
+          "name": "N45 Integration Webhook"
+        }
+      }
+    },
+    {
+      "id": "02b2831b-e105-4ef3-a978-fe0adea1caf6",
+      "name": "Normalize Device Source Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        180
+      ],
+      "parameters": {
+        "jsCode": "const text = (value) => value === undefined || value === null ? '' : String(value).trim();\nconst integer = (value, fallback = 0) => Number.isInteger(Number(value)) ? Math.max(0, Number(value)) : fallback;\nconst bool = (value, fallback = false) => value === undefined || value === null || value === ''\n  ? fallback : value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\nconst parseMappings = (source) => {\n  const raw = text($vars.N45_DEVICE_SOURCE_MAP_JSON);\n  if (!raw) throw new Error('N45_DEVICE_SOURCE_MAP_JSON is required.');\n  let document;\n  try { document = JSON.parse(raw); } catch { throw new Error('N45_DEVICE_SOURCE_MAP_JSON is not valid JSON.'); }\n  const entries = document && Array.isArray(document[source]) ? document[source] : [];\n  if (!entries.length) throw new Error('No mappings are configured for ' + source + '.');\n  const scopes = entries.map((entry, index) => {\n    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(source + ' mapping ' + index + ' is not an object.');\n    const scopeId = text(entry.scope_id || entry.tenant_filter || entry.site_id);\n    const clientId = integer(entry.client_id);\n    if (!scopeId || !clientId) throw new Error(source + ' mapping ' + index + ' requires scope_id and client_id.');\n    return {\n      source,\n      scope_id: scopeId,\n      scope_name: text(entry.scope_name || entry.tenant_name || entry.site_name || scopeId),\n      tenant_filter: text(entry.tenant_filter || scopeId),\n      site_id: text(entry.site_id || scopeId),\n      client_id: clientId,\n      location_id: integer(entry.location_id),\n      create_asset: bool(entry.create_asset, false),\n      retirement_guard_percent: Math.max(0, Math.min(100, integer(entry.retirement_guard_percent, 50))),\n      allow_empty: bool(entry.allow_empty, false),\n    };\n  });\n  const duplicates = scopes.filter((scope, index) => scopes.findIndex((other) => other.scope_id.toLowerCase() === scope.scope_id.toLowerCase()) !== index);\n  if (duplicates.length) throw new Error('Duplicate ' + source + ' scope_id: ' + duplicates[0].scope_id);\n  return scopes;\n};\nconst httpsBase = (value, label) => {\n  const base = text(value).replace(/\\/+$/, '');\n  let url;\n  try { url = new URL(base); } catch { throw new Error(label + ' must be an absolute HTTPS URL.'); }\n  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {\n    throw new Error(label + ' must be an HTTPS origin or base path without credentials or query parameters.');\n  }\n  return base;\n};\nconst input = $input.first().json;\nconst workflow = input.workflow || {};\nconst execution = input.execution || {};\nconst name = text(workflow.name).toLowerCase();\nconst SOURCE = name.includes('intune') ? 'intune'\n  : (name.includes('entra') ? 'entra' : (name.includes('sentinelone') ? 'sentinelone' : ''));\nif (!SOURCE) return [];\nconst redact = (value) => text(value)\n  .replace(/\\b(Bearer|Basic|ApiToken)\\s+[^\\s,;]+/gi, '$1 [redacted]')\n  .replace(/([?&](?:access_token|api[_-]?key|authorization|client_secret|code|password|refresh_token|secret|token)=)[^&\\s]*/gi, '$1[redacted]')\n  .slice(0, 2000);\nconst started = new Date(execution.startedAt || Date.now());\nconst cycleStartedAt = Number.isNaN(started.getTime()) ? new Date().toISOString() : started.toISOString();\nconst cycleId = SOURCE + ':failed:' + text(execution.id || Date.now()).replace(/[^A-Za-z0-9._:-]/g, '_');\nconst error = execution.error || input.trigger?.error || input.error || {};\nconst message = redact(error.message || error.description || 'The source reconciliation workflow failed.');\nreturn parseMappings(SOURCE).map((scope) => ({ json: {\n  action: 'failure', source: SOURCE, scope_id: scope.scope_id, scope_name: scope.scope_name,\n  cycle_id: cycleId, cycle_started_at: cycleStartedAt, client_id: scope.client_id, error: message,\n} }));"
+      }
+    },
+    {
+      "id": "02b2831b-e105-4ef3-a978-fe0adea1caf7",
+      "name": "Record Device Source Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        60,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://psa.n45tech.com/api/v1/integrations/device_source/update.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 100
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-itflow-api",
+          "name": "N45 ITFlow API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Normalize n8n Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Normalize Device Source Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize n8n Error": {
+      "main": [
+        [
+          {
+            "node": "Open ITFlow Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Device Source Failure": {
+      "main": [
+        [
+          {
+            "node": "Record Device Source Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "active": false,
+  "tags": []
+}

@@ -23,7 +23,8 @@ defined('FROM_SETUP') || die("Direct file access is not allowed");
 function seedDefaultData($mysqli)
 {
     $latest_database_version = LATEST_DATABASE_VERSION;
-    mysqli_query($mysqli,"INSERT INTO settings SET company_id = 1, config_current_database_version = '$latest_database_version', config_invoice_prefix = 'INV-', config_invoice_next_number = 1, config_recurring_invoice_prefix = 'REC-', config_quote_prefix = 'QUO-', config_quote_next_number = 1, config_default_net_terms = 30, config_ticket_next_number = 1, config_ticket_prefix = 'TCK-'");
+    mysqli_query($mysqli,"INSERT INTO settings SET company_id = 1, config_current_database_version = '$latest_database_version', config_invoice_prefix = 'INV-', config_invoice_next_number = 1, config_recurring_invoice_prefix = 'REC-', config_quote_prefix = 'QUO-', config_quote_next_number = 1, config_default_net_terms = 30, config_ticket_next_number = 1, config_ticket_prefix = 'TCK-', config_business_days = '1,2,3,4,5', config_business_hours_start = '08:00:00', config_business_hours_end = '17:00:00', config_sla_warning_percent = 75");
+    n45SeedFreshInstallMigrations($mysqli);
 
     // Create Categories
     // Expense Categories Examples
@@ -77,11 +78,31 @@ function seedDefaultData($mysqli)
     mysqli_query($mysqli,"INSERT INTO calendars SET calendar_name = 'Default', calendar_color = 'blue'");
 
     // Add default ticket statuses
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'New', ticket_status_color = '#dc3545'"); // Default ID for new tickets is 1
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Open', ticket_status_color = '#007bff'"); // 2
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'On Hold', ticket_status_color = '#28a745'"); // 3
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Resolved', ticket_status_color = '#343a40'"); // 4 (was auto-close)
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Closed', ticket_status_color = '#343a40'"); // 5
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'New', ticket_status_color = '#dc3545', ticket_status_order = 10"); // Default ID for new tickets is 1
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Open', ticket_status_color = '#007bff', ticket_status_order = 20"); // 2
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Waiting on Client', ticket_status_color = '#6c757d', ticket_status_pauses_sla = 1, ticket_status_order = 50"); // 3
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Resolved', ticket_status_color = '#28a745', ticket_status_order = 70"); // 4 (was auto-close)
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Closed', ticket_status_color = '#343a40', ticket_status_order = 80"); // 5
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'In Progress', ticket_status_color = '#17a2b8', ticket_status_order = 30"); // 6
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Scheduled', ticket_status_color = '#fd7e14', ticket_status_order = 40"); // 7
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Waiting on Vendor', ticket_status_color = '#6f42c1', ticket_status_pauses_sla = 1, ticket_status_order = 60"); // 8
+
+    // Managed Care defaults. The global assignment makes the standard service
+    // zero-touch; hourly/project-only clients can explicitly override any or all
+    // priorities to no SLA from the client Notes tab.
+    mysqli_query($mysqli, "INSERT INTO slas SET sla_name = 'Managed Care - Low', sla_description = 'Routine request or planned work with no active disruption.', sla_response_minutes = 480, sla_resolution_minutes = 4320");
+    $sla_low_id = intval(mysqli_insert_id($mysqli));
+    mysqli_query($mysqli, "INSERT INTO slas SET sla_name = 'Managed Care - Medium', sla_description = 'Limited user impact or degraded service with a practical workaround.', sla_response_minutes = 240, sla_resolution_minutes = 1440");
+    $sla_medium_id = intval(mysqli_insert_id($mysqli));
+    mysqli_query($mysqli, "INSERT INTO slas SET sla_name = 'Managed Care - High', sla_description = 'Critical service unavailable, broad impact or no practical workaround.', sla_response_minutes = 60, sla_resolution_minutes = 480");
+    $sla_high_id = intval(mysqli_insert_id($mysqli));
+    mysqli_query($mysqli, "INSERT INTO slas SET sla_name = 'Managed Care - Urgent', sla_description = 'Business-wide outage, active security incident or immediate material data-loss threat.', sla_response_minutes = 30, sla_resolution_minutes = 240");
+    $sla_urgent_id = intval(mysqli_insert_id($mysqli));
+
+    mysqli_query($mysqli, "INSERT INTO sla_assignments SET sla_assignment_client_id = 0, sla_assignment_priority = 'Low', sla_assignment_sla_id = $sla_low_id");
+    mysqli_query($mysqli, "INSERT INTO sla_assignments SET sla_assignment_client_id = 0, sla_assignment_priority = 'Medium', sla_assignment_sla_id = $sla_medium_id");
+    mysqli_query($mysqli, "INSERT INTO sla_assignments SET sla_assignment_client_id = 0, sla_assignment_priority = 'High', sla_assignment_sla_id = $sla_high_id");
+    mysqli_query($mysqli, "INSERT INTO sla_assignments SET sla_assignment_client_id = 0, sla_assignment_priority = 'Urgent', sla_assignment_sla_id = $sla_urgent_id");
 
     // Add default modules
     mysqli_query($mysqli, "INSERT INTO modules SET module_name = 'module_client', module_description = 'General client & contact management'");

@@ -2,9 +2,13 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_support', 2);
+
 $client_ids = array_map('intval', $_GET['client_ids'] ?? []);
+$client_ids = array_values(array_unique(array_filter($client_ids)));
 
 $count = count($client_ids);
+$single_client_id = $count === 1 ? intval($client_ids[0]) : 0;
 
 // Generate the HTML form content using output buffering.
 ob_start();
@@ -25,8 +29,35 @@ ob_start();
     <div class="modal-body">
 
         <div class="form-group">
+            <label>Ticket Template</label>
+            <select class="form-control select2" name="bulk_ticket_template_id" id="bulkClientTicketTemplateSelect">
+                <option value="0">- No Template -</option>
+                <?php
+                $sql_templates = mysqli_query($mysqli, "SELECT ticket_template_id,
+                    ticket_template_name, ticket_template_published_version_id,
+                    (SELECT COUNT(*) FROM runbook_versions history
+                        WHERE history.runbook_version_ticket_template_id = ticket_template_id) AS runbook_version_count
+                    FROM ticket_templates WHERE ticket_template_archived_at IS NULL
+                    ORDER BY ticket_template_name ASC");
+                while ($template = mysqli_fetch_assoc($sql_templates)) {
+                    $template_id = intval($template['ticket_template_id']);
+                    $template_name = escapeHtml($template['ticket_template_name']);
+                    $published_version_id = intval($template['ticket_template_published_version_id']);
+                    $unpublished_history = !$published_version_id && intval($template['runbook_version_count']) > 0;
+                    $published_label = $published_version_id
+                        ? ' — Published runbook'
+                        : ($unpublished_history ? ' — Republish required' : ' — Legacy template');
+                    ?>
+                    <option value="<?= $template_id ?>" <?= $unpublished_history ? 'disabled' : '' ?>><?= $template_name . $published_label ?></option>
+                <?php } ?>
+            </select>
+            <small class="form-text text-muted">Published runbooks use their immutable subject, details, and tasks. For legacy templates, the entered subject is kept and template details/tasks are copied.</small>
+        </div>
+
+        <div class="form-group">
             <label>Subject <strong class="text-danger">*</strong></label>
-            <input type="text" class="form-control" name="bulk_subject" placeholder="Enter a subject" maxlength="200" required>
+            <input type="text" class="form-control" name="bulk_subject" id="bulkClientTicketSubject" placeholder="Enter a subject" maxlength="200">
+            <small class="form-text text-muted">Ignored when a published runbook is selected.</small>
         </div>
 
         <div class="form-group">
@@ -114,21 +145,35 @@ ob_start();
                         <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-project-diagram"></i></span>
                         </div>
-                        <select class="form-control select2" name="bulk_project">
-                            <option value="0">- None -</option>
-                            <?php
-
-                            $sql_projects = mysqli_query($mysqli, "SELECT project_id, project_name FROM projects WHERE project_completed_at IS NULL AND project_archived_at IS NULL ORDER BY project_name ASC");
-                            while ($row = mysqli_fetch_assoc($sql_projects)) {
-                                $project_id_select = intval($row['project_id']);
-                                $project_name_select = escapeHtml($row['project_name']); ?>
-                                <option value="<?= $project_id_select ?>"><?= $project_name_select ?></option>
-
-                            <?php } ?>
-                        </select>
+                        <?php if ($single_client_id) { ?>
+                            <select class="form-control select2" name="bulk_project">
+                                <option value="0">- None -</option>
+                                <?php
+                                $sql_projects = mysqli_query($mysqli, "SELECT project_id, project_name
+                                    FROM projects WHERE project_client_id = $single_client_id
+                                    AND project_completed_at IS NULL AND project_archived_at IS NULL "
+                                    . clientScopeSql('project_client_id') . " ORDER BY project_name ASC");
+                                while ($row = mysqli_fetch_assoc($sql_projects)) {
+                                    $project_id_select = intval($row['project_id']);
+                                    $project_name_select = escapeHtml($row['project_name']); ?>
+                                    <option value="<?= $project_id_select ?>"><?= $project_name_select ?></option>
+                                <?php } ?>
+                            </select>
+                        <?php } else { ?>
+                            <input type="hidden" name="bulk_project" value="0">
+                            <input type="text" class="form-control" value="Unavailable for a multi-client batch" disabled>
+                        <?php } ?>
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="form-group">
+            <div class="custom-control custom-switch">
+                <input type="checkbox" class="custom-control-input" name="use_primary_contact" value="1" id="bulkClientUsePrimaryContact">
+                <label class="custom-control-label" for="bulkClientUsePrimaryContact">Use each client's active primary contact</label>
+            </div>
+            <small class="form-text text-muted">A client without an active primary contact will be skipped.</small>
         </div>
 
         <?php if ($config_module_enable_accounting) { ?>
@@ -147,6 +192,21 @@ ob_start();
         <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fas fa-times mr-2"></i>Cancel</button>
     </div>
 </form>
+
+<script>
+    (function () {
+        const templateSelect = document.getElementById('bulkClientTicketTemplateSelect');
+        const subjectInput = document.getElementById('bulkClientTicketSubject');
+        if (!templateSelect || !subjectInput) {
+            return;
+        }
+        const syncSubjectRequirement = function () {
+            subjectInput.required = templateSelect.value === '0';
+        };
+        templateSelect.addEventListener('change', syncSubjectRequirement);
+        syncSubjectRequirement();
+    })();
+</script>
 
 <?php
 require_once '../../../includes/modal_footer.php';

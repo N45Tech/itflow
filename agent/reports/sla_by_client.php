@@ -33,18 +33,29 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
 // or anything resolved before SLA pausing existed - fall back to the business
 // time that elapsed between being raised and resolved.
 $resolve_totals = [];
-$sql_resolve_times = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_id, ticket_created_at, ticket_resolved_at, SUM(sla_history_minutes) AS logged_minutes
+$sql_resolve_times = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_id,
+    ticket_created_at, ticket_resolved_at, ticket_sla_calendar_mode,
+    ticket_sla_business_days, ticket_sla_business_hours_start,
+    ticket_sla_business_hours_end, ticket_sla_timezone,
+    SUM(sla_history_minutes) AS logged_minutes
     FROM tickets
     LEFT JOIN sla_history ON sla_history_ticket_id = ticket_id
     WHERE ticket_sla_id > 0
     AND ticket_resolved_at IS NOT NULL
     AND $period_query
-    GROUP BY ticket_id, ticket_client_id, ticket_created_at, ticket_resolved_at"
+    GROUP BY ticket_id, ticket_client_id, ticket_created_at, ticket_resolved_at,
+        ticket_sla_calendar_mode, ticket_sla_business_days,
+        ticket_sla_business_hours_start, ticket_sla_business_hours_end,
+        ticket_sla_timezone"
 );
 while ($resolve_row = mysqli_fetch_assoc($sql_resolve_times)) {
     $resolve_client_id = intval($resolve_row['ticket_client_id']);
     $resolve_minutes = is_null($resolve_row['logged_minutes'])
-        ? businessMinutesBetween($resolve_row['ticket_created_at'], $resolve_row['ticket_resolved_at'])
+        ? slaBusinessMinutesBetweenAppTimestamps(
+            $resolve_row['ticket_created_at'],
+            $resolve_row['ticket_resolved_at'],
+            slaCalendarFromTicket($resolve_row)
+        )
         : intval($resolve_row['logged_minutes']);
 
     if (!isset($resolve_totals[$resolve_client_id])) {

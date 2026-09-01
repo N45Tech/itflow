@@ -12,6 +12,8 @@ $sql = mysqli_query(
             COUNT(task_template_id) AS task_count
      FROM ticket_templates
      LEFT JOIN task_templates ON task_template_ticket_template_id = ticket_template_id
+     LEFT JOIN runbook_versions ON runbook_version_id = ticket_template_published_version_id
+        AND runbook_version_ticket_template_id = ticket_template_id
      WHERE (ticket_template_name LIKE '%$q%' OR ticket_template_description LIKE '%$q%')
      AND ticket_template_archived_at IS NULL
      GROUP BY ticket_template_id
@@ -63,6 +65,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                             Tasks <?php if ($sort == 'task_count') { echo $order_icon; } ?>
                         </a>
                     </th>
+                    <th>Workflow</th>
                     <th class="text-center">Action</th>
                 </tr>
                 </thead>
@@ -76,6 +79,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     $ticket_template_subject = escapeHtml($row['ticket_template_subject']);
                     $ticket_template_created_at = escapeHtml($row['ticket_template_created_at']);
                     $task_count = intval($row['task_count']);
+                    $runbook_version_number = intval($row['runbook_version_number']);
+                    $runbook_type = escapeHtml(ucfirst($row['ticket_template_runbook_type'] ?: 'standard'));
 
                     ?>
                     <tr>
@@ -95,6 +100,12 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                             </a>
                         </td>
                         <td><?= $task_count ?></td>
+                        <td>
+                            <span class="badge <?= $runbook_version_number ? 'badge-success' : 'badge-warning' ?>">
+                                <?= $runbook_version_number ? 'v' . $runbook_version_number : 'Draft' ?>
+                            </span>
+                            <span class="small text-muted ml-1"><?= $runbook_type ?></span>
+                        </td>
                         <td>
                             <div class="dropdown dropleft text-center">
                                 <button class="btn btn-secondary btn-sm" data-toggle="dropdown">

@@ -55,9 +55,13 @@ if (!$stripe_public_key || !$stripe_secret_key) {
 }
 ?>
 
-<h3>Saved Payment Methods</h3>
-<hr>
-<div class="row">
+<header class="n45-page-header">
+    <div>
+        <h1>Saved payment methods</h1>
+        <p>Securely manage the payment methods available for automatic billing.</p>
+    </div>
+</header>
+<div class="row n45-payment-layout">
     <div class="col-md-6">
 
         <?php if (!$stripe_customer_id) { ?>
@@ -80,7 +84,7 @@ if (!$stripe_public_key || !$stripe_secret_key) {
             <?php if (empty($saved_methods)) { ?>
                 <p>You currently have no saved payment methods. Please add one below.</p>
             <?php } else { ?>
-                <ul class="list-unstyled">
+                <ul class="n45-payment-method-list">
                     <?php
                     try {
                         $stripe = new \Stripe\StripeClient($stripe_secret_key);

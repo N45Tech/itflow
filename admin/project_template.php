@@ -30,8 +30,22 @@ if (isset($_GET['project_template_id'])) {
     // Get Associated Ticket Templates
     $sql_ticket_templates = mysqli_query($mysqli, "SELECT ticket_template_created_at, ticket_template_description,
         project_template_ticket_templates.ticket_template_id, ticket_template_name,
-        ticket_template_order, ticket_template_subject, ticket_template_updated_at FROM ticket_templates, project_template_ticket_templates
-        WHERE ticket_templates.ticket_template_id = project_template_ticket_templates.ticket_template_id
+        ticket_template_order,
+        COALESCE(pinned.runbook_version_subject, ticket_template_subject) AS ticket_template_subject,
+        ticket_template_updated_at, ticket_template_runbook_version_id,
+        pinned.runbook_version_number AS pinned_version_number,
+        current_version.runbook_version_id AS current_version_id,
+        current_version.runbook_version_number AS current_version_number
+        FROM ticket_templates
+        INNER JOIN project_template_ticket_templates
+            ON ticket_templates.ticket_template_id = project_template_ticket_templates.ticket_template_id
+        LEFT JOIN runbook_versions pinned
+            ON pinned.runbook_version_id = ticket_template_runbook_version_id
+            AND pinned.runbook_version_ticket_template_id = ticket_templates.ticket_template_id
+        LEFT JOIN runbook_versions current_version
+            ON current_version.runbook_version_id = ticket_template_published_version_id
+            AND current_version.runbook_version_ticket_template_id = ticket_templates.ticket_template_id
+        WHERE 1=1
         AND project_template_ticket_templates.project_template_id = $project_template_id
         ORDER BY ticket_template_order ASC, ticket_template_name ASC");
     $ticket_template_count = mysqli_num_rows($sql_ticket_templates);
@@ -139,6 +153,7 @@ if (isset($_GET['project_template_id'])) {
                             <th>Template Name</th>
                             <th>Description</th>
                             <th>Ticket Subject</th>
+                            <th>Runbook</th>
                             <th>Action</th>
                         </tr>
                         </thead>
@@ -153,6 +168,10 @@ if (isset($_GET['project_template_id'])) {
                             $ticket_template_subject = escapeHtml($row['ticket_template_subject']);
                             $ticket_template_created_at = escapeHtml($row['ticket_template_created_at']);
                             $ticket_template_updated_at = escapeHtml($row['ticket_template_updated_at']);
+                            $pinned_version_id = intval($row['ticket_template_runbook_version_id']);
+                            $pinned_version_number = intval($row['pinned_version_number']);
+                            $current_version_id = intval($row['current_version_id']);
+                            $current_version_number = intval($row['current_version_number']);
 
                             ?>
 
@@ -165,6 +184,25 @@ if (isset($_GET['project_template_id'])) {
                                 </td>
                                 <td><?= $ticket_template_description ?></td>
                                 <td><?= $ticket_template_subject ?></td>
+                                <td class="text-nowrap">
+                                    <?php if ($pinned_version_number) { ?>
+                                        <span class="badge badge-primary">v<?= $pinned_version_number ?></span>
+                                    <?php } elseif ($current_version_number) { ?>
+                                        <span class="badge badge-warning">Unpinned</span>
+                                    <?php } else { ?>
+                                        <span class="badge badge-light">Legacy draft</span>
+                                    <?php } ?>
+                                    <?php if ($current_version_id && $current_version_id !== $pinned_version_id) { ?>
+                                        <form action="post.php" method="post" class="d-inline" autocomplete="off">
+                                            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                            <input type="hidden" name="project_template_id" value="<?= $project_template_id ?>">
+                                            <input type="hidden" name="ticket_template_id" value="<?= $ticket_template_id ?>">
+                                            <button type="submit" class="btn btn-link btn-sm p-0 ml-1 confirm-link" name="update_project_template_runbook_version" title="Pin this stage to current v<?= $current_version_number ?>">
+                                                Use v<?= $current_version_number ?>
+                                            </button>
+                                        </form>
+                                    <?php } ?>
+                                </td>
                                 <td>
                                     <form action="post.php" method="post" autocomplete="off">
                                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
@@ -217,7 +255,9 @@ if (isset($_GET['project_template_id'])) {
 
 <script src="../libs/SortableJS/Sortable.min.js"></script>
 <script>
-new Sortable(document.querySelector('table#ticket_templates tbody'), {
+const projectTemplateRows = document.querySelector('table#ticket_templates tbody');
+if (projectTemplateRows) {
+new Sortable(projectTemplateRows, {
     handle: '.drag-handle',
     animation: 150,
     onEnd: function (evt) {
@@ -235,6 +275,7 @@ new Sortable(document.querySelector('table#ticket_templates tbody'), {
         });
     }
 });
+}
 </script>
 
 <?php

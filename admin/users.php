@@ -8,8 +8,8 @@ require_once "includes/inc_all_admin.php";
 
 $sql = mysqli_query(
     $mysqli,
-    "SELECT SQL_CALC_FOUND_ROWS role_name, user_archived_at, user_avatar, user_config_force_mfa, user_email,
-        user_settings.user_id, user_name, user_role_id, user_status, user_token FROM users
+    "SELECT SQL_CALC_FOUND_ROWS role_name, user_archived_at, user_auth_method, user_avatar, user_azure_oid,
+        user_config_force_mfa, user_email, user_settings.user_id, user_name, user_role_id, user_status, user_token FROM users
     LEFT JOIN user_roles ON user_role_id = role_id
     LEFT JOIN user_settings ON users.user_id = user_settings.user_id
     WHERE (user_name LIKE '%$q%' OR user_email LIKE '%$q%')
@@ -95,6 +95,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                             Status <?php if ($sort == 'user_status') { echo $order_icon; } ?>
                         </a>
                     </th>
+                    <th class="text-center">Sign-in</th>
                     <th class="text-center">MFA</th>
                     <th>
                         Last Login
@@ -119,6 +120,15 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     }
                     $user_avatar = escapeHtml($row['user_avatar']);
                     $user_token = escapeHtml($row['user_token']);
+                    $user_auth_method = $row['user_auth_method'];
+                    $user_azure_oid = $row['user_azure_oid'];
+                    if ($user_auth_method === 'azure') {
+                        $sign_in_display = empty($user_azure_oid)
+                            ? "<span class='text-warning'><i class='fab fa-microsoft mr-1'></i>Entra ready</span>"
+                            : "<span class='text-success'><i class='fab fa-microsoft mr-1'></i>Entra linked</span>";
+                    } else {
+                        $sign_in_display = "<span class='text-muted'><i class='fas fa-key mr-1'></i>Local</span>";
+                    }
                     if(empty($user_token)) {
                         $mfa_status_display = "<i class='fas fa-fw fa-unlock text-danger'></i>";
                     } else {
@@ -186,6 +196,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                         <td><a href="mailto:<?= $user_email ?>"><?= $user_email ?></a></td>
                         <td><?= $user_role_display ?></td>
                         <td><?= $user_status_display ?></td>
+                        <td class="text-center"><?= $sign_in_display ?></td>
                         <td class="text-center"><?= $mfa_status_display ?></td>
                         <td><?= $last_login ?></td>
                         <td>

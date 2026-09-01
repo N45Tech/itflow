@@ -2,6 +2,8 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_support', 2);
+
 $client_id = intval($_GET['client_id'] ?? 0);
 $contact_id = intval($_GET['contact_id'] ?? 0);
 $project_id = intval($_GET['project_id'] ?? 0);
@@ -89,7 +91,10 @@ ob_start();
                     </div>
                 </div>
 
-                <?php require_once '../../includes/inc_ticket_template_select.php'; ?>
+                <?php
+                $enable_runbook_workflow = true;
+                require_once '../../includes/inc_ticket_template_select.php';
+                ?>
 
                 <div class="form-group">
                     <label>Subject <strong class="text-danger">*</strong></label>
@@ -105,6 +110,31 @@ ob_start();
                     <textarea class="form-control tinymceTicket" id="detailsInput" name="details"></textarea>
                 </div>
 
+                <div class="card bg-light border mb-3">
+                    <div class="card-body py-3">
+                        <div class="row align-items-end">
+                            <div class="col-md-7">
+                                <div class="form-group mb-md-0">
+                                    <label for="documentationImpact">Documentation impact <strong class="text-danger">*</strong></label>
+                                    <select class="form-control" name="documentation_impact" id="documentationImpact" required>
+                                        <option value="" selected disabled>Unassessed — select an impact</option>
+                                        <option value="None">No required client documentation affected</option>
+                                        <option value="Required">Required documentation must be linked or updated</option>
+                                    </select>
+                                    <small class="form-text text-muted">This assessment is audited and controls the ticket's resolution gate.</small>
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input" name="configuration_change" value="1" id="configurationChange">
+                                    <label class="custom-control-label" for="configurationChange">Changes client configuration</label>
+                                </div>
+                                <small class="text-muted">Configuration changes require documentation impact.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row">
 
                     <div class="col">
@@ -115,10 +145,9 @@ ob_start();
                                     <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
                                 </div>
                                 <select class="form-control select2" name="priority" required>
-                                    <option>Low</option>
-                                    <option>Medium</option>
-                                    <option>High</option>
-                                    <option>Urgent</option>
+                                    <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
+                                        <option value="<?= escapeHtml($priority) ?>"><?= escapeHtml("$priority — " . $definition['short']) ?></option>
+                                    <?php } ?>
                                 </select>
                             </div>
                         </div>
@@ -322,6 +351,14 @@ ob_start();
 <script src="/agent/js/tickets_add_modal.js"></script>
 
 <script src="/agent/js/ticket_tasks_modal.js"></script>
+
+<script>
+document.getElementById('configurationChange')?.addEventListener('change', function () {
+    if (this.checked) {
+        document.getElementById('documentationImpact').value = 'Required';
+    }
+});
+</script>
 
 <?php
 

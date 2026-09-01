@@ -20,8 +20,8 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
     $ticket_id = intval($_GET['id']);
 
     $ticket_contact_snippet = "AND ticket_contact_id = $session_contact_id";
-    // Bypass ticket contact being session_id for a primary / technical contact viewing all tickets
-    if ($session_contact_primary == 1 || $session_contact_is_technical_contact) {
+    // Organization-wide ticket access bypasses the individual contact filter.
+    if (contactCan('tickets_all')) {
         $ticket_contact_snippet = '';
     }
 
@@ -41,6 +41,17 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
         $ticket_prefix = escapeHtml($ticket_row['ticket_prefix']);
         $ticket_number = intval($ticket_row['ticket_number']);
         $ticket_status = escapeHtml($ticket_row['ticket_status_name']);
+        $ticket_status_key = strtolower((string) $ticket_row['ticket_status_name']);
+        $ticket_status_class = 'neutral';
+        if (strpos($ticket_status_key, 'wait') !== false || strpos($ticket_status_key, 'client') !== false) {
+            $ticket_status_class = 'waiting';
+        } elseif (strpos($ticket_status_key, 'progress') !== false || strpos($ticket_status_key, 'open') !== false) {
+            $ticket_status_class = 'progress';
+        } elseif (strpos($ticket_status_key, 'new') !== false) {
+            $ticket_status_class = 'new';
+        } elseif (strpos($ticket_status_key, 'resolved') !== false || strpos($ticket_status_key, 'closed') !== false) {
+            $ticket_status_class = 'resolved';
+        }
         $ticket_priority = escapeHtml($ticket_row['ticket_priority']);
         $ticket_subject = escapeHtml($ticket_row['ticket_subject']);
         $ticket_details = $purifier->purify($ticket_row['ticket_details']);
@@ -72,10 +83,12 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
 
         // Get pending task approvals
         $sql_task_approvals = mysqli_query($mysqli,"
-            SELECT task_id, task_name, approval_id, approval_scope, approval_type, approval_required_user_id, approval_status, approval_url_key
+            SELECT task_id, task_name, approval_id, approval_scope, approval_type, approval_required_user_id, approval_status
             FROM tasks
             LEFT JOIN task_approvals ON task_id = task_approvals.approval_task_id
-            WHERE task_ticket_id = $ticket_id AND task_completed_at IS NULL AND approval_scope = 'client' AND approval_status = 'pending'
+            WHERE task_ticket_id = $ticket_id AND task_completed_at IS NULL
+            AND task_state NOT IN ('Completed','Skipped')
+            AND approval_scope = 'client' AND approval_status = 'pending'
         ");
         ?>
 
@@ -89,9 +102,9 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
             <li class="breadcrumb-item active">Ticket <?= $ticket_prefix . $ticket_number ?></li>
         </ol>
 
-        <div class="card">
-            <div class="card-header bg-dark my-2">
-                <h4 class="card-title mt-1">
+        <div class="card n45-ticket-summary">
+            <div class="card-header">
+                <h4 class="card-title">
                     Ticket <?= $ticket_prefix, $ticket_number ?>
                 </h4>
                 <div class="card-tools">
@@ -103,29 +116,23 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
             </div>
 
             <div class="card-body prettyContent">
-                <h5><strong>Subject:</strong> <?= $ticket_subject ?></h5>
-                <p>
-                    <strong>State:</strong> <?= $ticket_status ?><br>
-                    <strong>Priority:</strong> <?= $ticket_priority ?><br>
+                <h1 class="n45-ticket-summary-subject"><?= $ticket_subject ?></h1>
+                <dl class="n45-ticket-facts">
+                    <div><dt>Status</dt><dd><span class="n45-ticket-status n45-ticket-status--<?= $ticket_status_class ?>"><?= $ticket_status ?></span></dd></div>
+                    <div><dt>Priority</dt><dd><?= $ticket_priority ?></dd></div>
                     <?php if (!empty($ticket_category)) { ?>
-                        <strong>Category:</strong> <?= $ticket_category ?><br>
+                        <div><dt>Category</dt><dd><?= $ticket_category ?></dd></div>
                     <?php } ?>
-
                     <?php if (empty($ticket_closed_at)) { ?>
-
                         <?php if ($task_count) { ?>
-                            <strong>Tasks: </strong> <?= $completed_task_count . " / " .$task_count ?>
-                            <br>
+                            <div><dt>Tasks</dt><dd><?= $completed_task_count . " / " .$task_count ?> complete</dd></div>
                         <?php } ?>
-
                         <?php if (!empty($ticket_assigned_to)) { ?>
-                            <strong>Assigned to: </strong> <?= $ticket_assigned_to ?>
+                            <div><dt>Assigned to</dt><dd><?= $ticket_assigned_to ?></dd></div>
                         <?php } ?>
-
                     <?php } ?>
-                </p>
-                <hr>
-                <?= $ticket_details ?>
+                </dl>
+                <div class="n45-ticket-description"><?= $ticket_details ?></div>
 
                 <table class="table-sm">
 
@@ -165,15 +172,9 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                             $approval_id = intval($approvals['approval_id']);
                             $task_name = escapeHtml($approvals['task_name']);
                             $approval_type = escapeHtml($approvals['approval_type']);
-                            $approval_url_key = escapeHtml($approvals['approval_url_key']);
-
                             $contact_can_approve = false; // Default
 
                             if ($approval_type == 'any') {
-                                $contact_can_approve = true;
-                            }
-
-                            if ($session_contact_primary) {
                                 $contact_can_approve = true;
                             }
 
@@ -189,7 +190,16 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
 
                             <li>
                                 <?php echo $task_name;
-                                if ($contact_can_approve) { ?> - <a href="post.php?approve_ticket_task=<?= $task_id ?>&approval_id=<?= $approval_id ?>&approval_url_key=<?= $approval_url_key ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="confirm-link">Approve task</a> <?php }
+                                if ($contact_can_approve) { ?>
+                                    <form action="post.php" method="post" class="d-inline ml-2">
+                                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                        <input type="hidden" name="decide_client_ticket_task_approval" value="1">
+                                        <input type="hidden" name="task_id" value="<?= $task_id ?>">
+                                        <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
+                                        <button type="submit" name="decision" value="approved" class="btn btn-sm btn-outline-success">Approve</button>
+                                        <button type="submit" name="decision" value="declined" class="btn btn-sm btn-outline-danger" onclick="return confirm('Decline this task approval?');">Decline</button>
+                                    </form>
+                                <?php }
                                 else {?> - Please ask your <?= $approval_type ?> contact to approve this task <?php } ?>
                             </li>
 
@@ -209,18 +219,27 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
 
         <?php if (empty($ticket_resolved_at)) { ?>
             <!-- Reply -->
-
-            <form action="post.php" enctype="multipart/form-data" method="post">
+            <section class="n45-ticket-reply-composer" aria-labelledby="ticketReplyHeading">
+                <div class="n45-form-intro">
+                    <h2 id="ticketReplyHeading">Add a reply</h2>
+                    <p>Share an update or attach a file for the N45 service team.</p>
+                </div>
+                <form action="post.php" enctype="multipart/form-data" method="post">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
                 <div class="form-group">
-                    <textarea class="form-control tinymce" name="comment" placeholder="Add comments.."></textarea>
+                    <label for="ticketReply" class="sr-only">Reply</label>
+                    <textarea class="form-control tinymce" id="ticketReply" name="comment" placeholder="Add your reply"></textarea>
                 </div>
                 <div class="form-group">
+                    <label for="fileInput">Attachments</label>
                     <input type="file" class="form-control-file" name="file[]" multiple id="fileInput" accept=".jpg, .jpeg, .gif, .png, .webp, .pdf, .txt, .md, .doc, .docx, .odt, .csv, .xls, .xlsx, .ods, .pptx, .odp, .zip, .tar, .gz, .xml, .msg, .json, .wav, .mp3, .ogg, .mov, .mp4, .av1, .ovpn">
                 </div>
-                <button type="submit" class="btn btn-primary" name="add_ticket_comment">Reply</button>
-            </form>
+                <div class="n45-form-actions">
+                    <button type="submit" class="btn btn-primary" name="add_ticket_comment"><i class="far fa-paper-plane" aria-hidden="true"></i>Send reply</button>
+                </div>
+                </form>
+            </section>
 
         <?php } elseif (empty($ticket_closed_at)) { ?>
             <!-- Re-open -->

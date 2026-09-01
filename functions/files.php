@@ -181,10 +181,11 @@ function cleanupUnusedImages(string $html, string $folderFsPath, string $folderW
  * Pass $reply_id to attach to a specific reply, or null to attach to the ticket
  * itself - the ticket page reads reply_id IS NULL as "belongs to the ticket".
  *
- * Returns a list of what was stored - ['name' => original name, 'path' => path
- * relative to the app root, 'size' => bytes] - so a caller can pass the same
- * files to the mail queue. Anything the extension allow-list or checkFileUpload()
- * rejects is skipped silently, as it always has been.
+ * Returns a list of what was stored - ['attachment_id' => database id, 'name' =>
+ * original name, 'path' => path relative to the app root, 'size' => bytes] - so
+ * a caller can create durable references or pass the same files to the mail
+ * queue. Anything the extension allow-list or checkFileUpload() rejects is
+ * skipped silently, as it always has been.
  */
 function saveTicketAttachments($ticket_id, $reply_id = null, $field_name = 'attachments') {
 
@@ -243,12 +244,22 @@ function saveTicketAttachments($ticket_id, $reply_id = null, $field_name = 'atta
         }
 
         $attachment_name = escapeSql($single_file['name']);
+        $attachment_reference_name_sql = escapeSql($attachment_reference_name);
 
-        mysqli_query($mysqli, "INSERT INTO ticket_attachments SET ticket_attachment_name = '$attachment_name', ticket_attachment_reference_name = '$attachment_reference_name', ticket_attachment_reply_id = $reply_id_sql, ticket_attachment_ticket_id = $ticket_id");
+        $attachment_insert = mysqli_query($mysqli, "INSERT INTO ticket_attachments SET ticket_attachment_name = '$attachment_name', ticket_attachment_reference_name = '$attachment_reference_name_sql', ticket_attachment_reply_id = $reply_id_sql, ticket_attachment_ticket_id = $ticket_id");
+        $attachment_id = $attachment_insert ? intval(mysqli_insert_id($mysqli)) : 0;
+        if (!$attachment_insert || mysqli_affected_rows($mysqli) !== 1 || !$attachment_id) {
+            error_log("Ticket $ticket_id attachment metadata insert failed: " . mysqli_error($mysqli));
+            if (is_file($destination_path) && !unlink($destination_path)) {
+                error_log("Ticket $ticket_id attachment file cleanup failed after metadata insert failure: $destination_path");
+            }
+            continue;
+        }
 
         // Path is relative to the app root, not the caller, so the mail cron can
         // resolve it from its own directory
         $stored_attachments[] = [
+            'attachment_id' => $attachment_id,
             'name' => $single_file['name'],
             'path' => "uploads/tickets/$ticket_id/$attachment_reference_name",
             'size' => (int) $single_file['size']
@@ -256,6 +267,39 @@ function saveTicketAttachments($ticket_id, $reply_id = null, $field_name = 'atta
     }
 
     return $stored_attachments;
+}
+
+/*
+ * Remove only the physical files from a saveTicketAttachments() result. This is
+ * used when a caller-owned database transaction rolls back the corresponding
+ * metadata rows. Every resolved path is confined to uploads/tickets.
+ */
+function cleanupStoredTicketAttachmentFiles($stored_attachments) {
+
+    $uploads_base = realpath(__DIR__ . '/../uploads/tickets');
+    if ($uploads_base === false) {
+        return;
+    }
+    $uploads_prefix = rtrim($uploads_base, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+
+    foreach ((array) $stored_attachments as $stored_attachment) {
+        $relative_path = ltrim((string) ($stored_attachment['path'] ?? ''), '/\\');
+        if ($relative_path === '' || strpos($relative_path, "\0") !== false) {
+            continue;
+        }
+
+        $file_path = realpath(__DIR__ . '/../' . $relative_path);
+        if ($file_path === false) {
+            continue;
+        }
+        if (strpos($file_path, $uploads_prefix) !== 0) {
+            error_log("Refused to clean up a ticket attachment outside uploads/tickets: $file_path");
+            continue;
+        }
+        if (is_file($file_path) && !unlink($file_path)) {
+            error_log("Ticket attachment rollback file cleanup failed: $file_path");
+        }
+    }
 }
 
 /*

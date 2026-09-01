@@ -11,6 +11,7 @@ if (!file_exists('config.php')) {
 
 require_once "config.php";
 require_once "functions.php";
+require_once "functions/login_surface.php";
 require_once "libs/totp/totp.php";
 
 require_once __DIR__ . "/includes/session_init.php";
@@ -36,6 +37,12 @@ $session_user_agent = escapeSql($_SERVER['HTTP_USER_AGENT'] ?? '');
 
 // IMPORTANT (Option B support): ensure this exists in this scope so logAudit() can use it
 $session_user_id = intval($_SESSION['user_id'] ?? 0);
+
+$login_surface = n45LoginSurfaceForHost($_SERVER['HTTP_HOST'] ?? '');
+$is_customer_login = $login_surface === 'customer';
+$is_technician_login = $login_surface === 'technician';
+$local_login_allowed = n45LocalLoginAllowed($login_surface);
+$login_user_filter = n45LoginUserFilter($login_surface);
 
 // The count below and the logAudit() failure write that feeds it are far apart, with
 // password_verify() in between, so a burst of parallel attempts would all read the
@@ -102,6 +109,9 @@ $config_login_key_required = $row['config_login_key_required'];
 $config_login_key_secret   = $row['config_login_key_secret'];
 
 $azure_client_id = $row['config_azure_client_id'] ?? null;
+$azure_client_secret = $row['config_azure_client_secret'] ?? null;
+$azure_tenant_id = $row['config_azure_tenant_id'] ?? null;
+$azure_agent_sso_enable = intval($row['config_azure_agent_sso_enable'] ?? 0);
 
 $response         = null;
 $token_field      = null;
@@ -123,6 +133,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['login']) || isset($_
     $is_login_step = isset($_POST['login']);
     $is_role_step  = isset($_POST['role_choice']) && !$is_login_step && !isset($_POST['mfa_login']);
     $is_mfa_step   = isset($_POST['mfa_login']);
+
+    // The dedicated production hostnames use Entra exclusively. Fail closed if
+    // a local credential form is submitted directly or from a stale browser.
+    if (!$local_login_allowed) {
+        unset($_SESSION['pending_dual_login'], $_SESSION['pending_mfa_login']);
+        header("HTTP/1.1 403 Forbidden");
+        $response = "
+          <div class='alert alert-danger'>
+            Password sign-in is disabled. Continue with Microsoft to access this workspace.
+          </div>";
+        $is_login_step = false;
+        $is_role_step = false;
+        $is_mfa_step = false;
+    }
 
     // -----------------------------------
     // STEP 2: ROLE CHOICE (no email/pass)
@@ -197,10 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['login']) || isset($_
             WHERE user_email = '$email'
               AND user_archived_at IS NULL
               AND user_status = 1
-              AND (
-                    user_type = 1
-                    OR (user_type = 2 AND client_archived_at IS NULL)
-                  )
+              AND $login_user_filter
         ");
 
         $agentRow  = null;
@@ -681,7 +702,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['login']) || isset($_
 
 // Form state
 $show_mfa_form   = (isset($token_field) && !empty($token_field));
-$show_login_form = (!$show_role_choice && !$show_mfa_form);
+$show_login_form = ($local_login_allowed && !$show_role_choice && !$show_mfa_form);
+
+$agent_login_key_valid = !$config_login_key_required
+    || (isset($_GET['key']) && hash_equals((string)$config_login_key_secret, (string)$_GET['key']));
+$show_agent_sso = !$is_customer_login
+    && $agent_login_key_valid
+    && $azure_agent_sso_enable === 1
+    && entraGuidIsValid($azure_client_id)
+    && entraGuidIsValid($azure_tenant_id)
+    && !empty($azure_client_secret);
+$show_client_sso = !$is_technician_login
+    && $config_client_portal_enable === 1
+    && entraGuidIsValid($azure_client_id)
+    && !empty($azure_client_secret);
+
+$agent_sso_params = [];
+if ($config_login_key_required && isset($_GET['key'])) {
+    $agent_sso_params['key'] = $_GET['key'];
+}
+if (isset($_GET['last_visited'])) {
+    $agent_sso_params['last_visited'] = $_GET['last_visited'];
+}
+$agent_sso_url = 'agent/login_microsoft.php';
+if (!empty($agent_sso_params)) {
+    $agent_sso_url .= '?' . http_build_query($agent_sso_params);
+}
+
+// Normal visits to either dedicated hostname go directly to Microsoft. An
+// OAuth error returns to this page with a session message, so keep that visit
+// here and render a retry action instead of creating a redirect loop.
+$has_login_message = !empty($_SESSION['login_message']);
+$may_auto_redirect = $_SERVER['REQUEST_METHOD'] === 'GET'
+    && !$show_role_choice
+    && !$show_mfa_form
+    && empty($response)
+    && !$has_login_message;
+
+if ($may_auto_redirect && $is_technician_login && $show_agent_sso) {
+    header("Location: $agent_sso_url");
+    exit();
+}
+
+if ($may_auto_redirect && $is_customer_login && $show_client_sso) {
+    header('Location: client/login_microsoft.php');
+    exit();
+}
+
+if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_client_sso)) {
+    $response = "
+      <div class='alert alert-danger'>
+        Microsoft sign-in is not available for this workspace. Please contact N45 Technology Solutions for assistance.
+      </div>";
+}
 
 ?>
 <!DOCTYPE html>
@@ -689,7 +762,7 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title><?= escapeHtml($company_name) ?> | Login</title>
+    <title><?= escapeHtml($company_name) ?> | <?= $is_customer_login ? 'Client Portal' : ($is_technician_login ? 'Technician Sign In' : 'Login') ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
 
@@ -700,20 +773,41 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
     <?php } ?>
 
     <link rel="stylesheet" href="libs/adminlte/css/adminlte.min.css">
+    <link rel="stylesheet" href="/css/itflow_custom.css">
 </head>
-<body class="hold-transition login-page">
+<body class="hold-transition login-page n45-auth-page">
 
-<div class="login-box">
-    <div class="login-logo">
+<main class="login-box n45-auth-shell">
+    <div class="login-logo n45-auth-brand">
         <?php if (!empty($company_logo)) { ?>
             <img alt="<?=escapeHtml($company_name)?> logo" height="110" width="380" class="img-fluid" src="<?= "uploads/settings/$company_logo" ?>">
         <?php } else { ?>
-            <span class="text-primary text-bold"><i class="fas fa-paper-plane mr-2"></i>IT</span>Flow
+            <span class="n45-auth-mark" aria-hidden="true"><i class="fas fa-layer-group"></i></span>
+            <span><?= escapeHtml($company_name) ?></span>
         <?php } ?>
     </div>
 
     <div class="card">
         <div class="card-body login-card-body">
+
+            <div class="n45-auth-heading">
+                <?php if ($show_role_choice) { ?>
+                    <h1>Choose your workspace</h1>
+                    <p>This account can access both technician and client tools.</p>
+                <?php } elseif ($show_mfa_form) { ?>
+                    <h1>Verify your identity</h1>
+                    <p>Enter the current code from your authenticator app.</p>
+                <?php } elseif ($is_customer_login) { ?>
+                    <h1>Client portal</h1>
+                    <p>Sign in to request support, follow tickets, and review your organization’s technology.</p>
+                <?php } elseif ($is_technician_login) { ?>
+                    <h1>Technician workspace</h1>
+                    <p>Sign in to manage service delivery, clients, and operations.</p>
+                <?php } else { ?>
+                    <h1>Service operations</h1>
+                    <p>Sign in to manage clients, tickets, assets, and automation.</p>
+                <?php } ?>
+            </div>
 
             <?php if (!empty($config_login_message)){ ?>
                 <p class="login-box-msg px-0"><?= nl2br($config_login_message) ?></p>
@@ -725,7 +819,7 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
             <?php } ?>
 
             <?php if (isset($response)) { ?>
-                <p><?= $response ?></p>
+                <?= $response ?>
             <?php } ?>
 
             <form method="post">
@@ -733,7 +827,9 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
                 <?php if ($show_login_form): ?>
                     <!-- STEP 1: Email + Password -->
                     <div class="input-group mb-3">
+                        <label class="sr-only" for="login-email">Email address</label>
                         <input type="email" class="form-control"
+                            id="login-email"
                             placeholder="<?php if ($config_login_key_required) { if (!isset($_GET['key']) || $_GET['key'] !== $config_login_key_secret) { echo "Client "; } } echo "Email"; ?>"
                             name="email"
                             value="<?= htmlspecialchars($email ?? '', ENT_QUOTES) ?>"
@@ -747,7 +843,8 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
                     </div>
 
                     <div class="input-group mb-3">
-                        <input type="password" class="form-control" placeholder="Password" name="password" required>
+                        <label class="sr-only" for="login-password">Password</label>
+                        <input type="password" class="form-control" id="login-password" placeholder="Password" name="password" autocomplete="current-password" required>
                         <div class="input-group-append">
                             <div class="input-group-text">
                                 <span class="fas fa-lock"></span>
@@ -755,7 +852,7 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-block mb-3" name="login">Sign In</button>
+                    <button type="submit" class="btn btn-primary btn-block mb-3" name="login">Sign in</button>
                 <?php endif; ?>
 
                 <?php if ($show_role_choice): ?>
@@ -765,10 +862,10 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
 
                     <div class="mb-2 text-center">
                         <button type="submit" class="btn btn-dark btn-block mb-2" name="role_choice" value="agent">
-                            Log in as Agent
+                            Continue as technician
                         </button>
                         <button type="submit" class="btn btn-light btn-block" name="role_choice" value="client">
-                            Log in as Client
+                            Continue as client
                         </button>
                     </div>
                 <?php endif; ?>
@@ -787,20 +884,27 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-dark btn-block mb-3" name="mfa_login">Verify & Sign In</button>
+                    <button type="submit" class="btn btn-dark btn-block mb-3" name="mfa_login">Verify &amp; sign in</button>
                 <?php endif; ?>
 
             </form>
 
-            <?php if($config_client_portal_enable == 1){ ?>
-                <hr>
-                <?php if (!empty($config_smtp_provider)) { ?>
+            <?php if ($show_agent_sso) { ?>
+                <?php if ($show_login_form) { ?><div class="text-center my-3 text-muted">or</div><?php } ?>
+                <a class="btn <?= $is_technician_login ? 'btn-primary' : 'btn-outline-primary' ?> btn-block" href="<?= escapeHtml($agent_sso_url) ?>">
+                    <i class="fab fa-microsoft mr-2"></i><?= $is_technician_login ? 'Try Microsoft sign-in again' : 'Sign in as a technician with Microsoft' ?>
+                </a>
+            <?php } ?>
+
+            <?php if($config_client_portal_enable == 1 && !$is_technician_login){ ?>
+                <?php if ($show_login_form) { ?><hr><?php } ?>
+                <?php if ($show_login_form && !empty($config_smtp_provider)) { ?>
                     <a href="client/login_reset.php">Forgot password?</a>
                 <?php } ?>
-                <?php if (!empty($azure_client_id)) { ?>
-                    <div class="col text-center mt-2">
-                        <a href="client/login_microsoft.php">
-                            <button type="button" class="btn btn-secondary">Login with Microsoft Entra</button>
+                <?php if ($show_client_sso) { ?>
+                    <div class="text-center <?= $show_login_form ? 'mt-2' : '' ?>">
+                        <a class="btn <?= $is_customer_login ? 'btn-primary' : 'btn-secondary' ?> btn-block" href="client/login_microsoft.php">
+                            <i class="fab fa-microsoft mr-2"></i><?= $is_customer_login ? 'Try Microsoft sign-in again' : 'Client portal with Microsoft Entra' ?>
                         </a>
                     </div>
                 <?php } ?>
@@ -808,11 +912,11 @@ $show_login_form = (!$show_role_choice && !$show_mfa_form);
 
         </div>
     </div>
-</div>
+</main>
 
 <?php
 if (!$config_whitelabel_enabled) {
-    echo '<small class="text-muted">Powered by ITFlow</small>';
+    echo '<small class="n45-auth-footer text-muted">Powered by ITFlow</small>';
 }
 ?>
 

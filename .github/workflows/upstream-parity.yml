@@ -1,0 +1,74 @@
+name: N45 Upstream Parity
+
+on:
+  push:
+    branches:
+      - 'codex/**'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      reviewed_base_sha:
+        description: Exact upstream SHA reviewed for security-sensitive overlaps
+        required: false
+        type: string
+      reviewed_head_sha:
+        description: Exact fork SHA reviewed for security-sensitive overlaps
+        required: false
+        type: string
+  schedule:
+    - cron: '17 12 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch authoritative ITFlow upstream
+        run: git fetch --no-tags https://github.com/itflow-org/itflow.git master:refs/remotes/upstream/master
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mysqli
+          coverage: none
+
+      - name: Validate review tooling
+        run: bash -n scripts/n45-upstream-review.sh
+
+      - name: Run PHP regression tests
+        run: |
+          set -e
+          for test_file in tests/*_test.php; do
+            echo "Running ${test_file}"
+            php "${test_file}"
+          done
+
+      - name: Generate upstream parity report
+        if: always()
+        env:
+          N45_REVIEWED_BASE_SHA: ${{ inputs.reviewed_base_sha || vars.N45_REVIEWED_BASE_SHA }}
+          N45_REVIEWED_HEAD_SHA: ${{ inputs.reviewed_head_sha || vars.N45_REVIEWED_HEAD_SHA }}
+        run: bash scripts/n45-upstream-review.sh upstream/master HEAD upstream-parity-report.md
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [ -f upstream-parity-report.md ]; then
+            cat upstream-parity-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload parity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n45-upstream-parity
+          path: upstream-parity-report.md
+          if-no-files-found: error

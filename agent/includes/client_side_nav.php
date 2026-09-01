@@ -237,6 +237,28 @@
                             </a>
                         </li>
 
+                        <li class="nav-item">
+                            <a href="/agent/documentation.php?client_id=<?= $client_id ?>" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "documentation.php") { echo "active"; } ?>">
+                                <i class="nav-icon fas fa-book-medical"></i>
+                                <p>
+                                    Readiness
+                                    <?php if ($num_documentation_attention > 0) { ?>
+                                        <span class="right badge badge-warning text-dark"><?= $num_documentation_attention ?></span>
+                                    <?php } ?>
+                                </p>
+                            </a>
+                        </li>
+
+                        <li class="nav-item">
+                            <a href="/agent/agreements.php?client_id=<?= $client_id ?>" class="nav-link <?php if (in_array(basename($_SERVER["PHP_SELF"]), ["agreements.php", "agreement.php", "service_review.php"])) { echo "active"; } ?>">
+                                <i class="nav-icon fas fa-file-contract"></i>
+                                <p>
+                                    Agreements
+                                    <?php if ($num_agreements > 0) { ?><span class="right badge text-light"><?= $num_agreements ?></span><?php } ?>
+                                </p>
+                            </a>
+                        </li>
+
                     <?php } ?>
 
                     <!-- Allow files even without module_support for things like contracts, etc. ) -->

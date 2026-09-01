@@ -491,6 +491,8 @@ if (isset($_GET['get_readable_pass'])) {
  */
 if (isset($_POST['update_kanban_status_position'])) {
     // Update multiple ticket status kanban orders
+    validateCSRFToken();
+
     enforceUserPermission('module_support', 2);
 
     $positions = $_POST['positions'];
@@ -509,6 +511,8 @@ if (isset($_POST['update_kanban_status_position'])) {
 
 if (isset($_POST['update_kanban_ticket'])) {
     // Update ticket kanban order and status
+    validateCSRFToken();
+
     enforceUserPermission('module_support', 2);
 
     // all tickets on the column
@@ -524,33 +528,107 @@ if (isset($_POST['update_kanban_ticket'])) {
 
         $kanban = intval($position['ticket_order']); // ticket kanban position
         $status = intval($position['ticket_status']); // ticket statuses
-        $oldStatus = intval($position['ticket_oldStatus']); // ticket old status if moved
+        $old_status_value = $position['ticket_oldStatus'] ?? false;
+        $oldStatus = in_array($old_status_value, [false, null, '', 'false'], true)
+            ? false
+            : intval($old_status_value); // ticket old status if moved
 
         $statuses['Closed'] = 5;
         $statuses['Resolved'] = 4;
 
         // Continue if status is null / Closed
-        if ($status === null || $status === $statuses['Closed']) {
+        if ($status < 1 || $status === $statuses['Closed']) {
             continue;
         }
 
 
         if ($oldStatus === false) {
-            // if ticket was not moved, just uptdate the order on kanban
-            mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban WHERE ticket_id = $ticket_id");
+            // If the ticket was not moved, just update its order on the kanban.
+            mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban
+                WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id");
             triggerCustomAction('ticket_update', $ticket_id);
         } else {
-            // If the ticket was moved from a resolved status to another status, we need to update ticket_resolved_at
-            if ($oldStatus === $statuses['Resolved']) {
-                mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban, ticket_status = $status, ticket_resolved_at = NULL WHERE ticket_id = $ticket_id");
+            $status_changed = false;
+            try {
+                if (!mysqli_begin_transaction($mysqli)) {
+                    throw new RuntimeException('Could not begin the kanban ticket transaction');
+                }
+
+                // Nonterminal moves may reopen a resolved ticket. Use the
+                // project-aware lock so a completed project cannot regain an
+                // open child ticket; resolved-column moves only need the
+                // ordinary lifecycle lock.
+                if ($status === $statuses['Resolved']) {
+                    documentationLockClientTicket($ticket_id, $client_id);
+                }
+                $locked_ticket = $status === $statuses['Resolved']
+                    ? runbookLockTicketForTransition($ticket_id, true)
+                    : runbookLockTicketForReopen($ticket_id);
+                if (intval($locked_ticket['ticket_client_id']) !== $client_id) {
+                    throw new RuntimeException('The ticket client changed before the kanban move');
+                }
+                $actual_old_status = intval($locked_ticket['ticket_status']);
+                $was_resolved = $actual_old_status === $statuses['Resolved']
+                    || !empty($locked_ticket['ticket_resolved_at']);
+
+                if ($status === $statuses['Resolved'] && $actual_old_status !== $statuses['Resolved']) {
+                    $locked_ticket = runbookLockOpenTicket($ticket_id);
+                    [$can_resolve, $resolve_error] = runbookTicketCanResolve($ticket_id);
+                    if (!$can_resolve) {
+                        throw new RuntimeException($resolve_error);
+                    }
+                }
+
+                $resolved_at_predicate = empty($locked_ticket['ticket_resolved_at'])
+                    ? 'ticket_resolved_at IS NULL'
+                    : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
+                $closed_at_predicate = empty($locked_ticket['ticket_closed_at'])
+                    ? 'ticket_closed_at IS NULL'
+                    : "ticket_closed_at = '" . escapeSql($locked_ticket['ticket_closed_at']) . "'";
+                $status_set = "ticket_order = $kanban";
+                if ($actual_old_status !== $status) {
+                    $status_set .= ", ticket_status = $status";
+                    if ($status === $statuses['Resolved']) {
+                        $status_set .= ', ticket_resolved_at = NOW()';
+                    } elseif ($was_resolved) {
+                        $status_set .= ', ticket_resolved_at = NULL';
+                    }
+                } elseif ($status !== $statuses['Resolved'] && $was_resolved) {
+                    $status_set .= ', ticket_resolved_at = NULL';
+                }
+
+                $update_sql = mysqli_query($mysqli, "UPDATE tickets SET $status_set
+                    WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                    AND ticket_status = $actual_old_status
+                    AND $resolved_at_predicate AND $closed_at_predicate LIMIT 1");
+                if (!$update_sql || mysqli_affected_rows($mysqli) !== 1) {
+                    throw new RuntimeException('The ticket changed before the kanban move could be saved');
+                }
+                if ($actual_old_status !== $status && in_array($status, [4, 5], true)) {
+                    documentationRecordChangePassport($ticket_id, $status, $session_user_id, true);
+                }
+                $status_changed = $actual_old_status !== $status
+                    || ($status !== $statuses['Resolved'] && $was_resolved);
+                if (!mysqli_commit($mysqli)) {
+                    throw new RuntimeException('Could not commit the kanban ticket move');
+                }
+            } catch (Throwable $e) {
+                mysqli_rollback($mysqli);
+                http_response_code(409);
+                echo escapeHtml($e->getMessage());
+                exit;
+            }
+
+            if (!$status_changed) {
+                triggerCustomAction('ticket_update', $ticket_id);
+            // If the ticket was moved from a resolved status to another status, reset its resolution clock.
+            } elseif ($was_resolved) {
                 resetTicketResolutionSla($ticket_id);
                 syncTicketSlaClock($ticket_id);
                 $new_status_name = escapeSql(getTicketStatusName($status));
                 logTicketHistory($ticket_id, "$session_name reopened the ticket to $new_status_name from the kanban");
                 triggerCustomAction('ticket_update', $ticket_id);
             } elseif ($status === $statuses['Resolved']) {
-                // If the ticket was moved to a resolved status, we need to update ticket_resolved_at
-                mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban, ticket_status = $status, ticket_resolved_at = NOW() WHERE ticket_id = $ticket_id");
                 // An agent resolving the ticket counts as a response, same as
                 // resolving from the ticket itself does
                 setTicketFirstResponse($ticket_id);
@@ -592,42 +670,49 @@ if (isset($_POST['update_kanban_ticket'])) {
                     $company_phone = escapeSql(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
 
                     // EMAIL
-                    $subject = "Ticket resolved - [$ticket_prefix$ticket_number] - $ticket_subject | (pending closure)";
-                    $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Your ticket regarding $ticket_subject has been marked as solved and is pending closure.<br><br>If your request/issue is resolved, you can simply ignore this email. If you need further assistance, please reply or <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>re-open</a> to let us know! <br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status<br>Portal: <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+                    $ticket_email_context = [
+                        'company_name' => $company_name,
+                        'contact_name' => $contact_name,
+                        'ticket_number' => $ticket_prefix . $ticket_number,
+                        'ticket_subject' => $ticket_subject,
+                        'ticket_status' => $ticket_status,
+                        'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+                        'footer_email' => $config_ticket_from_email,
+                        'footer_phone' => $company_phone,
+                    ];
+                    $ticket_email = renderN45Email('ticket.resolved', $ticket_email_context);
+                    $data = [];
 
                     // Check email valid
                     if (filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-                        $data = [];
-
                         // Email Ticket Contact
                         // Queue Mail
 
-                        $data[] = [
+                        $data[] = array_merge([
                             'from' => $config_ticket_from_email,
                             'from_name' => $config_ticket_from_name,
                             'recipient' => $contact_email,
                             'recipient_name' => $contact_name,
-                            'subject' => $subject,
-                            'body' => $body
-                        ];
+                        ], n45EmailQueueFields($ticket_email));
                     }
 
                     // Also Email all the watchers
                     $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
-                    $body .= "<br><br>----------------------------------------<br>YOU ARE A COLLABORATOR ON THIS TICKET";
                     while ($row = mysqli_fetch_assoc($sql_watchers)) {
                         $watcher_email = escapeSql($row['watcher_email']);
+                        $watcher_email_context = $ticket_email_context;
+                        $watcher_email_context['contact_name'] = '';
+                        $watcher_email_context['recipient_role'] = 'collaborator';
+                        $watcher_message = renderN45Email('ticket.resolved', $watcher_email_context);
 
                         // Queue Mail
-                        $data[] = [
+                        $data[] = array_merge([
                             'from' => $config_ticket_from_email,
                             'from_name' => $config_ticket_from_name,
                             'recipient' => $watcher_email,
                             'recipient_name' => $watcher_email,
-                            'subject' => $subject,
-                            'body' => $body
-                        ];
+                        ], n45EmailQueueFields($watcher_message));
                     }
                     addToMailQueue($data);
                 }
@@ -635,7 +720,6 @@ if (isset($_POST['update_kanban_ticket'])) {
 
             } else {
                 // If the ticket was moved from any status to another status
-                mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban, ticket_status = $status WHERE ticket_id = $ticket_id");
                 syncTicketSlaClock($ticket_id);
                 $new_status_name = escapeSql(getTicketStatusName($status));
                 logTicketHistory($ticket_id, "$session_name set the status to $new_status_name from the kanban");
@@ -659,12 +743,20 @@ if (isset($_POST['update_ticket_tasks_order'])) {
 
     $positions = $_POST['positions'];
     $ticket_id = intval($_POST['ticket_id']);
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+    if ($client_id) {
+        enforceClientAccess();
+    }
 
     foreach ($positions as $position) {
         $id = intval($position['id']);
         $order = intval($position['order']);
 
-        mysqli_query($mysqli, "UPDATE tasks SET task_order = $order WHERE task_ticket_id = $ticket_id AND task_id = $id");
+        // Published runbook ordering is part of the immutable execution
+        // definition. Legacy ticket tasks remain freely reorderable.
+        mysqli_query($mysqli, "UPDATE tasks SET task_order = $order
+            WHERE task_ticket_id = $ticket_id AND task_id = $id
+            AND task_runbook_version_task_id = 0");
     }
 
     // return a response
@@ -677,7 +769,7 @@ if (isset($_POST['update_task_templates_order'])) {
 
     validateCSRFToken();
 
-    enforceUserPermission('module_support', 2);
+    enforceAdminPermission();
 
     $positions = $_POST['positions'];
     $ticket_template_id = intval($_POST['ticket_template_id']);
@@ -698,7 +790,7 @@ if (isset($_POST['update_project_template_ticket_order'])) {
 
     validateCSRFToken();
 
-    enforceUserPermission('module_support', 2);
+    enforceAdminPermission();
 
     $positions = $_POST['positions'];
     $project_template_id = intval($_POST['project_template_id']);

@@ -10,6 +10,9 @@ require_once '../functions.php';
 require_once 'includes/check_login.php';
 require_once 'functions.php';
 
+define('FROM_CLIENT_POST_HANDLER', true);
+require_once __DIR__ . '/post/portal_request.php';
+
 if (isset($_POST['add_ticket'])) {
 
     validateCSRFToken();
@@ -18,6 +21,16 @@ if (isset($_POST['add_ticket'])) {
     $details = mysqli_real_escape_string($mysqli, ($_POST['details']));
     $category = intval($_POST['category']);
     $asset = intval($_POST['asset']);
+
+    // Reject asset IDs outside the contact's permitted inventory. This protects
+    // the server-side boundary even if a form value is changed in the browser.
+    if ($asset > 0) {
+        $asset_contact_scope = contactCan('assets_all') ? '' : "AND asset_contact_id = $session_contact_id";
+        $asset_sql = mysqli_query($mysqli, "SELECT asset_id FROM assets WHERE asset_id = $asset AND asset_client_id = $session_client_id $asset_contact_scope AND asset_archived_at IS NULL LIMIT 1");
+        if (!$asset_sql || mysqli_num_rows($asset_sql) !== 1) {
+            $asset = 0;
+        }
+    }
 
     // Get settings from load_global_settings.php
     $config_ticket_prefix = escapeSql($config_ticket_prefix);
@@ -30,26 +43,53 @@ if (isset($_POST['add_ticket'])) {
     $url_key = randomString(32);
 
     // Ensure priority is low/med/high (as can be user defined)
-    if ($_POST['priority'] !== "Low" && $_POST['priority'] !== "Medium" && $_POST['priority'] !== "High" && $_POST['priority'] !== "Urgent") {
+    if (!array_key_exists($_POST['priority'] ?? '', ticketPriorityDefinitions())) {
         $priority = "Low";
     } else {
         $priority = escapeSql($_POST['priority']);
     }
 
-    // Atomically increment and get the new ticket number
-    mysqli_query($mysqli, "
-        UPDATE settings
-        SET
-            config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
-            config_ticket_next_number = config_ticket_next_number + 1
-        WHERE company_id = 1
-    ");
+    $ticket_transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the client portal ticket transaction');
+        }
+        $ticket_transaction_started = true;
+        if ($session_client_id > 0 && !agreementLockClientForAuditRetention($session_client_id)) {
+            throw new RuntimeException('The client is no longer available for ticket creation');
+        }
 
-    $ticket_number = mysqli_insert_id($mysqli);
+        ticketCreationDbQuery("
+            UPDATE settings
+            SET
+                config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
+                config_ticket_next_number = config_ticket_next_number + 1
+            WHERE company_id = 1
+        ", 'Could not allocate a client portal ticket number');
+        $ticket_number = intval(mysqli_insert_id($mysqli));
+        if (!$ticket_number) {
+            throw new RuntimeException('The client portal ticket number allocation returned no number');
+        }
 
-    mysqli_query($mysqli, "INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Portal', ticket_category = $category, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = $session_user_id, ticket_contact_id = $session_contact_id, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $session_client_id");
-    $ticket_id = mysqli_insert_id($mysqli);
-    applyTicketSla($ticket_id);
+        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Portal', ticket_category = $category, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = $session_user_id, ticket_contact_id = $session_contact_id, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $session_client_id", 'Could not create the client portal ticket');
+        $ticket_id = intval(mysqli_insert_id($mysqli));
+        if (!$ticket_id) {
+            throw new RuntimeException('The client portal ticket did not receive an ID');
+        }
+        applyTicketSla($ticket_id, null, null, true);
+
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the client portal ticket and SLA decision');
+        }
+        $ticket_transaction_started = false;
+    } catch (Throwable $exception) {
+        if ($ticket_transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        error_log('Client portal ticket creation failed before notification: ' . $exception->getMessage());
+        flashAlert('The ticket was not created because its SLA decision could not be recorded safely', 'error');
+        redirect();
+    }
 
     // Notify agent DL of the new ticket, if populated with a valid email
     if ($config_ticket_new_ticket_notification_email) {
@@ -98,21 +138,47 @@ if (isset($_POST['add_ticket_comment'])) {
 
     // Verify the contact has access to the provided ticket ID
     if (verifyContactTicketAccess($ticket_id, "Open")) {
+        try {
+            if (!mysqli_begin_transaction($mysqli)) {
+                throw new RuntimeException('Could not begin the ticket reply transaction');
+            }
+            $locked_ticket = runbookLockTicketForReopen($ticket_id);
+            if (intval($locked_ticket['ticket_client_id']) !== intval($session_client_id)
+                || (intval($locked_ticket['ticket_contact_id']) !== intval($session_contact_id)
+                    && !contactCan('tickets_all'))) {
+                throw new RuntimeException('The ticket is outside your contact scope');
+            }
+            $original_ticket_status = intval($locked_ticket['ticket_status']);
+            $was_resolved = $original_ticket_status === 4 || !empty($locked_ticket['ticket_resolved_at']);
+            if ($original_ticket_status !== 2 || $was_resolved) {
+                $resolved_predicate = empty($locked_ticket['ticket_resolved_at'])
+                    ? 'ticket_resolved_at IS NULL'
+                    : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
+                runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
+                    WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+                    AND ticket_status = $original_ticket_status AND $resolved_predicate
+                    AND ticket_closed_at IS NULL LIMIT 1", 'Could not reopen the ticket for the client reply');
+                if (mysqli_affected_rows($mysqli) !== 1) {
+                    throw new RuntimeException('The ticket state changed before the reply was saved');
+                }
+            }
+            runbookDbQuery("INSERT INTO ticket_replies SET ticket_reply = '$comment',
+                ticket_reply_type = 'Client', ticket_reply_by = $session_contact_id,
+                ticket_reply_ticket_id = $ticket_id", 'Could not add the client ticket reply');
+            $ticket_reply_id = intval(mysqli_insert_id($mysqli));
+            if (!$ticket_reply_id || !mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the client ticket reply');
+            }
+        } catch (Throwable $exception) {
+            mysqli_rollback($mysqli);
+            flashAlert(escapeHtml($exception->getMessage()), 'error');
+            redirect();
+        }
 
-        // Add the comment
-        mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = '$comment', ticket_reply_type = 'Client', ticket_reply_by = $session_contact_id, ticket_reply_ticket_id = $ticket_id");
-
-        $ticket_reply_id = mysqli_insert_id($mysqli);
-
-        // Update Ticket Last Response Field & set ticket to open as client has replied
-        $original_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_status FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
-        $original_ticket_status = intval($original_row['ticket_status'] ?? 0);
-
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 2 WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id LIMIT 1");
         syncTicketSlaClock($ticket_id);
 
         // Only record the reopen when the ticket was not already open
-        if ($original_ticket_status !== 2) {
+        if ($original_ticket_status !== 2 || $was_resolved) {
             logTicketHistory($ticket_id, "$session_contact_name replied from the client portal, reopening the ticket");
         }
 
@@ -167,42 +233,137 @@ if (isset($_POST['add_ticket_comment'])) {
 
 if (isset($_GET['approve_ticket_task'])) {
 
+    flashAlert('Approval decisions must be submitted from the protected ticket form.', 'warning');
+    redirect();
+}
+
+if (isset($_POST['decide_client_ticket_task_approval'])) {
+
     validateCSRFToken();
 
-    $task_id = intval($_GET['approve_ticket_task']);
-    $approval_id = intval($_GET['approval_id']);
-    $url_key = escapeSql($_GET['approval_url_key']);
-
-    $approval_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT approval_created_by, approval_required_user_id, approval_scope, approval_type, task_name,
-        task_ticket_id FROM task_approvals LEFT JOIN tasks on task_id = approval_task_id WHERE approval_id = $approval_id AND approval_task_id = $task_id AND approval_url_key = '$url_key' AND approval_status = 'pending' AND approval_scope = 'client'"));
-
-    $task_name = escapeHtml($approval_row['task_name']);
-    $scope = escapeHtml($approval_row['approval_scope']);
-    $type = escapeHtml($approval_row['approval_type']);
-    $required_user = intval($approval_row['approval_required_user_id']);
-    $created_by = intval($approval_row['approval_created_by']);
-    $ticket_id = intval($approval_row['task_ticket_id']);
-
-    if (!$approval_row) {
-        flashAlert("Cannot find/approve that task", 'warning');
+    $task_id = intval($_POST['task_id']);
+    $approval_id = intval($_POST['approval_id']);
+    $decision = (string) ($_POST['decision'] ?? '');
+    if (!in_array($decision, ['approved', 'declined'], true)) {
+        flashAlert('Choose approve or decline.', 'warning');
         redirect();
-        exit;
     }
 
-    // Approve
-    mysqli_query($mysqli, "UPDATE task_approvals SET approval_status = 'approved', approval_approved_by = $session_user_id WHERE approval_id = $approval_id AND approval_task_id = $task_id AND approval_url_key = '$url_key' AND approval_status = 'pending' AND approval_scope = 'client'");
+    $approval_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT approval_created_by,
+        approval_type, task_name, task_ticket_id, ticket_client_id
+        FROM task_approvals
+        INNER JOIN tasks ON task_id = approval_task_id
+        INNER JOIN tickets ON ticket_id = task_ticket_id
+        WHERE approval_id = $approval_id AND approval_task_id = $task_id
+        AND approval_status = 'pending' AND approval_scope = 'client'
+        AND task_state NOT IN ('Completed','Skipped')
+        AND ticket_client_id = $session_client_id LIMIT 1"));
 
+    if (!$approval_row) {
+        flashAlert('Cannot find that pending approval.', 'warning');
+        redirect();
+    }
 
-    // Notify tech
-    mysqli_query($mysqli, "INSERT INTO notifications SET notification_type = 'Ticket', notification = '$session_contact_email approved ticket task $task_name', notification_action = 'ticket.php?ticket_id=$ticket_id&client_id=$session_client_id', notification_client_id = $session_client_id, notification_user_id = $created_by");
-    // TODO: Email agent
+    $ticket_id = intval($approval_row['task_ticket_id']);
+    if (!verifyContactTicketAccess($ticket_id, 'Open')) {
+        flashAlert('You do not have access to decide this approval.', 'warning');
+        redirect();
+    }
 
-    // Logging
-    logAudit("Task", "Edit", "Contact $session_contact_email approved task $task_name (approval $approval_id)", $session_client_id, $task_id);
+    $approval_type = (string) $approval_row['approval_type'];
+    $contact_can_decide = $approval_type === 'any'
+        || ($approval_type === 'technical' && !empty($session_contact_is_technical_contact))
+        || ($approval_type === 'billing' && !empty($session_contact_is_billing_contact));
+    if (!$contact_can_decide) {
+        flashAlert('This approval requires a different client contact role.', 'warning');
+        redirect();
+    }
 
-    flashAlert("Task Approved");
+    $decision_sql = escapeSql($decision);
+    $decided_by = escapeSql("Contact $session_contact_id ($session_contact_email)");
+    if (!mysqli_begin_transaction($mysqli)) {
+        flashAlert('The ticket could not be locked for this approval decision.', 'warning');
+        redirect();
+    }
+    try {
+        $locked_ticket = runbookLockOpenTicket($ticket_id);
+        if (intval($locked_ticket['ticket_client_id']) !== intval($session_client_id)
+            || (intval($locked_ticket['ticket_contact_id']) !== intval($session_contact_id)
+                && !contactCan('tickets_all'))) {
+            throw new RuntimeException('The ticket is outside your client scope');
+        }
+        $locked_approval = mysqli_fetch_assoc(runbookDbQuery("SELECT approval_type,
+            approval_scope, approval_required_user_id, approval_status, task_state,
+            task_ticket_id FROM task_approvals
+            INNER JOIN tasks ON task_id = approval_task_id
+            WHERE approval_id = $approval_id AND approval_task_id = $task_id
+            LIMIT 1 FOR UPDATE", 'Could not lock the client task approval'));
+        if (!$locked_approval || $locked_approval['approval_scope'] !== 'client'
+            || $locked_approval['approval_status'] !== 'pending'
+            || intval($locked_approval['task_ticket_id']) !== intval($locked_ticket['ticket_id'])
+            || in_array($locked_approval['task_state'], ['Completed', 'Skipped'], true)) {
+            throw new RuntimeException('The approval is no longer actionable');
+        }
+        $locked_type = (string) $locked_approval['approval_type'];
+        $locked_contact_can_decide = $locked_type === 'any'
+            || ($locked_type === 'technical' && !empty($session_contact_is_technical_contact))
+            || ($locked_type === 'billing' && !empty($session_contact_is_billing_contact));
+        if (!$locked_contact_can_decide) {
+            throw new RuntimeException('This approval requires a different client contact role');
+        }
+        runbookDbQuery("UPDATE task_approvals SET approval_status = '$decision_sql',
+            approval_approved_by = '$decided_by', approval_decided_at = NOW(),
+            approval_url_key = '', approval_url_expires_at = NULL
+            WHERE approval_id = $approval_id AND approval_task_id = $task_id
+            AND approval_status = 'pending' AND approval_scope = 'client'
+            AND EXISTS (SELECT 1 FROM tasks WHERE task_id = $task_id
+                AND task_state NOT IN ('Completed','Skipped'))", 'Could not decide the client task approval');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The client approval was already decided');
+        }
+        runbookRecordApprovalEvent(
+            $approval_id,
+            $task_id,
+            $decision,
+            [
+                'status' => 'pending',
+                'scope' => $locked_approval['approval_scope'],
+                'type' => $locked_type,
+                'required_user_id' => intval($locked_approval['approval_required_user_id']),
+            ],
+            [
+                'status' => $decision,
+                'scope' => $locked_approval['approval_scope'],
+                'type' => $locked_type,
+                'required_user_id' => intval($locked_approval['approval_required_user_id']),
+            ],
+            'contact',
+            $session_contact_id,
+            $session_contact_email
+        );
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the client approval decision');
+        }
+    } catch (Throwable $exception) {
+        mysqli_rollback($mysqli);
+        flashAlert('This approval was already decided. Refresh the ticket.', 'warning');
+        redirect();
+    }
+
+    $created_by = intval($approval_row['approval_created_by']);
+    $task_name = escapeSql($approval_row['task_name']);
+    $contact_email_sql = escapeSql($session_contact_email);
+    if ($created_by) {
+        mysqli_query($mysqli, "INSERT INTO notifications SET notification_type = 'Ticket',
+            notification = '$contact_email_sql $decision_sql ticket task $task_name',
+            notification_action = 'ticket.php?ticket_id=$ticket_id&client_id=$session_client_id',
+            notification_client_id = $session_client_id, notification_user_id = $created_by");
+    }
+
+    logAudit('Task', 'Edit', "Contact $session_contact_email $decision_sql task $task_name (approval $approval_id)", $session_client_id, $task_id);
+
+    flashAlert('Approval ' . escapeHtml($decision));
     redirect();
-
 }
 
 if (isset($_POST['add_ticket_feedback'])) {
@@ -243,17 +404,42 @@ if (isset($_GET['resolve_ticket'])) {
 
     $ticket_id = intval($_GET['resolve_ticket']);
 
-    // Get ticket details for logging
-    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
-
-    $ticket_prefix = escapeSql($row['ticket_prefix']);
-    $ticket_number = intval($row['ticket_number']);
-
     // Verify the contact has access to the provided ticket ID
     if (verifyContactTicketAccess($ticket_id, "Open")) {
+        try {
+            if (!mysqli_begin_transaction($mysqli)) {
+                throw new RuntimeException('Could not begin the ticket resolution transaction');
+            }
+            documentationLockClientTicket($ticket_id, $session_client_id);
+            $locked_ticket = runbookLockOpenTicket($ticket_id);
+            if (intval($locked_ticket['ticket_client_id']) !== intval($session_client_id)) {
+                throw new RuntimeException('The ticket is outside your client scope');
+            }
+            [$can_resolve, $resolve_error] = runbookTicketCanResolve($ticket_id);
+            if (!$can_resolve) {
+                throw new RuntimeException($resolve_error);
+            }
+            runbookDbQuery("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
+                WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+                AND ticket_status NOT IN (4, 5) AND ticket_resolved_at IS NULL
+                AND ticket_closed_at IS NULL LIMIT 1", 'Could not resolve the ticket');
+            if (mysqli_affected_rows($mysqli) !== 1) {
+                throw new RuntimeException('The ticket is no longer open');
+            }
+            documentationRecordChangePassport($ticket_id, 4, 0, true);
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the ticket resolution');
+            }
+        } catch (Throwable $exception) {
+            mysqli_rollback($mysqli);
+            error_log("Client portal ticket $ticket_id resolution failed safely: " . $exception->getMessage());
+            flashAlert('The ticket could not be resolved. Please contact support if the problem continues.', 'error');
+            redirect("ticket.php?id=" . $ticket_id);
+        }
 
-        // Resolve the ticket
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW() WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id");
+        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+        $ticket_prefix = escapeSql($row['ticket_prefix'] ?? '');
+        $ticket_number = intval($row['ticket_number'] ?? 0);
         setTicketResolutionSlaMet($ticket_id);
         syncTicketSlaClock($ticket_id);
         logTicketHistory($ticket_id, "$session_contact_name resolved the ticket from the client portal");
@@ -289,9 +475,33 @@ if (isset($_GET['reopen_ticket'])) {
 
     // Verify the contact has access to the provided ticket ID
     if (verifyContactTicketAccess($ticket_id, "Open")) {
-
-        // Re-open ticket
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id");
+        try {
+            if (!mysqli_begin_transaction($mysqli)) {
+                throw new RuntimeException('Could not begin the ticket reopen transaction');
+            }
+            $locked_ticket = runbookLockTicketForReopen($ticket_id);
+            if (intval($locked_ticket['ticket_client_id']) !== intval($session_client_id)) {
+                throw new RuntimeException('The ticket is outside your client scope');
+            }
+            if (intval($locked_ticket['ticket_status']) !== 4
+                || empty($locked_ticket['ticket_resolved_at'])) {
+                throw new RuntimeException('Only a resolved ticket can be reopened');
+            }
+            runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
+                WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+                AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
+                AND ticket_closed_at IS NULL LIMIT 1", 'Could not reopen the ticket');
+            if (mysqli_affected_rows($mysqli) !== 1) {
+                throw new RuntimeException('The ticket is no longer resolved');
+            }
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the ticket reopen');
+            }
+        } catch (Throwable $exception) {
+            mysqli_rollback($mysqli);
+            flashAlert(escapeHtml($exception->getMessage()), 'error');
+            redirect("ticket.php?id=" . $ticket_id);
+        }
         resetTicketResolutionSla($ticket_id);
         syncTicketSlaClock($ticket_id);
         logTicketHistory($ticket_id, "$session_contact_name reopened the ticket from the client portal");
@@ -319,17 +529,46 @@ if (isset($_GET['close_ticket'])) {
 
     $ticket_id = intval($_GET['close_ticket']);
 
-    // Get ticket details for logging
-    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
-
-    $ticket_prefix = escapeSql($row['ticket_prefix']);
-    $ticket_number = intval($row['ticket_number']);
-
     // Verify the contact has access to the provided ticket ID
     if (verifyContactTicketAccess($ticket_id, "Open")) {
+        try {
+            if (!mysqli_begin_transaction($mysqli)) {
+                throw new RuntimeException('Could not begin the ticket close transaction');
+            }
+            documentationLockClientTicket($ticket_id, $session_client_id);
+            $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
+            if (intval($locked_ticket['ticket_client_id']) !== intval($session_client_id)) {
+                throw new RuntimeException('The ticket is outside your client scope');
+            }
+            if (intval($locked_ticket['ticket_status']) !== 4
+                || empty($locked_ticket['ticket_resolved_at'])) {
+                throw new RuntimeException('Only a resolved ticket can be closed');
+            }
+            [$can_close, $close_error] = runbookTicketCanResolve($ticket_id);
+            if (!$can_close) {
+                throw new RuntimeException($close_error);
+            }
+            runbookDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW()
+                WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+                AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
+                AND ticket_closed_at IS NULL LIMIT 1", 'Could not close the ticket');
+            if (mysqli_affected_rows($mysqli) !== 1) {
+                throw new RuntimeException('The ticket is no longer resolved and awaiting close');
+            }
+            documentationRecordChangePassport($ticket_id, 5, 0, true);
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the ticket close');
+            }
+        } catch (Throwable $exception) {
+            mysqli_rollback($mysqli);
+            error_log("Client portal ticket $ticket_id close failed safely: " . $exception->getMessage());
+            flashAlert('The ticket could not be closed. Please contact support if the problem continues.', 'error');
+            redirect("ticket.php?id=" . $ticket_id);
+        }
 
-        // Fully close ticket
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW() WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id");
+        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+        $ticket_prefix = escapeSql($row['ticket_prefix'] ?? '');
+        $ticket_number = intval($row['ticket_number'] ?? 0);
         syncTicketSlaClock($ticket_id);
         logTicketHistory($ticket_id, "$session_contact_name closed the ticket from the client portal");
 
@@ -389,6 +628,10 @@ if (isset($_POST['add_contact'])) {
     $contact_email = escapeSql($_POST['contact_email']);
     $contact_technical = intval($_POST['contact_technical'] ?? 0);
     $contact_billing = intval($_POST['contact_billing'] ?? 0);
+    $contact_portal_manage_contacts = intval($_POST['contact_portal_manage_contacts'] ?? 0);
+    $portal_scopes = portalAccessScopesFromRole($_POST['contact_portal_role'] ?? 'user');
+    $contact_portal_ticket_scope = $portal_scopes['ticket_scope'];
+    $contact_portal_asset_scope = $portal_scopes['asset_scope'];
     $contact_auth_method = escapeSql($_POST['contact_auth_method']);
 
     // Check the email isn't already in use
@@ -411,7 +654,7 @@ if (isset($_POST['add_contact'])) {
     }
 
     // Create contact record
-    mysqli_query($mysqli, "INSERT INTO contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_client_id = $session_client_id, contact_user_id = $contact_user_id");
+    mysqli_query($mysqli, "INSERT INTO contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_client_id = $session_client_id, contact_user_id = $contact_user_id");
 
     $contact_id = mysqli_insert_id($mysqli);
 
@@ -442,6 +685,10 @@ if (isset($_POST['edit_contact'])) {
     $contact_email = escapeSql($_POST['contact_email']);
     $contact_technical = intval($_POST['contact_technical'] ?? 0);
     $contact_billing = intval($_POST['contact_billing'] ?? 0);
+    $contact_portal_manage_contacts = intval($_POST['contact_portal_manage_contacts'] ?? 0);
+    $portal_scopes = portalAccessScopesFromRole($_POST['contact_portal_role'] ?? 'user');
+    $contact_portal_ticket_scope = $portal_scopes['ticket_scope'];
+    $contact_portal_asset_scope = $portal_scopes['asset_scope'];
     $contact_auth_method = escapeSql($_POST['contact_auth_method']);
 
     // Get the existing contact_user_id - we look it up ourselves so the user can't just overwrite random users
@@ -469,7 +716,7 @@ if (isset($_POST['edit_contact'])) {
     }
 
     // Update contact
-    mysqli_query($mysqli, "UPDATE contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_user_id = $contact_user_id WHERE contact_id = $contact_id AND contact_client_id = $session_client_id AND contact_archived_at IS NULL AND contact_primary = 0 AND contact_id != $session_contact_id");
+    mysqli_query($mysqli, "UPDATE contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_user_id = $contact_user_id WHERE contact_id = $contact_id AND contact_client_id = $session_client_id AND contact_archived_at IS NULL AND contact_primary = 0 AND contact_id != $session_contact_id");
 
     logAudit("Contact", "Edit", "Client contact $session_contact_name edited contact $contact_name in the client portal", $session_client_id, $contact_id);
 
@@ -613,25 +860,32 @@ if (isset($_GET['add_payment_by_provider'])) {
 
         // Email receipt
         if (!empty($config_smtp_host)) {
-            $subject = "Payment Received - Invoice $invoice_prefix$invoice_number";
-            $body = "Hello $contact_name,<br><br>We have received online payment for the amount of " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . " for invoice <a href=\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key\'>$invoice_prefix$invoice_number</a>. Please keep this email as a receipt for your records.<br><br>Amount Paid: " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . "<br><br>Thank you for your business!<br><br><br>--<br>$company_name - Billing Department<br>$config_invoice_from_email<br>$company_phone";
+            $payment_email = renderN45Email('payment.received', [
+                'company_name' => $company_name,
+                'contact_name' => $contact_name,
+                'invoice_number' => $invoice_prefix . $invoice_number,
+                'amount_paid' => numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code),
+                'payment_method' => 'Stripe',
+                'payment_reference' => $pi_id,
+                'action_url' => "https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key",
+                'footer_email' => $config_invoice_from_email,
+                'footer_phone' => $company_phone,
+            ]);
 
             // Queue Mail
             $data = [
-                [
+                array_merge([
                     'from' => $config_invoice_from_email,
                     'from_name' => $config_invoice_from_name,
                     'recipient' => $contact_email,
                     'recipient_name' => $contact_name,
-                    'subject' => $subject,
-                    'body' => $body,
-                ]
+                ], n45EmailQueueFields($payment_email))
             ];
 
             // Email the internal notification address too
             if (!empty($config_invoice_paid_notification_email)) {
                 $subject = "Payment Received - $client_name - Invoice $invoice_prefix$invoice_number";
-                $body = "Hello, <br><br>This is a notification that an invoice has been paid in ITFlow. Below is a copy of the receipt sent to the client:-<br><br>--------<br><br>Hello $contact_name,<br><br>We have received online payment for the amount of " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . " for invoice <a href=\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key\'>$invoice_prefix$invoice_number</a>. Please keep this email as a receipt for your records.<br><br>Amount Paid: " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . "<br><br>Thank you for your business!<br><br><br>--<br>$company_name - Billing Department<br>$config_invoice_from_email<br>$company_phone";
+                $body = "Hello,<br><br>Invoice $invoice_prefix$invoice_number for $client_name was paid through Stripe.<br><br>Amount received: " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . "<br>Payment reference: $pi_id<br><br>View invoice: https://$config_base_url/agent/invoice.php?invoice_id=$invoice_id";
 
                 $data[] = [
                     'from' => $config_invoice_from_email,

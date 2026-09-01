@@ -297,18 +297,61 @@ if (isset($_GET['update_db'])) {
     // Get the current version
     require_once ('../includes/database_version.php');
 
-    // Perform upgrades, if required - populates $database_updates_applied and $database_updates_error
-    require_once ('database_updates.php');
+    // Establish the N45 namespace before upstream can advance into a legacy
+    // fork version number. Legacy installs are refused until explicitly bridged.
+    $database_updates_applied = [];
+    $database_updates_error = null;
+    $n45_database_updates_applied = [];
+    try {
+        $n45_database_updates_applied = n45PrepareMigrationNamespace($mysqli);
+    } catch (Throwable $e) {
+        $database_updates_error = 'N45 update preflight: ' . $e->getMessage();
+    }
+
+    // Apply upstream migrations first, then the separately versioned N45 stream.
+    if ($database_updates_error === null) {
+        require_once ('database_updates.php');
+    }
+
+    if (!$database_updates_error) {
+        try {
+            $n45_database_updates_applied = array_merge(
+                $n45_database_updates_applied,
+                n45RunMigrations($mysqli)
+            );
+        } catch (Throwable $e) {
+            $database_updates_error = 'N45 migration runner: ' . $e->getMessage();
+        }
+    }
 
     if ($database_updates_error) {
         logAudit("Database", "Update", "$session_name ran a database update that failed at $database_updates_error");
         flashAlert("Database update failed at $database_updates_error - the version was not advanced past the last successful update, so it is safe to retry", "error");
     } else {
-        logAudit("Database", "Update", "$session_name updated the database structure");
-        flashAlert("Database structure update successful");
+        $n45_count = count($n45_database_updates_applied);
+        logAudit("Database", "Update", "$session_name updated the database structure ($n45_count N45 migrations)");
+        flashAlert("Database structure update successful ($n45_count N45 migrations applied)");
     }
 
     sleep(1);
+
+    redirect();
+
+}
+
+if (isset($_GET['bridge_n45_migrations'])) {
+
+    validateCSRFToken();
+
+    try {
+        $bridged_migrations = n45BridgeLegacyMigrations($mysqli);
+        $bridged_count = count($bridged_migrations);
+        logAudit("Database", "Update", "$session_name bridged $bridged_count legacy N45 migration markers");
+        flashAlert("Legacy N45 migration bridge completed ($bridged_count ledger entries added). Run Update Database next.");
+    } catch (Throwable $e) {
+        logAudit("Database", "Update", "$session_name attempted the legacy N45 migration bridge and it failed: " . $e->getMessage());
+        flashAlert("Legacy N45 migration bridge refused: " . $e->getMessage(), "error");
+    }
 
     redirect();
 
