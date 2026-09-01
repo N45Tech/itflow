@@ -101,6 +101,13 @@ run_update "$FINAL_DATABASE" "$TEMP_DIRECTORY/final-update.log"
 assert_current "$FINAL_DATABASE"
 php tests/n45_transaction_state_database_assert.php
 
+echo 'Exercising the documentation evaluator against MariaDB'
+"${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "UPDATE settings SET config_enable_cron = 1 WHERE company_id = 1;"
+export N45_CI_DB_NAME="$FINAL_DATABASE"
+php cron/documentation_evaluator.php 2>&1 | tee "$TEMP_DIRECTORY/documentation-evaluator.log"
+grep -Fq 'failed 0.' "$TEMP_DIRECTORY/documentation-evaluator.log" \
+    || fail 'the documentation evaluator did not complete cleanly'
+
 echo 'Upgrading the clean upstream 2.6.7 schema through the production CLI'
 reset_database "$UPGRADE_DATABASE"
 import_database "$UPGRADE_DATABASE" "$TEMP_DIRECTORY/upstream-2.6.7.sql"

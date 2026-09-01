@@ -1796,14 +1796,21 @@ function documentationEvaluateClient($client_id, $actor_id = 0, $caller_transact
 function documentationEvaluateDueClients($limit = 100) {
     $limit = max(1, min(1000, intval($limit)));
     $client_ids = [];
-    $rows = documentationDbQuery("SELECT client.client_id,
-        MAX(obligation.documentation_obligation_evaluated_at) AS last_evaluation
-        FROM clients client
-        LEFT JOIN client_documentation_obligations obligation
-            ON obligation.documentation_obligation_client_id = client.client_id
-        WHERE client.client_archived_at IS NULL AND client.client_lead = 0
-        GROUP BY client.client_id
-        ORDER BY last_evaluation IS NULL DESC, last_evaluation ASC, client.client_id ASC
+    // MariaDB 11.4 rejects an aggregate alias inside an IS NULL expression in
+    // the same SELECT. Project it first so the scheduler orders plain columns.
+    $rows = documentationDbQuery("SELECT candidate.client_id, candidate.last_evaluation
+        FROM (
+            SELECT client.client_id,
+                MAX(obligation.documentation_obligation_evaluated_at) AS last_evaluation
+            FROM clients client
+            LEFT JOIN client_documentation_obligations obligation
+                ON obligation.documentation_obligation_client_id = client.client_id
+            WHERE client.client_archived_at IS NULL AND client.client_lead = 0
+            GROUP BY client.client_id
+        ) candidate
+        ORDER BY candidate.last_evaluation IS NULL DESC,
+            candidate.last_evaluation ASC,
+            candidate.client_id ASC
         LIMIT $limit", 'Could not select clients for documentation evaluation');
     while ($row = mysqli_fetch_assoc($rows)) {
         $client_ids[] = intval($row['client_id']);
