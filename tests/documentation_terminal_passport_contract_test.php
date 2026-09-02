@@ -82,6 +82,8 @@ $assertAtomicPassport($section(
 
 $api_resolve = $read('api/v1/tickets/resolve.php');
 $assertAtomicPassport($api_resolve, 'Ticket resolve API', 'session');
+$api_close = $read('api/v1/tickets/close.php');
+$assertAtomicPassport($api_close, 'Ticket close API', 'session');
 $api_reply = $read('api/v1/ticket_replies/create.php');
 $assertAtomicPassport($api_reply, 'Ticket reply API terminal transition', 'session');
 
@@ -152,6 +154,7 @@ $inventory = [
     'agent/ajax.php' => [1, 1],
     'agent/post/project.php' => [1, 1],
     'api/v1/tickets/resolve.php' => [1, 1],
+    'api/v1/tickets/close.php' => [1, 1],
     'api/v1/ticket_replies/create.php' => [1, 1],
     'client/post.php' => [2, 2],
     'guest/guest_post.php' => [1, 1],
@@ -169,8 +172,8 @@ foreach ($inventory as $path => [$expected_gates, $expected_passports]) {
     $total_gates += $actual_gates;
     $total_passports += $actual_passports;
 }
-$assertTrue($total_gates === 16, 'The authoritative lifecycle-gate inventory is no longer exhaustive');
-$assertTrue($total_passports === 16, 'The authoritative Change Passport inventory is no longer exhaustive');
+$assertTrue($total_gates === 17, 'The authoritative lifecycle-gate inventory is no longer exhaustive');
+$assertTrue($total_passports === 17, 'The authoritative Change Passport inventory is no longer exhaustive');
 
 // Detect a new runtime gate or direct literal/dynamic terminal writer outside
 // the inventoried files. This deliberately excludes the gate definition itself.
@@ -179,6 +182,7 @@ $terminal_writer_files = array_fill_keys([
     'agent/post/ticket.php',
     'agent/ajax.php',
     'api/v1/tickets/resolve.php',
+    'api/v1/tickets/close.php',
     'api/v1/ticket_replies/create.php',
     'client/post.php',
     'guest/guest_post.php',
