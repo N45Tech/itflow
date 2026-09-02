@@ -23,20 +23,8 @@ ob_start();
 
     <div class="modal-body">
 
-        <div class="form-group">
-            <label>Priority</label>
-            <div class="input-group">
-                <div class="input-group-prepend">
-                    <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
-                </div>
-                <select class="form-control select2" name="bulk_priority">
-                    <option>Low</option>
-                    <option>Medium</option>
-                    <option>High</option>
-                    <option>Urgent</option>
-                </select>
-            </div>
-        </div>
+        <div class="row"><div class="col form-group"><label>Impact</label><select class="form-control" name="bulk_impact" required><?php foreach (ticketOperationalLevels() as $key => $label) { ?><option value="<?= escapeHtml($key) ?>" <?= $key === 'medium' ? 'selected' : '' ?>><?= escapeHtml($label) ?></option><?php } ?></select></div><div class="col form-group"><label>Urgency</label><select class="form-control" name="bulk_urgency" required><?php foreach (ticketOperationalLevels() as $key => $label) { ?><option value="<?= escapeHtml($key) ?>" <?= $key === 'medium' ? 'selected' : '' ?>><?= escapeHtml($label) ?></option><?php } ?></select></div></div>
+        <p class="small text-muted mb-0">Each ticket's priority is recalculated from these dimensions.</p>
 
     </div>
 

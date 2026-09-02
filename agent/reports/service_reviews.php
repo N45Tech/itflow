@@ -13,9 +13,7 @@ $clients = mysqli_query($mysqli, "SELECT DISTINCT client_id, client_name FROM se
     JOIN clients ON client_id = service_review_client_id
     WHERE client_archived_at IS NULL " . clientScopeSql('service_review_client_id') . "
     ORDER BY client_name");
-$reviews = mysqli_query($mysqli, "SELECT service_review_id, service_review_period_start,
-    service_review_period_end, service_review_status, service_review_summary,
-    service_review_snapshot_hash, service_review_generated_at, client_id, client_name,
+$reviews = mysqli_query($mysqli, "SELECT service_reviews.*, client_id, client_name,
     agreement_version_name
     FROM service_reviews JOIN clients ON client_id = service_review_client_id
     LEFT JOIN agreement_versions ON agreement_version_id = service_review_agreement_version_id
@@ -40,13 +38,34 @@ $reviews = mysqli_query($mysqli, "SELECT service_review_id, service_review_perio
             <table class="table table-striped table-borderless">
                 <thead><tr><th>Client</th><th>Agreement</th><th>Period</th><th>Status</th><th>Summary</th><th>Snapshot</th><th></th></tr></thead>
                 <tbody>
-                <?php $count = 0; while ($review = mysqli_fetch_assoc($reviews)) { $count++; ?>
+                <?php $count = 0; while ($review = mysqli_fetch_assoc($reviews)) {
+                    $count++;
+                    $review_integrity = true;
+                    try {
+                        $verified_snapshot = agreementValidateServiceReviewSnapshot($review);
+                        agreementValidateServiceReviewAgreementEvidence($review, $verified_snapshot);
+                        agreementValidateServiceReviewApproval(
+                            $review,
+                            agreementServiceReviewEvents(
+                                intval($review['service_review_id']),
+                                intval($review['service_review_client_id'])
+                            )
+                        );
+                    } catch (Throwable $e) {
+                        $review_integrity = false;
+                        $verified_snapshot = [];
+                        error_log('Service-review report integrity failure for review '
+                            . intval($review['service_review_id']) . ': ' . $e->getMessage());
+                    }
+                    ?>
                     <tr>
                         <td><?= escapeHtml($review['client_name']) ?></td>
-                        <td><?= escapeHtml($review['agreement_version_name'] ?: 'Agreement evidence unavailable') ?></td>
+                        <td><?= escapeHtml($review_integrity
+                            ? ($verified_snapshot['agreement']['name'] ?? 'Agreement evidence unavailable')
+                            : 'Agreement evidence failed validation') ?></td>
                         <td><?= escapeHtml($review['service_review_period_start']) ?> through <?= escapeHtml($review['service_review_period_end']) ?></td>
-                        <td><span class="badge badge-<?= $review['service_review_status'] === 'Published' ? 'success' : 'warning' ?>"><?= escapeHtml($review['service_review_status']) ?></span></td>
-                        <td><?= escapeHtml($review['service_review_summary']) ?></td>
+                        <td><?php if ($review_integrity) { ?><span class="badge badge-<?= $review['service_review_status'] === 'Published' ? 'success' : 'warning' ?>"><?= escapeHtml($review['service_review_status']) ?></span><?php } else { ?><span class="badge badge-danger">Integrity failure</span><?php } ?></td>
+                        <td><?= $review_integrity ? escapeHtml($verified_snapshot['summary']) : '<span class="text-danger">Snapshot or approval evidence failed validation.</span>' ?></td>
                         <td><code title="<?= escapeHtml($review['service_review_snapshot_hash']) ?>"><?= escapeHtml(substr($review['service_review_snapshot_hash'], 0, 12)) ?>&hellip;</code></td>
                         <td class="text-right"><a class="btn btn-sm btn-secondary" href="/agent/service_review.php?review_id=<?= intval($review['service_review_id']) ?>">Open</a></td>
                     </tr>

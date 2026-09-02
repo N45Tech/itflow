@@ -515,7 +515,7 @@ $approvals_by_key = [];
 $approvals = runbookExportQuery("SELECT runbook_version_task_key,
     approval_id AS approval_projection_key, approval_scope, approval_type,
     COALESCE(approval_required_user_id, 0) AS approval_route_user_key,
-    approval_status,
+    approval_status, approval_created_by,
     CASE WHEN COALESCE(approval_approved_by, '') <> '' THEN 1 ELSE 0 END AS approval_has_decision_actor,
     CASE
         WHEN approval_approved_by REGEXP '^[0-9]+$' THEN 'agent'
@@ -523,6 +523,10 @@ $approvals = runbookExportQuery("SELECT runbook_version_task_key,
         WHEN COALESCE(approval_approved_by, '') <> '' THEN 'contact'
         ELSE ''
     END AS approval_decision_actor_type,
+    CASE
+        WHEN approval_approved_by REGEXP '^[0-9]+$' THEN CAST(approval_approved_by AS UNSIGNED)
+        ELSE 0
+    END AS approval_decision_actor_id,
     approval_created_at, approval_decided_at
     FROM task_approvals
     INNER JOIN tasks ON task_id = approval_task_id
@@ -585,6 +589,22 @@ while ($event = mysqli_fetch_assoc($state_events)) {
     $state_events_by_key[$event['runbook_version_task_key']][] = $event;
 }
 
+$closeout_integrity_errors = runbookCloseoutIntegrityErrors([
+    'execution' => $execution + ['published_definition' => $published_definition],
+    'source_task_count' => $source_count,
+    'tasks' => $task_rows,
+    'evidence_by_key' => $evidence_by_key,
+    'approvals_by_key' => $approvals_by_key,
+    'approval_events_by_projection' => $approval_events_by_projection,
+    'state_events_by_key' => $state_events_by_key,
+]);
+if ($closeout_integrity_errors) {
+    error_log('Runbook closeout integrity rejected: ' . json_encode(array_values(array_unique(
+        array_column($closeout_integrity_errors, 'code')
+    ))));
+    runbookExportConflict('The completed runbook could not be exported because its integrity record is incomplete or inconsistent. Contact an administrator.');
+}
+
 foreach ($task_rows as $task) {
     $task_key = (string) $task['runbook_version_task_key'];
     $task_state_events = $state_events_by_key[$task_key] ?? [];
@@ -634,7 +654,12 @@ foreach ($task_rows as $task) {
             ];
         }
         $approval['approval_history'] = $safe_approval_history;
-        unset($approval['approval_projection_key'], $approval['approval_route_user_key']);
+        unset(
+            $approval['approval_projection_key'],
+            $approval['approval_route_user_key'],
+            $approval['approval_created_by'],
+            $approval['approval_decision_actor_id']
+        );
         $task_approvals[$approval_index] = $approval;
     }
     $approvals_by_key[$task_key] = $task_approvals;

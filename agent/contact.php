@@ -11,6 +11,9 @@ if (isset($_GET['client_id'])) {
     $client_url = '';
 }
 
+enforceUserPermission('module_client');
+$contact_scope_query = clientScopeSql('contacts.contact_client_id');
+
 if (isset($_GET['contact_id'])) {
     $contact_id = intval($_GET['contact_id']);
 
@@ -23,6 +26,7 @@ if (isset($_GET['contact_id'])) {
         LEFT JOIN locations ON location_id = contact_location_id
         LEFT JOIN users ON user_id = contact_user_id
         WHERE contact_id = $contact_id
+        $contact_scope_query
         $client_query
         LIMIT 1
     ");
@@ -35,6 +39,7 @@ if (isset($_GET['contact_id'])) {
 
     $row = mysqli_fetch_assoc($sql);
     $client_id = intval($row['client_id']);
+    enforceClientAccess($client_id);
     $client_name = escapeHtml($row['client_name']);
     $contact_name = escapeHtml($row['contact_name']);
     $contact_title = escapeHtml($row['contact_title']);

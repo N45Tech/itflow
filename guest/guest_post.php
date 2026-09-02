@@ -187,6 +187,7 @@ if (isset($_GET['reopen_ticket'], $_GET['url_key'])) {
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket is no longer resolved');
         }
+        ticketOperationalOnReopened($ticket_id, 0, 'contact');
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket reopen');
         }

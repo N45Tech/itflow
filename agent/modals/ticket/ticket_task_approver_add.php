@@ -140,8 +140,14 @@ ob_start();
 
         $.getJSON('ajax.php?get_internal_users=true', function(data) {
             userSelect.empty().append('<option value="">Select user...</option>');
-            data.users.forEach(function(u) {
-                userSelect.append(`<option value="${u.user_id}">${u.user_name}</option>`);
+            (Array.isArray(data.users) ? data.users : []).forEach(function(u) {
+                const userId = Number.parseInt(u.user_id, 10);
+                if (!Number.isInteger(userId) || userId <= 0) {
+                    return;
+                }
+                // new Option assigns the name as text instead of interpreting
+                // an agent-controlled display name as HTML.
+                userSelect.append(new Option(String(u.user_name || ''), String(userId)));
             });
         });
     });

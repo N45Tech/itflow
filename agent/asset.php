@@ -10,6 +10,8 @@ if (isset($_GET['client_id'])) {
     $client_query = '';
     $client_url = '';
 }
+
+enforceUserPermission('module_support');
 $asset_scope_query = clientScopeSql('assets.asset_client_id');
 
 if (isset($_GET['asset_id'])) {

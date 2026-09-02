@@ -519,12 +519,13 @@ function portalRequestAssertVersion($version_id) {
     return $definition;
 }
 
-function portalRequestPublish($item_id, $created_by = 0, $notes = '') {
+function portalRequestPublish($item_id, $created_by = 0, $notes = '', $caller_transaction = false) {
     global $mysqli;
 
     $item_id = intval($item_id);
     $created_by = intval($created_by);
-    if (!mysqli_begin_transaction($mysqli)) {
+    $caller_transaction = boolval($caller_transaction);
+    if (!$caller_transaction && !mysqli_begin_transaction($mysqli)) {
         throw new RuntimeException('Could not begin the request publication transaction');
     }
     try {
@@ -656,12 +657,14 @@ function portalRequestPublish($item_id, $created_by = 0, $notes = '') {
             SET portal_request_catalog_item_published_version_id = $version_id
             WHERE portal_request_catalog_item_id = $item_id",
             'Could not select the published request version');
-        if (!mysqli_commit($mysqli)) {
+        if (!$caller_transaction && !mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the request publication');
         }
         return $version_id;
     } catch (Throwable $exception) {
-        mysqli_rollback($mysqli);
+        if (!$caller_transaction) {
+            mysqli_rollback($mysqli);
+        }
         throw $exception;
     }
 }
@@ -1386,6 +1389,12 @@ function portalRequestInitiateLockedSubmission($submission, $definition, $actor_
         $priority = $responses['priority'];
     }
     $priority_sql = mysqli_real_escape_string($mysqli, $priority);
+    $work_type = array_key_exists((string) ($definition['type'] ?? ''), ticketOperationalWorkTypes())
+        ? (string) $definition['type'] : 'request';
+    [$impact, $urgency] = ticketOperationalLegacyDimensionsForPriority($priority);
+    $work_type_sql = mysqli_real_escape_string($mysqli, $work_type);
+    $impact_sql = mysqli_real_escape_string($mysqli, $impact);
+    $urgency_sql = mysqli_real_escape_string($mysqli, $urgency);
     $url_key = mysqli_real_escape_string($mysqli, randomString(32));
     $asset_id = 0;
     foreach ($definition['fields'] as $field) {
@@ -1418,7 +1427,11 @@ function portalRequestInitiateLockedSubmission($submission, $definition, $actor_
         ticket_source = 'Portal Catalog',
         ticket_category = $category_id,
         ticket_subject = '$subject', ticket_details = '$details',
-        ticket_priority = '$priority_sql', ticket_status = 1,
+        ticket_priority = '$priority_sql', ticket_work_type = '$work_type_sql',
+        ticket_impact = '$impact_sql', ticket_urgency = '$urgency_sql',
+        ticket_next_action = 'Review the approved catalog request and begin its pinned runbook.',
+        ticket_waiting_on = 'none', ticket_operational_updated_by = $actor_id,
+        ticket_operational_updated_at = NOW(), ticket_status = 1,
         ticket_billable = " . intval($config_ticket_default_billable) . ",
         ticket_created_by = " . intval($submission['portal_request_submission_user_id']) . ",
         ticket_contact_id = $contact_id, ticket_asset_id = $asset_id,
@@ -1755,7 +1768,7 @@ function portalRequestStarterDefinitions() {
             ['impact', 'Business impact', 'select', true, ['One person', 'Several people', 'Most or all users', 'Security or data concern']],
             ['started_at', 'When did it start?', 'datetime', false], ['details', 'What happened?', 'textarea', true],
         ]],
-        ['scheduled-work', 'scheduled_work', 'Schedule work', 'Plan maintenance, an office change or other coordinated work.', 'fas fa-calendar-check', 'manager', 'manager', [
+        ['scheduled-work', 'scheduled_work', 'Schedule work', 'Plan maintenance, an office change or other coordinated work.', 'fas fa-calendar-check', 'manager', 'technical', [
             ['subject', 'Work summary', 'text', true], ['preferred_time', 'Preferred date and time', 'datetime', true],
             ['duration', 'Estimated duration in minutes', 'integer', false], ['impact', 'Expected user impact', 'textarea', true],
             ['details', 'Scope and coordination notes', 'textarea', true],
@@ -1763,16 +1776,63 @@ function portalRequestStarterDefinitions() {
     ];
 }
 
-function portalRequestInstallStarters($created_by = 0) {
+/**
+ * Stable request-to-runbook contracts for the six canonical portal families.
+ * IDs are intentionally absent: both sides are resolved by immutable business
+ * keys and then ownership/hash checked before any release can become visible.
+ */
+function portalRequestStarterRunbookBindings() {
+    return [
+        'new-user' => [
+            'request_type' => 'new_user',
+            'runbook_key' => 'user-onboarding',
+            'runbook_type' => 'onboarding',
+            'required_task_approval' => ['client', 'technical'],
+        ],
+        'termination' => [
+            'request_type' => 'termination',
+            'runbook_key' => 'user-offboarding',
+            'runbook_type' => 'offboarding',
+            'required_task_approval' => ['client', 'technical'],
+        ],
+        'new-device' => [
+            'request_type' => 'new_device',
+            'runbook_key' => 'device-deployment',
+            'runbook_type' => 'standard',
+            'required_task_approval' => ['client', 'technical'],
+        ],
+        'access-change' => [
+            'request_type' => 'access_change',
+            'runbook_key' => 'access-change',
+            'runbook_type' => 'standard',
+            'required_task_approval' => ['client', 'technical'],
+        ],
+        'incident-report' => [
+            'request_type' => 'incident',
+            'runbook_key' => 'incident-response',
+            'runbook_type' => 'standard',
+            'required_task_approval' => null,
+        ],
+        'scheduled-work' => [
+            'request_type' => 'scheduled_work',
+            'runbook_key' => 'scheduled-work',
+            'runbook_type' => 'standard',
+            'required_task_approval' => ['client', 'technical'],
+        ],
+    ];
+}
+
+function portalRequestInstallStarters($created_by = 0, $caller_transaction = false) {
     global $mysqli;
 
     $created_by = intval($created_by);
     $installed = 0;
-    if (!mysqli_begin_transaction($mysqli)) {
+    $caller_transaction = boolval($caller_transaction);
+    if (!$caller_transaction && !mysqli_begin_transaction($mysqli)) {
         throw new RuntimeException('Could not begin starter request installation');
     }
     try {
-        foreach (portalRequestStarterDefinitions() as $starter) {
+        foreach (portalRequestStarterDefinitions() as $definition_index => $starter) {
             [$key, $type, $name, $description, $icon, $permission, $approval, $fields] = $starter;
             $key_sql = mysqli_real_escape_string($mysqli, $key);
             $exists = mysqli_fetch_row(portalRequestDbQuery("SELECT COUNT(*)
@@ -1798,7 +1858,7 @@ function portalRequestInstallStarters($created_by = 0) {
                 portal_request_catalog_item_approval_rule = '$approval_sql',
                 portal_request_catalog_item_created_by = $created_by,
                 portal_request_catalog_item_updated_by = $created_by,
-                portal_request_catalog_item_order = " . ($installed * 10),
+                portal_request_catalog_item_order = " . ($definition_index * 10),
                 'Could not install a starter request');
             $item_id = intval(mysqli_insert_id($mysqli));
             foreach ($fields as $order => $field) {
@@ -1822,10 +1882,312 @@ function portalRequestInstallStarters($created_by = 0) {
             }
             $installed++;
         }
-        if (!mysqli_commit($mysqli)) {
+        if (!$caller_transaction && !mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit starter requests');
         }
         return $installed;
+    } catch (Throwable $exception) {
+        if (!$caller_transaction) {
+            mysqli_rollback($mysqli);
+        }
+        throw $exception;
+    }
+}
+
+function portalRequestStarterDefinitionMap() {
+    $definitions = [];
+    foreach (portalRequestStarterDefinitions() as $definition) {
+        $definitions[(string) $definition[0]] = $definition;
+    }
+    return $definitions;
+}
+
+/**
+ * Verify that a stable starter key still represents the security-sensitive
+ * shape that N45 is willing to publish unattended.  Text, category and order
+ * remain operator-editable; request type, portal permission, approval route,
+ * applicability and typed field semantics do not silently drift.
+ */
+function portalRequestStarterDraftContractErrors($item_id, $starter) {
+    $item_id = intval($item_id);
+    $draft = portalRequestDraftDefinition($item_id);
+    if (!$draft || !is_array($starter) || count($starter) < 8) {
+        return ['The canonical starter draft is unavailable.'];
+    }
+
+    [$key, $type, , , , $permission, $approval, $fields] = $starter;
+    $errors = [];
+    foreach ([
+        'key' => $key,
+        'type' => $type,
+        'permission_rule' => $permission,
+        'approval_rule' => $approval,
+        'applicability_rule' => 'all',
+        'applicability_value' => '',
+    ] as $field => $expected) {
+        if (!hash_equals((string) $expected, (string) ($draft[$field] ?? ''))) {
+            $errors[] = "The starter $field no longer matches the canonical contract.";
+        }
+    }
+
+    $expected_fields = [];
+    foreach ($fields as $order => $field) {
+        [$field_key, $label, $field_type, $required] = $field;
+        $expected_fields[(string) $field_key] = [
+            'label' => (string) $label,
+            'type' => (string) $field_type,
+            'required' => boolval($required),
+            'options' => array_values($field[4] ?? []),
+            'max_length' => $field_type === 'textarea' ? 4000 : 255,
+            'min_value' => null,
+            'max_value' => null,
+            'order' => ($order + 1) * 10,
+        ];
+    }
+    $actual_fields = [];
+    foreach (($draft['fields'] ?? []) as $field) {
+        $actual_fields[(string) ($field['key'] ?? '')] = [
+            'label' => (string) ($field['label'] ?? ''),
+            'type' => (string) ($field['type'] ?? ''),
+            'required' => boolval($field['required'] ?? false),
+            'options' => array_values($field['options'] ?? []),
+            'max_length' => intval($field['max_length'] ?? 0),
+            'min_value' => $field['min_value'] ?? null,
+            'max_value' => $field['max_value'] ?? null,
+            'order' => intval($field['order'] ?? 0),
+        ];
+    }
+    ksort($expected_fields, SORT_STRING);
+    ksort($actual_fields, SORT_STRING);
+    if (!hash_equals(
+        portalRequestDefinitionHash($expected_fields),
+        portalRequestDefinitionHash($actual_fields)
+    )) {
+        $errors[] = 'The starter typed fields no longer match the canonical contract.';
+    }
+    return $errors;
+}
+
+/**
+ * Resolve one canonical runbook by stable key and prove that its current
+ * published pointer owns an immutable, operationally complete release.
+ */
+function portalRequestResolveStarterRunbook($binding) {
+    global $mysqli;
+
+    $runbook_key = (string) ($binding['runbook_key'] ?? '');
+    $runbook_type = (string) ($binding['runbook_type'] ?? '');
+    $key_sql = mysqli_real_escape_string($mysqli, $runbook_key);
+    $rows = portalRequestDbQuery("SELECT ticket_template_id,
+        ticket_template_runbook_key, ticket_template_runbook_type,
+        ticket_template_published_version_id, ticket_template_archived_at
+        FROM ticket_templates WHERE ticket_template_runbook_key = '$key_sql'
+        ORDER BY ticket_template_id ASC LIMIT 2 FOR UPDATE",
+        'Could not resolve the canonical starter runbook');
+    $templates = [];
+    while ($row = mysqli_fetch_assoc($rows)) {
+        $templates[] = $row;
+    }
+    if (count($templates) !== 1) {
+        throw new RuntimeException("Canonical runbook $runbook_key is missing or ambiguous");
+    }
+    $template = $templates[0];
+    if (!empty($template['ticket_template_archived_at'])
+        || !hash_equals($runbook_key, (string) $template['ticket_template_runbook_key'])
+        || !hash_equals($runbook_type, (string) $template['ticket_template_runbook_type'])) {
+        throw new RuntimeException("Canonical runbook $runbook_key is archived or has an incompatible type");
+    }
+
+    $template_id = intval($template['ticket_template_id']);
+    $version_id = intval($template['ticket_template_published_version_id']);
+    if (!$template_id || !$version_id) {
+        throw new RuntimeException("Canonical runbook $runbook_key has no current published release");
+    }
+    $version = mysqli_fetch_assoc(portalRequestDbQuery("SELECT runbook_version_definition_hash
+        FROM runbook_versions WHERE runbook_version_id = $version_id
+        AND runbook_version_ticket_template_id = $template_id LIMIT 1 FOR UPDATE",
+        'Could not lock the canonical starter runbook release'));
+    if (!$version) {
+        throw new RuntimeException("Canonical runbook $runbook_key has an invalid published pointer");
+    }
+    $definition = runbookAssertVersionDefinitionHash(
+        $version_id,
+        $version['runbook_version_definition_hash']
+    );
+    $definition_errors = runbookValidateDefinition($definition);
+    if ($definition_errors) {
+        throw new RuntimeException(
+            "Canonical runbook $runbook_key release is invalid: " . $definition_errors[0]
+        );
+    }
+    if (!hash_equals($runbook_key, (string) ($definition['key'] ?? ''))
+        || !hash_equals($runbook_type, (string) ($definition['type'] ?? ''))
+        || empty($definition['tasks'])) {
+        throw new RuntimeException("Canonical runbook $runbook_key release is incompatible");
+    }
+
+    $required_approval = $binding['required_task_approval'] ?? null;
+    $approval_found = $required_approval === null;
+    foreach ($definition['tasks'] as $task) {
+        if (trim((string) ($task['instructions'] ?? '')) === ''
+            || ($task['owner_type'] ?? 'unassigned') === 'unassigned'
+            || ($task['evidence_type'] ?? 'none') === 'none'
+            || trim((string) ($task['evidence_prompt'] ?? '')) === '') {
+            throw new RuntimeException("Canonical runbook $runbook_key contains an incomplete execution task");
+        }
+        if (is_array($required_approval)
+            && ($task['approval_scope'] ?? '') === ($required_approval[0] ?? '')
+            && ($task['approval_type'] ?? '') === ($required_approval[1] ?? '')
+            && ($task['initial_state'] ?? '') === 'Waiting') {
+            $approval_found = true;
+        }
+    }
+    if (!$approval_found) {
+        throw new RuntimeException("Canonical runbook $runbook_key is missing its required approval gate");
+    }
+    return [
+        'ticket_template_id' => $template_id,
+        'runbook_version_id' => $version_id,
+    ];
+}
+
+/**
+ * Install, bind and publish the six starter catalog requests.  Any per-item
+ * validation or persistence failure rolls that item back and clears its live
+ * pointer; a failure to preserve that fail-closed draft rolls back the full
+ * reconciliation.  Dry-run executes the identical locks and validation and
+ * then rolls everything back.
+ */
+function portalRequestReconcileStarters($created_by = 0, $dry_run = false) {
+    global $mysqli;
+
+    $created_by = intval($created_by);
+    $dry_run = boolval($dry_run);
+    $bindings = portalRequestStarterRunbookBindings();
+    $definitions = portalRequestStarterDefinitionMap();
+    $result = [
+        'installed' => 0,
+        'published' => 0,
+        'reused' => 0,
+        'draft' => 0,
+        'items' => [],
+    ];
+    $registry_valid = count($bindings) === 6 && count($definitions) === 6
+        && array_keys($bindings) === array_keys($definitions);
+    foreach ($bindings as $request_key => $binding) {
+        $registry_valid = $registry_valid
+            && hash_equals(
+                (string) ($definitions[$request_key][1] ?? ''),
+                (string) ($binding['request_type'] ?? '')
+            );
+    }
+    if (!$registry_valid) {
+        throw new RuntimeException('The canonical starter request registry is inconsistent');
+    }
+    if (!mysqli_begin_transaction($mysqli)) {
+        throw new RuntimeException('Could not begin starter request reconciliation');
+    }
+    try {
+        $result['installed'] = portalRequestInstallStarters($created_by, true);
+        foreach ($bindings as $request_key => $binding) {
+            $request_key_sql = mysqli_real_escape_string($mysqli, $request_key);
+            $item = mysqli_fetch_assoc(portalRequestDbQuery("SELECT
+                portal_request_catalog_item_id, portal_request_catalog_item_type,
+                portal_request_catalog_item_approval_rule,
+                portal_request_catalog_item_published_version_id,
+                portal_request_catalog_item_archived_at,
+                (SELECT COUNT(*) FROM portal_request_submissions s
+                    WHERE s.portal_request_submission_item_id = i.portal_request_catalog_item_id) AS submission_count
+                FROM portal_request_catalog_items i
+                WHERE i.portal_request_catalog_item_key = '$request_key_sql'
+                LIMIT 1 FOR UPDATE", 'Could not lock a starter request draft'));
+            $item_id = intval($item['portal_request_catalog_item_id'] ?? 0);
+            if (!$item_id) {
+                throw new RuntimeException("Starter request $request_key was not installed");
+            }
+            portalRequestDbQuery('SAVEPOINT portal_request_starter_item',
+                'Could not create a starter request reconciliation savepoint');
+            try {
+                if (!empty($item['portal_request_catalog_item_archived_at'])) {
+                    throw new RuntimeException('The starter request is archived');
+                }
+
+                // Upgrade only the exact unpublished pre-reconciliation
+                // Scheduled Work policy.  Used or already released definitions
+                // are never rewritten in place.
+                if ($request_key === 'scheduled-work'
+                    && $item['portal_request_catalog_item_approval_rule'] === 'manager'
+                    && intval($item['portal_request_catalog_item_published_version_id']) === 0
+                    && intval($item['submission_count']) === 0) {
+                    portalRequestDbQuery("UPDATE portal_request_catalog_items SET
+                        portal_request_catalog_item_approval_rule = 'technical',
+                        portal_request_catalog_item_updated_by = $created_by
+                        WHERE portal_request_catalog_item_id = $item_id
+                        AND portal_request_catalog_item_approval_rule = 'manager'
+                        AND portal_request_catalog_item_published_version_id = 0 LIMIT 1",
+                        'Could not upgrade the Scheduled Work approval route');
+                }
+
+                $contract_errors = portalRequestStarterDraftContractErrors(
+                    $item_id,
+                    $definitions[$request_key]
+                );
+                if ($contract_errors) {
+                    throw new RuntimeException($contract_errors[0]);
+                }
+                $resolved = portalRequestResolveStarterRunbook($binding);
+                $previous_version_id = intval($item['portal_request_catalog_item_published_version_id']);
+                $template_id = intval($resolved['ticket_template_id']);
+                portalRequestDbQuery("UPDATE portal_request_catalog_items SET
+                    portal_request_catalog_item_ticket_template_id = $template_id,
+                    portal_request_catalog_item_updated_by = $created_by
+                    WHERE portal_request_catalog_item_id = $item_id LIMIT 1",
+                    'Could not bind the starter request runbook');
+                $version_id = portalRequestPublish(
+                    $item_id,
+                    $created_by,
+                    'Canonical starter request reconciled by stable runbook key',
+                    true
+                );
+                $status = $previous_version_id === $version_id ? 'reused' : 'published';
+                portalRequestDbQuery('RELEASE SAVEPOINT portal_request_starter_item',
+                    'Could not release the starter request reconciliation savepoint');
+                $result[$status]++;
+                $result['items'][$request_key] = [
+                    'status' => $status,
+                    'version_id' => $version_id,
+                    'runbook_version_id' => intval($resolved['runbook_version_id']),
+                    'reason' => '',
+                ];
+            } catch (Throwable $exception) {
+                portalRequestDbQuery('ROLLBACK TO SAVEPOINT portal_request_starter_item',
+                    'Could not roll back an incompatible starter request');
+                portalRequestDbQuery("UPDATE portal_request_catalog_items SET
+                    portal_request_catalog_item_ticket_template_id = 0,
+                    portal_request_catalog_item_published_version_id = 0,
+                    portal_request_catalog_item_updated_by = $created_by
+                    WHERE portal_request_catalog_item_id = $item_id LIMIT 1",
+                    'Could not leave an incompatible starter request as a draft');
+                $result['draft']++;
+                $result['items'][$request_key] = [
+                    'status' => 'draft',
+                    'version_id' => 0,
+                    'runbook_version_id' => 0,
+                    'reason' => substr($exception->getMessage(), 0, 255),
+                ];
+                portalRequestDbQuery('RELEASE SAVEPOINT portal_request_starter_item',
+                    'Could not release the failed starter request reconciliation savepoint');
+            }
+        }
+
+        if ($dry_run) {
+            if (!mysqli_rollback($mysqli)) {
+                throw new RuntimeException('Could not roll back the starter request dry-run');
+            }
+        } elseif (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit starter request reconciliation');
+        }
+        return $result;
     } catch (Throwable $exception) {
         mysqli_rollback($mysqli);
         throw $exception;

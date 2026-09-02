@@ -645,7 +645,9 @@ if (isset($_GET['invoice_id'])) {
                                     <th class="text-right">Amount</th>
                                     <th>Reference</th>
                                     <th>Account</th>
-                                    <th></th>
+                                    <?php if (lookupUserPermission("module_sales") >= 3 && lookupUserPermission("module_financial") >= 3) { ?>
+                                        <th></th>
+                                    <?php } ?>
                                 </tr>
                             </thead>
                             <tbody>
@@ -665,7 +667,9 @@ if (isset($_GET['invoice_id'])) {
                                     <td class="text-right"><?= numfmt_format_currency($currency_format, $payment_amount, $payment_currency_code) ?></td>
                                     <td><?= $payment_reference ?></td>
                                     <td><?= $account_name ?></td>
-                                    <td class="text-center"><a class="btn btn-light text-danger confirm-link" href="post.php?delete_payment=<?= $payment_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class="fa fa-times"></i></a></td>
+                                    <?php if (lookupUserPermission("module_sales") >= 3 && lookupUserPermission("module_financial") >= 3) { ?>
+                                        <td class="text-center"><a class="btn btn-light text-danger confirm-link" href="post.php?delete_payment=<?= $payment_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class="fa fa-times"></i></a></td>
+                                    <?php } ?>
                                 </tr>
                                 <?php
                             }

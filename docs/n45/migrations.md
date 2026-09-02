@@ -39,10 +39,11 @@ The manifest reserves the next four feature IDs, plus one compatibility repair, 
 | `2.8.0.php` | `n45-0013-portal-request-catalog` | Portal requests |
 | `2.8.1.php` | `n45-0014-agreement-entitlements` | Agreements |
 | — | `n45-0015-documentation-evidence-reference-index` | Documentation compatibility |
+| — | `n45-0016-ticket-operational-discipline` | Ticket operations |
 
 When integrating each feature, rename its file into `n45/migrations/`, change its guard to `FROM_N45_DB_UPDATER`, and make its header name the stable ID. Remove checks that read `settings.config_current_database_version` or require the preceding numeric fork marker; stable manifest order is the N45 prerequisite after the namespaces separate. Add the module and ordered migration definition to `n45/manifest.php`; copy the reservation's `legacy_version`, `data_change`, and rollback contract exactly; add complete column, index, and data fingerprints; update the released-file inventory and baseline-schema assertions; then add the migration to the released inventory below. `n45-0011` must retain `legacy_version => '2.7.8'`, not `null`. Remove no reservation: the durable mapping is needed to detect old installations whose upstream marker already contains that former fork number.
 
-The namespace preflight refuses an update if a reserved numeric file still exists under `admin/database_updates/`, if a consumed reservation has the wrong manifest metadata or schema inventory, or if stable IDs are consumed out of order. Once `n45-0011` through `n45-0014` are present, it also requires `n45-0015`. Conversely, `n45-0015` cannot be consumed while any of `n45-0012` through `n45-0014` remains reserved. This deliberately makes an incomplete final merge fail before either migration runner changes the database; the compatibility-repair commit is not a standalone release and its reservation validation is expected to fail until all three intervening feature migrations are integrated.
+The namespace preflight refuses an update if a reserved numeric file still exists under `admin/database_updates/`, if a consumed reservation has the wrong manifest metadata or schema inventory, or if stable IDs are consumed out of order. Once `n45-0011` through `n45-0014` are present, it also requires `n45-0015`; Goal 6 then consumes the next post-integration reservation as `n45-0016`. Conversely, neither post-integration migration can be consumed while an earlier reservation remains open. This deliberately makes an incomplete final merge fail before either migration runner changes the database.
 
 ### Legacy 2.7.8 evidence-index compatibility
 
@@ -84,6 +85,7 @@ The legacy bridge remains deliberately read-only. A database whose upstream mark
 | `n45-0013-portal-request-catalog` | 2.8.0 | Portal requests | No | Disable portal request publication and submission, preserve request history, and restore the pre-upgrade database snapshot. |
 | `n45-0014-agreement-entitlements` | 2.8.1 | Agreements | No | Deploy compatible application code, preserve published agreement and review evidence, and restore the pre-upgrade database snapshot if schema rollback is required. |
 | `n45-0015-documentation-evidence-reference-index` | — | Documentation | No | Do not recreate the obsolete unique index; restore the snapshot only with the complete documentation schema. |
+| `n45-0016-ticket-operational-discipline` | — | Ticket operations | Yes | Deploy compatible application code, preserve operational audit and promise evidence, and restore the pre-upgrade database snapshot if schema rollback is required. |
 
 Any environment that experimentally ran an earlier local `2.8.0.php` must be restored from its pre-upgrade snapshot or explicitly reconciled to the final portal request schema before release deployment. An advanced numeric marker alone is not proof of the final schema: the legacy bridge fails closed on an older or partial shape. Once namespace state is reconciled, an unrecorded `n45-0013` remains pending and the normal runner executes its retry-safe repair before recording the ledger row.
 

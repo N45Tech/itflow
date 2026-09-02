@@ -23,6 +23,8 @@ if (isset($_GET['client_id'])) {
     $client_url = '';
 }
 
+enforceUserPermission('module_client');
+
 if (!$client_url) {
     // Client Filter
     if (isset($_GET['client']) & !empty($_GET['client'])) {

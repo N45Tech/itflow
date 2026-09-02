@@ -41,6 +41,15 @@ require_once 'includes/inc_all.php';
             <form action="post.php" method="post" autocomplete="off">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <div class="form-group">
+                    <label for="currentPassword">Current password</label>
+                    <div class="input-group">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text"><i class="fa fa-fw fa-key" aria-hidden="true"></i></span>
+                        </div>
+                        <input type="password" class="form-control" id="currentPassword" required name="current_password" autocomplete="current-password">
+                    </div>
+                </div>
+                <div class="form-group">
                     <label for="newPassword">New password</label>
                     <div class="input-group">
                         <div class="input-group-prepend">

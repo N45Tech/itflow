@@ -341,6 +341,9 @@ $assertContains("empty(\$task['task_completed_at'])", $export, 'Export accepts a
 $assertContains('runbookExportEvidenceQualifies($item, $required_evidence)', $export, 'Export does not verify required evidence remains satisfied');
 $assertContains("approval['approval_status'] !== 'approved'", $export, 'Export does not verify required approvals remain approved');
 $assertContains("final_state_event['task_state_event_to_state']", $export, 'Export does not reconcile final transition history with runtime state');
+$assertContains('runbookCloseoutIntegrityErrors([', $export, 'Export bypasses the shared deterministic closeout verifier');
+$assertContains('approval_created_by', $export, 'Export cannot detect an internal requester self-approving at closeout');
+$assertContains('approval_decision_actor_id', $export, 'Export cannot compare the internal decision actor with its requester');
 
 // Stable source keys, definition dependencies and named actors—not runtime IDs—
 // form the closeout contract.

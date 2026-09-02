@@ -99,16 +99,13 @@ ob_start();
                 <div class="row">
                     <div class="col">
                         <div class="form-group">
-                            <label>Priority <strong class="text-danger">*</strong></label>
+                            <label>Priority</label>
                             <div class="input-group">
                                 <div class="input-group-prepend">
                                     <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
                                 </div>
-                                <select class="form-control select2" name="priority" required>
-                                    <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
-                                        <option value="<?= escapeHtml($priority) ?>" <?php if ($ticket_priority == $priority) { echo "selected"; } ?>><?= escapeHtml("$priority — " . $definition['short']) ?></option>
-                                    <?php } ?>
-                                </select>
+                                <input class="form-control" value="<?= $ticket_priority ?> (calculated from impact and urgency)" readonly>
+                                <div class="input-group-append"><button type="button" class="btn btn-secondary ajax-modal" data-modal-url="modals/ticket/ticket_operations.php?id=<?= $ticket_id ?>" data-modal-size="lg">Operational plan</button></div>
                             </div>
                         </div>
                     </div>

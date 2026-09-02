@@ -60,7 +60,8 @@ $assertContains('documentationRecordEvidenceLocked(', $verify, 'Verification doe
 $exception = $section('function documentationRequestObligationException(', 'function documentationLockTicket(');
 $assertNotContains('documentation_obligation_base_status =', $exception, 'Exception state overwrites the underlying base status');
 $assertContains('documentationRequireSupportLevel($actor_id, 3)', $exception, 'Exception decisions do not require support level 3');
-$assertContains("documentation_obligation_exception_requested_by']) === \$actor_id", $exception, 'Exception self-approval is possible');
+$assertContains('documentationAssertDistinctDecisionActor(', $exception, 'Exception self-approval is possible');
+$assertContains("'exception'", $exception, 'Exception decisions do not use the distinct-actor policy');
 $assertContains('INSERT INTO documentation_obligation_exceptions', $exception, 'Exception requests overwrite the obligation projection without a durable record');
 $assertContains('documentationRecordObligationExceptionEvent(', $exception, 'Exception decisions have no append-only domain history');
 
@@ -89,7 +90,8 @@ $assertContains('documentationPromiseReasonCodes()', $functions, 'Promise Ledger
 $assertContains('A ticket documentation promise requires a linked obligation', $functions, 'Ticket promises can target an unlinked documentation obligation');
 $assertContains('INSERT INTO ticket_documentation_waiver_events', $functions, 'Ticket waiver changes have no append-only history');
 $assertContains('documentationRequireSupportLevel($actor_id, 3)', $functions, 'Waiver decisions do not require support level 3');
-$assertContains("ticket_documentation_waiver_requested_by']) === \$actor_id", $functions, 'Ticket waiver self-approval is possible');
+$assertContains('documentationAssertDistinctDecisionActor(', $functions, 'Ticket waiver self-approval is possible');
+$assertContains("'waiver'", $functions, 'Ticket waivers do not use the distinct-actor policy');
 $assertContains('This ticket documentation waiver requires an administrator decision', $functions, 'Administrator waiver policy is not enforced');
 $assertContains('documentationTicketWaiverPinsObligationVersion(', $functions, 'Ticket waivers are not pinned to the requested requirement version');
 $assertContains("'requirement_version_id' => \$requirement_version_id", $functions, 'Ticket waiver request history omits its requirement version pin');

@@ -46,6 +46,7 @@ $required_migration_prefix = [
     'n45-0013-portal-request-catalog.php',
     'n45-0014-agreement-entitlements.php',
     'n45-0015-documentation-evidence-reference-index.php',
+    'n45-0016-ticket-operational-discipline.php',
 ];
 $disk_migration_files = array_map('basename', glob($root . '/n45/migrations/*.php') ?: []);
 sort($disk_migration_files);
@@ -73,11 +74,53 @@ $reservations = n45MigrationNamespaceReservations();
 $assertTrue(array_keys($reservations) === ['2.7.8', '2.7.9', '2.8.0', '2.8.1'], 'The final integration reservations are missing or out of order');
 $post_integration_reservations = n45PostIntegrationMigrationReservations();
 $assertTrue(
-    array_keys($post_integration_reservations) === ['n45-0015-documentation-evidence-reference-index'],
-    'The documentation evidence-index compatibility repair reservation is missing'
+    array_keys($post_integration_reservations) === [
+        'n45-0015-documentation-evidence-reference-index',
+        'n45-0016-ticket-operational-discipline',
+    ],
+    'The post-integration migration reservations are missing or out of order'
 );
 $repair_index = $post_integration_reservations['n45-0015-documentation-evidence-reference-index']['altered_indexes']['documentation_evidence_locker']['documentation_evidence_reference'] ?? [];
 $assertTrue(($repair_index['unique'] ?? null) === false, 'The compatibility repair would restore the obsolete unique evidence index');
+$ticket_operations_id = 'n45-0016-ticket-operational-discipline';
+$ticket_operations_definition = $definitions[$ticket_operations_id] ?? [];
+$ticket_operations_reservation = $post_integration_reservations[$ticket_operations_id] ?? [];
+$assertTrue(
+    n45MigrationReservationDefinitionMatches($ticket_operations_definition, '', $ticket_operations_reservation),
+    'The ticket operational migration does not match its reserved exhaustive schema contract'
+);
+$ticket_operations_fingerprint = $ticket_operations_definition['fingerprint'] ?? [];
+$assertTrue(($ticket_operations_fingerprint['tables'] ?? []) === [
+    'ticket_operational_events', 'ticket_relationships', 'ticket_customer_promises',
+    'ticket_customer_promise_events', 'ticket_email_ingress',
+], 'The ticket operational fingerprint omits a created table');
+$assertTrue(array_keys($ticket_operations_fingerprint['columns']['ticket_email_ingress'] ?? []) === [
+    'ticket_email_ingress_id', 'ticket_email_ingress_message_hash',
+    'ticket_email_ingress_claim_token', 'ticket_email_ingress_sender_hash',
+    'ticket_email_ingress_domain_hash', 'ticket_email_ingress_subject_hash',
+    'ticket_email_ingress_status', 'ticket_email_ingress_attempts',
+    'ticket_email_ingress_ticket_id', 'ticket_email_ingress_reply_id',
+    'ticket_email_ingress_client_id', 'ticket_email_ingress_reason_code',
+    'ticket_email_ingress_received_at', 'ticket_email_ingress_processing_at',
+    'ticket_email_ingress_completed_at',
+], 'The ticket ingress fingerprint is not exhaustive');
+$assertTrue(array_keys($ticket_operations_fingerprint['indexes']['ticket_email_ingress'] ?? []) === [
+    'PRIMARY', 'ticket_email_ingress_message', 'ticket_email_ingress_status',
+    'ticket_email_ingress_sender_window', 'ticket_email_ingress_domain_window',
+    'ticket_email_ingress_client_window', 'ticket_email_ingress_ticket',
+], 'The ticket ingress index fingerprint is not exhaustive');
+$assertTrue(count($ticket_operations_fingerprint['failure_queries'] ?? []) >= 12,
+    'The ticket operational release contract does not validate all data domains');
+$ticket_operations_failure_contract = implode("\n", $ticket_operations_fingerprint['failure_queries'] ?? []);
+foreach ([
+    'ticket_operational_events_bu_immutable',
+    'ticket_operational_events_bd_immutable',
+    'ticket_customer_promise_events_bu_immutable',
+    'ticket_customer_promise_events_bd_immutable',
+] as $trigger_name) {
+    $assertTrue(str_contains($ticket_operations_failure_contract, $trigger_name),
+        "The ticket operational release contract does not detect $trigger_name drift");
+}
 $assertTrue(
     $reservations['2.7.9']['created_tables'] === [
         'asset_endpoint_states',

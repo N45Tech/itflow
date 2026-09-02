@@ -31,6 +31,22 @@ bash scripts/n45-upstream-review.sh upstream/master HEAD upstream-parity-report.
 
 Workflow-dispatch inputs or the `N45_REVIEWED_BASE_SHA` and `N45_REVIEWED_HEAD_SHA` repository variables provide the same evidence in CI. A new commit or upstream advance invalidates the approval deliberately. Never weaken the path rules to make a review pass; review the overlap and approve its exact SHAs.
 
+### Default-branch scheduling requirement
+
+GitHub Actions runs a scheduled workflow only from the repository's default
+branch. The N45 repository currently uses `master` as that branch, while this
+workflow is being developed on the integration branch. Push, pull-request, and
+manual-dispatch parity checks work from the integration branch, but the weekly
+schedule is not operational until the workflow file reaches the default
+branch.
+
+After the all-goals candidate is complete, the repository owner must either
+merge a minimal workflow-only pull request into `master` (recommended) or make
+the assembled N45 branch the default branch. The workflow-only change does not
+authorize or trigger a production deployment. Until one of those decisions is
+implemented, record upstream review as a manual release responsibility rather
+than describing it as recurring automation.
+
 ## Module boundary
 
 `functions.php` loads fork-owned services through `n45RequireModule()`. Add a module or runtime file to `n45/manifest.php` before wiring it into core code. The loader deliberately loads code even when optional processing is disabled: referential cleanup, history access, and safe error responses must remain available.
@@ -69,4 +85,4 @@ Authentication restrictions, portal authorization, runbook lifecycle gates, evid
 
 ## Release evidence
 
-An upstream-parity review is complete only when the generated report has no unexplained overlap, all migrations have rollback notes, the smoke contract passes, the full regression suite passes, and production deployment has a verified database restore point. A clean textual merge alone is not sufficient evidence.
+An upstream-parity review is complete only when the generated report has no unexplained overlap, all migrations have rollback notes, the smoke contract passes, the full regression suite passes, and production deployment has a verified database restore point. Recurring review is operational only when the workflow is present on the repository's default branch. A clean textual merge alone is not sufficient evidence.

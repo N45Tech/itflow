@@ -42,19 +42,7 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
 
             <div class="row">
                 <div class="col">
-                    <div class="form-group">
-                        <label for="ticketPriority">Priority <strong class="text-danger">*</strong></label>
-                        <div class="input-group">
-                            <div class="input-group-prepend">
-                                <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
-                            </div>
-                            <select class="form-control select2" id="ticketPriority" name="priority" required>
-                                <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
-                                    <option value="<?= escapeHtml($priority) ?>"><?= escapeHtml("$priority — " . $definition['short']) ?></option>
-                                <?php } ?>
-                            </select>
-                        </div>
-                    </div>
+                    <div class="form-group"><label for="ticketWorkType">What do you need?</label><select class="form-control" id="ticketWorkType" name="work_type" required><option value="request">A service or access request</option><option value="incident">Something is broken or unavailable</option><option value="onboarding">Onboarding or offboarding</option><option value="change">A planned change</option></select></div>
                 </div>
 
                 <div class="col">
@@ -80,6 +68,11 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
                     </div>
                 </div>
                 </div>
+            </div>
+
+            <div class="row">
+                <div class="col"><div class="form-group"><label for="ticketImpact">How broad is the impact?</label><select class="form-control" id="ticketImpact" name="impact" required><option value="low">One person or minor inconvenience</option><option value="medium" selected>Several people or important function</option><option value="high">Most users or major function</option><option value="critical">Whole business or safety/security risk</option></select></div></div>
+                <div class="col"><div class="form-group"><label for="ticketUrgency">How quickly is help needed?</label><select class="form-control" id="ticketUrgency" name="urgency" required><option value="low">Can be scheduled</option><option value="medium" selected>Normal business priority</option><option value="high">Work is significantly blocked</option><option value="critical">Immediate response required</option></select></div></div>
             </div>
 
             <?php if (mysqli_num_rows($sql_assets) > 0) { ?>

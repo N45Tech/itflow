@@ -15,6 +15,7 @@ require $app_root . '/config.php';
 require $app_root . '/includes/db.php';
 require $app_root . '/functions/sanitize.php';
 require $app_root . '/functions/sla.php';
+require $app_root . '/functions/ticket_operations.php';
 require $app_root . '/admin/post/starter_content_model.php';
 
 $dry_run = in_array('--dry-run', $argv, true);
@@ -25,6 +26,7 @@ $counts = [
     'tags' => 0,
     'archived_unused_tags' => 0,
     'restamped_tickets' => 0,
+    'normalized_tickets' => 0,
 ];
 
 function operationsFindId($mysqli, $table, $id_column, $where)
@@ -225,7 +227,10 @@ try {
     // on a clean installation and preserves completed/archived history.
     $open_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
     while ($ticket = mysqli_fetch_assoc($open_tickets)) {
-        applyTicketSla(intval($ticket['ticket_id']));
+        $ticket_id = intval($ticket['ticket_id']);
+        ticketOperationalNormalizeLegacyTicket($ticket_id);
+        applyTicketSla($ticket_id, null, null, true);
+        $counts['normalized_tickets']++;
         $counts['restamped_tickets']++;
     }
 
@@ -238,6 +243,7 @@ try {
     $verb = $dry_run ? 'Would configure' : 'Configured';
     echo "$verb {$counts['statuses']} statuses, {$counts['slas']} SLA targets, {$counts['assignments']} default assignments and {$counts['tags']} active tags.\n";
     echo ($dry_run ? 'Would archive' : 'Archived') . " {$counts['archived_unused_tags']} unused legacy tags and " . ($dry_run ? 'would re-stamp' : 're-stamped') . " {$counts['restamped_tickets']} open tickets.\n";
+    echo ($dry_run ? 'Would normalize' : 'Normalized') . " {$counts['normalized_tickets']} open ticket operational records.\n";
 } catch (Throwable $exception) {
     mysqli_rollback($mysqli);
     fwrite(STDERR, "Ticket operations reconciliation failed: " . $exception->getMessage() . "\n");

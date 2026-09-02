@@ -693,13 +693,14 @@ if (isset($_GET['delete_payment'])) {
 
     validateCSRFToken();
 
-    enforceUserPermission('module_sales', 2);
-    enforceUserPermission('module_financial', 2);
+    enforceUserPermission('module_sales', 3);
+    enforceUserPermission('module_financial', 3);
 
     $payment_id = intval($_GET['delete_payment']);
 
     // payments has no client column - the client comes from the invoice the payment sits on
-    $sql = mysqli_query($mysqli,"SELECT invoice_client_id, invoice_number, invoice_prefix, payment_invoice_id FROM payments
+    $sql = mysqli_query($mysqli,"SELECT invoice_client_id, invoice_number, invoice_prefix,
+        payment_invoice_id, payment_method FROM payments
         LEFT JOIN invoices ON payment_invoice_id = invoice_id
         WHERE payment_id = $payment_id
         LIMIT 1"
@@ -709,6 +710,7 @@ if (isset($_GET['delete_payment'])) {
     $invoice_prefix = escapeSql($row['invoice_prefix']);
     $invoice_number = intval($row['invoice_number']);
     $client_id = intval($row['invoice_client_id']);
+    $payment_method = (string) ($row['payment_method'] ?? '');
 
     enforceClientAccess();
 
@@ -722,7 +724,7 @@ if (isset($_GET['delete_payment'])) {
     logAudit("Invoice", "Edit", "$session_name deleted Payment on Invoice $invoice_prefix$invoice_number", $client_id, $invoice_id);
 
     flashAlert("Payment deleted", 'error');
-    if ($config_stripe_enable) {
+    if ($payment_method === 'Stripe') {
        flashAlert("Payment deleted - Stripe payments must be manually refunded in Stripe", 'error');
     }
 

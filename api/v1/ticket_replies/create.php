@@ -62,11 +62,12 @@ $insert_id = false;
 if (!empty($ticket_id) && !empty($reply)) {
 
     // Load the parent ticket, scoped to the key user's client access
+    $active_ticket_scope = ticketOperationalActiveTicketSql('tickets');
     $ticket_sql = mysqli_query(
         $mysqli,
         "SELECT * FROM tickets
          WHERE ticket_id = $ticket_id
-           AND 1=1 " . apiClientScopeSql('ticket_client_id') . "
+           AND 1=1 " . apiClientScopeSql('ticket_client_id') . " $active_ticket_scope
          LIMIT 1"
     );
     $ticket_row = $ticket_sql ? mysqli_fetch_assoc($ticket_sql) : null;
@@ -152,6 +153,16 @@ if (!empty($ticket_id) && !empty($reply)) {
                         if ($original_ticket_status !== 4) {
                             $locked_ticket = runbookLockOpenTicket($ticket_id);
                         }
+                        if ($reply_ticket_status === 4) {
+                            ticketOperationalSetResolution(
+                                $ticket_id,
+                                $_POST['ticket_resolution_code'] ?? '',
+                                $_POST['ticket_resolution_summary'] ?? '',
+                                $_POST['ticket_root_cause'] ?? '',
+                                intval($session_user_id),
+                                'api'
+                            );
+                        }
                         [$can_resolve] = runbookTicketCanResolve($ticket_id);
                         if (!$can_resolve) {
                             $reply_ticket_status = $original_ticket_status;
@@ -197,7 +208,16 @@ if (!empty($ticket_id) && !empty($reply)) {
                 if (in_array($reply_ticket_status, [4, 5], true)) {
                     documentationRecordChangePassport($ticket_id, $reply_ticket_status, $session_user_id, true);
                 }
+                if ($reply_ticket_status === 4) {
+                    ticketOperationalOnResolved($ticket_id, intval($session_user_id), 'api');
+                } elseif ($original_ticket_status === 4) {
+                    ticketOperationalOnReopened($ticket_id, intval($session_user_id), 'api');
+                }
                 $status_changed = true;
+            }
+
+            if ($reply_type === 'Public') {
+                ticketOperationalFulfillPromisesLocked($ticket_id, 'customer_update', intval($session_user_id), 'api', intval($insert_id));
             }
 
             if (!mysqli_commit($mysqli)) {

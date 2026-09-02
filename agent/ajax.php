@@ -483,7 +483,7 @@ if (isset($_GET['get_totp_token_via_id'])) {
 }
 
 if (isset($_GET['get_readable_pass'])) {
-    echo json_encode(GenerateReadablePassword(1));
+    echo json_encode(generateReadablePassword());
 }
 
 /*
@@ -606,6 +606,11 @@ if (isset($_POST['update_kanban_ticket'])) {
                 }
                 if ($actual_old_status !== $status && in_array($status, [4, 5], true)) {
                     documentationRecordChangePassport($ticket_id, $status, $session_user_id, true);
+                }
+                if ($actual_old_status !== $status && $status === $statuses['Resolved']) {
+                    ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
+                } elseif ($was_resolved && $status !== $statuses['Resolved']) {
+                    ticketOperationalOnReopened($ticket_id, $session_user_id, 'agent');
                 }
                 $status_changed = $actual_old_status !== $status
                     || ($status !== $statuses['Resolved'] && $was_resolved);

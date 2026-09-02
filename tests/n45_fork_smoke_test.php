@@ -90,8 +90,11 @@ $assertTrue(
 );
 $post_integration_reservations = $manifest['maintenance']['post_integration_migration_reservations'] ?? [];
 $assertTrue(
-    array_keys($post_integration_reservations) === ['n45-0015-documentation-evidence-reference-index'],
-    'The post-integration documentation compatibility repair is not reserved'
+    array_keys($post_integration_reservations) === [
+        'n45-0015-documentation-evidence-reference-index',
+        'n45-0016-ticket-operational-discipline',
+    ],
+    'The post-integration compatibility and ticket-operation migrations are not reserved'
 );
 $required_migration_ids = array_keys($expected_legacy_migrations);
 $manifest_migration_ids = array_keys($manifest['migrations'] ?? []);
@@ -108,8 +111,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0015-documentation-evidence-reference-index',
-    'The documentation evidence-index repair is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0016-ticket-operational-discipline',
+    'Ticket operational discipline is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -456,6 +459,7 @@ foreach (glob($root . '/api/v1/tickets/*.php') ?: [] as $api_ticket_file) {
 // Repeatable parity review must remain repository native and read-only.
 $review_script = $read('scripts/n45-upstream-review.sh');
 $review_workflow = $read('.github/workflows/upstream-parity.yml');
+$security_sensitive_paths = $read('n45/security-sensitive-paths.regex');
 $assertContains('git merge-base', $review_script, 'Upstream review does not calculate a merge base');
 $assertContains('comm -12', $review_script, 'Upstream review does not identify path overlap');
 $assertContains('sensitive-overlap-paths', $review_script, 'Upstream review does not isolate security-sensitive overlap');
@@ -470,6 +474,8 @@ $assertContains('git diff --check', $review_script, 'Upstream review does not va
 $assertContains('grep -Fvxf', $review_script, 'Upstream review does not reject whitespace errors outside the exact allowlist');
 $assertTrue(is_file($root . '/n45/upstream-diff-check.allowlist'), 'The exact historical whitespace allowlist is missing');
 $assertTrue(is_file($root . '/n45/security-sensitive-paths.regex'), 'Security-sensitive path rules are missing');
+$assertContains('^(guest|cron)/', $security_sensitive_paths, 'Security-sensitive parity review omits unauthenticated guest or background-writer paths');
+$assertContains('^libs/composer\\.(json|lock)$', $security_sensitive_paths, 'Security-sensitive parity review omits the application dependency manifest and lockfile');
 $assertContains('https://github.com/itflow-org/itflow.git', $review_workflow, 'Parity workflow does not fetch authoritative ITFlow upstream');
 $assertContains('for test_file in tests/*_test.php', $review_workflow, 'Parity workflow does not run the full regression suite');
 

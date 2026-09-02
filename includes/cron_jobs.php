@@ -65,6 +65,14 @@ function cronJobRegistry(): array
             'interval_minutes' => 1,
         ],
         [
+            'name' => 'ticket_operations',
+            'label' => 'Ticket Promise Monitor',
+            'script' => 'ticket_operations.php',
+            'description' => 'Marks overdue customer-update and target-completion promises as breached for operational follow-up.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 5,
+        ],
+        [
             'name' => 'level_webhook_processor',
             'label' => 'Level.io Webhooks',
             'script' => 'level_webhook_processor.php',

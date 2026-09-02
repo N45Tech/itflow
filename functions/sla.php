@@ -559,6 +559,9 @@ function syncTicketSlaClock($ticket_id, bool $strict = false)
     global $mysqli;
 
     $ticket_id = intval($ticket_id);
+    $soft_delete_projection = function_exists('ticketOperationalSoftDeleteProjection')
+        ? ticketOperationalSoftDeleteProjection('tickets')
+        : ', NULL AS ticket_operational_deleted_at';
 
     $clock_query = static function (string $sql, string $message) use ($mysqli, $strict) {
         $result = mysqli_query($mysqli, $sql);
@@ -574,7 +577,7 @@ function syncTicketSlaClock($ticket_id, bool $strict = false)
         ticket_sla_resolution_minutes_snapshot, ticket_sla_calendar_mode,
         ticket_sla_business_days, ticket_sla_business_hours_start,
         ticket_sla_business_hours_end, ticket_sla_timezone,
-        sla_resolution_minutes, ticket_status_pauses_sla
+        sla_resolution_minutes, ticket_status_pauses_sla $soft_delete_projection
         FROM tickets
         LEFT JOIN slas ON ticket_sla_id = sla_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
@@ -604,6 +607,7 @@ function syncTicketSlaClock($ticket_id, bool $strict = false)
         && empty($row['ticket_resolved_at'])
         && empty($row['ticket_closed_at'])
         && empty($row['ticket_archived_at'])
+        && empty($row['ticket_operational_deleted_at'])
         && intval($row['ticket_status_pauses_sla']) == 0;
 
     if ($should_run && is_null($open_interval)) {
@@ -817,6 +821,13 @@ function applyTicketSla(
     };
 
     try {
+        // Normalize legacy and upstream ticket creation paths at the common
+        // SLA seam. Explicitly typed writes carry an operational timestamp
+        // and are left unchanged.
+        if (function_exists('ticketOperationalNormalizeLegacyTicket')) {
+            ticketOperationalNormalizeLegacyTicket($ticket_id);
+        }
+
         // Match the shared retention order: locate the owner, lock the client,
         // then lock and revalidate the ticket. Holding both through selection,
         // stamping, and the decision insert closes hard-delete races.

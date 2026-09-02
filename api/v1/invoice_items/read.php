@@ -10,6 +10,7 @@
  *   invoice_id     required* - Return items for a single invoice
  *   item_id        required* - Return a single line item by its own ID
  *                  * One of invoice_id or item_id must be provided
+ *   client_id      optional  - Only return items on invoices for this client
  *   limit          optional  - Max rows to return (default 50)
  *   offset         optional  - Offset for pagination (default 0)
  *

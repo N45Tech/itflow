@@ -71,6 +71,13 @@ if (isset($_GET['ticket_id'])) {
         $ticket_subject = escapeHtml($ticket['ticket_subject']);
         $ticket_details = $purifier->purify($ticket['ticket_details']);
         $ticket_priority = escapeHtml($ticket['ticket_priority']);
+        $ticket_work_type = escapeHtml(ticketOperationalWorkTypes()[$ticket['ticket_work_type']] ?? $ticket['ticket_work_type']);
+        $ticket_impact = escapeHtml(ticketOperationalLevels()[$ticket['ticket_impact']] ?? $ticket['ticket_impact']);
+        $ticket_urgency = escapeHtml(ticketOperationalLevels()[$ticket['ticket_urgency']] ?? $ticket['ticket_urgency']);
+        $ticket_next_action = escapeHtml($ticket['ticket_next_action']);
+        $ticket_next_action_due_at = escapeHtml($ticket['ticket_next_action_due_at']);
+        $ticket_waiting_on = escapeHtml(ticketOperationalWaitingOnDefinitions()[$ticket['ticket_waiting_on']] ?? $ticket['ticket_waiting_on']);
+        $ticket_waiting_on_detail = escapeHtml($ticket['ticket_waiting_on_detail']);
         $ticket_billable = intval($ticket['ticket_billable']);
         $ticket_scheduled_for = escapeHtml($ticket['ticket_schedule']);
         $ticket_onsite = intval($ticket['ticket_onsite']);
@@ -601,8 +608,8 @@ if (isset($_GET['ticket_id'])) {
                                     <?php } ?>
 
                                     <?php if (!$ticket_is_resolved) { ?>
-                                        <a href="post.php?resolve_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"
-                                            class="btn btn-dark confirm-link <?php if ($tasks_block_resolve) { echo "disabled"; } ?>"
+                                        <a href="#" data-modal-url="modals/ticket/ticket_resolve.php?id=<?= $ticket_id ?>"
+                                            class="btn btn-dark ajax-modal <?php if ($tasks_block_resolve) { echo "disabled"; } ?>"
                                             id="ticket_close"
                                             <?php if ($tasks_block_resolve) { ?>
                                                 title="<?= escapeHtml($ticket_resolution_gate_error) ?>"
@@ -629,6 +636,9 @@ if (isset($_GET['ticket_id'])) {
                                     <div class="dropdown-menu">
                                         <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_summary.php?ticket_id=<?= $ticket_id ?>" data-modal-size="lg">
                                             <i class="fas fa-fw fa-lightbulb mr-2"></i>Summarize
+                                        </a>
+                                        <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_operations.php?id=<?= $ticket_id ?>" data-modal-size="lg">
+                                            <i class="fas fa-fw fa-compass mr-2"></i>Operational plan
                                         </a>
                                         <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_merge.php?ticket_id=<?= $ticket_id ?>">
                                             <i class="fas fa-fw fa-clone mr-2"></i>Merge Ticket
@@ -668,18 +678,41 @@ if (isset($_GET['ticket_id'])) {
                     </div>
 
                     <div class="ticket-field">
+                        <div class="ticket-field-label">Work type</div>
+                        <div class="ticket-field-value">
+                            <a href="#" class="text-decoration-none<?php if ($can_edit_ticket && !$ticket_is_closed) { echo ' ajax-modal'; } ?>" <?php if ($can_edit_ticket && !$ticket_is_closed) { ?>data-modal-url="modals/ticket/ticket_operations.php?id=<?= $ticket_id ?>" data-modal-size="lg"<?php } ?>><?= $ticket_work_type ?></a>
+                        </div>
+                    </div>
+
+                    <div class="ticket-field">
                         <div class="ticket-field-label">Priority</div>
                         <div class="ticket-field-value">
                             <a href="#" title="Change priority"
                                 class="text-decoration-none<?php if ($can_edit_ticket && !$ticket_is_closed) { echo " ajax-modal"; } ?>"
                                 <?php if ($can_edit_ticket && !$ticket_is_closed) { ?>
-                                    data-modal-url="modals/ticket/ticket_priority.php?id=<?= $ticket_id ?>"
+                                    data-modal-url="modals/ticket/ticket_operations.php?id=<?= $ticket_id ?>" data-modal-size="lg"
                                 <?php } ?>
                             >
                                 <span class="badge badge-pill badge-<?= $ticket_priority_color ?> p-2"><?= $ticket_priority ?></span>
                             </a>
+                            <small class="d-block text-muted"><?= $ticket_impact ?> impact / <?= $ticket_urgency ?> urgency</small>
                         </div>
                     </div>
+
+                    <div class="ticket-field">
+                        <div class="ticket-field-label">Next action</div>
+                        <div class="ticket-field-value">
+                            <a href="#" class="text-decoration-none<?php if ($can_edit_ticket && !$ticket_is_closed) { echo ' ajax-modal'; } ?>" <?php if ($can_edit_ticket && !$ticket_is_closed) { ?>data-modal-url="modals/ticket/ticket_operations.php?id=<?= $ticket_id ?>" data-modal-size="lg"<?php } ?>><?= $ticket_next_action ?></a>
+                            <?php if ($ticket_next_action_due_at) { ?><small class="d-block text-muted">Due <?= escapeHtml(date('M j, Y g:i A', strtotime($ticket_next_action_due_at))) ?></small><?php } ?>
+                        </div>
+                    </div>
+
+                    <?php if ($ticket['ticket_waiting_on'] !== 'none') { ?>
+                    <div class="ticket-field">
+                        <div class="ticket-field-label">Waiting on</div>
+                        <div class="ticket-field-value"><span class="badge badge-warning"><?= $ticket_waiting_on ?></span><?php if ($ticket_waiting_on_detail) { ?><small class="d-block text-muted"><?= $ticket_waiting_on_detail ?></small><?php } ?></div>
+                    </div>
+                    <?php } ?>
 
                     <?php if ($sla_in_use) { ?>
                         <div class="ticket-field">
@@ -851,10 +884,8 @@ if (isset($_GET['ticket_id'])) {
                                             <select class="form-control select2" name="status" required>
                                                 <!-- Show all active ticket statuses, apart from new or closed as these are system-managed -->
                                                 <?php
-                                                $status_snippet = '';
-                                                if ($tasks_block_resolve) {
-                                                    $status_snippet = "AND ticket_status_id != 4";
-                                                }
+                                                // Resolution requires its dedicated evidence form.
+                                                $status_snippet = "AND ticket_status_id != 4";
                                                 $sql_ticket_status = mysqli_query($mysqli, "SELECT ticket_status_id, ticket_status_name FROM ticket_statuses WHERE ticket_status_id != 1 AND ticket_status_id != 5 AND ticket_status_active = 1 $status_snippet ORDER BY ticket_status_order");
                                                 while ($status_row = mysqli_fetch_assoc($sql_ticket_status)) {
                                                     $ticket_status_id_select = intval($status_row['ticket_status_id']);

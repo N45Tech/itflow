@@ -218,6 +218,9 @@ if ($tickets) {
                             $ticket_prefix = escapeHtml($row['ticket_prefix']);
                             $ticket_number = intval($row['ticket_number']);
                             $ticket_subject = escapeHtml($row['ticket_subject']);
+                            $ticket_work_type = escapeHtml(ticketOperationalWorkTypes()[$row['ticket_work_type']] ?? $row['ticket_work_type']);
+                            $ticket_next_action = escapeHtml($row['ticket_next_action']);
+                            $ticket_waiting_on = escapeHtml(ticketOperationalWaitingOnDefinitions()[$row['ticket_waiting_on']] ?? $row['ticket_waiting_on']);
                             $ticket_priority = escapeHtml($row['ticket_priority']);
                             $ticket_status_name = escapeHtml($row['ticket_status_name']);
                             $ticket_status_color = escapeHtml($row['ticket_status_color']);
@@ -231,7 +234,7 @@ if ($tickets) {
 
                             // SLA alert stages are maintained by cron/ticket_sla.php (1 = warned, 2 = breached)
                             $ticket_sla_alert_stage = max(intval($row['ticket_response_sla_alert_stage']), intval($row['ticket_resolution_sla_alert_stage']));
-                            $ticket_sla_paused = intval($row['ticket_status_pauses_sla']);
+                            $ticket_sla_paused = $ticket_is_open && intval($row['ticket_status_pauses_sla']);
                             // A paused ticket isn't running down its clock, so drop the
                             // at-risk warning - a breach already recorded still stands
                             if ($ticket_sla_paused && $ticket_sla_alert_stage < 2) {
@@ -339,6 +342,8 @@ if ($tickets) {
                                 <!-- Ticket Subject -->
                                 <td>
                                     <a href="ticket.php?ticket_id=<?= "$ticket_id$has_client" ?>"><?= $ticket_subject ?></a>
+                                    <div class="mt-1"><small class="text-muted"><span class="badge badge-light border mr-1"><?= $ticket_work_type ?></span><?= $ticket_next_action ?></small></div>
+                                    <?php if ($row['ticket_waiting_on'] !== 'none') { ?><div><small><span class="badge badge-warning">Waiting: <?= $ticket_waiting_on ?></span><?php if (!empty($row['ticket_waiting_on_detail'])) { ?> <?= escapeHtml($row['ticket_waiting_on_detail']) ?><?php } ?></small></div><?php } ?>
 
                                     <?php if ($task_count) { ?>
                                         <div class="d-flex align-items-center mt-1">

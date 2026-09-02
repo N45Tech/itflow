@@ -44,11 +44,18 @@ function apiUserCanAccessClient($client_id) {
     return empty($client_access_array) || in_array($client_id, $client_access_array, true);
 }
 
-// Client-scope SQL fragment for a read query, from the user's allow / deny lists.
-// Thin wrapper over clientScopeSql() in functions/auth.php so the API and the UI share one
-// implementation. Kept under the api* name because every endpoint already calls it.
+// Client-scope SQL fragment for a read query. The caller may narrow an already
+// authorized result set with client_id, but that filter can never widen the
+// linked user's allow/deny scope.
 function apiClientScopeSql($column) {
-    return clientScopeSql($column);
+    global $client_id, $client_id_supplied, $is_write;
+
+    $sql = clientScopeSql($column);
+    if (!empty($client_id_supplied) && empty($is_write)) {
+        $sql .= " AND $column = " . intval($client_id);
+    }
+
+    return $sql;
 }
 
 // --- Every key must be tied to a user (legacy keys were removed in the 2.4.7 migration) ---
@@ -153,6 +160,7 @@ if (lookupUserPermission($resource_module[$resource]) < $required_level) {
 // access. Callers that omit it get $client_id = 0 (creates that require a client fail
 // their own !empty($client_id) guard, which is the intended "must name a client").
 $client_id = intval($_POST['client_id'] ?? $_GET['client_id'] ?? 0);
+$client_id_supplied = isset($_POST['client_id']) || isset($_GET['client_id']);
 $is_write = in_array($operation_file, ['create.php', 'update.php', 'delete.php'], true);
 if ($is_write && !apiUserCanAccessClient($client_id)) {
     // Writes act on a single client the caller names (client_id 0 = a global record).

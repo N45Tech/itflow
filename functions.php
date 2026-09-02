@@ -30,6 +30,7 @@ require_once __DIR__ . '/functions/logging.php';
 n45RequireModule('mail_templates');
 n45RequireModule('documentation');
 n45RequireModule('runbooks');
+n45RequireModule('ticket_operations');
 n45RequireModule('portal_requests');
 n45RequireModule('agreements');
 require_once __DIR__ . '/functions/app.php';

@@ -42,12 +42,22 @@ if (isset($_POST['add_ticket'])) {
     //Generate a unique URL key for clients to access
     $url_key = randomString(32);
 
-    // Ensure priority is low/med/high (as can be user defined)
-    if (!array_key_exists($_POST['priority'] ?? '', ticketPriorityDefinitions())) {
-        $priority = "Low";
-    } else {
-        $priority = escapeSql($_POST['priority']);
+    try {
+        $operational = ticketOperationalInput([
+            'work_type' => $_POST['work_type'] ?? 'request',
+            'impact' => $_POST['impact'] ?? 'medium',
+            'urgency' => $_POST['urgency'] ?? 'medium',
+            'next_action' => 'Review and triage this portal request.',
+            'waiting_on' => 'none',
+        ]);
+    } catch (InvalidArgumentException $exception) {
+        flashAlert(escapeHtml($exception->getMessage()), 'error');
+        redirect();
     }
+    $priority = escapeSql($operational['priority']);
+    $work_type_sql = escapeSql($operational['work_type']);
+    $impact_sql = escapeSql($operational['impact']);
+    $urgency_sql = escapeSql($operational['urgency']);
 
     $ticket_transaction_started = false;
     try {
@@ -71,7 +81,7 @@ if (isset($_POST['add_ticket'])) {
             throw new RuntimeException('The client portal ticket number allocation returned no number');
         }
 
-        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Portal', ticket_category = $category, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = $session_user_id, ticket_contact_id = $session_contact_id, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $session_client_id", 'Could not create the client portal ticket');
+        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Portal', ticket_category = $category, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_work_type = '$work_type_sql', ticket_impact = '$impact_sql', ticket_urgency = '$urgency_sql', ticket_next_action = 'Review and triage this portal request.', ticket_waiting_on = 'none', ticket_operational_updated_by = 0, ticket_operational_updated_at = NOW(), ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = $session_user_id, ticket_contact_id = $session_contact_id, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $session_client_id", 'Could not create the client portal ticket');
         $ticket_id = intval(mysqli_insert_id($mysqli));
         if (!$ticket_id) {
             throw new RuntimeException('The client portal ticket did not receive an ID');
@@ -95,8 +105,6 @@ if (isset($_POST['add_ticket'])) {
     if ($config_ticket_new_ticket_notification_email) {
 
         $client_name = escapeSql($session_client_name);
-        $details = removeEmoji($details);
-
         $email_subject = "ITFlow - New Ticket - $client_name: $subject";
         $email_body = "Hello, <br><br>This is a notification that a new ticket has been raised in ITFlow. <br>Client: $client_name<br>Priority: $priority<br>Link: https://$config_base_url/agent/ticket.php?ticket_id=$ticket_id&client_id=$session_client_id <br><br><b>$subject</b><br>$details";
 
@@ -161,6 +169,7 @@ if (isset($_POST['add_ticket_comment'])) {
                 if (mysqli_affected_rows($mysqli) !== 1) {
                     throw new RuntimeException('The ticket state changed before the reply was saved');
                 }
+                ticketOperationalOnReopened($ticket_id, $session_contact_id, 'contact');
             }
             runbookDbQuery("INSERT INTO ticket_replies SET ticket_reply = '$comment',
                 ticket_reply_type = 'Client', ticket_reply_by = $session_contact_id,
@@ -415,6 +424,14 @@ if (isset($_GET['resolve_ticket'])) {
             if (intval($locked_ticket['ticket_client_id']) !== intval($session_client_id)) {
                 throw new RuntimeException('The ticket is outside your client scope');
             }
+            ticketOperationalSetResolution(
+                $ticket_id,
+                'customer_confirmed',
+                'Customer marked the ticket resolved from the client portal.',
+                '',
+                $session_contact_id,
+                'contact'
+            );
             [$can_resolve, $resolve_error] = runbookTicketCanResolve($ticket_id);
             if (!$can_resolve) {
                 throw new RuntimeException($resolve_error);
@@ -427,6 +444,7 @@ if (isset($_GET['resolve_ticket'])) {
                 throw new RuntimeException('The ticket is no longer open');
             }
             documentationRecordChangePassport($ticket_id, 4, 0, true);
+            ticketOperationalOnResolved($ticket_id, $session_contact_id, 'contact');
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the ticket resolution');
             }
@@ -494,6 +512,7 @@ if (isset($_GET['reopen_ticket'])) {
             if (mysqli_affected_rows($mysqli) !== 1) {
                 throw new RuntimeException('The ticket is no longer resolved');
             }
+            ticketOperationalOnReopened($ticket_id, $session_contact_id, 'contact');
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the ticket reopen');
             }
@@ -604,7 +623,17 @@ if (isset($_POST['edit_profile'])) {
 
     validateCSRFToken();
 
-    $new_password = $_POST['new_password'];
+    $new_password = (string) ($_POST['new_password'] ?? '');
+
+    if (!portalReauthenticate($_POST['current_password'] ?? '')) {
+        flashAlert('That password was not right - your password has not been changed', 'error');
+        redirect('profile.php');
+    }
+
+    if (strlen($new_password) < 8) {
+        flashAlert('Your new password must be at least eight characters', 'error');
+        redirect('profile.php');
+    }
 
     if (!empty($new_password)) {
         $password_hash = password_hash($new_password, PASSWORD_DEFAULT);
@@ -913,7 +942,7 @@ if (isset($_GET['add_payment_by_provider'])) {
 
         // Notify/log
         appNotify("Invoice Paid", "Invoice $invoice_prefix$invoice_number automatically paid", "/agent/invoice.php?invoice_id=$invoice_id", $client_id);
-        logAudit("Invoice", "Payment", "$session_name initiated Stripe payment amount of " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . " added to invoice $invoice_prefix$invoice_number - $pi_id $extended_log_desc", $client_id, $invoice_id);
+        logAudit("Invoice", "Payment", "$session_contact_name initiated Stripe payment amount of " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . " added to invoice $invoice_prefix$invoice_number - $pi_id $extended_log_desc", $client_id, $invoice_id);
         triggerCustomAction('invoice_pay', $invoice_id);
 
         flashAlert("The amount " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . " paid Invoice $invoice_prefix$invoice_number");
@@ -1374,14 +1403,14 @@ if (isset($_POST['set_recurring_payment'])) {
         // Get Payment ID for reference
         $recurring_payment_id = mysqli_insert_id($mysqli);
 
-        logAudit("Recurring Invoice", "Auto Payment", "$session_name created Auto Pay for Recurring Invoice $recurring_invoice_prefix$recurring_invoice_number in the amount of " . numfmt_format_currency($currency_format, $recurring_invoice_amount, $recurring_invoice_currency_code), $session_client_id, $recurring_invoice_id);
+        logAudit("Recurring Invoice", "Auto Payment", "$session_contact_name created Auto Pay for Recurring Invoice $recurring_invoice_prefix$recurring_invoice_number in the amount of " . numfmt_format_currency($currency_format, $recurring_invoice_amount, $recurring_invoice_currency_code), $session_client_id, $recurring_invoice_id);
 
         flashAlert("Automatic Payment $saved_payment_description enabled for Recurring Invoice $recurring_invoice_prefix$recurring_invoice_number");
     } else {
         // Delete
         mysqli_query($mysqli, "DELETE FROM recurring_payments WHERE recurring_payment_recurring_invoice_id = $recurring_invoice_id");
 
-        logAudit("Recurring Invoice", "Auto Payment", "$session_name removed Auto Pay for Recurring Invoice $recurring_invoice_prefix$recurring_invoice_number in the amount of " . numfmt_format_currency($currency_format, $recurring_invoice_amount, $recurring_invoice_currency_code), $session_client_id, $recurring_invoice_id);
+        logAudit("Recurring Invoice", "Auto Payment", "$session_contact_name removed Auto Pay for Recurring Invoice $recurring_invoice_prefix$recurring_invoice_number in the amount of " . numfmt_format_currency($currency_format, $recurring_invoice_amount, $recurring_invoice_currency_code), $session_client_id, $recurring_invoice_id);
 
         flashAlert("Automatic Payment Disabled for Recurring Invoice $recurring_invoice_prefix$recurring_invoice_number");
     }

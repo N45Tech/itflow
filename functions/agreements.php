@@ -232,6 +232,87 @@ function agreementDefinitionHash(array $definition): string
     return hash('sha256', agreementCanonicalJson($definition));
 }
 
+/**
+ * Canonical, deliberately non-commercial agreement used only by N45's own
+ * internal acceptance client. The request key and priority are both exact, so
+ * ordinary tickets do not match this rule and continue through the pre-existing
+ * client/global SLA fallback. This definition must never be projected onto a
+ * real customer; the deployment reconciler additionally requires the exact
+ * active client name and an operator-supplied client ID.
+ */
+function agreementInternalBaselineSpecification(): array
+{
+    return [
+        'client_name' => 'N45 Internal',
+        'contract' => [
+            'name' => 'N45 Internal Baseline',
+            'type' => 'Internal Control',
+            'support_hours' => 'Canary only; no support-hours promise',
+            'review_cadence_months' => 3,
+            'details' => 'N45-owned internal acceptance canary only. This non-commercial baseline creates no pricing, support, or client entitlement.',
+        ],
+        'version' => [
+            'effective_from' => null,
+            'effective_until' => null,
+            'renewal_notice_days' => 0,
+        ],
+        'entitlement' => [
+            'scope_type' => 'services',
+            'scope_id' => 0,
+            'scope_key' => 'n45-internal-agreement-canary',
+            'scope_label' => 'N45 internal agreement canary requests only',
+            'quantity_limit' => null,
+            'classification' => 'included',
+            'notes' => 'Synthetic internal validation scope; not a customer service entitlement.',
+        ],
+        'sla_rule' => [
+            'request_type_key' => 'n45-internal-agreement-canary',
+            'priority' => 'Low',
+            'sla_id' => 0,
+            'sla_name' => 'None',
+            'response_minutes' => null,
+            'resolution_minutes' => null,
+            'calendar_mode' => 'none',
+            'business_days' => null,
+            'business_hours_start' => null,
+            'business_hours_end' => null,
+            'timezone' => 'UTC',
+            'classification' => 'included',
+            'classification_basis' => 'explicit_rule',
+            'behavior_version' => 1,
+            'sla_eligible' => 1,
+            'ticket_onsite' => 0,
+            'ticket_billable' => 0,
+            'rule_order' => 0,
+        ],
+    ];
+}
+
+function agreementInternalBaselineExpectedDefinition(int $contract_id, int $version_number = 1): array
+{
+    if ($contract_id <= 0 || $version_number <= 0) {
+        throw new InvalidArgumentException('Internal baseline agreement identity is invalid');
+    }
+    $specification = agreementInternalBaselineSpecification();
+    $contract = $specification['contract'];
+    $version = $specification['version'];
+
+    return [
+        'contract_id' => $contract_id,
+        'version_number' => $version_number,
+        'name' => $contract['name'],
+        'type' => $contract['type'],
+        'effective_from' => $version['effective_from'],
+        'effective_until' => $version['effective_until'],
+        'support_hours' => $contract['support_hours'],
+        'review_cadence_months' => $contract['review_cadence_months'],
+        'renewal_notice_days' => $version['renewal_notice_days'],
+        'details' => $contract['details'],
+        'entitlements' => [$specification['entitlement']],
+        'sla_rules' => [$specification['sla_rule']],
+    ];
+}
+
 function agreementLegacyDefinitionV0(array $definition): array
 {
     foreach ($definition['sla_rules'] ?? [] as $index => $rule) {
@@ -253,6 +334,98 @@ function agreementDbQuery(string $sql, string $message = 'Agreement database ope
     }
 
     return $result;
+}
+
+function agreementDatabaseTransactionActive(): bool
+{
+    if (function_exists('n45DatabaseTransactionActive')) {
+        return n45DatabaseTransactionActive();
+    }
+    $result = agreementDbQuery(
+        'SELECT @@SESSION.in_transaction',
+        'Could not inspect the agreement transaction state'
+    );
+    $row = mysqli_fetch_row($result);
+    if (!is_array($row) || !array_key_exists(0, $row)) {
+        throw new RuntimeException('The database returned no agreement transaction state');
+    }
+    return intval($row[0]) === 1;
+}
+
+/**
+ * Publication services can be called outside the web handler by controlled
+ * maintenance commands. Revalidate the named approver in the same transaction
+ * instead of trusting an integer supplied by an internal caller.
+ */
+function agreementPublishingActor(
+    int $actor_id,
+    bool $for_update = false,
+    int $client_id = 0
+): array
+{
+    $actor_id = intval($actor_id);
+    $client_id = intval($client_id);
+    if ($actor_id <= 0) {
+        throw new RuntimeException('Publication requires an approving technician');
+    }
+    if ($for_update && !agreementDatabaseTransactionActive()) {
+        throw new RuntimeException('Publication actor locking requires an active database transaction');
+    }
+    $lock = $for_update ? ' FOR UPDATE' : '';
+    $sql = agreementDbQuery("SELECT users.user_id, users.user_name, users.user_role_id,
+            user_roles.role_is_admin
+        FROM users JOIN user_roles ON role_id = users.user_role_id
+        WHERE users.user_id = $actor_id
+        AND users.user_type = 1 AND users.user_status = 1
+        AND users.user_archived_at IS NULL
+        AND user_roles.role_archived_at IS NULL
+        LIMIT 1$lock", 'Could not validate the publication approver');
+    if (!mysqli_num_rows($sql)) {
+        throw new RuntimeException('The approving technician is inactive or lacks support-write permission');
+    }
+    $actor = mysqli_fetch_assoc($sql);
+    $is_admin = intval($actor['role_is_admin'] ?? 0) === 1;
+    if (!$is_admin) {
+        $role_id = intval($actor['user_role_id']);
+        $permission_sql = agreementDbQuery("SELECT user_role_permission_level
+            FROM user_role_permissions
+            JOIN modules ON modules.module_id = user_role_permissions.module_id
+            WHERE user_role_permissions.user_role_id = $role_id
+            AND modules.module_name = 'module_support'
+            ORDER BY user_role_permission_level DESC$lock",
+            'Could not lock the publication approver permissions');
+        $support_write = false;
+        while ($permission = mysqli_fetch_assoc($permission_sql)) {
+            $support_write = $support_write
+                || intval($permission['user_role_permission_level'] ?? 0) >= 2;
+        }
+        if (!$support_write) {
+            throw new RuntimeException('The approving technician is inactive or lacks support-write permission');
+        }
+    }
+
+    if ($client_id > 0 && !$is_admin) {
+        $client_permissions = agreementDbQuery("SELECT client_id, permission_type
+            FROM user_client_permissions WHERE user_id = $actor_id
+            ORDER BY client_id$lock", 'Could not lock the publication approver client scope');
+        $any_allow = false;
+        $client_allowed = false;
+        $client_denied = false;
+        while ($permission = mysqli_fetch_assoc($client_permissions)) {
+            $permission_client_id = intval($permission['client_id'] ?? 0);
+            if (($permission['permission_type'] ?? '') === 'allow') {
+                $any_allow = true;
+                $client_allowed = $client_allowed || $permission_client_id === $client_id;
+            } elseif (($permission['permission_type'] ?? '') === 'deny'
+                && $permission_client_id === $client_id) {
+                $client_denied = true;
+            }
+        }
+        if ($client_denied || ($any_allow && !$client_allowed)) {
+            throw new RuntimeException('The approving technician lacks access to this client');
+        }
+    }
+    return $actor;
 }
 
 /**
@@ -481,16 +654,61 @@ function agreementAssertVersionIntegrity(array $version): void
         throw new RuntimeException("Published agreement version $version_id failed its definition integrity check");
     }
     $current_hash = agreementDefinitionHash($definition);
-    if (hash_equals($stored_hash, $current_hash)) {
-        return;
+    if (!hash_equals($stored_hash, $current_hash)) {
+        // Compatibility for versions published by the pre-release 2.8.1 build.
+        // Its hash predates the explicit behavior-matrix columns. The classification
+        // itself was already hashed, so accepting that exact legacy projection does
+        // not permit any commercial term to change.
+        $legacy_hash = agreementDefinitionHash(agreementLegacyDefinitionV0($definition));
+        if (!hash_equals($stored_hash, $legacy_hash)) {
+            throw new RuntimeException("Published agreement version $version_id failed its definition integrity check");
+        }
     }
 
-    // Compatibility for versions published by the pre-release 2.8.1 build.
-    // Its hash predates the explicit behavior-matrix columns. The classification
-    // itself was already hashed, so accepting that exact legacy projection does
-    // not permit any commercial term to change.
-    $legacy_hash = agreementDefinitionHash(agreementLegacyDefinitionV0($definition));
-    if (!hash_equals($stored_hash, $legacy_hash)) {
+    $contract_id = intval($version['agreement_version_contract_id'] ?? 0);
+    $published_by = intval($version['agreement_version_published_by'] ?? 0);
+    $published_at = (string) ($version['agreement_version_published_at'] ?? '');
+    $events = agreementDbQuery("SELECT * FROM agreement_version_events
+        WHERE agreement_version_event_contract_id = $contract_id
+        AND agreement_version_event_version_id = $version_id
+        AND agreement_version_event_action = 'Published'
+        ORDER BY agreement_version_event_id", 'Could not validate agreement publication evidence');
+    if ($contract_id <= 0 || $published_by <= 0 || $published_at === ''
+        || mysqli_num_rows($events) !== 1) {
+        throw new RuntimeException("Published agreement version $version_id has missing or ambiguous publication evidence");
+    }
+    $publication = mysqli_fetch_assoc($events);
+    if (intval($publication['agreement_version_event_actor_id'] ?? 0) !== $published_by
+        || (string) ($publication['agreement_version_event_created_at'] ?? '') !== $published_at
+        || trim((string) ($publication['agreement_version_event_reason'] ?? '')) === ''
+        || !hash_equals(
+            $stored_hash,
+            (string) ($publication['agreement_version_event_definition_hash'] ?? '')
+        )) {
+        throw new RuntimeException("Published agreement version $version_id failed its publication-event binding check");
+    }
+
+    if ($status === 'Superseded') {
+        $superseded_at = (string) ($version['agreement_version_superseded_at'] ?? '');
+        $supersession_events = agreementDbQuery("SELECT * FROM agreement_version_events
+            WHERE agreement_version_event_contract_id = $contract_id
+            AND agreement_version_event_version_id = $version_id
+            AND agreement_version_event_action = 'Superseded'
+            ORDER BY agreement_version_event_id", 'Could not validate agreement supersession evidence');
+        if ($superseded_at === '' || mysqli_num_rows($supersession_events) !== 1) {
+            throw new RuntimeException("Superseded agreement version $version_id has missing or ambiguous lifecycle evidence");
+        }
+        $supersession = mysqli_fetch_assoc($supersession_events);
+        if (intval($supersession['agreement_version_event_actor_id'] ?? 0) <= 0
+            || (string) ($supersession['agreement_version_event_created_at'] ?? '') !== $superseded_at
+            || trim((string) ($supersession['agreement_version_event_reason'] ?? '')) === ''
+            || !hash_equals(
+                $stored_hash,
+                (string) ($supersession['agreement_version_event_definition_hash'] ?? '')
+            )) {
+            throw new RuntimeException("Superseded agreement version $version_id failed its lifecycle-event binding check");
+        }
+    } elseif (!empty($version['agreement_version_superseded_at'])) {
         throw new RuntimeException("Published agreement version $version_id failed its definition integrity check");
     }
 }
@@ -1404,7 +1622,12 @@ function agreementShiftCalendarMonths(string $date, int $months): string
     )->format('Y-m-d');
 }
 
-function agreementPublishVersion(int $version_id, int $actor_id, string $reason = ''): array
+function agreementPublishVersion(
+    int $version_id,
+    int $actor_id,
+    string $reason = '',
+    bool $caller_transaction = false
+): array
 {
     global $mysqli;
 
@@ -1413,7 +1636,13 @@ function agreementPublishVersion(int $version_id, int $actor_id, string $reason 
     if ($actor_id <= 0 || $reason === '') {
         throw new RuntimeException('Agreement publication requires an approving technician and reason');
     }
-    mysqli_begin_transaction($mysqli);
+    $owns_transaction = !$caller_transaction;
+    if ($caller_transaction && !agreementDatabaseTransactionActive()) {
+        throw new RuntimeException('Caller-owned agreement publication requires an active database transaction');
+    }
+    if ($owns_transaction && !mysqli_begin_transaction($mysqli)) {
+        throw new RuntimeException('Could not begin the agreement publication transaction');
+    }
     try {
         $pre_version = agreementVersionContext($version_id);
         if (!$pre_version) {
@@ -1425,6 +1654,7 @@ function agreementPublishVersion(int $version_id, int $actor_id, string $reason 
         if (!$locked_client || !empty($locked_client['client_archived_at'])) {
             throw new RuntimeException('An agreement must belong to an active client before publication');
         }
+        agreementPublishingActor($actor_id, true, $client_id);
         agreementDbQuery("SELECT contract_id FROM contracts WHERE contract_id = $contract_id LIMIT 1 FOR UPDATE",
             'Could not lock the agreement for publication');
         $version = agreementVersionContext($version_id, true);
@@ -1640,10 +1870,14 @@ function agreementPublishVersion(int $version_id, int $actor_id, string $reason 
             agreement_version_event_created_at = '$publication_at'",
             'Could not record agreement publication');
 
-        mysqli_commit($mysqli);
+        if ($owns_transaction && !mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the agreement publication');
+        }
         return ['contract_id' => $contract_id, 'version_id' => $version_id, 'definition_hash' => $hash];
     } catch (Throwable $e) {
-        mysqli_rollback($mysqli);
+        if ($owns_transaction) {
+            mysqli_rollback($mysqli);
+        }
         throw $e;
     }
 }
@@ -1654,6 +1888,9 @@ function agreementCreateDraftFromPublished(int $contract_id, int $actor_id): int
 
     $contract_id = intval($contract_id);
     $actor_id = intval($actor_id);
+    if ($actor_id <= 0) {
+        throw new RuntimeException('Agreement drafting requires an active support-write technician');
+    }
     $pre_contract_sql = agreementDbQuery("SELECT contract_client_id FROM contracts
         WHERE contract_id = $contract_id LIMIT 1", 'Could not locate agreement client');
     if (!mysqli_num_rows($pre_contract_sql)) {
@@ -1665,6 +1902,7 @@ function agreementCreateDraftFromPublished(int $contract_id, int $actor_id): int
         if (!agreementLockClientForAuditRetention($client_id)) {
             throw new RuntimeException('The agreement client no longer exists');
         }
+        agreementPublishingActor($actor_id, true, $client_id);
         $contract_sql = agreementDbQuery("SELECT * FROM contracts WHERE contract_id = $contract_id
             AND contract_archived_at IS NULL LIMIT 1 FOR UPDATE",
             'Could not lock agreement');
@@ -1856,12 +2094,75 @@ function agreementReviewPercentValue($value, string $label, bool $nullable = fal
     return round(floatval($value), 2);
 }
 
+function agreementReviewBooleanValue($value, string $label): bool
+{
+    if (!is_bool($value)) {
+        throw new RuntimeException("Service-review $label must be a boolean");
+    }
+    return $value;
+}
+
 function agreementReviewTextValue($value, string $label, int $limit = 500): string
 {
     if (!is_string($value) || trim($value) === '' || strlen($value) > $limit) {
         throw new RuntimeException("Service-review $label is invalid");
     }
     return trim($value);
+}
+
+/**
+ * Service-review exports are client-facing evidence, not a credential store.
+ * Minimize free text at snapshot creation and reject any later snapshot that
+ * bypasses the same redaction contract. Structured counts and durable hashes
+ * remain unchanged; only incidental free-text identifiers/secrets are removed.
+ */
+function agreementReviewRedactText($value, string $label, int $limit = 500): string
+{
+    $text = agreementReviewTextValue($value, $label, $limit);
+    $text = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $text);
+    $text = preg_replace('/\s+/u', ' ', (string) $text);
+    $text = preg_replace(
+        '/\bBearer\s+[A-Za-z0-9._~+\/=\-]{8,}/iu',
+        'Bearer [redacted]',
+        (string) $text
+    );
+    $text = preg_replace(
+        '/\bAuthorization\b\s*[:=]\s*Basic\s+[A-Za-z0-9+\/=]{8,}/iu',
+        'Authorization=[redacted]',
+        (string) $text
+    );
+    $text = preg_replace(
+        '/\bBasic\s+[A-Za-z0-9+\/=]{8,}/iu',
+        'Basic [redacted]',
+        (string) $text
+    );
+    $text = preg_replace(
+        '/\b(aws[_-]?secret[_-]?access[_-]?key|secret[_-]?access[_-]?key|client[_-]?secret|private[_-]?key|access[_-]?token|refresh[_-]?token)\b\s*[:=]\s*(?:"[^"]*"|\'[^\']*\'|[^\s,;&]+)/iu',
+        '$1=[redacted]',
+        (string) $text
+    );
+    $text = preg_replace(
+        '/\b(password|passwd|secret|token|api[-_ ]?key|authorization)\b\s*[:=]\s*(?:"[^"]*"|\'[^\']*\'|[^\s,;&]+)/iu',
+        '$1=[redacted]',
+        (string) $text
+    );
+    $text = preg_replace(
+        '/\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b/iu',
+        '[redacted email]',
+        (string) $text
+    );
+    $text = trim((string) $text);
+    return $text === '' ? '[redacted]' : $text;
+}
+
+function agreementReviewAssertRedactedText($value, string $label, int $limit = 500): string
+{
+    $text = agreementReviewTextValue($value, $label, $limit);
+    $redacted = agreementReviewRedactText($text, $label, $limit);
+    if (!hash_equals($text, $redacted)) {
+        throw new RuntimeException("Service-review $label contains unredacted sensitive text");
+    }
+    return $text;
 }
 
 function agreementNormalizeCoverageAdapter(array $adapter): array
@@ -1898,7 +2199,7 @@ function agreementNormalizeCoverageAdapter(array $adapter): array
         'endpoint_coverage_percent' => $endpoint_percent,
         'security_mapped_devices' => $security,
         'security_coverage_percent' => $security_percent,
-        'source' => agreementReviewTextValue($adapter['source'] ?? null, 'endpoint source', 200),
+        'source' => agreementReviewRedactText($adapter['source'] ?? null, 'endpoint source', 200),
     ];
 }
 
@@ -1910,8 +2211,8 @@ function agreementNormalizeDocumentationAdapter(array $adapter): array
             $adapter['readiness_percent'] ?? null,
             'documentation readiness'
         ),
-        'source' => agreementReviewTextValue($adapter['source'] ?? null, 'documentation source', 200),
-        'note' => agreementReviewTextValue($adapter['note'] ?? null, 'documentation note', 500),
+        'source' => agreementReviewRedactText($adapter['source'] ?? null, 'documentation source', 200),
+        'note' => agreementReviewRedactText($adapter['note'] ?? null, 'documentation note', 500),
     ];
     if (!$normalized['available']) {
         throw new RuntimeException('Documentation readiness adapter did not mark its evidence available');
@@ -1961,7 +2262,11 @@ function agreementServiceReviewSnapshot(int $client_id, string $period_start, st
         ORDER BY occurrences DESC, ticket_subject ASC LIMIT 10", 'Could not calculate recurring issues');
     while ($row = mysqli_fetch_assoc($recurring_sql)) {
         $recurring_issues[] = [
-            'subject' => (string) $row['ticket_subject'],
+            'subject' => agreementReviewRedactText(
+                (string) $row['ticket_subject'],
+                'recurring-issue subject',
+                500
+            ),
             'occurrences' => intval($row['occurrences']),
         ];
     }
@@ -2074,7 +2379,7 @@ function agreementServiceReviewSnapshot(int $client_id, string $period_start, st
         }
         $renewal_items[] = [
             'type' => $row['item_type'],
-            'name' => $row['item_name'],
+            'name' => agreementReviewRedactText($row['item_name'], 'renewal name', 500),
             'date' => $row['renewal_date'],
             'notice_days' => intval($row['notice_days']),
             'within_notice_window' => $inside,
@@ -2133,6 +2438,10 @@ function agreementGenerateServiceReview(
 ): int {
     global $mysqli;
 
+    $actor_id = intval($actor_id);
+    if ($actor_id < 0) {
+        throw new RuntimeException('Service-review generator identity is invalid');
+    }
     $start_date = DateTimeImmutable::createFromFormat('!Y-m-d', $period_start);
     $end_date = DateTimeImmutable::createFromFormat('!Y-m-d', $period_end);
     if (!$start_date || $start_date->format('Y-m-d') !== $period_start
@@ -2147,6 +2456,9 @@ function agreementGenerateServiceReview(
         $locked_client = agreementLockClientForAuditRetention($client_id);
         if (!$locked_client || !empty($locked_client['client_archived_at'])) {
             throw new RuntimeException('An active client is required to generate a service review');
+        }
+        if ($actor_id > 0) {
+            agreementPublishingActor($actor_id, true, $client_id);
         }
         $review_as_of = $period_end === date('Y-m-d')
             ? date('Y-m-d H:i:s') : $period_end . ' 23:59:59';
@@ -2197,20 +2509,30 @@ function agreementGenerateServiceReview(
         $recommendations = implode("\n", $snapshot['recommendations']);
         $recommendations_sql = mysqli_real_escape_string($mysqli, $recommendations);
         $summary_sql = mysqli_real_escape_string($mysqli, $summary);
-        $actor_id = intval($actor_id);
-
-        $existing = agreementDbQuery("SELECT service_review_id FROM service_reviews
+        $existing = agreementDbQuery("SELECT * FROM service_reviews
             WHERE service_review_client_id = $client_id
             AND service_review_period_start = '$period_start'
             AND service_review_period_end = '$period_end'
             AND service_review_snapshot_hash = '$hash' LIMIT 1 FOR UPDATE",
             'Could not inspect existing service reviews');
         if (mysqli_num_rows($existing)) {
-            $review_id = intval(mysqli_fetch_assoc($existing)['service_review_id']);
+            $existing_review = mysqli_fetch_assoc($existing);
+            $review_id = intval($existing_review['service_review_id']);
+            $existing_snapshot = agreementValidateServiceReviewSnapshot($existing_review);
+            agreementValidateServiceReviewAgreementEvidence(
+                $existing_review,
+                $existing_snapshot,
+                true
+            );
+            agreementValidateServiceReviewApproval(
+                $existing_review,
+                agreementServiceReviewEvents($review_id, $client_id)
+            );
             mysqli_commit($mysqli);
             return $review_id;
         }
 
+        $generated_at = mysqli_real_escape_string($mysqli, date('Y-m-d H:i:s'));
         agreementDbQuery("INSERT INTO service_reviews SET
             service_review_client_id = $client_id,
             service_review_contract_id = $contract_id,
@@ -2221,7 +2543,8 @@ function agreementGenerateServiceReview(
             service_review_summary = '$summary_sql',
             service_review_recommendations = '$recommendations_sql',
             service_review_snapshot_hash = '$hash',
-            service_review_generated_by = $actor_id", 'Could not create the service review');
+            service_review_generated_by = $actor_id,
+            service_review_generated_at = '$generated_at'", 'Could not create the service review');
         $review_id = intval(mysqli_insert_id($mysqli));
         agreementDbQuery("INSERT INTO service_review_events SET
             service_review_event_review_id = $review_id,
@@ -2229,7 +2552,8 @@ function agreementGenerateServiceReview(
             service_review_event_action = 'Generated',
             service_review_event_actor_id = $actor_id,
             service_review_event_reason = 'Generated from a consistent source snapshot',
-            service_review_event_snapshot_hash = '$hash'", 'Could not record service-review generation');
+            service_review_event_snapshot_hash = '$hash',
+            service_review_event_created_at = '$generated_at'", 'Could not record service-review generation');
         mysqli_commit($mysqli);
         return $review_id;
     } catch (Throwable $e) {
@@ -2295,26 +2619,47 @@ function agreementValidateServiceReviewSnapshot(array $review): array
     ] as $metric) {
         agreementReviewNonnegativeInteger($tickets[$metric] ?? null, "ticket $metric");
     }
-    agreementReviewPercentValue(
-        $tickets['response_compliance_percent'] ?? null,
-        'response-SLA compliance',
-        true
-    );
-    agreementReviewPercentValue(
+    $resolution_percent = agreementReviewPercentValue(
         $tickets['resolution_compliance_percent'] ?? null,
         'resolution-SLA compliance',
         true
     );
+    $response_percent = agreementReviewPercentValue(
+        $tickets['response_compliance_percent'] ?? null,
+        'response-SLA compliance',
+        true
+    );
+    $total_tickets = intval($tickets['total']);
+    $response_judged = intval($tickets['response_met']) + intval($tickets['response_missed']);
+    $resolution_judged = intval($tickets['resolution_met']) + intval($tickets['resolution_missed']);
+    $expected_response = agreementPercent(intval($tickets['response_met']), $response_judged);
+    $expected_resolution = agreementPercent(intval($tickets['resolution_met']), $resolution_judged);
+    if (intval($tickets['resolved']) + intval($tickets['open']) !== $total_tickets
+        || intval($tickets['recurring']) > $total_tickets
+        || $response_judged > $total_tickets || $resolution_judged > $total_tickets
+        || (is_null($expected_response) !== is_null($response_percent))
+        || (!is_null($expected_response) && abs($expected_response - $response_percent) > 0.01)
+        || (is_null($expected_resolution) !== is_null($resolution_percent))
+        || (!is_null($expected_resolution) && abs($expected_resolution - $resolution_percent) > 0.01)) {
+        throw new RuntimeException('Service-review ticket metrics are internally inconsistent');
+    }
     if (!is_array($tickets['recurring_issues'] ?? null)
         || count($tickets['recurring_issues']) !== intval($tickets['recurring_issue_groups'])) {
         throw new RuntimeException('Service-review recurring-issue evidence is inconsistent');
     }
     foreach ($tickets['recurring_issues'] as $issue) {
-        agreementReviewTextValue($issue['subject'] ?? null, 'recurring-issue subject', 500);
-        agreementReviewNonnegativeInteger($issue['occurrences'] ?? null, 'recurring-issue occurrences');
+        agreementReviewAssertRedactedText($issue['subject'] ?? null, 'recurring-issue subject', 500);
+        $occurrences = agreementReviewNonnegativeInteger(
+            $issue['occurrences'] ?? null,
+            'recurring-issue occurrences'
+        );
+        if ($occurrences < 2 || $occurrences > $total_tickets) {
+            throw new RuntimeException('Service-review recurring-issue count is inconsistent');
+        }
     }
 
     $coverage = $snapshot['coverage'];
+    agreementReviewBooleanValue($coverage['available'] ?? null, 'coverage availability');
     $active_devices = agreementReviewNonnegativeInteger(
         $coverage['active_devices'] ?? null,
         'active-device count'
@@ -2324,9 +2669,33 @@ function agreementValidateServiceReviewSnapshot(array $review): array
             throw new RuntimeException('Service-review device coverage exceeds its active-device population');
         }
     }
-    agreementReviewPercentValue($coverage['endpoint_coverage_percent'] ?? null, 'endpoint coverage', true);
-    agreementReviewPercentValue($coverage['security_coverage_percent'] ?? null, 'endpoint-security coverage', true);
-    agreementReviewTextValue($coverage['source'] ?? null, 'coverage source', 200);
+    $endpoint_percent = agreementReviewPercentValue(
+        $coverage['endpoint_coverage_percent'] ?? null,
+        'endpoint coverage',
+        true
+    );
+    $security_percent = agreementReviewPercentValue(
+        $coverage['security_coverage_percent'] ?? null,
+        'endpoint-security coverage',
+        true
+    );
+    $coverage_pairs = [
+        [$coverage['endpoint_managed_devices'], $endpoint_percent],
+        [$coverage['security_mapped_devices'], $security_percent],
+    ];
+    foreach ($coverage_pairs as [$covered, $percent]) {
+        if ($active_devices === 0) {
+            if (!is_null($percent) && abs($percent) > 0.01) {
+                throw new RuntimeException('Service-review empty device population has nonzero coverage');
+            }
+            continue;
+        }
+        $expected_percent = (intval($covered) / $active_devices) * 100;
+        if (is_null($percent) || abs($percent - $expected_percent) > 0.051) {
+            throw new RuntimeException('Service-review device coverage percentages do not match their counts');
+        }
+    }
+    agreementReviewAssertRedactedText($coverage['source'] ?? null, 'coverage source', 200);
 
     foreach (['services_in_scope', 'incidents', 'open_incidents', 'repeat_events'] as $metric) {
         agreementReviewNonnegativeInteger($snapshot['backup'][$metric] ?? null, "backup $metric");
@@ -2334,11 +2703,29 @@ function agreementValidateServiceReviewSnapshot(array $review): array
     if (intval($snapshot['backup']['open_incidents']) > intval($snapshot['backup']['incidents'])) {
         throw new RuntimeException('Service-review open backup incidents exceed total incidents');
     }
-    agreementReviewTextValue($snapshot['backup']['source'] ?? null, 'backup source', 200);
+    $backup_available = agreementReviewBooleanValue(
+        $snapshot['backup']['available'] ?? null,
+        'backup availability'
+    );
+    $backup_in_scope = agreementReviewBooleanValue(
+        $snapshot['backup']['in_scope'] ?? null,
+        'backup scope state'
+    );
+    if ($backup_available
+            !== (intval($snapshot['backup']['incidents']) > 0)
+        || $backup_in_scope
+            !== (intval($snapshot['backup']['services_in_scope']) > 0)) {
+        throw new RuntimeException('Service-review backup availability does not match its evidence counts');
+    }
+    agreementReviewAssertRedactedText($snapshot['backup']['source'] ?? null, 'backup source', 200);
     $documentation = $snapshot['documentation'];
-    agreementReviewTextValue($documentation['source'] ?? null, 'documentation source', 200);
-    agreementReviewTextValue($documentation['note'] ?? null, 'documentation note', 500);
-    if (!empty($documentation['available'])) {
+    agreementReviewAssertRedactedText($documentation['source'] ?? null, 'documentation source', 200);
+    agreementReviewAssertRedactedText($documentation['note'] ?? null, 'documentation note', 500);
+    $documentation_available = agreementReviewBooleanValue(
+        $documentation['available'] ?? null,
+        'documentation availability'
+    );
+    if ($documentation_available) {
         agreementReviewPercentValue(
             $documentation['readiness_percent'] ?? null,
             'documentation readiness'
@@ -2347,8 +2734,17 @@ function agreementValidateServiceReviewSnapshot(array $review): array
             agreementReviewNonnegativeInteger($documentation[$metric] ?? null, "documentation $metric");
         }
     } else {
-        agreementReviewNonnegativeInteger($documentation['document_count'] ?? null, 'document count');
-        agreementReviewNonnegativeInteger($documentation['recently_updated'] ?? null, 'recent document count');
+        $document_count = agreementReviewNonnegativeInteger(
+            $documentation['document_count'] ?? null,
+            'document count'
+        );
+        $recent_documents = agreementReviewNonnegativeInteger(
+            $documentation['recently_updated'] ?? null,
+            'recent document count'
+        );
+        if ($recent_documents > $document_count) {
+            throw new RuntimeException('Service-review recent document count exceeds its inventory');
+        }
     }
     agreementReviewNonnegativeInteger(
         $snapshot['renewals']['next_365_days'] ?? null,
@@ -2364,15 +2760,19 @@ function agreementValidateServiceReviewSnapshot(array $review): array
     }
     $notice_count = 0;
     foreach ($snapshot['renewals']['items'] as $item) {
-        agreementReviewTextValue($item['type'] ?? null, 'renewal type', 30);
-        agreementReviewTextValue($item['name'] ?? null, 'renewal name', 500);
+        agreementReviewAssertRedactedText($item['type'] ?? null, 'renewal type', 30);
+        agreementReviewAssertRedactedText($item['name'] ?? null, 'renewal name', 500);
         $renewal_date = (string) ($item['date'] ?? '');
         $renewal_instant = DateTimeImmutable::createFromFormat('!Y-m-d', $renewal_date);
         if (!$renewal_instant || $renewal_instant->format('Y-m-d') !== $renewal_date) {
             throw new RuntimeException('Service-review renewal date is invalid');
         }
         agreementReviewNonnegativeInteger($item['notice_days'] ?? null, 'renewal notice days');
-        $notice_count += !empty($item['within_notice_window']) ? 1 : 0;
+        $inside_notice_window = agreementReviewBooleanValue(
+            $item['within_notice_window'] ?? null,
+            'renewal notice-window state'
+        );
+        $notice_count += $inside_notice_window ? 1 : 0;
     }
     if ($notice_count !== intval($snapshot['renewals']['within_notice_window'])) {
         throw new RuntimeException('Service-review renewal notice evidence is inconsistent');
@@ -2390,13 +2790,82 @@ function agreementValidateServiceReviewSnapshot(array $review): array
             !== (string) ($review['service_review_recommendations'] ?? '')) {
         throw new RuntimeException('Service-review presentation fields do not match the immutable snapshot');
     }
+    agreementReviewAssertRedactedText($snapshot['summary'], 'executive summary', 500);
     foreach ($snapshot['recommendations'] as $recommendation) {
         if (!is_string($recommendation) || trim($recommendation) === '') {
             throw new RuntimeException('Service-review recommendations are invalid');
         }
+        agreementReviewAssertRedactedText($recommendation, 'recommendation', 500);
     }
 
     return $snapshot;
+}
+
+/**
+ * Bind a structurally valid snapshot to the immutable agreement version that
+ * actually belonged to the same tenant at its recorded resolution instant.
+ * A later supersession is allowed, but it must not rewrite the historical
+ * interval captured by the review.
+ */
+function agreementValidateServiceReviewAgreementEvidence(
+    array $review,
+    ?array $snapshot = null,
+    bool $for_update = false
+): array {
+    $snapshot = $snapshot ?? agreementValidateServiceReviewSnapshot($review);
+    $client_id = intval($review['service_review_client_id'] ?? 0);
+    $contract_id = intval($review['service_review_contract_id'] ?? 0);
+    $version_id = intval($review['service_review_agreement_version_id'] ?? 0);
+    $period_end = (string) ($review['service_review_period_end'] ?? '');
+    $agreement = $snapshot['agreement'] ?? [];
+    $resolution_as_of = (string) ($agreement['resolution_as_of'] ?? '');
+    $instant = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $resolution_as_of);
+    $generated_at = (string) ($review['service_review_generated_at'] ?? '');
+    $generated_instant = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $generated_at);
+    if (!$instant || $instant->format('Y-m-d H:i:s') !== $resolution_as_of
+        || substr($resolution_as_of, 0, 10) !== $period_end
+        || !$generated_instant || $generated_instant->format('Y-m-d H:i:s') !== $generated_at
+        || $resolution_as_of > $generated_at) {
+        throw new RuntimeException('Service-review agreement resolution instant is invalid');
+    }
+
+    $lock = $for_update ? ' FOR UPDATE' : '';
+    $version_sql = agreementDbQuery("SELECT agreement_versions.*, contracts.contract_client_id,
+        contracts.contract_name, contracts.contract_status, contracts.contract_archived_at,
+        contracts.contract_published_version_id
+        FROM agreement_versions JOIN contracts ON contract_id = agreement_version_contract_id
+        WHERE agreement_version_id = $version_id
+        AND agreement_version_contract_id = $contract_id
+        AND contract_client_id = $client_id LIMIT 1$lock",
+        'Could not validate the service-review agreement evidence');
+    if ($client_id <= 0 || $contract_id <= 0 || $version_id <= 0
+        || !mysqli_num_rows($version_sql)) {
+        throw new RuntimeException('Service-review agreement evidence belongs to another tenant or no longer exists');
+    }
+    $version = mysqli_fetch_assoc($version_sql);
+    if (!in_array($version['agreement_version_status'] ?? '', ['Published', 'Superseded'], true)) {
+        throw new RuntimeException('Service-review agreement evidence is not an immutable published version');
+    }
+    agreementAssertVersionIntegrity($version);
+
+    $snapshot_superseded_at = (string) ($agreement['superseded_at'] ?? '');
+    $stored_superseded_at = (string) ($version['agreement_version_superseded_at'] ?? '');
+    if (intval($agreement['version_number'] ?? 0)
+            !== intval($version['agreement_version_number'] ?? 0)
+        || (string) ($agreement['name'] ?? '')
+            !== (string) ($version['agreement_version_name'] ?? '')
+        || !hash_equals(
+            (string) ($agreement['definition_hash'] ?? ''),
+            (string) ($version['agreement_version_definition_hash'] ?? '')
+        )
+        || (string) ($agreement['published_at'] ?? '')
+            !== (string) ($version['agreement_version_published_at'] ?? '')
+        || ($snapshot_superseded_at !== ''
+            && $snapshot_superseded_at !== $stored_superseded_at)
+        || !agreementVersionAppliesAt($version, $period_end, $resolution_as_of)) {
+        throw new RuntimeException('Service-review agreement snapshot does not match its immutable lifecycle evidence');
+    }
+    return $version;
 }
 
 function agreementServiceReviewEvents(int $review_id, int $client_id): array
@@ -2424,7 +2893,12 @@ function agreementValidateServiceReviewApproval(array $review, array $events): ?
     $review_id = intval($review['service_review_id'] ?? 0);
     $client_id = intval($review['service_review_client_id'] ?? 0);
     $hash = (string) ($review['service_review_snapshot_hash'] ?? '');
-    $generated = 0;
+    $generated_at = (string) ($review['service_review_generated_at'] ?? '');
+    $generated_instant = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $generated_at);
+    if (!$generated_instant || $generated_instant->format('Y-m-d H:i:s') !== $generated_at) {
+        throw new RuntimeException('Service-review generation timestamp is invalid');
+    }
+    $generated = [];
     $published = [];
     foreach ($events as $event) {
         if (intval($event['service_review_event_review_id'] ?? 0) !== $review_id
@@ -2433,14 +2907,28 @@ function agreementValidateServiceReviewApproval(array $review, array $events): ?
             throw new RuntimeException('Service-review event evidence does not match its review binding');
         }
         if (($event['service_review_event_action'] ?? '') === 'Generated') {
-            $generated++;
+            $generated[] = $event;
         } elseif (($event['service_review_event_action'] ?? '') === 'Published') {
             $published[] = $event;
+        } else {
+            throw new RuntimeException('Service-review event evidence contains an unsupported lifecycle action');
         }
     }
-    if ($generated < 1) {
-        throw new RuntimeException('Service-review generation evidence is missing');
+    if (count($generated) !== 1) {
+        throw new RuntimeException('Service-review generation evidence is missing or ambiguous');
     }
+    if (intval($generated[0]['service_review_event_actor_id'] ?? 0)
+            !== intval($review['service_review_generated_by'] ?? 0)
+        || (string) ($generated[0]['service_review_event_created_at'] ?? '')
+            !== (string) ($review['service_review_generated_at'] ?? '')
+        || trim((string) ($generated[0]['service_review_event_reason'] ?? '')) === '') {
+        throw new RuntimeException('Service-review generation evidence does not match its generating actor and time');
+    }
+    agreementReviewAssertRedactedText(
+        $generated[0]['service_review_event_reason'],
+        'generation reason',
+        255
+    );
 
     $status = (string) ($review['service_review_status'] ?? '');
     if ($status === 'Draft') {
@@ -2455,7 +2943,11 @@ function agreementValidateServiceReviewApproval(array $review, array $events): ?
     }
 
     $approval = $published[0];
+    $published_at = (string) ($review['service_review_published_at'] ?? '');
+    $published_instant = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $published_at);
     if (intval($review['service_review_published_by'] ?? 0) <= 0
+        || !$published_instant || $published_instant->format('Y-m-d H:i:s') !== $published_at
+        || $published_at < $generated_at
         || intval($approval['service_review_event_actor_id'] ?? 0)
             !== intval($review['service_review_published_by'])
         || (string) ($approval['service_review_event_created_at'] ?? '')
@@ -2463,7 +2955,19 @@ function agreementValidateServiceReviewApproval(array $review, array $events): ?
         || trim((string) ($approval['service_review_event_reason'] ?? '')) === '') {
         throw new RuntimeException('Published service-review approval binding is inconsistent');
     }
+    agreementReviewAssertRedactedText(
+        $approval['service_review_event_reason'],
+        'approval reason',
+        255
+    );
     return $approval;
+}
+
+function agreementAssertServiceReviewDraft(array $review): void
+{
+    if (($review['service_review_status'] ?? '') !== 'Draft') {
+        throw new RuntimeException('Published service reviews are immutable; generate a new draft for corrections');
+    }
 }
 
 function agreementPublishServiceReview(int $review_id, int $actor_id, string $reason = ''): void
@@ -2476,6 +2980,7 @@ function agreementPublishServiceReview(int $review_id, int $actor_id, string $re
     if ($review_id <= 0 || $actor_id <= 0 || $reason === '') {
         throw new RuntimeException('Service-review publication requires an approving technician and reason');
     }
+    agreementReviewAssertRedactedText($reason, 'approval reason', 255);
     $pre_review_sql = agreementDbQuery("SELECT service_review_client_id FROM service_reviews
         WHERE service_review_id = $review_id LIMIT 1", 'Could not locate the service-review client');
     if (!mysqli_num_rows($pre_review_sql)) {
@@ -2496,31 +3001,10 @@ function agreementPublishServiceReview(int $review_id, int $actor_id, string $re
         if (intval($review['service_review_client_id']) !== $client_id) {
             throw new RuntimeException('The service-review client changed; refresh and try again');
         }
-        if ($review['service_review_status'] !== 'Draft') {
-            throw new RuntimeException('Only a draft service review can be published');
-        }
+        agreementPublishingActor($actor_id, true, $client_id);
+        agreementAssertServiceReviewDraft($review);
         $snapshot = agreementValidateServiceReviewSnapshot($review);
-        $contract_id = intval($review['service_review_contract_id']);
-        $version_id = intval($review['service_review_agreement_version_id']);
-        $version_sql = agreementDbQuery("SELECT agreement_versions.*, contracts.contract_client_id,
-            contracts.contract_name, contracts.contract_status, contracts.contract_archived_at,
-            contracts.contract_published_version_id
-            FROM agreement_versions JOIN contracts ON contract_id = agreement_version_contract_id
-            WHERE agreement_version_id = $version_id
-            AND agreement_version_contract_id = $contract_id
-            AND contract_client_id = $client_id LIMIT 1 FOR UPDATE",
-            'Could not validate the service-review agreement evidence');
-        if (!mysqli_num_rows($version_sql)) {
-            throw new RuntimeException('Service-review agreement evidence belongs to another tenant or no longer exists');
-        }
-        $version = mysqli_fetch_assoc($version_sql);
-        agreementAssertVersionIntegrity($version);
-        if (!hash_equals(
-            (string) $snapshot['agreement']['definition_hash'],
-            (string) $version['agreement_version_definition_hash']
-        )) {
-            throw new RuntimeException('Service-review agreement definition binding does not match');
-        }
+        agreementValidateServiceReviewAgreementEvidence($review, $snapshot, true);
 
         $published_at = mysqli_real_escape_string($mysqli, date('Y-m-d H:i:s'));
         agreementDbQuery("UPDATE service_reviews SET service_review_status = 'Published',
@@ -2705,12 +3189,15 @@ function agreementServiceReviewMarkdown(array $review): string
         );
     $approval = agreementValidateServiceReviewApproval($review, $review_events);
     if ($approval) {
-            $actor = agreementMarkdownEscape($approval['user_name']
-                ?? ('User ' . intval($approval['service_review_event_actor_id'])));
-            $approved_at = agreementMarkdownEscape($approval['service_review_event_created_at'] ?? '');
-            $approval_reason = agreementMarkdownEscape($approval['service_review_event_reason'] ?? '');
-            $lines[] = '';
-            $lines[] = "Published approval: $actor at $approved_at — $approval_reason";
+        $actor_value = $approval['user_name']
+            ?? ('User ' . intval($approval['service_review_event_actor_id']));
+        $actor = agreementMarkdownEscape(
+            agreementReviewRedactText($actor_value, 'approval actor', 200)
+        );
+        $approved_at = agreementMarkdownEscape($approval['service_review_event_created_at'] ?? '');
+        $approval_reason = agreementMarkdownEscape($approval['service_review_event_reason'] ?? '');
+        $lines[] = '';
+        $lines[] = "Published approval: $actor at $approved_at — $approval_reason";
     }
     return implode("\n", $lines) . "\n";
 }

@@ -798,6 +798,9 @@ function automationCreateIncidentTicket(array $event, array $resolved): array
     $subject_sql = automationDbEscape($subject);
     $details_sql = automationDbEscape(automationEventDetails($event, $resolved));
     $priority_sql = automationDbEscape($priority);
+    [$impact, $urgency] = ticketOperationalLegacyDimensionsForPriority($priority);
+    $impact_sql = automationDbEscape($impact);
+    $urgency_sql = automationDbEscape($urgency);
     $prefix = automationLimitText($settings['config_ticket_prefix'] ?? 'TCK-', 200);
     $prefix_sql = automationDbEscape($prefix);
     $billable = intval($settings['config_ticket_default_billable'] ?? 0);
@@ -823,7 +826,11 @@ function automationCreateIncidentTicket(array $event, array $resolved): array
         $url_key = automationDbEscape(randomString(32));
         automationDbQuery("INSERT INTO tickets SET ticket_prefix = '$prefix_sql',
             ticket_number = $ticket_number, ticket_source = 'Automation', ticket_subject = '$subject_sql',
-            ticket_details = '$details_sql', ticket_priority = '$priority_sql', ticket_status = 1,
+            ticket_details = '$details_sql', ticket_priority = '$priority_sql',
+            ticket_work_type = 'incident', ticket_impact = '$impact_sql', ticket_urgency = '$urgency_sql',
+            ticket_next_action = 'Investigate the automation event and confirm service health.',
+            ticket_waiting_on = 'none', ticket_operational_updated_by = 0,
+            ticket_operational_updated_at = NOW(), ticket_status = 1,
             ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = 0,
             ticket_assigned_to = $assigned_to, ticket_client_id = $client_id,
             ticket_contact_id = $contact_id, ticket_location_id = $location_id, ticket_asset_id = $asset_id,
@@ -873,6 +880,13 @@ function automationAddIncidentReply(int $ticket_id, int $client_id, string $repl
         try {
             documentationLockClientTicket($ticket_id, $client_id);
             $locked_ticket = runbookLockOpenTicket($ticket_id);
+            ticketOperationalPrepareAutomaticResolution(
+                $ticket_id,
+                'monitor_recovered',
+                'The automation source reported recovery; service health was restored.',
+                0,
+                'automation'
+            );
             [$can_resolve] = runbookTicketCanResolve($ticket_id);
             if (!$can_resolve) {
                 mysqli_rollback($mysqli);
@@ -892,6 +906,7 @@ function automationAddIncidentReply(int $ticket_id, int $client_id, string $repl
                 throw new RuntimeException('The automation incident ticket changed before it could be resolved');
             }
             documentationRecordChangePassport($ticket_id, 4, 0, true);
+            ticketOperationalOnResolved($ticket_id, 0, 'automation');
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the automation incident resolution');
             }

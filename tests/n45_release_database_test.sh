@@ -75,6 +75,7 @@ assert_current() {
     local database_name=$1
     export N45_CI_DB_NAME="$database_name"
     php tests/n45_release_database_assert.php runner
+    php tests/ticket_operational_database_assert.php
 }
 
 UPSTREAM_MARKER=$(php -r '$manifest = require "n45/manifest.php"; echo $manifest["maintenance"]["upstream_marker_base"] ?? "";')
@@ -107,6 +108,45 @@ export N45_CI_DB_NAME="$FINAL_DATABASE"
 php cron/documentation_evaluator.php 2>&1 | tee "$TEMP_DIRECTORY/documentation-evaluator.log"
 grep -Fq 'failed 0.' "$TEMP_DIRECTORY/documentation-evaluator.log" \
     || fail 'the documentation evaluator did not complete cleanly'
+
+echo 'Exercising the N45 Internal agreement reconciler and immutable review lifecycle'
+INTERNAL_CLIENT_ID=450001
+INTERNAL_ACTOR_ID=450001
+INTERNAL_ROLE_ID=450001
+"${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "INSERT INTO user_roles
+    (role_id, role_name, role_description, role_type, role_is_admin)
+    VALUES ($INTERNAL_ROLE_ID, 'N45 CI Agreement Owner', 'Synthetic release-test owner', 1, 1);
+    INSERT INTO users
+    (user_id, user_name, user_email, user_password, user_auth_method,
+     user_type, user_status, user_role_id)
+    VALUES ($INTERNAL_ACTOR_ID, 'N45 CI Agreement Owner', 'agreement-owner@example.invalid',
+        'not-a-login-secret', 'local', 1, 1, $INTERNAL_ROLE_ID);
+    INSERT INTO clients
+    (client_id, client_lead, client_name, client_currency_code, client_net_terms)
+    VALUES ($INTERNAL_CLIENT_ID, 0, 'N45 Internal', 'USD', 30);"
+export N45_CI_DB_NAME="$FINAL_DATABASE"
+php deploy/psa/reconcile_internal_agreement.php --dry-run \
+    --client-id="$INTERNAL_CLIENT_ID" --actor-id="$INTERNAL_ACTOR_ID" \
+    2>&1 | tee "$TEMP_DIRECTORY/internal-agreement-dry-run.log"
+grep -Fq 'DRY RUN (rolled back): created 1 contract(s); created 1 version(s); published 1 version(s); unchanged 0.' \
+    "$TEMP_DIRECTORY/internal-agreement-dry-run.log" \
+    || fail 'the internal agreement dry run did not exercise the complete publication transaction'
+INTERNAL_DRY_RUN_ROWS=$("${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "SELECT COUNT(*) FROM contracts WHERE contract_client_id = $INTERNAL_CLIENT_ID;")
+[[ "$INTERNAL_DRY_RUN_ROWS" == '0' ]] || fail 'the internal agreement dry run persisted rows'
+
+php deploy/psa/reconcile_internal_agreement.php --apply \
+    --client-id="$INTERNAL_CLIENT_ID" --actor-id="$INTERNAL_ACTOR_ID" \
+    2>&1 | tee "$TEMP_DIRECTORY/internal-agreement-apply.log"
+grep -Fq 'APPLIED: created 1 contract(s); created 1 version(s); published 1 version(s); unchanged 0.' \
+    "$TEMP_DIRECTORY/internal-agreement-apply.log" \
+    || fail 'the internal agreement apply pass did not publish the canonical baseline'
+php deploy/psa/reconcile_internal_agreement.php --apply \
+    --client-id="$INTERNAL_CLIENT_ID" --actor-id="$INTERNAL_ACTOR_ID" \
+    2>&1 | tee "$TEMP_DIRECTORY/internal-agreement-repeat.log"
+grep -Fq 'APPLIED: created 0 contract(s); created 0 version(s); published 0 version(s); unchanged 1.' \
+    "$TEMP_DIRECTORY/internal-agreement-repeat.log" \
+    || fail 'the internal agreement second apply pass was not idempotent'
+php tests/agreement_internal_database_assert.php "$INTERNAL_CLIENT_ID" "$INTERNAL_ACTOR_ID"
 
 echo 'Upgrading the clean upstream 2.6.7 schema through the production CLI'
 reset_database "$UPGRADE_DATABASE"

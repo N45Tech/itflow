@@ -107,6 +107,30 @@ function enforceContactCan($capability) {
 }
 
 /*
+ * Re-authenticate a local portal session before an account takeover-sensitive
+ * change. Federated sessions have no local password to verify and were already
+ * authenticated by their identity provider.
+ */
+function portalReauthenticate($current_password) {
+    global $mysqli, $session_user_id;
+
+    if (($_SESSION['login_method'] ?? 'local') !== 'local') {
+        return true;
+    }
+
+    if (!is_string($current_password) || $current_password === '') {
+        return false;
+    }
+
+    $sql = mysqli_query($mysqli, "SELECT user_password FROM users WHERE user_id = $session_user_id LIMIT 1");
+    $row = $sql ? mysqli_fetch_assoc($sql) : null;
+
+    return is_array($row)
+        && !empty($row['user_password'])
+        && password_verify($current_password, $row['user_password']);
+}
+
+/*
  * Returns appropriate FontAwesome icon for file extension
  */
 function getFileIcon($file_extension) {

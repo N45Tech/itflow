@@ -139,6 +139,68 @@ function starterRunbookTaskDefinition($task, $order) {
     ];
 }
 
+/**
+ * Expand a concise canonical workflow into immutable runbook task metadata.
+ *
+ * The starter library contains a few long-standing ticket templates whose
+ * human-readable task lists predate versioned runbooks.  Portal catalog
+ * reconciliation needs stable keys, dependency order, ownership, evidence and
+ * (where appropriate) an explicit client approval gate.  Keeping that
+ * mechanical metadata here makes the source lists readable while producing
+ * the same deterministic definition on every install and reconciliation.
+ */
+function starterCanonicalRunbookTaskSequence(
+    $prefix,
+    $workflow_name,
+    $steps,
+    $approval_index = null,
+    $approval_type = 'technical'
+) {
+    $prefix = strtoupper(preg_replace('/[^A-Z0-9]+/', '', (string) $prefix));
+    $workflow_name = trim((string) $workflow_name);
+    $steps = is_array($steps) ? array_values($steps) : [];
+    $approval_index = $approval_index === null ? null : intval($approval_index);
+    $conditional_index = count($steps) > 4 ? count($steps) - 3 : -1;
+    if ($conditional_index === $approval_index) {
+        $conditional_index--;
+    }
+
+    $tasks = [];
+    $previous_key = null;
+    foreach ($steps as $index => $step) {
+        $step = is_array($step) ? $step : [(string) $step, 0];
+        $name = trim((string) ($step[0] ?? ''));
+        $estimate = max(1, intval($step[1] ?? 15));
+        $number = ($index + 1) * 10;
+        $source_key = $prefix . '-' . str_pad((string) $number, 3, '0', STR_PAD_LEFT);
+        $is_approval = $approval_index !== null && $index === $approval_index;
+        $is_conditional = $index === $conditional_index;
+        $is_last = $index === count($steps) - 1;
+
+        $tasks[] = [
+            'key' => $source_key,
+            'name' => $source_key . ' ' . $name,
+            'instructions' => 'Complete this ' . $workflow_name . ' step within the immutable approved request scope: '
+                . $name . '. Stop if authority, scope or the live state differs materially; record the outcome and route exceptions as separately owned follow-up work.',
+            'estimate' => $estimate,
+            'condition_type' => $is_conditional ? 'manual_confirm' : 'always',
+            'condition_value' => $is_conditional
+                ? 'This step applies to the approved request scope and live environment' : '',
+            'owner_type' => 'ticket_assignee',
+            'due_offset_hours' => ($index + 1) * 4,
+            'initial_state' => $is_approval ? 'Waiting' : 'Ready',
+            'approval_scope' => $is_approval ? 'client' : '',
+            'approval_type' => $is_approval ? $approval_type : '',
+            'evidence_type' => $index === 1 ? 'file' : ($is_last ? 'any' : 'note'),
+            'evidence_prompt' => 'Retain redacted evidence for ' . strtolower($name)
+                . ', including the result, actor or owner, timestamp and any unresolved exception; never store credentials or bearer tokens.',
+            'depends_on' => $previous_key === null ? [] : [$previous_key],
+        ];
+        $previous_key = $source_key;
+    }
+    return $tasks;
+}
+
 function starterInsertTicketTemplateTasks($mysqli, $ticket_template_id, $tasks) {
     $ticket_template_id = intval($ticket_template_id);
     $definitions = [];
@@ -891,7 +953,10 @@ function starterContentTicketTemplates() {
             'description' => 'Authorized account and access setup for a new user',
             'subject' => 'User onboarding - [Employee Name]',
             'details' => '<p>Do not begin until an authorized approver has confirmed the identity, start date, manager, role, location and required access. Device deployment is a separate scope unless explicitly included.</p>',
-            'tasks' => [
+            'runbook_key' => 'user-onboarding',
+            'runbook_type' => 'onboarding',
+            'publish_runbook' => true,
+            'tasks' => starterCanonicalRunbookTaskSequence('USR', 'user onboarding', [
                 ['Validate the request and approval against the authorized contact list', 15],
                 ['Confirm start time, manager, role, location and access baseline', 15],
                 ['Create the Entra ID or directory account with a temporary access method', 15],
@@ -903,14 +968,17 @@ function starterContentTicketTemplates() {
                 ['Verify sign-in, mail, file access and required applications', 20],
                 ['Record the user, approvals, licenses and access in ITFlow', 15],
                 ['Send the requester a completion summary without transmitting passwords', 10],
-            ],
+            ], 1),
         ],
         [
             'name' => 'User Offboarding',
             'description' => 'Authorized access revocation and data handoff for a departing user',
             'subject' => 'User offboarding - [Employee Name]',
             'details' => '<p>Do not begin without written authorization from an authorized contact. Confirm the effective time, legal-hold or retention requirements, data owner and device disposition before making changes.</p>',
-            'tasks' => [
+            'runbook_key' => 'user-offboarding',
+            'runbook_type' => 'offboarding',
+            'publish_runbook' => true,
+            'tasks' => starterCanonicalRunbookTaskSequence('TRM', 'user offboarding', [
                 ['Validate the authorization, effective time and data-retention decision', 15],
                 ['Block sign-in and reset the account credentials', 10],
                 ['Revoke sessions, refresh tokens and registered authentication methods', 15],
@@ -922,7 +990,7 @@ function starterContentTicketTemplates() {
                 ['Recover licenses only after retention and access requirements are satisfied', 15],
                 ['Update ITFlow contacts, assets, documentation and billing records', 15],
                 ['Send the authorized requester a completion and exception summary', 10],
-            ],
+            ], 0),
         ],
         [
             'name' => 'Access Change',
@@ -1139,7 +1207,10 @@ function starterContentTicketTemplates() {
             'description' => 'Build, secure, document and hand over a desktop or laptop',
             'subject' => 'Device deployment - [Client] - [User]',
             'details' => '<p>Confirm the approved quote, assigned user, management scope and old-device disposition. Security, backup and software products must only be installed when included in the client agreement or project scope.</p>',
-            'tasks' => [
+            'runbook_key' => 'device-deployment',
+            'runbook_type' => 'standard',
+            'publish_runbook' => true,
+            'tasks' => starterCanonicalRunbookTaskSequence('DEV', 'device deployment', [
                 ['Confirm the quote or purchase order', 10],
                 ['Receive, inventory and create the asset record', 20],
                 ['Record the serial number and warranty expiry', 10],
@@ -1154,7 +1225,7 @@ function starterContentTicketTemplates() {
                 ['Confirm the user has no unintended local administrator access', 10],
                 ['Deliver the device, obtain acceptance and record the handoff', 20],
                 ['Route the old device to the separately approved reuse, retention or disposal process', 15],
-            ],
+            ], 0),
         ],
         [
             'name' => 'Server Deployment',
@@ -1248,7 +1319,10 @@ function starterContentTicketTemplates() {
             'description' => 'Suspected or confirmed compromise',
             'subject' => 'Security incident - [Client] - [Summary]',
             'details' => '<p>Suspected or confirmed compromise. Preserve evidence before remediating, and check the client cyber insurance policy for notification requirements and approved responders before acting.</p>',
-            'tasks' => [
+            'runbook_key' => 'incident-response',
+            'runbook_type' => 'standard',
+            'publish_runbook' => true,
+            'tasks' => starterCanonicalRunbookTaskSequence('INC', 'incident response', [
                 ['Declare the incident and establish scope and impact', 30],
                 ['Isolate affected systems and accounts', 30],
                 ['Preserve logs, images and evidence', 60],
@@ -1259,7 +1333,7 @@ function starterContentTicketTemplates() {
                 ['Restore from a known good backup and verify', 180],
                 ['Monitor for reinfection', 60],
                 ['Produce the post incident report and remediation plan', 90],
-            ],
+            ]),
         ],
         [
             'name' => 'Managed Care Onboarding',

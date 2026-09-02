@@ -59,6 +59,23 @@ $from_email = $sla_settings['ticket_from_email'];
 $from_name = $sla_settings['ticket_from_name'];
 
 $now = time();
+$ticket_retention_scope = ticketOperationalSoftDeleteColumn() === 'ticket_deleted_at'
+    ? 'AND ticket_deleted_at IS NULL' : '';
+$ticket_deleted_stop = ticketOperationalSoftDeleteColumn() === 'ticket_deleted_at'
+    ? 'OR ticket_deleted_at IS NOT NULL' : '';
+
+// Status rules can change while tickets are already parked. Stop any stale
+// open interval before this run evaluates alerts; never restart clocks here.
+$sql_running = mysqli_query($mysqli, "SELECT DISTINCT ticket_id FROM sla_history
+    JOIN tickets ON sla_history_ticket_id = ticket_id
+    LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
+    WHERE sla_history_ended_at IS NULL
+    AND (COALESCE(ticket_status_pauses_sla, 0) = 1
+        OR ticket_resolved_at IS NOT NULL OR ticket_closed_at IS NOT NULL
+        OR ticket_archived_at IS NOT NULL $ticket_deleted_stop)");
+while ($running = mysqli_fetch_assoc($sql_running)) {
+    syncTicketSlaClock(intval($running['ticket_id']));
+}
 
 // Queue in-app + email notifications for an SLA event
 function sendSlaAlert($ticket, $subject_line, $body_line)
@@ -129,6 +146,7 @@ $sql_response = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_n
     AND ticket_resolved_at IS NULL
     AND ticket_closed_at IS NULL
     AND ticket_archived_at IS NULL
+    $ticket_retention_scope
     AND ticket_response_sla_alert_stage < 2"
 );
 
@@ -181,6 +199,7 @@ $sql_resolution = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket
     AND ticket_resolved_at IS NULL
     AND ticket_closed_at IS NULL
     AND ticket_archived_at IS NULL
+    $ticket_retention_scope
     AND ticket_resolution_sla_alert_stage < 2"
 );
 

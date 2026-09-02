@@ -59,6 +59,24 @@ function getInvoiceBadgeColor($invoice_status) {
  * The display name for a ticket status id, RAW. Escaping is the caller's job -
  * same convention as getFieldById() above.
  */
+/**
+ * Fixed SLA semantics for the five upstream built-in ticket states.
+ * N45 labels status 3 as Waiting on Client on fresh installs; older upgraded
+ * databases call it On Hold. Both represent parked work and must pause.
+ * Custom/N45 extended statuses keep their stored administrator choice.
+ */
+function getTicketStatusSlaLock($ticket_status_id)
+{
+    $fixed = [
+        1 => 0, // New
+        2 => 0, // Open
+        3 => 1, // On Hold / Waiting on Client
+        4 => 1, // Resolved
+        5 => 1, // Closed
+    ];
+    return $fixed[intval($ticket_status_id)] ?? null;
+}
+
 function getTicketStatusName($ticket_status) {
 
     global $mysqli;

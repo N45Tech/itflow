@@ -62,6 +62,8 @@ $api_contact_delete = $read('api/v1/contacts/delete.php');
 $cron_registry = $read('includes/cron_jobs.php');
 $outbox_cron = $read('cron/portal_request_outbox.php');
 $logging = $read('functions/logging.php');
+$starter_reconciler = $read('deploy/psa/reconcile_portal_requests.php');
+$deployment_docs = $read('deploy/psa/README.md');
 
 $tables = [
     'portal_request_catalog_items',
@@ -357,22 +359,65 @@ $assertContains("error_log('Portal catalog request validation failed:", $client_
 foreach (['New user', 'Employee termination', 'New device', 'Access change', 'Report an incident', 'Schedule work'] as $starter) {
     $assertContains("'$starter'", $service, "Starter catalog does not include $starter");
 }
-foreach (['access-change', 'scheduled-work'] as $runbook_key) {
+foreach (['user-onboarding', 'user-offboarding', 'device-deployment', 'access-change',
+    'incident-response', 'scheduled-work'] as $runbook_key) {
     $assertContains("'runbook_key' => '$runbook_key'", $starter_content,
         "Starter content does not provide the compatible $runbook_key runbook");
 }
 $starter_install_at = strpos($service, 'function portalRequestInstallStarters(');
-if ($starter_install_at === false) {
+$starter_install_end = strpos($service, 'function portalRequestStarterDefinitionMap(', $starter_install_at ?: 0);
+if ($starter_install_at === false || $starter_install_end === false) {
     $failures[] = 'Could not isolate the starter request installer';
 } else {
-    $starter_install = substr($service, $starter_install_at);
+    $starter_install = substr($service, $starter_install_at, $starter_install_end - $starter_install_at);
     $assertNotContains('portal_request_catalog_item_ticket_template_id =', $starter_install,
-        'Starter request installation bypasses operator review by binding a runbook');
+        'Draft installation bypasses compatibility reconciliation by binding a runbook');
     $assertNotContains('portal_request_catalog_item_published_version_id =', $starter_install,
-        'Starter request installation bypasses operator review by publishing a catalog release');
+        'Draft installation bypasses compatibility reconciliation by publishing a catalog release');
     $assertNotContains('portalRequestPublish(', $starter_install,
         'Starter request installation invokes catalog publication automatically');
 }
+$starter_reconcile_at = strpos($service, 'function portalRequestReconcileStarters(');
+$starter_reconcile = $starter_reconcile_at === false ? '' : substr($service, $starter_reconcile_at);
+if ($starter_reconcile === '') {
+    $failures[] = 'Could not isolate starter request reconciliation';
+}
+$assertContains('portalRequestStarterRunbookBindings()', $starter_reconcile,
+    'Starter reconciliation does not use the stable request/runbook binding registry');
+$assertContains('portalRequestResolveStarterRunbook($binding)', $starter_reconcile,
+    'Starter reconciliation does not prove the canonical published runbook');
+$assertContains('runbookValidateDefinition($definition)', $service,
+    'Starter reconciliation does not apply full runbook semantic validation');
+$assertContains("(\$task['initial_state'] ?? '') === 'Waiting'", $service,
+    'Starter reconciliation accepts an approval declaration that is not an explicit waiting gate');
+$assertContains('portalRequestStarterDraftContractErrors(', $starter_reconcile,
+    'Starter reconciliation can silently publish a drifted permission, approval, applicability or field contract');
+$assertContains('SAVEPOINT portal_request_starter_item', $starter_reconcile,
+    'One incompatible starter can leave a partial catalog version in the reconciliation transaction');
+$assertContains('ROLLBACK TO SAVEPOINT portal_request_starter_item', $starter_reconcile,
+    'Failed starter publication is not rolled back before fail-closed draft state');
+$assertContains('portal_request_catalog_item_published_version_id = 0', $starter_reconcile,
+    'An incompatible starter remains visible through a stale published pointer');
+$assertContains('portalRequestPublish(', $starter_reconcile,
+    'Compatible canonical starter drafts are not published');
+$assertContains('if ($dry_run)', $starter_reconcile,
+    'Starter reconciliation does not exercise rollback-only dry-run mode');
+$assertNotContains('runbookLatestPublishedVersionId(', $starter_reconcile,
+    'Starter reconciliation guesses a historical runbook version');
+$assertNotContains('ticket_template_id = 1', $starter_reconcile,
+    'Starter reconciliation contains a brittle runbook template ID');
+$assertContains("\$allowed_modes = ['--dry-run', '--apply'];", $starter_reconciler,
+    'The portal request reconciler lacks explicit dry-run/apply modes');
+$assertContains("GET_LOCK('", $starter_reconciler,
+    'Concurrent portal request reconciliation is not serialized');
+$assertContains("RELEASE_LOCK('", $starter_reconciler,
+    'The portal request reconciliation advisory lock is not released');
+$assertContains('reconcile_portal_requests.php --dry-run', $deployment_docs,
+    'Deployment docs omit the starter request preview');
+$assertContains('two active portal users', $deployment_docs,
+    'Deployment docs omit the two-contact Scheduled Work canary prerequisite');
+$assertContains('must fail', $deployment_docs,
+    'Deployment docs omit the pre-close workflow gate canary');
 $assertContains('Select a published runbook', $admin_item,
     'Catalog activation does not require an operator to select a published runbook');
 $assertContains('name="ticket_template_id" required', $admin_item,
@@ -390,6 +435,21 @@ if (count($starter_definitions) !== 6) {
 $starter_keys = array_column($starter_definitions, 0);
 if (count($starter_keys) !== count(array_unique($starter_keys))) {
     $failures[] = 'Starter request stable keys are not unique';
+}
+$starter_bindings = portalRequestStarterRunbookBindings();
+if (array_keys($starter_bindings) !== $starter_keys || count($starter_bindings) !== 6) {
+    $failures[] = 'The six starter request keys do not map one-to-one to canonical runbook identities';
+}
+foreach ($starter_bindings as $request_key => $binding) {
+    if (!preg_match('/^[a-z0-9][a-z0-9-]{0,99}$/', (string) ($binding['runbook_key'] ?? ''))
+        || !in_array($binding['runbook_type'] ?? '', ['standard', 'onboarding', 'offboarding'], true)) {
+        $failures[] = "Starter request $request_key has an invalid stable runbook contract";
+    }
+}
+$scheduled_index = array_search('scheduled-work', $starter_keys, true);
+$scheduled_definition = $scheduled_index === false ? [] : $starter_definitions[$scheduled_index];
+if (($scheduled_definition[6] ?? '') !== 'technical') {
+    $failures[] = 'Scheduled Work does not require a distinct technical contact decision before ticket creation';
 }
 if (portalRequestDefinitionHash(['z' => 1, 'a' => ['y' => 2, 'b' => 3]])
     !== portalRequestDefinitionHash(['a' => ['b' => 3, 'y' => 2], 'z' => 1])) {

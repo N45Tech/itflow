@@ -2219,6 +2219,138 @@ function endpointBuildUnifiedSummary(array $asset, array $states): array
     return $summary;
 }
 
+/**
+ * Validate the source-neutral record returned to endpoint consumers. The
+ * optional strict mode is used by synthetic acceptance fixtures to exercise
+ * every Goal 5 branch; runtime records may legitimately have empty optional
+ * collections, but may never change their shape.
+ */
+function endpointUnifiedRecordContractViolations(array $record, bool $strict = false): array
+{
+    $violations = [];
+    $required_collections = [
+        'sources', 'identities', 'interfaces', 'network_current',
+        'network_history', 'timeline', 'evidence', 'related_tickets',
+        'related_documentation',
+    ];
+    if (!is_array($record['summary'] ?? null)) {
+        $violations[] = 'summary_missing';
+    } else {
+        foreach ([
+            'assigned_user_name', 'assigned_user_email', 'entra_device_id',
+            'intune_device_id', 'compliance_state', 'encryption_state',
+            'secure_boot_state', 'os_name', 'os_version', 'os_build',
+            'level_health', 'sentinelone_health', 'lifecycle_state',
+            'warranty_state', 'warranty_expire',
+        ] as $field) {
+            if (!array_key_exists($field, $record['summary'])) {
+                $violations[] = 'summary_field_missing:' . $field;
+            }
+        }
+    }
+    foreach ($required_collections as $collection) {
+        if (!array_key_exists($collection, $record) || !is_array($record[$collection])) {
+            $violations[] = 'collection_missing:' . $collection;
+        }
+    }
+    if ($violations || !$strict) {
+        sort($violations, SORT_STRING);
+        return array_values(array_unique($violations));
+    }
+
+    $identity_keys = [];
+    foreach ($record['identities'] as $identity) {
+        $source = (string) ($identity['automation_mapping_source'] ?? $identity['source'] ?? '');
+        $external_id = (string) (
+            $identity['automation_mapping_external_id'] ?? $identity['external_id'] ?? ''
+        );
+        $state = (string) ($identity['automation_mapping_state'] ?? $identity['state'] ?? '');
+        if ($source === '' || $external_id === '' || $state === '') {
+            $violations[] = 'identity_shape_invalid';
+            continue;
+        }
+        $identity_key = $source . "\0" . $external_id;
+        if (isset($identity_keys[$identity_key])) {
+            $violations[] = 'identity_duplicate';
+        }
+        $identity_keys[$identity_key] = true;
+    }
+    foreach ($record['sources'] as $state) {
+        if ((string) ($state['endpoint_state_source'] ?? '') === ''
+            || (string) ($state['endpoint_state_external_id'] ?? '') === ''
+            || (string) ($state['endpoint_state_status'] ?? '') === ''
+            || (string) ($state['endpoint_state_observed_at'] ?? '') === '') {
+            $violations[] = 'source_state_shape_invalid';
+        }
+    }
+
+    $interface_ids = [];
+    foreach ($record['interfaces'] as $interface) {
+        $interface_id = endpointPositiveInt($interface['interface_id'] ?? 0);
+        if ($interface_id < 1 || trim((string) ($interface['interface_name'] ?? '')) === ''
+            || !is_array($interface['connections'] ?? null)) {
+            $violations[] = 'interface_shape_invalid';
+            continue;
+        }
+        if (isset($interface_ids[$interface_id])) {
+            $violations[] = 'interface_duplicate';
+        }
+        $interface_ids[$interface_id] = true;
+    }
+
+    foreach (['network_current' => 1, 'network_history' => 0] as $collection => $active) {
+        foreach ($record[$collection] as $network_row) {
+            $state = $network_row['network_observation_state'] ?? null;
+            if (!is_array($state)
+                || intval($network_row['network_observation_active'] ?? -1) !== $active) {
+                $violations[] = 'network_observation_shape_invalid:' . $collection;
+                continue;
+            }
+            foreach ([
+                'key', 'interface_name', 'interface_type', 'virtual', 'mac',
+                'ipv4', 'ipv6', 'network_id', 'vlan_id', 'vlan_name',
+                'neighbor_protocol', 'neighbor_asset_id',
+                'neighbor_interface_id', 'neighbor_name',
+                'neighbor_chassis_id', 'neighbor_port',
+            ] as $field) {
+                if (!array_key_exists($field, $state)) {
+                    $violations[] = 'network_field_missing:' . $field;
+                }
+            }
+            if (!is_array($state['ipv4'] ?? null) || !is_array($state['ipv6'] ?? null)) {
+                $violations[] = 'network_address_history_invalid';
+            }
+        }
+    }
+    foreach ($record['timeline'] as $event) {
+        if ((string) ($event['source'] ?? '') === ''
+            || (string) ($event['type'] ?? '') === ''
+            || (string) ($event['summary'] ?? '') === ''
+            || (string) ($event['occurred_at'] ?? '') === '') {
+            $violations[] = 'timeline_event_shape_invalid';
+        }
+    }
+    foreach ($record['evidence'] as $evidence) {
+        if (endpointPositiveInt($evidence['task_evidence_id'] ?? 0) < 1
+            || endpointPositiveInt($evidence['ticket_id'] ?? 0) < 1
+            || trim((string) ($evidence['task_evidence_type'] ?? '')) === '') {
+            $violations[] = 'evidence_reference_shape_invalid';
+        }
+    }
+    foreach ($record['related_tickets'] as $ticket) {
+        if (endpointPositiveInt($ticket['ticket_id'] ?? 0) < 1) {
+            $violations[] = 'related_ticket_shape_invalid';
+        }
+    }
+    foreach ($record['related_documentation'] as $document) {
+        if (endpointPositiveInt($document['document_id'] ?? 0) < 1) {
+            $violations[] = 'related_documentation_shape_invalid';
+        }
+    }
+    sort($violations, SORT_STRING);
+    return array_values(array_unique($violations));
+}
+
 function endpointLoadUnifiedRecord(int $asset_id, int $client_id): array
 {
     global $mysqli;
@@ -2413,13 +2545,60 @@ function endpointLoadUnifiedRecord(int $asset_id, int $client_id): array
         $evidence[] = $row;
     }
 
-    return [
+    $interfaces = endpointAssetInterfaceRows($asset_id);
+    $related_tickets = [];
+    $ticket_sql = mysqli_query($mysqli, "SELECT tickets.ticket_id, ticket_prefix,
+        ticket_number, ticket_subject, ticket_status, ticket_created_at,
+        ticket_resolved_at
+        FROM tickets
+        WHERE ticket_client_id = $client_id
+        AND (ticket_asset_id = $asset_id OR EXISTS (
+            SELECT 1 FROM ticket_assets
+            WHERE ticket_assets.ticket_id = tickets.ticket_id
+            AND ticket_assets.asset_id = $asset_id
+        ))
+        ORDER BY ticket_number DESC, ticket_id DESC LIMIT 100");
+    if (!$ticket_sql) {
+        throw new RuntimeException('Could not load endpoint-related tickets');
+    }
+    while ($row = mysqli_fetch_assoc($ticket_sql)) {
+        $related_tickets[] = $row;
+    }
+
+    $related_documentation = [];
+    $document_sql = mysqli_query($mysqli, "SELECT documents.document_id,
+        document_name, document_description, document_created_at,
+        document_updated_at
+        FROM asset_documents
+        INNER JOIN documents ON documents.document_id = asset_documents.document_id
+        WHERE asset_documents.asset_id = $asset_id
+        AND document_client_id = $client_id
+        AND document_archived_at IS NULL
+        ORDER BY document_name ASC, documents.document_id ASC LIMIT 100");
+    if (!$document_sql) {
+        throw new RuntimeException('Could not load endpoint-related documentation');
+    }
+    while ($row = mysqli_fetch_assoc($document_sql)) {
+        $related_documentation[] = $row;
+    }
+
+    $record = [
         'summary' => endpointBuildUnifiedSummary($asset, $states),
         'sources' => $states,
         'identities' => $identities,
+        'interfaces' => $interfaces,
         'network_current' => $network_current,
         'network_history' => $network_history,
         'timeline' => $timeline,
         'evidence' => $evidence,
+        'related_tickets' => $related_tickets,
+        'related_documentation' => $related_documentation,
     ];
+    $contract_violations = endpointUnifiedRecordContractViolations($record);
+    if ($contract_violations) {
+        throw new RuntimeException(
+            'Unified endpoint record contract failed: ' . implode(', ', $contract_violations)
+        );
+    }
+    return $record;
 }

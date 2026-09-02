@@ -12,6 +12,7 @@ $ticket_status_color = escapeHtml($row['ticket_status_color']);
 $ticket_status_order = intval($row['ticket_status_order']);
 $ticket_status_active = intval($row['ticket_status_active']);
 $ticket_status_pauses_sla = intval($row['ticket_status_pauses_sla']);
+$ticket_status_sla_lock = getTicketStatusSlaLock($ticket_status_id);
 
 // Generate the HTML form content using output buffering.
 ob_start();
@@ -78,12 +79,16 @@ ob_start();
                 <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-stopwatch"></i></span>
                 </div>
-                <select class="form-control select2" name="pauses_sla">
-                    <option <?php if ($ticket_status_pauses_sla == 0) { echo "selected "; } ?>value="0">Resolution clock keeps running</option>
-                    <option <?php if ($ticket_status_pauses_sla == 1) { echo "selected "; } ?>value="1">Pause the resolution clock</option>
-                </select>
+                <?php if (is_null($ticket_status_sla_lock)) { ?>
+                    <select class="form-control select2" name="pauses_sla">
+                        <option <?php if ($ticket_status_pauses_sla == 0) { echo "selected "; } ?>value="0">Resolution clock keeps running</option>
+                        <option <?php if ($ticket_status_pauses_sla == 1) { echo "selected "; } ?>value="1">Pause the resolution clock</option>
+                    </select>
+                <?php } else { ?>
+                    <input class="form-control" value="<?= $ticket_status_sla_lock ? 'Pause the resolution clock' : 'Resolution clock keeps running' ?>" readonly>
+                <?php } ?>
             </div>
-            <small class="text-muted">Tickets sitting in a paused status never warn or breach on resolution. Time already spent is kept and the deadline moves out when the ticket comes back.</small>
+            <small class="text-muted"><?= is_null($ticket_status_sla_lock) ? 'Tickets sitting in a paused status never warn or breach on resolution. Time already spent is kept when work resumes.' : 'Built-in status SLA behavior is fixed so terminal or parked work cannot keep consuming resolution time.' ?></small>
         </div>
 
     </div>

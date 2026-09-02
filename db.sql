@@ -4249,6 +4249,159 @@ CREATE TABLE `ticket_watchers` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `ticket_operational_events`
+--
+
+DROP TABLE IF EXISTS `ticket_operational_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_operational_events` (
+  `ticket_operational_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_operational_event_ticket_id` int(11) NOT NULL,
+  `ticket_operational_event_client_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_operational_event_action` varchar(40) NOT NULL,
+  `ticket_operational_event_actor_type` varchar(20) NOT NULL DEFAULT 'system',
+  `ticket_operational_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_operational_event_payload` longtext NOT NULL,
+  `ticket_operational_event_payload_hash` char(64) NOT NULL,
+  `ticket_operational_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`ticket_operational_event_id`),
+  KEY `ticket_operational_event_ticket` (`ticket_operational_event_ticket_id`,`ticket_operational_event_id`),
+  KEY `ticket_operational_event_client` (`ticket_operational_event_client_id`,`ticket_operational_event_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `ticket_relationships`
+--
+
+DROP TABLE IF EXISTS `ticket_relationships`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_relationships` (
+  `ticket_relationship_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_relationship_client_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_relationship_type` varchar(20) NOT NULL,
+  `ticket_relationship_source_ticket_id` int(11) NOT NULL,
+  `ticket_relationship_target_ticket_id` int(11) NOT NULL,
+  `ticket_relationship_created_by` int(11) NOT NULL DEFAULT 0,
+  `ticket_relationship_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`ticket_relationship_id`),
+  UNIQUE KEY `ticket_relationship_pair` (`ticket_relationship_type`,`ticket_relationship_source_ticket_id`,`ticket_relationship_target_ticket_id`),
+  KEY `ticket_relationship_source` (`ticket_relationship_source_ticket_id`,`ticket_relationship_type`),
+  KEY `ticket_relationship_target` (`ticket_relationship_target_ticket_id`,`ticket_relationship_type`),
+  KEY `ticket_relationship_client` (`ticket_relationship_client_id`,`ticket_relationship_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `ticket_customer_promises`
+--
+
+DROP TABLE IF EXISTS `ticket_customer_promises`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_customer_promises` (
+  `ticket_customer_promise_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_customer_promise_ticket_id` int(11) NOT NULL,
+  `ticket_customer_promise_client_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_customer_promise_type` varchar(30) NOT NULL DEFAULT 'customer_update',
+  `ticket_customer_promise_summary` varchar(500) NOT NULL,
+  `ticket_customer_promise_due_at` datetime NOT NULL,
+  `ticket_customer_promise_status` varchar(20) NOT NULL DEFAULT 'Open',
+  `ticket_customer_promise_promised_by` int(11) NOT NULL DEFAULT 0,
+  `ticket_customer_promise_promised_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `ticket_customer_promise_source_type` varchar(20) NOT NULL DEFAULT 'agent',
+  `ticket_customer_promise_source_id` bigint(20) NOT NULL DEFAULT 0,
+  `ticket_customer_promise_fulfilled_by` int(11) NOT NULL DEFAULT 0,
+  `ticket_customer_promise_fulfilled_at` datetime DEFAULT NULL,
+  `ticket_customer_promise_breached_at` datetime DEFAULT NULL,
+  `ticket_customer_promise_cancelled_by` int(11) NOT NULL DEFAULT 0,
+  `ticket_customer_promise_cancelled_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`ticket_customer_promise_id`),
+  KEY `ticket_customer_promise_queue` (`ticket_customer_promise_status`,`ticket_customer_promise_due_at`),
+  KEY `ticket_customer_promise_ticket` (`ticket_customer_promise_ticket_id`,`ticket_customer_promise_status`,`ticket_customer_promise_due_at`),
+  KEY `ticket_customer_promise_client` (`ticket_customer_promise_client_id`,`ticket_customer_promise_due_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `ticket_customer_promise_events`
+--
+
+DROP TABLE IF EXISTS `ticket_customer_promise_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_customer_promise_events` (
+  `ticket_customer_promise_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_customer_promise_event_promise_id` bigint(20) NOT NULL,
+  `ticket_customer_promise_event_ticket_id` int(11) NOT NULL,
+  `ticket_customer_promise_event_client_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_customer_promise_event_action` varchar(30) NOT NULL,
+  `ticket_customer_promise_event_from_status` varchar(20) DEFAULT NULL,
+  `ticket_customer_promise_event_to_status` varchar(20) NOT NULL,
+  `ticket_customer_promise_event_actor_type` varchar(20) NOT NULL DEFAULT 'system',
+  `ticket_customer_promise_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_customer_promise_event_source_type` varchar(20) DEFAULT NULL,
+  `ticket_customer_promise_event_source_id` bigint(20) NOT NULL DEFAULT 0,
+  `ticket_customer_promise_event_context_hash` char(64) NOT NULL,
+  `ticket_customer_promise_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`ticket_customer_promise_event_id`),
+  KEY `ticket_customer_promise_event_promise` (`ticket_customer_promise_event_promise_id`,`ticket_customer_promise_event_id`),
+  KEY `ticket_customer_promise_event_ticket` (`ticket_customer_promise_event_ticket_id`,`ticket_customer_promise_event_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+CREATE TRIGGER `ticket_operational_events_bu_immutable`
+  BEFORE UPDATE ON `ticket_operational_events` FOR EACH ROW
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ticket operational events are append-only';
+
+CREATE TRIGGER `ticket_operational_events_bd_immutable`
+  BEFORE DELETE ON `ticket_operational_events` FOR EACH ROW
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ticket operational events are append-only';
+
+CREATE TRIGGER `ticket_customer_promise_events_bu_immutable`
+  BEFORE UPDATE ON `ticket_customer_promise_events` FOR EACH ROW
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ticket customer promise events are append-only';
+
+CREATE TRIGGER `ticket_customer_promise_events_bd_immutable`
+  BEFORE DELETE ON `ticket_customer_promise_events` FOR EACH ROW
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ticket customer promise events are append-only';
+
+--
+-- Table structure for table `ticket_email_ingress`
+--
+
+DROP TABLE IF EXISTS `ticket_email_ingress`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_email_ingress` (
+  `ticket_email_ingress_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_email_ingress_message_hash` char(64) NOT NULL,
+  `ticket_email_ingress_claim_token` char(64) NOT NULL,
+  `ticket_email_ingress_sender_hash` char(64) NOT NULL,
+  `ticket_email_ingress_domain_hash` char(64) NOT NULL,
+  `ticket_email_ingress_subject_hash` char(64) NOT NULL,
+  `ticket_email_ingress_status` varchar(20) NOT NULL DEFAULT 'Processing',
+  `ticket_email_ingress_attempts` int(11) NOT NULL DEFAULT 1,
+  `ticket_email_ingress_ticket_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_email_ingress_reply_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_email_ingress_client_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_email_ingress_reason_code` varchar(60) DEFAULT NULL,
+  `ticket_email_ingress_received_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `ticket_email_ingress_processing_at` datetime DEFAULT NULL,
+  `ticket_email_ingress_completed_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`ticket_email_ingress_id`),
+  UNIQUE KEY `ticket_email_ingress_message` (`ticket_email_ingress_message_hash`),
+  KEY `ticket_email_ingress_status` (`ticket_email_ingress_status`,`ticket_email_ingress_processing_at`),
+  KEY `ticket_email_ingress_sender_window` (`ticket_email_ingress_sender_hash`,`ticket_email_ingress_received_at`),
+  KEY `ticket_email_ingress_domain_window` (`ticket_email_ingress_domain_hash`,`ticket_email_ingress_received_at`),
+  KEY `ticket_email_ingress_client_window` (`ticket_email_ingress_client_id`,`ticket_email_ingress_received_at`),
+  KEY `ticket_email_ingress_ticket` (`ticket_email_ingress_ticket_id`,`ticket_email_ingress_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `tickets`
 --
 
@@ -4262,6 +4415,18 @@ CREATE TABLE `tickets` (
   `ticket_source` varchar(255) DEFAULT NULL COMMENT 'Where the Ticket Came from\r\nEmail, Client Portal, In-App, Project Template',
   `ticket_category` varchar(200) DEFAULT NULL,
   `ticket_request_type_key` varchar(100) NOT NULL DEFAULT '*',
+  `ticket_work_type` varchar(20) NOT NULL DEFAULT 'request',
+  `ticket_impact` varchar(20) NOT NULL DEFAULT 'low',
+  `ticket_urgency` varchar(20) NOT NULL DEFAULT 'low',
+  `ticket_next_action` varchar(500) NOT NULL DEFAULT 'Review and triage this ticket.',
+  `ticket_next_action_due_at` datetime DEFAULT NULL,
+  `ticket_waiting_on` varchar(20) NOT NULL DEFAULT 'none',
+  `ticket_waiting_on_detail` varchar(255) DEFAULT NULL,
+  `ticket_resolution_code` varchar(30) DEFAULT NULL,
+  `ticket_resolution_summary` text DEFAULT NULL,
+  `ticket_root_cause` text DEFAULT NULL,
+  `ticket_operational_updated_by` int(11) NOT NULL DEFAULT 0,
+  `ticket_operational_updated_at` datetime DEFAULT NULL,
   `ticket_subject` varchar(500) NOT NULL,
   `ticket_details` longtext NOT NULL,
   `ticket_priority` varchar(200) DEFAULT NULL,
@@ -4316,7 +4481,10 @@ CREATE TABLE `tickets` (
   KEY `ticket_response_due_at` (`ticket_response_due_at`),
   KEY `ticket_resolution_due_at` (`ticket_resolution_due_at`),
   KEY `ticket_response_due_at_utc` (`ticket_response_due_at_utc`),
-  KEY `ticket_resolution_due_at_utc` (`ticket_resolution_due_at_utc`)
+  KEY `ticket_resolution_due_at_utc` (`ticket_resolution_due_at_utc`),
+  KEY `ticket_work_type_status` (`ticket_work_type`,`ticket_status`),
+  KEY `ticket_waiting_queue` (`ticket_waiting_on`,`ticket_next_action_due_at`),
+  KEY `ticket_operational_priority` (`ticket_impact`,`ticket_urgency`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

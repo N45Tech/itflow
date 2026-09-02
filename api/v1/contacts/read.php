@@ -18,7 +18,10 @@ if (isset($_GET['contact_id'])) {
 } elseif (isset($_GET['contact_phone_or_mobile'])) {
     // Specific contact via phone number or mobile (single)
     $phone_or_mob = mysqli_real_escape_string($mysqli, $_GET['contact_phone_or_mobile']);
-    $sql = mysqli_query($mysqli, "SELECT * FROM contacts WHERE contact_mobile = '$phone_or_mob' OR contact_phone = '$phone_or_mob' AND 1=1 " . apiClientScopeSql('contact_client_id') . " LIMIT 1");
+    // Keep the caller's client scope outside the mobile/phone alternatives.
+    // Without the parentheses SQL's AND precedence leaves the mobile branch
+    // unscoped and a restricted key can read a contact from another client.
+    $sql = mysqli_query($mysqli, "SELECT * FROM contacts WHERE (contact_mobile = '$phone_or_mob' OR contact_phone = '$phone_or_mob') AND 1=1 " . apiClientScopeSql('contact_client_id') . " LIMIT 1");
 
 } else {
     // All contacts (by client ID, or all in general if key permits)
@@ -27,4 +30,3 @@ if (isset($_GET['contact_id'])) {
 
 // Output
 require_once "../read_output.php";
-

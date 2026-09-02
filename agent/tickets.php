@@ -66,7 +66,7 @@ $url_query_strings_sort = http_build_query($get_copy);
 $sortable_columns = array(
     'ticket_number', 'ticket_subject', 'client_name', 'contact_name',
     'ticket_billable', 'ticket_priority', 'ticket_status', 'user_name',
-    'ticket_updated_at', 'ticket_created_at'
+    'ticket_work_type', 'ticket_updated_at', 'ticket_created_at'
 );
 if (!in_array($sort, $sortable_columns, true)) {
     $sort = 'ticket_number';
@@ -182,6 +182,22 @@ if (!empty($_GET['priority']) && in_array($_GET['priority'], array_keys(ticketPr
     $active_filters[] = array('label' => 'Priority', 'value' => $priority_filter, 'drop' => 'priority');
 }
 
+$ticket_work_type_query = '';
+$ticket_work_type_filter = '';
+if (!empty($_GET['work_type']) && array_key_exists($_GET['work_type'], ticketOperationalWorkTypes())) {
+    $ticket_work_type_filter = $_GET['work_type'];
+    $ticket_work_type_query = "AND ticket_work_type = '" . escapeSql($ticket_work_type_filter) . "'";
+    $active_filters[] = array('label' => 'Work type', 'value' => ticketOperationalWorkTypes()[$ticket_work_type_filter], 'drop' => 'work_type');
+}
+
+$ticket_waiting_query = '';
+$ticket_waiting_filter = '';
+if (!empty($_GET['waiting_on']) && array_key_exists($_GET['waiting_on'], ticketOperationalWaitingOnDefinitions())) {
+    $ticket_waiting_filter = $_GET['waiting_on'];
+    $ticket_waiting_query = "AND ticket_waiting_on = '" . escapeSql($ticket_waiting_filter) . "'";
+    $active_filters[] = array('label' => 'Waiting on', 'value' => ticketOperationalWaitingOnDefinitions()[$ticket_waiting_filter], 'drop' => 'waiting_on');
+}
+
 // SLA state filter - breached / at risk / paused / met / no SLA
 $ticket_sla_query = '';
 $ticket_sla_filter = '';
@@ -199,7 +215,7 @@ if (!empty($_GET['sla']) && isset($sla_filter_labels[$_GET['sla']])) {
     } elseif ($ticket_sla_filter == 'at_risk') {
         $ticket_sla_query = 'AND ticket_sla_id > 0 AND COALESCE(ticket_status_pauses_sla, 0) = 0 AND (ticket_response_sla_alert_stage = 1 OR ticket_resolution_sla_alert_stage = 1)';
     } elseif ($ticket_sla_filter == 'paused') {
-        $ticket_sla_query = 'AND ticket_sla_id > 0 AND ticket_status_pauses_sla = 1';
+        $ticket_sla_query = 'AND ticket_sla_id > 0 AND ticket_status_pauses_sla = 1 AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL';
     } elseif ($ticket_sla_filter == 'met') {
         $ticket_sla_query = 'AND ticket_sla_id > 0 AND ticket_response_sla_met = 1 AND (ticket_resolution_sla_met = 1 OR ticket_resolution_due_at IS NULL)';
     } elseif ($ticket_sla_filter == 'none') {
@@ -257,6 +273,8 @@ $access_permission_query_overide = clientScopeSql('ticket_client_id');
  */
 $ticket_select_columns =
     "ticket_id, ticket_prefix, ticket_number, ticket_subject, ticket_priority,
+    ticket_work_type, ticket_impact, ticket_urgency, ticket_next_action,
+    ticket_next_action_due_at, ticket_waiting_on, ticket_waiting_on_detail,
     ticket_status, ticket_billable, ticket_schedule, ticket_order,
     ticket_created_at, ticket_updated_at, ticket_resolved_at, ticket_closed_at,
     ticket_client_id, ticket_contact_id, ticket_assigned_to, ticket_project_id,
@@ -283,13 +301,15 @@ $ticket_where =
     $ticket_assigned_query
     $category_query
     $ticket_priority_query
+    $ticket_work_type_query
+    $ticket_waiting_query
     $ticket_sla_query
     $ticket_billable_snippet
     $ticket_project_snippet
     $access_permission_query_overide
     $client_query
     AND DATE(ticket_created_at) BETWEEN '$dtf' AND '$dtt'
-    AND (CONCAT(ticket_prefix,ticket_number) LIKE '%$q%' OR client_name LIKE '%$q%' OR ticket_subject LIKE '%$q%' OR ticket_status_name LIKE '%$q%' OR ticket_priority LIKE '%$q%' OR user_name LIKE '%$q%' OR contact_name LIKE '%$q%' OR asset_name LIKE '%$q%' OR vendor_name LIKE '%$q%' OR ticket_vendor_ticket_number LIKE '%$q%')";
+    AND (CONCAT(ticket_prefix,ticket_number) LIKE '%$q%' OR client_name LIKE '%$q%' OR ticket_subject LIKE '%$q%' OR ticket_next_action LIKE '%$q%' OR ticket_waiting_on_detail LIKE '%$q%' OR ticket_status_name LIKE '%$q%' OR ticket_priority LIKE '%$q%' OR user_name LIKE '%$q%' OR contact_name LIKE '%$q%' OR asset_name LIKE '%$q%' OR vendor_name LIKE '%$q%' OR ticket_vendor_ticket_number LIKE '%$q%')";
 
 // Counts for the quick views in the header - scope-wide, not filter-aware
 $count_where = "$access_permission_query_overide $client_query";
@@ -311,7 +331,7 @@ $show_billing_column = $config_module_enable_accounting && lookupUserPermission(
  * auto-expanded panel would.
  */
 $hidden_filter_count = 0;
-foreach (array('status', 'assigned', 'priority', 'category', 'sla', 'project', 'billing') as $panel_filter) {
+foreach (array('status', 'assigned', 'priority', 'work_type', 'waiting_on', 'category', 'sla', 'project', 'billing') as $panel_filter) {
     if (!empty($_GET[$panel_filter])) {
         $hidden_filter_count++;
     }
@@ -471,6 +491,8 @@ if ($date_filter_active) {
                 </div>
 
                 <div class="row mt-3">
+                    <div class="col-md-3"><div class="form-group mb-md-0"><label>Work type</label><select class="form-control select2" name="work_type" onchange="this.form.submit()"><option value="">Any work type</option><?php foreach (ticketOperationalWorkTypes() as $key => $label) { ?><option value="<?= escapeHtml($key) ?>" <?= $ticket_work_type_filter === $key ? 'selected' : '' ?>><?= escapeHtml($label) ?></option><?php } ?></select></div></div>
+                    <div class="col-md-3"><div class="form-group mb-md-0"><label>Waiting on</label><select class="form-control select2" name="waiting_on" onchange="this.form.submit()"><option value="">Any waiting state</option><?php foreach (ticketOperationalWaitingOnDefinitions() as $key => $label) { ?><option value="<?= escapeHtml($key) ?>" <?= $ticket_waiting_filter === $key ? 'selected' : '' ?>><?= escapeHtml($label) ?></option><?php } ?></select></div></div>
                     <div class="col-md-3">
                         <div class="form-group mb-md-0">
                             <label>Project</label>

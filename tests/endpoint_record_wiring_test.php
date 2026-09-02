@@ -114,6 +114,7 @@ foreach ([
     'endpointRecordChangeEventUnlocked',
     'endpointRetireSourceStateUnlocked',
     'endpointLoadUnifiedRecord',
+    'endpointUnifiedRecordContractViolations',
     'unifiedDeviceServiceReviewSnapshot',
 ] as $function) {
     $assertContains("function $function", $functions, "Endpoint service is missing $function");
@@ -203,6 +204,10 @@ $assertContains('enforceClientAccess($client_id)', $asset, 'Asset route does not
 $assertContains("'/agent/asset.php?client_id='", $operations, 'Operations asset links omit their client-id convenience parameter');
 $assertContains('Unified Endpoint &amp; Network Record', $endpoint_ui, 'Unified endpoint UI heading is missing');
 $assertContains('Related Evidence', $endpoint_ui, 'Unified endpoint UI does not show related evidence');
+$assertContains("'interfaces' => \$interfaces", $functions, 'Unified endpoint record omits editable interfaces');
+$assertContains("'related_tickets' => \$related_tickets", $functions, 'Unified endpoint record omits related tickets');
+$assertContains("'related_documentation' => \$related_documentation", $functions, 'Unified endpoint record omits related documentation');
+$assertContains('endpointUnifiedRecordContractViolations($record)', $functions, 'Unified endpoint record is returned without a shape contract');
 $assertContains('endpointReconcileAssetSource([', $api, 'Endpoint ingestion API does not use the transactional reconciler');
 $assertContains("array_is_list(\$_POST['network_interfaces'])", $api, 'Endpoint ingestion does not require a JSON interface array');
 $assertContains("\$source === 'itflow'", $api, 'Endpoint ingestion does not reserve the internal ITFlow source');

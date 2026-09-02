@@ -21,12 +21,30 @@ if (isset($_POST['add_ticket'])) {
     }
     $contact_id = intval($_POST['contact_id'] ?? 0);
     $category_id = intval($_POST['category_id'] ?? 0);
-    $priority = escapeSql($_POST['priority'] ?? 'Low');
     $vendor_ticket_number = escapeSql($_POST['vendor_ticket_number'] ?? '');
     $vendor_id = intval($_POST['vendor_id'] ?? 0);
     $asset_id = intval($_POST['asset_id'] ?? 0);
     $location_id = intval($_POST['location_id'] ?? 0);
     $project_id = intval($_POST['project_id'] ?? 0);
+    try {
+        $operational = ticketOperationalInput([
+            'work_type' => $_POST['work_type'] ?? ($project_id ? 'project_task' : 'request'),
+            'impact' => $_POST['impact'] ?? 'medium',
+            'urgency' => $_POST['urgency'] ?? 'medium',
+            'next_action' => $_POST['next_action'] ?? 'Review and triage this ticket.',
+            'next_action_due_at' => $_POST['next_action_due_at'] ?? null,
+            'waiting_on' => $_POST['waiting_on'] ?? 'none',
+            'waiting_on_detail' => $_POST['waiting_on_detail'] ?? '',
+        ]);
+    } catch (InvalidArgumentException $exception) {
+        flashAlert(escapeHtml($exception->getMessage()), 'error');
+        redirect();
+    }
+    $priority = escapeSql($operational['priority']);
+    $work_type_sql = escapeSql($operational['work_type']);
+    $impact_sql = escapeSql($operational['impact']);
+    $urgency_sql = escapeSql($operational['urgency']);
+    $next_action_sql = escapeSql($operational['next_action']);
     $use_primary_contact = intval($_POST['use_primary_contact'] ?? 0);
     $ticket_template_id = intval($_POST['ticket_template_id'] ?? 0);
     $pinned_runbook_version_id = 0;
@@ -221,7 +239,7 @@ if (isset($_POST['add_ticket'])) {
             throw new RuntimeException('The ticket number allocation returned no number');
         }
 
-        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Agent', ticket_category = $category_id, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_billable = '$billable', ticket_status = '$ticket_status', ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_location_id = $location_id, ticket_asset_id = $asset_id, ticket_created_by = $session_user_id, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_due_at = $due, ticket_client_id = $client_id, ticket_invoice_id = 0, ticket_project_id = $project_id, ticket_configuration_change = $configuration_change, ticket_documentation_impact = '$documentation_impact_sql', ticket_documentation_assessed_by = $session_user_id, ticket_documentation_assessed_at = NOW()", 'Could not create the ticket');
+        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Agent', ticket_category = $category_id, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_work_type = '$work_type_sql', ticket_impact = '$impact_sql', ticket_urgency = '$urgency_sql', ticket_next_action = '$next_action_sql', ticket_waiting_on = 'none', ticket_operational_updated_by = $session_user_id, ticket_operational_updated_at = NOW(), ticket_billable = '$billable', ticket_status = '$ticket_status', ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_location_id = $location_id, ticket_asset_id = $asset_id, ticket_created_by = $session_user_id, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_due_at = $due, ticket_client_id = $client_id, ticket_invoice_id = 0, ticket_project_id = $project_id, ticket_configuration_change = $configuration_change, ticket_documentation_impact = '$documentation_impact_sql', ticket_documentation_assessed_by = $session_user_id, ticket_documentation_assessed_at = NOW()", 'Could not create the ticket');
 
         $ticket_id = intval(mysqli_insert_id($mysqli));
         if (!$ticket_id) {
@@ -399,7 +417,6 @@ if (isset($_POST['edit_ticket'])) {
     $category_id = intval($_POST['category_id']);
     $ticket_subject = escapeSql($_POST['subject']);
     $billable = intval($_POST['billable'] ?? 0);
-    $ticket_priority = escapeSql($_POST['priority']);
     $details = mysqli_real_escape_string($mysqli, $_POST['details']);
     $vendor_ticket_number = escapeSql($_POST['vendor_ticket_number']);
     $vendor_id = intval($_POST['vendor_id']);
@@ -489,6 +506,9 @@ if (isset($_POST['edit_ticket'])) {
     $original_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_priority,
         ticket_assigned_to, ticket_category FROM tickets WHERE ticket_id = $ticket_id"));
     $original_priority = escapeSql($original_row['ticket_priority']);
+    // Impact and urgency own priority. The general edit form must not provide
+    // a second, conflicting priority write path.
+    $ticket_priority = $original_priority;
     $original_assigned_to = intval($original_row['ticket_assigned_to']);
     $request_key_reset = intval($original_row['ticket_category']) !== $category_id
         ? ", ticket_request_type_key = '*'" : '';
@@ -597,7 +617,6 @@ if (isset($_POST['edit_ticket_priority'])) {
     enforceUserPermission('module_support', 2);
 
     $ticket_id = intval($_POST['ticket_id']);
-    $priority = escapeSql($_POST['priority']);
 
     // Get ticket details before updating
     $sql = mysqli_query($mysqli, "SELECT
@@ -618,8 +637,16 @@ if (isset($_POST['edit_ticket_priority'])) {
         enforceClientAccess($client_id);
     }
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_priority = '$priority' WHERE ticket_id = $ticket_id");
-    applyTicketSla($ticket_id);
+    try {
+        $state = ticketOperationalUpdateTicket($ticket_id, [
+            'impact' => $_POST['impact'] ?? '',
+            'urgency' => $_POST['urgency'] ?? '',
+        ], $session_user_id, 'agent');
+        $priority = escapeSql($state['priority']);
+    } catch (Throwable $exception) {
+        flashAlert(escapeHtml($exception->getMessage()), 'error');
+        redirect();
+    }
 
     // Update Ticket History
     mysqli_query($mysqli, "INSERT INTO ticket_history SET ticket_history_status = '$ticket_status', ticket_history_description = '$session_name changed priority from $original_priority to $priority', ticket_history_ticket_id = $ticket_id");
@@ -1349,6 +1376,9 @@ if (isset($_GET['delete_ticket'])) {
             if (agreementTicketHasAuditHistory($ticket_id, $client_id)) {
                 throw new DomainException('The ticket has immutable agreement or SLA decision history');
             }
+            if (ticketOperationalTicketHasImmutableHistory($ticket_id)) {
+                throw new DomainException('The ticket has immutable operational, relationship, promise, or email-ingress history');
+            }
             automationDeleteTicketOperations($ticket_id);
             automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id",
                 'Could not delete the ticket replies');
@@ -1373,7 +1403,7 @@ if (isset($_GET['delete_ticket'])) {
             }
             error_log("Ticket $ticket_id could not be deleted: " . $e->getMessage());
             flashAlert($e instanceof DomainException
-                ? 'Tickets with immutable workflow, documentation, agreement, or SLA history cannot be permanently deleted. Close the ticket to preserve its audit trail.'
+                ? 'Tickets with immutable workflow, documentation, agreement, SLA, operational, promise, relationship, or email-ingress history cannot be permanently deleted. Close the ticket to preserve its audit trail.'
                 : 'The ticket and its Operations record could not be deleted.', 'error');
             redirect();
         }
@@ -1443,6 +1473,9 @@ if (isset($_POST['bulk_delete_tickets'])) {
                 }
                 if (agreementTicketHasAuditHistory($ticket_id, $client_id)) {
                     throw new DomainException('The ticket has immutable agreement or SLA decision history');
+                }
+                if (ticketOperationalTicketHasImmutableHistory($ticket_id)) {
+                    throw new DomainException('The ticket has immutable operational, relationship, promise, or email-ingress history');
                 }
                 automationDeleteTicketOperations($ticket_id);
                 automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id",
@@ -1648,7 +1681,14 @@ if (isset($_POST['bulk_edit_ticket_priority'])) {
     enforceUserPermission('module_support', 2);
 
     // POST variables
-    $priority = escapeSql($_POST['bulk_priority']);
+    $bulk_impact = $_POST['bulk_impact'] ?? '';
+    $bulk_urgency = $_POST['bulk_urgency'] ?? '';
+    try {
+        $priority = escapeSql(ticketOperationalPriorityFromImpactUrgency($bulk_impact, $bulk_urgency));
+    } catch (InvalidArgumentException $exception) {
+        flashAlert(escapeHtml($exception->getMessage()), 'error');
+        redirect();
+    }
 
     // Assign Tech to Selected Tickets
     if (isset($_POST['ticket_ids'])) {
@@ -1673,8 +1713,15 @@ if (isset($_POST['bulk_edit_ticket_priority'])) {
             }
 
             // Update ticket & insert reply
-            mysqli_query($mysqli, "UPDATE tickets SET ticket_priority = '$priority' WHERE ticket_id = $ticket_id");
-            applyTicketSla($ticket_id);
+            try {
+                ticketOperationalUpdateTicket($ticket_id, [
+                    'impact' => $bulk_impact,
+                    'urgency' => $bulk_urgency,
+                ], $session_user_id, 'agent');
+            } catch (Throwable $exception) {
+                error_log("Bulk operational priority skipped ticket $ticket_id: " . $exception->getMessage());
+                continue;
+            }
 
             mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = '$session_name updated the priority from $original_ticket_priority to $priority', ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $ticket_id");
 
@@ -1824,6 +1871,15 @@ if (isset($_POST['bulk_merge_tickets'])) {
                     if (intval($locked_ticket['ticket_client_id']) !== $merge_into_client_id) {
                         throw new RuntimeException('The merge source client changed');
                     }
+                    ticketOperationalAddRelationship($ticket_id, $merge_into_ticket_id, 'duplicate', $session_user_id, true);
+                    ticketOperationalSetResolution(
+                        $ticket_id,
+                        'duplicate',
+                        "Bulk merged into $ticket_prefix$merge_into_ticket_number.",
+                        trim((string) ($_POST['merge_comment'] ?? '')) ?: "Root-cause work continues on $ticket_prefix$merge_into_ticket_number.",
+                        $session_user_id,
+                        'agent'
+                    );
                     [$can_merge] = runbookTicketCanResolve($ticket_id);
                     if (!$can_merge) {
                         throw new RuntimeException('The merge source workflow gate is not satisfied');
@@ -1841,6 +1897,7 @@ if (isset($_POST['bulk_merge_tickets'])) {
                         throw new RuntimeException('The bulk merge source changed before commit');
                     }
                     documentationRecordChangePassport($ticket_id, 5, $session_user_id, true);
+                    ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
                     syncTicketSlaClock($ticket_id);
                     setTicketResolutionSlaMet($ticket_id);
                     ticketCreationDbQuery("INSERT INTO ticket_replies SET ticket_reply = 'Ticket $ticket_prefix$ticket_number was bulk merged into this ticket with comment: $merge_comment.<br><br><b>$ticket_subject</b><br>$ticket_details', ticket_reply_time_worked = '00:00:00', ticket_reply_type = 'Internal', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $merge_into_ticket_id", 'Could not record the bulk merge target note');
@@ -1935,6 +1992,14 @@ if (isset($_POST['bulk_resolve_tickets'])) {
                 $transaction_started = true;
                 documentationLockClientTicket($ticket_id, $client_id);
                 runbookLockOpenTicket($ticket_id);
+                ticketOperationalSetResolution(
+                    $ticket_id,
+                    $_POST['bulk_resolution_code'] ?? '',
+                    $_POST['bulk_resolution_summary'] ?? '',
+                    $_POST['bulk_root_cause'] ?? '',
+                    $session_user_id,
+                    'agent'
+                );
                 [$can_resolve] = runbookTicketCanResolve($ticket_id);
                 if (!$can_resolve) {
                     throw new RuntimeException('The ticket resolution gate is not satisfied');
@@ -1949,6 +2014,7 @@ if (isset($_POST['bulk_resolve_tickets'])) {
                     throw new RuntimeException('The bulk ticket was no longer open at commit');
                 }
                 documentationRecordChangePassport($ticket_id, 4, $session_user_id, true);
+                ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
                 syncTicketSlaClock($ticket_id);
                 setTicketResolutionSlaMet($ticket_id);
                 ticketCreationDbQuery("INSERT INTO ticket_replies SET ticket_reply = '$details',
@@ -2215,12 +2281,27 @@ if (isset($_POST['bulk_ticket_reply'])) {
                             true
                         );
                     }
+                    if ($effective_ticket_status === 4) {
+                        ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
+                    } elseif ($original_ticket_status === 4 && $effective_ticket_status !== 5) {
+                        ticketOperationalOnReopened($ticket_id, $session_user_id, 'agent');
+                    }
                     syncTicketSlaClock($ticket_id);
                     if (in_array($effective_ticket_status, [4, 5], true)) {
                         setTicketResolutionSlaMet($ticket_id);
                     } elseif ($original_ticket_status === 4) {
                         resetTicketResolutionSla($ticket_id);
                     }
+                }
+
+                if ($ticket_reply_type === 'Public') {
+                    ticketOperationalFulfillPromisesLocked(
+                        $ticket_id,
+                        'customer_update',
+                        $session_user_id,
+                        'agent',
+                        $ticket_reply_id
+                    );
                 }
 
                 if (!mysqli_commit($mysqli)) {
@@ -2811,6 +2892,11 @@ if (isset($_POST['add_ticket_reply'])) {
             if (in_array($ticket_status, [4, 5], true)) {
                 documentationRecordChangePassport($ticket_id, $ticket_status, $session_user_id, true);
             }
+            if ($ticket_status === 4) {
+                ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
+            } elseif ($original_ticket_status === 4) {
+                ticketOperationalOnReopened($ticket_id, $session_user_id, 'agent');
+            }
             syncTicketSlaClock($ticket_id);
             if (in_array($ticket_status, [4, 5], true)) {
                 setTicketResolutionSlaMet($ticket_id);
@@ -2830,6 +2916,7 @@ if (isset($_POST['add_ticket_reply'])) {
             $ticket_reply_id = intval(mysqli_insert_id($mysqli));
             if ($ticket_reply_type === 'Public') {
                 setTicketFirstResponse($ticket_id);
+                ticketOperationalFulfillPromisesLocked($ticket_id, 'customer_update', $session_user_id, 'agent', $ticket_reply_id);
             }
         }
 
@@ -3294,6 +3381,15 @@ if (isset($_POST['merge_ticket'])) {
         if (intval($locked_ticket['ticket_client_id']) !== $client_id) {
             throw new RuntimeException('The merge source client changed');
         }
+        ticketOperationalAddRelationship($ticket_id, $merge_into_ticket_id, 'duplicate', $session_user_id, true);
+        ticketOperationalSetResolution(
+            $ticket_id,
+            'duplicate',
+            "Merged into $ticket_prefix$merge_into_ticket_number.",
+            trim((string) ($_POST['merge_comment'] ?? '')) ?: "Root-cause work continues on $ticket_prefix$merge_into_ticket_number.",
+            $session_user_id,
+            'agent'
+        );
         [$can_merge, $merge_error] = runbookTicketCanResolve($ticket_id);
         if (!$can_merge) {
             $merge_error_message = 'Ticket cannot be merged while its runbook is gated: ' . $merge_error;
@@ -3317,6 +3413,7 @@ if (isset($_POST['merge_ticket'])) {
             throw new RuntimeException('The merge source changed before commit');
         }
         documentationRecordChangePassport($ticket_id, 5, $session_user_id, true);
+        ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
         syncTicketSlaClock($ticket_id);
         setTicketResolutionSlaMet($ticket_id);
         ticketCreationDbQuery("INSERT INTO ticket_replies SET ticket_reply = 'Ticket $ticket_prefix$ticket_number was merged into this ticket with comment: $merge_comment.<br><br><b>$ticket_subject</b><br>$ticket_details', ticket_reply_time_worked = '00:00:00', ticket_reply_type = '$ticket_reply_type', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $merge_into_ticket_id", 'Could not record the merge target note');
@@ -3417,6 +3514,10 @@ if (isset($_POST['change_client_ticket'])) {
         }
 
         if ($source_client_id !== $client_id) {
+            if (ticketOperationalTicketHasImmutableHistory($ticket_id)) {
+                $client_change_error = 'Tickets with operational, relationship, customer-promise, or email-ingress history cannot be transferred because those records belong to the original client';
+                throw new RuntimeException('The locked ticket has client-bound operational artifacts');
+            }
             [$documentation_transfer_allowed, $documentation_transfer_error] = documentationTicketCanTransfer($ticket_id, $client_id);
             if (!$documentation_transfer_allowed) {
                 $client_change_error = $documentation_transfer_error;
@@ -3481,16 +3582,27 @@ if (isset($_POST['change_client_ticket'])) {
 
 }
 
+if (isset($_POST['resolve_ticket']) && !isset($_GET['resolve_ticket'])) {
+    $_GET['resolve_ticket'] = intval($_POST['ticket_id'] ?? 0);
+}
+
 if (isset($_GET['resolve_ticket'])) {
 
     validateCSRFToken();
 
     enforceUserPermission('module_support', 2);
 
-    $ticket_id = intval($_GET['resolve_ticket']);
+    $ticket_id = intval($_POST['ticket_id'] ?? $_GET['resolve_ticket'] ?? 0);
 
-    $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_first_response_at, ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id");
+    $active_ticket_scope = ticketOperationalActiveTicketSql('tickets');
+    $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_first_response_at,
+        ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id
+        $active_ticket_scope LIMIT 1");
     $row = mysqli_fetch_assoc($sql);
+    if (!$row) {
+        flashAlert('Ticket not found', 'error');
+        redirect();
+    }
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
     $ticket_first_response_at = escapeSql($row['ticket_first_response_at']);
@@ -3498,7 +3610,7 @@ if (isset($_GET['resolve_ticket'])) {
 
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
     if ($client_id) {
-        enforceClientAccess();
+        enforceClientAccess($client_id);
     }
 
     $transaction_started = false;
@@ -3513,6 +3625,14 @@ if (isset($_GET['resolve_ticket'])) {
         // the gate cannot pass concurrently with a new/reopened task.
         documentationLockClientTicket($ticket_id, $client_id);
         $locked_ticket = runbookLockOpenTicket($ticket_id);
+        ticketOperationalSetResolution(
+            $ticket_id,
+            $_POST['resolution_code'] ?? '',
+            $_POST['resolution_summary'] ?? '',
+            $_POST['root_cause'] ?? '',
+            $session_user_id,
+            'agent'
+        );
         [$can_resolve, $resolve_error] = runbookTicketCanResolve($ticket_id);
         if (!$can_resolve) {
             $resolution_error_message = $resolve_error;
@@ -3530,6 +3650,7 @@ if (isset($_GET['resolve_ticket'])) {
             throw new RuntimeException('The ticket was no longer open when resolution was committed');
         }
         documentationRecordChangePassport($ticket_id, 4, $session_user_id, true);
+        ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
         syncTicketSlaClock($ticket_id);
         setTicketResolutionSlaMet($ticket_id);
 
@@ -3540,6 +3661,9 @@ if (isset($_GET['resolve_ticket'])) {
     } catch (Throwable $exception) {
         if ($transaction_started) {
             mysqli_rollback($mysqli);
+        }
+        if ($exception instanceof InvalidArgumentException || $exception instanceof DomainException) {
+            $resolution_error_message = $exception->getMessage();
         }
         error_log("Ticket $ticket_id resolution failed safely: " . $exception->getMessage());
         flashAlert(escapeHtml($resolution_error_message), 'error');
@@ -3838,6 +3962,7 @@ if (isset($_GET['reopen_ticket'])) {
         }
         syncTicketSlaClock($ticket_id);
         resetTicketResolutionSla($ticket_id);
+        ticketOperationalOnReopened($ticket_id, $session_user_id, 'agent');
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket reopen');
         }
@@ -4168,7 +4293,7 @@ if (isExportRequest('export_tickets')) {
             $ticket_sla_query = 'AND ticket_sla_id > 0 AND COALESCE(ticket_status_pauses_sla, 0) = 0 AND (ticket_response_sla_alert_stage = 1 OR ticket_resolution_sla_alert_stage = 1)';
             $filter_summary['SLA'] = 'SLA at risk';
         } elseif ($sla_filter == 'paused') {
-            $ticket_sla_query = 'AND ticket_sla_id > 0 AND ticket_status_pauses_sla = 1';
+            $ticket_sla_query = 'AND ticket_sla_id > 0 AND ticket_status_pauses_sla = 1 AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL';
             $filter_summary['SLA'] = 'SLA paused';
         } elseif ($sla_filter == 'met') {
             $ticket_sla_query = 'AND ticket_sla_id > 0 AND ticket_response_sla_met = 1 AND (ticket_resolution_sla_met = 1 OR ticket_resolution_due_at IS NULL)';

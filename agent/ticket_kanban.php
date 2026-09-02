@@ -22,6 +22,7 @@ while ($row = mysqli_fetch_assoc($status_sql)) {
         'name'       => escapeHtml($row['ticket_status_name']),
         'color'      => escapeHtml($row['ticket_status_color']),
         'pauses_sla' => intval($row['ticket_status_pauses_sla']),
+        'show_sla_pause' => intval($row['ticket_status_pauses_sla']) && $status_id != 4,
         'tickets'    => array()
     );
 }
@@ -105,7 +106,7 @@ $kanban = array_values($statuses);
             <div class="kanban-column-header" style="border-top-color: <?= $column['color'] ?>">
                 <span class="kanban-column-name"><?= $column['name'] ?></span>
                 <span class="badge badge-pill badge-secondary ml-1"><?= count($column['tickets']) ?></span>
-                <?php if ($column['pauses_sla']) { ?>
+                <?php if ($column['show_sla_pause']) { ?>
                     <i class="fas fa-fw fa-pause text-secondary ml-1" title="The resolution SLA clock is paused in this status"></i>
                 <?php } ?>
             </div>

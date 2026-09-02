@@ -40,6 +40,22 @@ function documentationPromiseReasonCodes() {
     return ['client-input', 'evidence-follow-up', 'technical-validation', 'documentation-refresh'];
 }
 
+function documentationAssertDistinctDecisionActor($requested_by, $actor_id, $decision_type) {
+    $requested_by = max(0, intval($requested_by));
+    $actor_id = max(0, intval($actor_id));
+    $decision_type = strtolower(trim((string) $decision_type));
+    if ($actor_id < 1) {
+        throw new InvalidArgumentException('A documentation decision actor is required');
+    }
+    if ($requested_by > 0 && $requested_by === $actor_id) {
+        $message = $decision_type === 'waiver'
+            ? 'Waiver requesters cannot decide their own request'
+            : 'Exception requesters cannot approve or decide their own request';
+        throw new RuntimeException($message);
+    }
+    return true;
+}
+
 function documentationBaseStatuses() {
     return ['Missing', 'Draft', 'Current', 'Due Soon', 'Stale', 'Not Applicable'];
 }
@@ -2560,9 +2576,11 @@ function documentationDecideObligationException(
             !== intval($obligation['documentation_obligation_requirement_version_id'])) {
             throw new RuntimeException('The documentation exception belongs to a superseded requirement version');
         }
-        if (intval($exception['documentation_obligation_exception_requested_by']) === $actor_id) {
-            throw new RuntimeException('Exception requesters cannot approve or decide their own request');
-        }
+        documentationAssertDistinctDecisionActor(
+            $exception['documentation_obligation_exception_requested_by'],
+            $actor_id,
+            'exception'
+        );
         if ($obligation['documentation_requirement_version_exception_approval_policy'] === 'administrator'
             && !documentationAgentIsAdministrator($actor_id)) {
             throw new RuntimeException('This documentation exception requires an administrator decision');
@@ -3049,9 +3067,11 @@ function documentationDecideTicketWaiver(
         if (intval($expected_revision) !== $revision) {
             throw new RuntimeException('The ticket documentation waiver changed; refresh and try again');
         }
-        if (intval($waiver['ticket_documentation_waiver_requested_by']) === $actor_id) {
-            throw new RuntimeException('Waiver requesters cannot decide their own request');
-        }
+        documentationAssertDistinctDecisionActor(
+            $waiver['ticket_documentation_waiver_requested_by'],
+            $actor_id,
+            'waiver'
+        );
         if ($waiver['documentation_requirement_version_exception_approval_policy'] === 'administrator'
             && !documentationAgentIsAdministrator($actor_id)) {
             throw new RuntimeException('This ticket documentation waiver requires an administrator decision');

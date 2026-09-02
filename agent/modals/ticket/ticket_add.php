@@ -137,21 +137,18 @@ ob_start();
 
                 <div class="row">
 
-                    <div class="col">
+                    <div class="col-md-4">
                         <div class="form-group">
-                            <label>Priority <strong class="text-danger">*</strong></label>
-                            <div class="input-group">
-                                <div class="input-group-prepend">
-                                    <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
-                                </div>
-                                <select class="form-control select2" name="priority" required>
-                                    <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
-                                        <option value="<?= escapeHtml($priority) ?>"><?= escapeHtml("$priority — " . $definition['short']) ?></option>
-                                    <?php } ?>
-                                </select>
-                            </div>
+                            <label>Work type <strong class="text-danger">*</strong></label>
+                            <select class="form-control" name="work_type" required>
+                                <?php foreach (ticketOperationalWorkTypes() as $key => $label) { ?><option value="<?= escapeHtml($key) ?>" <?= $key === ($project_id ? 'project_task' : 'request') ? 'selected' : '' ?>><?= escapeHtml($label) ?></option><?php } ?>
+                            </select>
                         </div>
                     </div>
+
+                    <div class="col-md-4"><div class="form-group"><label>Impact <strong class="text-danger">*</strong></label><select class="form-control" name="impact" required><?php foreach (ticketOperationalLevels() as $key => $label) { ?><option value="<?= escapeHtml($key) ?>" <?= $key === 'medium' ? 'selected' : '' ?>><?= escapeHtml($label) ?></option><?php } ?></select></div></div>
+
+                    <div class="col-md-4"><div class="form-group"><label>Urgency <strong class="text-danger">*</strong></label><select class="form-control" name="urgency" required><?php foreach (ticketOperationalLevels() as $key => $label) { ?><option value="<?= escapeHtml($key) ?>" <?= $key === 'medium' ? 'selected' : '' ?>><?= escapeHtml($label) ?></option><?php } ?></select><small class="text-muted">Priority is calculated from impact and urgency.</small></div></div>
 
                     <div class="col">
                         <div class="form-group">
@@ -182,6 +179,12 @@ ob_start();
                         </div>
                     </div>
 
+                </div>
+
+                <div class="form-group">
+                    <label>Next action <strong class="text-danger">*</strong></label>
+                    <input class="form-control" name="next_action" maxlength="500" value="Review and triage this ticket." required>
+                    <input type="hidden" name="waiting_on" value="none">
                 </div>
 
                 <div class="row">

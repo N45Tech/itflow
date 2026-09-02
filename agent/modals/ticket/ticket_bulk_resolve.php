@@ -22,6 +22,9 @@ ob_start();
     <input type="hidden" name="bulk_private_note" value="0">
 
     <div class="modal-body">
+        <div class="form-group"><label>Resolution code</label><select class="form-control" name="bulk_resolution_code" required><option value="">Select a resolution</option><?php foreach (ticketOperationalResolutionCodes() as $key => $label) { ?><option value="<?= escapeHtml($key) ?>"><?= escapeHtml($label) ?></option><?php } ?></select></div>
+        <div class="form-group"><label>Resolution summary</label><textarea class="form-control" rows="3" name="bulk_resolution_summary" required></textarea></div>
+        <div class="form-group"><label>Root cause</label><textarea class="form-control" rows="2" name="bulk_root_cause"></textarea><small class="text-muted">Required when any selected ticket is a problem record.</small></div>
         <div class="form-group">
             <textarea class="form-control tinymce" rows="5" name="bulk_details" placeholder="Enter closing remarks"></textarea>
         </div>
