@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/documentation_lifecycle.php';
+require_once __DIR__ . '/authorization_transactions.php';
 
 /*
  * Versioned runbook authoring and execution.
