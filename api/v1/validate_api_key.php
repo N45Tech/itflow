@@ -153,7 +153,7 @@ if ($authorization_header === '' && function_exists('getallheaders')) {
     }
 }
 if (preg_match('/^Bearer\s+([^\s]+)$/i', $authorization_header, $authorization_match)) {
-    $api_key = escapeSql($authorization_match[1]);
+    $api_key = (string) $authorization_match[1];
 } elseif ($authorization_header !== '') {
     header(WORDING_UNAUTHORIZED);
     echo json_encode(['success' => 'False', 'message' => 'Authorization header must use Bearer authentication.']);
@@ -162,7 +162,7 @@ if (preg_match('/^Bearer\s+([^\s]+)$/i', $authorization_header, $authorization_m
 
 // Header and query credentials can be authenticated before any body is decoded.
 if (!isset($api_key) && isset($_GET['api_key'])) {
-    $api_key = escapeSql($_GET['api_key']);
+    $api_key = (string) $_GET['api_key'];
 }
 if (!isset($api_key)) {
     $_POST = apiDecodeJsonRequestBody(
@@ -172,7 +172,7 @@ if (!isset($api_key)) {
     );
     $api_body_decoded = true;
     if (isset($_POST['api_key'])) {
-        $api_key = escapeSql($_POST['api_key']);
+        $api_key = (string) $_POST['api_key'];
     }
 }
 if (!isset($api_key)) {
@@ -182,12 +182,23 @@ if (!isset($api_key)) {
 
 // Validate API key
 if (isset($api_key)) {
-    $api_key = escapeSql($api_key);
-
-    $sql = mysqli_query($mysqli, "SELECT api_key_decrypt_hash, api_key_name, api_key_user_id FROM api_keys WHERE api_key_secret = '$api_key' AND api_key_expire > NOW() LIMIT 1");
+    $api_key = (string) $api_key;
+    $sql = false;
+    if ($api_key !== '' && strlen($api_key) <= 255) {
+        $api_key_statement = mysqli_prepare($mysqli, "SELECT api_key_id, api_key_decrypt_hash,
+            api_key_name, api_key_user_id FROM api_keys
+            WHERE api_key_secret = BINARY ? AND api_key_expire > CURRENT_DATE() LIMIT 2");
+        if ($api_key_statement) {
+            mysqli_stmt_bind_param($api_key_statement, 's', $api_key);
+            if (mysqli_stmt_execute($api_key_statement)) {
+                $sql = mysqli_stmt_get_result($api_key_statement);
+            }
+            mysqli_stmt_close($api_key_statement);
+        }
+    }
 
     // Failed
-    if (mysqli_num_rows($sql) !== 1) {
+    if (!$sql || mysqli_num_rows($sql) !== 1) {
         // Invalid Key
 
         $url_path = escapeSql(parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH));
@@ -206,9 +217,11 @@ if (isset($api_key)) {
 
         // Set client ID, company ID & key name
         $row = mysqli_fetch_assoc($sql);
-        $api_key_name = htmlentities($row['api_key_name']);
+        $api_key_id = intval($row['api_key_id']);
+        $api_key_name = escapeSql($row['api_key_name']);
         $api_key_decrypt_hash = $row['api_key_decrypt_hash']; // No sanitization
         $api_key_user_id = intval($row['api_key_user_id']);
+        unset($api_key);
 
         if (!$api_body_decoded) {
             $_POST = apiDecodeJsonRequestBody(

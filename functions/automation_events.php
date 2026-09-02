@@ -169,6 +169,15 @@ function automationEventEnvelope(array $input): array
     if (empty($event['identity']['external_name'])) {
         $event['identity']['external_name'] = automationLimitText($event['title'], 255);
     }
+    $authorized_client_id = max(0, intval($input['client_id'] ?? 0));
+    if ($authorized_client_id > 0) {
+        $identity_client = is_array($event['identity']['client'] ?? null)
+            ? $event['identity']['client'] : [];
+        if (intval($identity_client['id'] ?? 0) === 0) {
+            $identity_client['id'] = $authorized_client_id;
+            $event['identity']['client'] = $identity_client;
+        }
+    }
 
     return $event;
 }
@@ -305,7 +314,7 @@ function automationEventThresholdOccurrences(string $source, string $incident_ke
 
 function automationEventQueue(array $input): array
 {
-    global $mysqli;
+    global $mysqli, $api_key_id, $api_key_user_id, $client_id;
 
     if (!n45FeatureEnabled('automation')) {
         throw new RuntimeException('Automation ingestion is disabled by deployment feature flag');
@@ -324,6 +333,12 @@ function automationEventQueue(array $input): array
     $payload_sql = automationDbEscape($document['payload']);
     $occurred_at_sql = automationDbEscape($event['occurred_at']);
     $max_attempts = intval($policy['max_attempts']);
+    $origin_api_key_id = max(0, intval($api_key_id ?? 0));
+    $origin_api_user_id = max(0, intval($api_key_user_id ?? 0));
+    $authorized_client_id = max(0, intval($client_id ?? 0));
+    if ($origin_api_key_id < 1 || $origin_api_user_id < 1) {
+        throw new RuntimeException('Automation event authority provenance is unavailable');
+    }
 
     automationDbQuery("INSERT INTO automation_events SET
         automation_event_source = '$source_sql',
@@ -335,6 +350,9 @@ function automationEventQueue(array $input): array
         automation_event_status = 'Pending',
         automation_event_process_attempts = 0,
         automation_event_max_attempts = $max_attempts,
+        automation_event_api_key_id = $origin_api_key_id,
+        automation_event_api_user_id = $origin_api_user_id,
+        automation_event_authorized_client_id = $authorized_client_id,
         automation_event_payload_hash = '$payload_hash_sql',
         automation_event_payload = '$payload_sql',
         automation_event_occurred_at = '$occurred_at_sql'
@@ -364,6 +382,205 @@ function automationEventQueue(array $input): array
         'ticket_id' => intval($row['automation_event_ticket_id']),
         'delivery_count' => intval($row['automation_event_delivery_count']),
     ];
+}
+
+/**
+ * Rehydrate and lock the authorization context captured at ingestion. A queued
+ * event never inherits the cron worker's ambient privileges.
+ */
+function automationEventLockAuthority(array $row, N45LockOrder $lock_order): void
+{
+    global $mysqli, $api_key_id, $api_key_user_id, $api_key_name;
+    global $session_user_id, $session_user_role, $session_is_admin, $session_name;
+    global $session_ip, $session_user_agent, $client_access_array, $client_deny_array;
+
+    $stored_key_id = max(0, intval($row['automation_event_api_key_id'] ?? 0));
+    $stored_user_id = max(0, intval($row['automation_event_api_user_id'] ?? 0));
+    if ($stored_key_id < 1 || $stored_user_id < 1) {
+        throw new AutomationConflictException('The queued event has no verifiable API authority provenance');
+    }
+
+    $preview = mysqli_fetch_assoc(automationDbQuery("SELECT user_role_id FROM users
+        WHERE user_id = $stored_user_id LIMIT 1", 'Could not inspect the automation API principal'));
+    $role_id = intval($preview['user_role_id'] ?? 0);
+    if ($role_id < 1) {
+        throw new AutomationConflictException('The automation API principal no longer has a role');
+    }
+
+    $lock_order->observe('authorization');
+    $role = mysqli_fetch_assoc(automationDbQuery("SELECT role_id, role_is_admin, role_archived_at
+        FROM user_roles WHERE role_id = $role_id LIMIT 1 FOR UPDATE",
+        'Could not lock the automation API role'));
+    $user = mysqli_fetch_assoc(automationDbQuery("SELECT user_id, user_name, user_type, user_status,
+        user_archived_at, user_role_id FROM users WHERE user_id = $stored_user_id
+        LIMIT 1 FOR UPDATE", 'Could not lock the automation API principal'));
+    if (!$role || !$user || intval($user['user_role_id']) !== $role_id
+        || intval($user['user_type']) !== 1 || intval($user['user_status']) !== 1
+        || $user['user_archived_at'] !== null || $role['role_archived_at'] !== null) {
+        throw new AutomationConflictException('The API principal authorization changed before event processing');
+    }
+
+    $is_admin = intval($role['role_is_admin']) === 1;
+    if (!$is_admin) {
+        $permission_rows = automationDbQuery("SELECT module_name, user_role_permission_level
+            FROM user_role_permissions INNER JOIN modules ON module_id = user_role_permissions.module_id
+            WHERE user_role_id = $role_id ORDER BY module_id FOR UPDATE",
+            'Could not lock the automation role permissions');
+        $permission_levels = [];
+        while ($permission = mysqli_fetch_row($permission_rows)) {
+            $module = (string) ($permission[0] ?? '');
+            $permission_levels[$module] = max(
+                intval($permission_levels[$module] ?? 0),
+                intval($permission[1] ?? 0)
+            );
+        }
+        if (intval($permission_levels['module_support'] ?? 0) < 2) {
+            throw new AutomationConflictException('The API principal no longer has automation write permission');
+        }
+    }
+
+    $client_access_array = [];
+    $client_deny_array = [];
+    $permissions = automationDbQuery("SELECT client_id, permission_type FROM user_client_permissions
+        WHERE user_id = $stored_user_id ORDER BY client_id FOR UPDATE",
+        'Could not lock the automation client scope');
+    while ($permission = mysqli_fetch_assoc($permissions)) {
+        if ($permission['permission_type'] === 'deny') {
+            $client_deny_array[] = intval($permission['client_id']);
+        } else {
+            $client_access_array[] = intval($permission['client_id']);
+        }
+    }
+
+    $lock_order->observe('api_key', $stored_key_id);
+    $key = mysqli_fetch_assoc(automationDbQuery("SELECT api_key_id, api_key_name, api_key_user_id
+        FROM api_keys WHERE api_key_id = $stored_key_id
+        AND api_key_expire > CURRENT_DATE() LIMIT 1 FOR UPDATE",
+        'Could not lock the automation API key'));
+    if (!$key || intval($key['api_key_user_id']) !== $stored_user_id) {
+        throw new AutomationConflictException('The originating API key is revoked, expired, or reassigned');
+    }
+
+    $api_key_id = $stored_key_id;
+    $api_key_user_id = $stored_user_id;
+    $api_key_name = automationDbEscape($key['api_key_name']);
+    $session_user_id = $stored_user_id;
+    $session_user_role = $role_id;
+    $session_is_admin = $is_admin;
+    $session_name = automationDbEscape($user['user_name']);
+    $session_ip = automationDbEscape($session_ip ?? 'automation-worker');
+    $session_user_agent = automationDbEscape($session_user_agent ?? 'automation-worker');
+}
+
+/** Resolve the client before any identity writer runs so client is the first
+ * tenant row locked by the processing transaction. */
+function automationEventCandidateClientId(array $event): int
+{
+    $identity = is_array($event['identity'] ?? null) ? $event['identity'] : [];
+    $client = is_array($identity['client'] ?? null) ? $identity['client'] : [];
+    $location = is_array($identity['location'] ?? null) ? $identity['location'] : [];
+    $options = is_array($identity['options'] ?? null) ? $identity['options'] : [];
+    $source = automationSource($identity['source'] ?? $event['source'] ?? '');
+    $entity_type = automationEntityType($identity['entity_type'] ?? 'incident');
+    $external_id = automationLimitText($identity['external_id'] ?? '', 255);
+    $candidates = [];
+
+    foreach ([
+        $external_id === '' ? null : automationMapping($source, $entity_type, $external_id),
+        empty($client['external_id']) ? null : automationMapping(
+            $source,
+            automationEntityType($client['entity_type'] ?? 'client'),
+            automationLimitText($client['external_id'], 255)
+        ),
+        empty($location['external_id']) ? null : automationMapping(
+            $source,
+            automationEntityType($location['entity_type'] ?? 'location'),
+            automationLimitText($location['external_id'], 255)
+        ),
+    ] as $mapping) {
+        $mapped_id = intval($mapping['automation_mapping_client_id'] ?? 0);
+        if ($mapped_id > 0) {
+            $candidates[] = $mapped_id;
+        }
+    }
+    if (intval($client['id'] ?? 0) > 0) {
+        $candidates[] = intval($client['id']);
+    }
+    if (trim((string) ($client['name'] ?? '')) !== '') {
+        $matches = automationFindClientByName((string) $client['name']);
+        if (count($matches) > 1) {
+            throw new AutomationConflictException('The client name matched more than one ITFlow client');
+        }
+        if (count($matches) === 1) {
+            $candidates[] = intval($matches[0]['client_id']);
+        }
+    }
+    $service_id = max(0, intval($event['service_id'] ?? 0));
+    if ($service_id > 0) {
+        $service = mysqli_fetch_row(automationDbQuery("SELECT service_client_id FROM services
+            WHERE service_id = $service_id LIMIT 1", 'Could not inspect the automation service client'));
+        if (!$service) {
+            throw new AutomationConflictException('The supplied service does not exist');
+        }
+        $candidates[] = intval($service[0]);
+    }
+
+    $candidates = array_values(array_unique(array_filter(array_map('intval', $candidates))));
+    if (count($candidates) > 1) {
+        throw new AutomationConflictException('The event identity disagrees about the ITFlow client');
+    }
+    $client_id = intval($candidates[0] ?? 0);
+    if ($client_id === 0 && automationBool($options['create_client'] ?? null, false)) {
+        throw new AutomationConflictException('Operational events may not create an unmapped client');
+    }
+    return $client_id;
+}
+
+function automationEventLockClient(int $client_id, int $authorized_client_id,
+    N45LockOrder $lock_order): ?array
+{
+    if ($authorized_client_id > 0 && $client_id !== $authorized_client_id) {
+        throw new AutomationConflictException('The event identity does not match its authorized client');
+    }
+    if ($client_id < 1) {
+        return null;
+    }
+    if (!automationUserCanAccessClient($client_id)) {
+        throw new AutomationConflictException('The API principal no longer has access to the event client');
+    }
+    $lock_order->observe('client', $client_id);
+    $client = mysqli_fetch_assoc(automationDbQuery("SELECT client_id, client_name, client_archived_at
+        FROM clients WHERE client_id = $client_id LIMIT 1 FOR UPDATE",
+        'Could not lock the automation event client'));
+    if (!$client || $client['client_archived_at'] !== null) {
+        throw new AutomationConflictException('The automation event client is archived or unavailable');
+    }
+    return $client;
+}
+
+function automationEventQueueAudit(string $action, string $description,
+    int $client_id = 0, int $entity_id = 0): void
+{
+    global $automation_event_audit_buffer;
+    if (is_array($automation_event_audit_buffer ?? null)) {
+        $automation_event_audit_buffer[] = [$action, $description, $client_id, $entity_id];
+        return;
+    }
+    if (!logAudit('Automation', $action, $description, $client_id, $entity_id)) {
+        throw new RuntimeException('Could not append the automation audit record');
+    }
+}
+
+function automationEventFlushAudits(N45LockOrder $lock_order): void
+{
+    global $automation_event_audit_buffer;
+    $lock_order->observe('audit');
+    foreach ((array) ($automation_event_audit_buffer ?? []) as $audit) {
+        if (!logAudit('Automation', $audit[0], $audit[1], intval($audit[2]), intval($audit[3]))) {
+            throw new RuntimeException('Could not append the automation audit record');
+        }
+    }
+    $automation_event_audit_buffer = [];
 }
 
 function automationEventMergeIncidentBindings(array $incident, array $resolved): array
@@ -497,11 +714,23 @@ function automationEventRecordStaleIncident(array $incident, array $event, strin
 }
 
 function automationEventComplete(int $event_id, string $action, int $ticket_id = 0,
-    ?string $suppressed_reason = null, int $maintenance_window_id = 0): void
+    ?string $suppressed_reason = null, int $maintenance_window_id = 0,
+    ?string $lease_token = null, ?N45LockOrder $lock_order = null): void
 {
+    global $mysqli;
+    $event_id = max(0, $event_id);
     $action_sql = automationDbEscape(automationLimitText($action, 40));
     $suppressed_sql = $suppressed_reason === null || $suppressed_reason === ''
         ? 'NULL' : "'" . automationDbEscape(automationLimitText($suppressed_reason, 80)) . "'";
+    $lease_predicate = '';
+    if ($lease_token !== null) {
+        $lease_sql = automationDbEscape($lease_token);
+        $lease_predicate = " AND automation_event_status = 'Processing'
+            AND automation_event_lease_token = '$lease_sql'";
+    }
+    if ($lock_order) {
+        $lock_order->observe('automation_event', $event_id);
+    }
     automationDbQuery("UPDATE automation_events SET
         automation_event_action = '$action_sql',
         automation_event_status = 'Processed',
@@ -509,20 +738,23 @@ function automationEventComplete(int $event_id, string $action, int $ticket_id =
         automation_event_suppressed_reason = $suppressed_sql,
         automation_event_maintenance_window_id = " . max(0, $maintenance_window_id) . ",
         automation_event_processing_at = NULL,
+        automation_event_lease_token = NULL,
         automation_event_next_attempt_at = NULL,
         automation_event_last_error = NULL,
         automation_event_processed_at = NOW()
-        WHERE automation_event_id = " . max(0, $event_id) . " LIMIT 1",
+        WHERE automation_event_id = $event_id $lease_predicate LIMIT 1",
         'Could not complete the automation event');
+    if ($lease_token !== null && mysqli_affected_rows($mysqli) !== 1) {
+        throw new RuntimeException('The automation event processing lease was lost before completion');
+    }
 }
 
-function automationEventFail(int $event_id, Throwable $error, array $policy): array
+function automationEventFail(int $event_id, Throwable $error, array $policy,
+    string $lease_token, int $attempts): array
 {
     global $mysqli;
 
-    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT automation_event_process_attempts
-        FROM automation_events WHERE automation_event_id = $event_id LIMIT 1"));
-    $attempts = intval($row['automation_event_process_attempts'] ?? 1);
+    $event_id = max(0, $event_id);
     $max_attempts = intval($policy['max_attempts'] ?? 5);
     $terminal = $error instanceof InvalidArgumentException
         || $error instanceof AutomationConflictException
@@ -531,16 +763,35 @@ function automationEventFail(int $event_id, Throwable $error, array $policy): ar
     $status_sql = automationDbEscape($status);
     $error_text = automationLimitText($error->getMessage(), 4000);
     $error_sql = automationDbEscape($error_text);
+    $lease_sql = automationDbEscape($lease_token);
     $retry_delay = intval($policy['retry_delay_seconds'] ?? 60);
     $next_attempt_sql = $terminal ? 'NULL' : "DATE_ADD(NOW(), INTERVAL $retry_delay SECOND)";
 
-    mysqli_query($mysqli, "UPDATE automation_events SET
+    automationDbQuery("UPDATE automation_events SET
         automation_event_status = '$status_sql',
         automation_event_action = 'processing_failed',
         automation_event_last_error = '$error_sql',
         automation_event_processing_at = NULL,
+        automation_event_lease_token = NULL,
         automation_event_next_attempt_at = $next_attempt_sql
-        WHERE automation_event_id = $event_id LIMIT 1");
+        WHERE automation_event_id = $event_id
+        AND automation_event_status = 'Processing'
+        AND automation_event_lease_token = '$lease_sql' LIMIT 1",
+        'Could not record the automation event failure');
+
+    if (mysqli_affected_rows($mysqli) !== 1) {
+        $current = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT automation_event_status,
+            automation_event_action, automation_event_ticket_id, automation_event_last_error
+            FROM automation_events WHERE automation_event_id = $event_id LIMIT 1"));
+        return [
+            'event_id' => $event_id,
+            'status' => (string) ($current['automation_event_status'] ?? 'Unavailable'),
+            'action' => (string) ($current['automation_event_action'] ?? 'lease_lost'),
+            'ticket_id' => intval($current['automation_event_ticket_id'] ?? 0),
+            'error' => (string) ($current['automation_event_last_error'] ?? $error_text),
+            'lease_lost' => true,
+        ];
+    }
 
     return [
         'event_id' => $event_id,
@@ -555,7 +806,7 @@ function automationEventFail(int $event_id, Throwable $error, array $policy): ar
 
 function automationProcessStoredEvent(int $event_id): array
 {
-    global $mysqli;
+    global $mysqli, $automation_event_audit_buffer;
 
     if (!n45FeatureEnabled('automation')) {
         throw new RuntimeException('Automation processing is disabled by deployment feature flag');
@@ -567,28 +818,23 @@ function automationProcessStoredEvent(int $event_id): array
     if (!$row) {
         throw new InvalidArgumentException('Automation event not found');
     }
-    if ($row['automation_event_status'] === 'Processed') {
+    if (in_array($row['automation_event_status'], ['Processed', 'Dead'], true)) {
         return [
             'event_id' => $event_id,
-            'status' => 'Processed',
-            'action' => $row['automation_event_action'],
+            'status' => (string) $row['automation_event_status'],
+            'action' => (string) $row['automation_event_action'],
             'ticket_id' => intval($row['automation_event_ticket_id']),
-        ];
-    }
-    if ($row['automation_event_status'] === 'Dead') {
-        return [
-            'event_id' => $event_id,
-            'status' => 'Dead',
-            'action' => $row['automation_event_action'],
-            'ticket_id' => intval($row['automation_event_ticket_id']),
-            'error' => (string) $row['automation_event_last_error'],
+            'error' => (string) ($row['automation_event_last_error'] ?? ''),
         ];
     }
 
+    $lease_token = hash('sha256', random_bytes(32));
+    $lease_sql = automationDbEscape($lease_token);
     $claimed = mysqli_query($mysqli, "UPDATE automation_events SET
         automation_event_status = 'Processing',
         automation_event_process_attempts = automation_event_process_attempts + 1,
         automation_event_processing_at = NOW(),
+        automation_event_lease_token = '$lease_sql',
         automation_event_next_attempt_at = NULL
         WHERE automation_event_id = $event_id
         AND automation_event_process_attempts < automation_event_max_attempts
@@ -612,10 +858,26 @@ function automationProcessStoredEvent(int $event_id): array
         ];
     }
 
-    $source = (string) $row['automation_event_source'];
-    $policy = automationEventPolicy($source);
+    $claimed_row_sql = mysqli_query($mysqli, "SELECT * FROM automation_events
+        WHERE automation_event_id = $event_id AND automation_event_lease_token = '$lease_sql'
+        LIMIT 1");
+    $row = $claimed_row_sql ? mysqli_fetch_assoc($claimed_row_sql) : null;
+    if (!$row) {
+        $read_error = new RuntimeException('The automation event lease could not be read after it was claimed');
+        return automationEventFail(
+            $event_id,
+            $read_error,
+            automationEventPolicyDefaults((string) ($row['automation_event_source'] ?? 'unknown')),
+            $lease_token,
+            intval($row['automation_event_process_attempts'] ?? 1)
+        );
+    }
+    $policy = automationEventPolicyDefaults((string) $row['automation_event_source']);
+    $attempts = intval($row['automation_event_process_attempts']);
+    $acquired_locks = [];
 
     try {
+        $policy = automationEventPolicy((string) $row['automation_event_source']);
         if (empty($row['automation_event_payload'])) {
             throw new InvalidArgumentException('The retained event payload is unavailable for replay');
         }
@@ -624,146 +886,210 @@ function automationProcessStoredEvent(int $event_id): array
             throw new InvalidArgumentException('The retained event payload is invalid');
         }
         $event = automationEventEnvelope($event);
+        $identity = $event['identity'];
+        $lock_names = automationIdentityLockNames($identity);
+        $lock_names[] = 'itflow_automation_' . sha1($event['source'] . ':' . $event['incident_key']);
+        $acquired_locks = automationAcquireNamedLocks($lock_names);
 
-        if (!$policy['enabled'] && intval($row['automation_event_ticket_id'] ?? 0) < 1) {
-            automationEventComplete($event_id, 'source_disabled', 0, 'source_disabled');
-            return ['event_id' => $event_id, 'status' => 'Processed', 'action' => 'source_disabled', 'ticket_id' => 0];
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the lease-owned automation transaction');
         }
 
-        $resolved = automationResolveIdentity($event['identity']);
-        $resolved = automationEventResolveService(intval($event['service_id']), $resolved);
-        $source_sql = automationDbEscape($event['source']);
-        $incident_key_sql = automationDbEscape($event['incident_key']);
-        $lock_name = automationDbEscape('itflow_automation_' . sha1($event['source'] . ':' . $event['incident_key']));
-        $lock_row = mysqli_fetch_row(mysqli_query($mysqli, "SELECT GET_LOCK('$lock_name', 10)"));
-        if (intval($lock_row[0] ?? 0) !== 1) {
-            throw new RuntimeException('Could not obtain the automation incident lock');
-        }
-
+        $post_commit_action = null;
+        $notification = null;
+        $automation_event_audit_buffer = [];
         try {
-            $incident = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT * FROM automation_incidents
-                WHERE automation_incident_source = '$source_sql'
-                AND automation_incident_key = '$incident_key_sql' LIMIT 1")) ?: null;
-            // Prefer a ticket already committed by this delivery. A prior attempt
-            // may have created it before a later incident write failed.
-            $event_ticket_id = intval($row['automation_event_ticket_id'] ?? 0);
-            $ticket_id = $event_ticket_id > 0
-                ? $event_ticket_id
-                : intval($incident['automation_incident_ticket_id'] ?? 0);
-            $incident_status = (string) ($incident['automation_incident_status'] ?? '');
-            $fingerprint = (string) ($row['automation_event_fingerprint'] ?: $row['automation_event_payload_hash']);
+            $lock_order = new N45LockOrder('automation event processing');
+            automationEventLockAuthority($row, $lock_order);
+            $candidate_client_id = automationEventCandidateClientId($event);
+            $authorized_client_id = max(0, intval($row['automation_event_authorized_client_id'] ?? 0));
+            automationEventLockClient($candidate_client_id, $authorized_client_id, $lock_order);
 
-            // An older source event remains in the audit trail but may not reverse
-            // a newer incident state or ticket decision.
-            if ($incident && !empty($incident['automation_incident_last_event_at'])
-                && $event['occurred_at'] < $incident['automation_incident_last_event_at']) {
-                automationEventRecordStaleIncident($incident, $event, $fingerprint);
-                automationEventComplete($event_id, 'stale', $ticket_id, 'out_of_order');
-                return ['event_id' => $event_id, 'status' => 'Processed', 'action' => 'stale', 'ticket_id' => $ticket_id];
+            $lock_order->observe('settings', 1);
+            $locked_settings = mysqli_fetch_assoc(automationDbQuery("SELECT config_module_enable_ticketing,
+                config_ticket_default_billable, config_ticket_prefix FROM settings
+                WHERE company_id = 1 LIMIT 1 FOR UPDATE", 'Could not lock automation ticket settings'));
+            if (!$locked_settings) {
+                throw new RuntimeException('Automation ticket settings are unavailable');
             }
 
+            $resolved = [];
+            $ticket_id = intval($row['automation_event_ticket_id'] ?? 0);
             $action = 'recorded';
             $status = 'Open';
             $suppressed_reason = null;
             $suppressed_increment = 0;
             $maintenance_id = 0;
 
-            if ($event['state'] === 'resolved') {
-                if ($ticket_id > 0 && $incident_status === 'Open') {
-                    $reply = automationLimitText($event['description'] ?: ($event['title'] . ' recovered.'), 8000);
-                    $auto_resolve = $policy['auto_resolve'] && $event['auto_resolve'];
-                    automationAddIncidentReply($ticket_id, intval($incident['automation_incident_client_id']), $reply, $auto_resolve);
-                    $action = $auto_resolve ? 'resolved' : 'recovery_recorded';
-                } else {
-                    $action = 'recovery_without_open_incident';
-                }
-                $status = 'Resolved';
+            if (!$policy['enabled'] && $ticket_id < 1) {
+                $action = 'source_disabled';
+                $status = 'Suppressed';
+                $suppressed_reason = 'source_disabled';
             } else {
-                if ($incident_status === 'Resolved' && $event_ticket_id < 1 && $ticket_id > 0) {
-                    $open_ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id FROM tickets
-                        WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL
-                        AND ticket_resolved_at IS NULL AND ticket_status <> 4 LIMIT 1"));
-                    if (!$open_ticket) {
-                        $ticket_id = 0;
-                    }
+                $lock_order->observe('asset');
+                $lock_order->observe('identity');
+                $resolved = automationResolveIdentityUnlocked($identity);
+                $resolved = automationEventResolveService(intval($event['service_id']), $resolved);
+                $resolved_client_id = intval($resolved['client_id'] ?? 0);
+                if ($resolved_client_id !== $candidate_client_id
+                    || ($authorized_client_id > 0 && $resolved_client_id !== $authorized_client_id)
+                    || ($resolved_client_id > 0 && !automationUserCanAccessClient($resolved_client_id))) {
+                    throw new AutomationConflictException('The resolved client no longer matches the locked event authority');
                 }
 
-                $recovering_ticket = false;
-                if ($event_ticket_id > 0 && (!$incident || $incident_status === 'Resolved')) {
-                    $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id
-                        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
-                    if (!$ticket || (intval($resolved['client_id']) > 0
-                        && intval($ticket['ticket_client_id']) !== intval($resolved['client_id']))) {
-                        throw new AutomationConflictException('The previously created automation ticket is unavailable');
+                $source_sql = automationDbEscape($event['source']);
+                $incident_key_sql = automationDbEscape($event['incident_key']);
+                $lock_order->observe('automation_incident');
+                $incident = mysqli_fetch_assoc(automationDbQuery("SELECT * FROM automation_incidents
+                    WHERE automation_incident_source = '$source_sql'
+                    AND automation_incident_key = '$incident_key_sql' LIMIT 1 FOR UPDATE",
+                    'Could not lock the automation incident')) ?: null;
+                $ticket_id = $ticket_id > 0
+                    ? $ticket_id : intval($incident['automation_incident_ticket_id'] ?? 0);
+                $incident_status = (string) ($incident['automation_incident_status'] ?? '');
+                $fingerprint = (string) ($row['automation_event_fingerprint'] ?: $row['automation_event_payload_hash']);
+
+                if ($incident && !empty($incident['automation_incident_last_event_at'])
+                    && $event['occurred_at'] < $incident['automation_incident_last_event_at']) {
+                    automationEventRecordStaleIncident($incident, $event, $fingerprint);
+                    $action = 'stale';
+                    $status = $incident_status;
+                    $suppressed_reason = 'out_of_order';
+                } elseif ($event['state'] === 'resolved') {
+                    if ($ticket_id > 0 && $incident_status === 'Open') {
+                        $reply = automationLimitText(
+                            $event['description'] ?: ($event['title'] . ' recovered.'), 8000
+                        );
+                        $auto_resolve = $policy['auto_resolve'] && $event['auto_resolve'];
+                        $reply_result = automationAddIncidentReply(
+                            $ticket_id,
+                            intval($incident['automation_incident_client_id']),
+                            $reply,
+                            $auto_resolve,
+                            true,
+                            $lock_order
+                        );
+                        $post_commit_action = $reply_result['post_commit_action'];
+                        if ($auto_resolve && $reply_result['resolved']) {
+                            $action = 'resolved';
+                            $status = 'Resolved';
+                        } elseif ($auto_resolve && $reply_result['blocked']) {
+                            $action = 'recovery_recorded';
+                            $status = 'Open';
+                        } else {
+                            $action = 'recovery_recorded';
+                            $status = 'Resolved';
+                        }
+                    } else {
+                        $action = 'recovery_without_open_incident';
+                        $status = 'Resolved';
                     }
-                    $recovering_ticket = true;
-                }
-
-                $maintenance = automationEventActiveMaintenanceWindow(
-                    $event['source'],
-                    intval($resolved['client_id']),
-                    intval($resolved['asset_id']),
-                    intval($resolved['service_id']),
-                    $event['occurred_at']
-                );
-                $occurrences = automationEventThresholdOccurrences(
-                    $event['source'],
-                    $event['incident_key'],
-                    intval($policy['threshold_window_minutes'])
-                );
-
-                if ($recovering_ticket) {
-                    $action = 'created';
-                    $status = 'Open';
-                } elseif ($maintenance) {
-                    $action = 'maintenance_suppressed';
-                    $status = $incident_status === 'Open' ? 'Open' : 'Suppressed';
-                    $suppressed_reason = 'maintenance_window';
-                    $suppressed_increment = 1;
-                    $maintenance_id = intval($maintenance['automation_maintenance_id']);
-                } elseif ($ticket_id < 1 && $occurrences < intval($policy['threshold_count'])) {
-                    $action = 'threshold_waiting';
-                    $status = $incident_status === 'Open' ? 'Open' : 'Pending';
-                    $suppressed_reason = 'ticket_threshold';
-                    $suppressed_increment = 1;
-                } elseif (!$policy['ticket_enabled'] && $ticket_id < 1) {
-                    $action = 'recorded_no_ticket';
-                    $status = 'Open';
-                } elseif ($ticket_id < 1) {
-                    $ticket = automationCreateIncidentTicket($event, $resolved);
-                    $ticket_id = intval($ticket['ticket_id']);
-                    automationDbQuery("UPDATE automation_events SET automation_event_ticket_id = $ticket_id
-                        WHERE automation_event_id = $event_id LIMIT 1",
-                        'Could not link the automation event to its ticket');
-                    $action = 'created';
-                    $status = 'Open';
-                } elseif ($incident && hash_equals((string) ($incident['automation_incident_last_event_hash'] ?? ''), $fingerprint)) {
-                    $action = 'unchanged';
-                    $status = 'Open';
+                    automationEventSaveIncident($event, $resolved, $incident, $status, $action,
+                        $ticket_id, $fingerprint, 0);
                 } else {
-                    $reply = automationLimitText($event['description'] ?: ($event['title'] . ' remains active.'), 8000);
-                    automationAddIncidentReply($ticket_id, intval($incident['automation_incident_client_id']), $reply, false);
-                    $action = 'updated';
-                    $status = 'Open';
+                    if ($incident_status === 'Resolved' && $ticket_id > 0) {
+                        $lock_order->observe('ticket', $ticket_id);
+                        $open_ticket = mysqli_fetch_assoc(automationDbQuery("SELECT ticket_id FROM tickets
+                            WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL
+                            AND ticket_resolved_at IS NULL AND ticket_status <> 4 LIMIT 1 FOR UPDATE",
+                            'Could not inspect the prior automation ticket'));
+                        if (!$open_ticket) {
+                            $ticket_id = 0;
+                        }
+                    }
+
+                    $maintenance = automationEventActiveMaintenanceWindow(
+                        $event['source'], $resolved_client_id, intval($resolved['asset_id']),
+                        intval($resolved['service_id']), $event['occurred_at']
+                    );
+                    $occurrences = automationEventThresholdOccurrences(
+                        $event['source'], $event['incident_key'], intval($policy['threshold_window_minutes'])
+                    );
+                    if ($maintenance) {
+                        $action = 'maintenance_suppressed';
+                        $status = $incident_status === 'Open' ? 'Open' : 'Suppressed';
+                        $suppressed_reason = 'maintenance_window';
+                        $suppressed_increment = 1;
+                        $maintenance_id = intval($maintenance['automation_maintenance_id']);
+                    } elseif ($ticket_id < 1 && $occurrences < intval($policy['threshold_count'])) {
+                        $action = 'threshold_waiting';
+                        $status = $incident_status === 'Open' ? 'Open' : 'Pending';
+                        $suppressed_reason = 'ticket_threshold';
+                        $suppressed_increment = 1;
+                    } elseif (!$policy['ticket_enabled'] && $ticket_id < 1) {
+                        $action = 'recorded_no_ticket';
+                        $status = 'Open';
+                    } elseif ($ticket_id < 1) {
+                        $ticket = automationCreateIncidentTicket(
+                            $event, $resolved, true, $locked_settings, $lock_order
+                        );
+                        $ticket_id = intval($ticket['ticket_id']);
+                        $notification = $ticket['post_commit_notification'];
+                        $action = 'created';
+                        $status = 'Open';
+                    } elseif ($incident && hash_equals(
+                        (string) ($incident['automation_incident_last_event_hash'] ?? ''), $fingerprint
+                    )) {
+                        $action = 'unchanged';
+                        $status = 'Open';
+                    } else {
+                        $reply = automationLimitText(
+                            $event['description'] ?: ($event['title'] . ' remains active.'), 8000
+                        );
+                        automationAddIncidentReply(
+                            $ticket_id,
+                            intval($incident['automation_incident_client_id'] ?? $resolved_client_id),
+                            $reply,
+                            false,
+                            true,
+                            $lock_order
+                        );
+                        $action = 'updated';
+                        $status = 'Open';
+                    }
+                    automationEventSaveIncident($event, $resolved, $incident, $status, $action,
+                        $ticket_id, $fingerprint, $suppressed_increment);
                 }
             }
 
-            automationEventSaveIncident($event, $resolved, $incident, $status, $action,
-                $ticket_id, $fingerprint, $suppressed_increment);
-            automationEventComplete($event_id, $action, $ticket_id, $suppressed_reason, $maintenance_id);
-
-            return [
-                'event_id' => $event_id,
-                'status' => 'Processed',
-                'action' => $action,
-                'ticket_id' => $ticket_id,
-                'mapping' => $resolved,
-            ];
-        } finally {
-            mysqli_query($mysqli, "SELECT RELEASE_LOCK('$lock_name')");
+            automationEventComplete(
+                $event_id, $action, $ticket_id, $suppressed_reason, $maintenance_id,
+                $lease_token, $lock_order
+            );
+            if ($notification) {
+                appNotify($notification['type'], $notification['details'], $notification['action'],
+                    $notification['client_id'], $notification['entity_id']);
+            }
+            automationEventFlushAudits($lock_order);
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the lease-owned automation transaction');
+            }
+        } catch (Throwable $e) {
+            mysqli_rollback($mysqli);
+            $automation_event_audit_buffer = null;
+            throw $e;
         }
+
+        $automation_event_audit_buffer = null;
+        if ($post_commit_action) {
+            triggerCustomAction(
+                $post_commit_action['trigger'],
+                $post_commit_action['entity_id'],
+                'automation-event-' . $event_id
+            );
+        }
+        return [
+            'event_id' => $event_id,
+            'status' => 'Processed',
+            'action' => $action,
+            'ticket_id' => $ticket_id,
+            'mapping' => $resolved ?: null,
+        ];
     } catch (Throwable $e) {
-        return automationEventFail($event_id, $e, $policy);
+        $automation_event_audit_buffer = null;
+        return automationEventFail($event_id, $e, $policy, $lease_token, $attempts);
+    } finally {
+        automationReleaseNamedLocks($acquired_locks);
     }
 }
 
@@ -781,6 +1107,7 @@ function automationProcessEventQueue(int $limit = 100): array
         automation_event_status = 'Dead',
         automation_event_action = 'processing_failed',
         automation_event_processing_at = NULL,
+        automation_event_lease_token = NULL,
         automation_event_last_error = 'Processing lease expired after the retry limit was reached'
         WHERE automation_event_status = 'Processing'
         AND automation_event_process_attempts >= automation_event_max_attempts
@@ -850,6 +1177,7 @@ function automationReplayEvent(int $event_id): bool
         automation_event_process_attempts = 0,
         automation_event_max_attempts = $max_attempts,
         automation_event_processing_at = NULL,
+        automation_event_lease_token = NULL,
         automation_event_next_attempt_at = NULL,
         automation_event_last_error = NULL,
         automation_event_replay_count = automation_event_replay_count + 1,

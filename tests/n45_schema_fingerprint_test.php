@@ -46,6 +46,7 @@ $required_migration_prefix = [
     'n45-0013-portal-request-catalog.php',
     'n45-0014-agreement-entitlements.php',
     'n45-0015-documentation-evidence-reference-index.php',
+    'n45-0016-release-safety-hardening.php',
 ];
 $disk_migration_files = array_map('basename', glob($root . '/n45/migrations/*.php') ?: []);
 sort($disk_migration_files);
@@ -73,8 +74,11 @@ $reservations = n45MigrationNamespaceReservations();
 $assertTrue(array_keys($reservations) === ['2.7.8', '2.7.9', '2.8.0', '2.8.1'], 'The final integration reservations are missing or out of order');
 $post_integration_reservations = n45PostIntegrationMigrationReservations();
 $assertTrue(
-    array_keys($post_integration_reservations) === ['n45-0015-documentation-evidence-reference-index'],
-    'The documentation evidence-index compatibility repair reservation is missing'
+    array_keys($post_integration_reservations) === [
+        'n45-0015-documentation-evidence-reference-index',
+        'n45-0016-release-safety-hardening',
+    ],
+    'The compatibility and release-safety reservations are missing'
 );
 $repair_index = $post_integration_reservations['n45-0015-documentation-evidence-reference-index']['altered_indexes']['documentation_evidence_locker']['documentation_evidence_reference'] ?? [];
 $assertTrue(($repair_index['unique'] ?? null) === false, 'The compatibility repair would restore the obsolete unique evidence index');
@@ -190,9 +194,10 @@ $assertThrows(
 $skipped_reservation = $definitions;
 unset(
     $skipped_reservation['n45-0014-agreement-entitlements'],
-    $skipped_reservation['n45-0015-documentation-evidence-reference-index']
+    $skipped_reservation['n45-0015-documentation-evidence-reference-index'],
+    $skipped_reservation['n45-0016-release-safety-hardening']
 );
-$skipped_reservation['n45-0016-future-feature'] = ['legacy_version' => null];
+$skipped_reservation['n45-0017-future-feature'] = ['legacy_version' => null];
 $assertThrows(
     static function () use ($skipped_reservation): void {
         n45AssertMigrationNamespaceReservations($skipped_reservation);

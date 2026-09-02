@@ -1150,7 +1150,7 @@ function setTicketFirstResponse($ticket_id)
 // Judge the resolution SLA when a ticket is resolved (or closed without being
 // resolved, which also stops the clock). No-op for tickets without a
 // resolution target.
-function setTicketResolutionSlaMet($ticket_id)
+function setTicketResolutionSlaMet($ticket_id, bool $strict = false)
 {
     global $mysqli;
 
@@ -1160,6 +1160,9 @@ function setTicketResolutionSlaMet($ticket_id)
         ticket_resolved_at, ticket_resolution_sla_met
         FROM tickets WHERE ticket_id = $ticket_id LIMIT 1");
     if (!$sql || !mysqli_num_rows($sql)) {
+        if ($strict) {
+            throw new RuntimeException('Could not load the ticket resolution SLA verdict: ' . mysqli_error($mysqli));
+        }
         return;
     }
     $row = mysqli_fetch_assoc($sql);
@@ -1174,7 +1177,7 @@ function setTicketResolutionSlaMet($ticket_id)
     // same clock second would grade against that deadline and flip the miss
     // to a met. Only an explicit re-stamp (applyTicketSla) may re-judge.
     if (!is_null($row['ticket_resolution_sla_met']) && intval($row['ticket_resolution_sla_met']) === 0) {
-        syncTicketSlaClock($ticket_id);
+        syncTicketSlaClock($ticket_id, $strict);
         return;
     }
 
@@ -1182,9 +1185,12 @@ function setTicketResolutionSlaMet($ticket_id)
         ? slaAppTimestampInstant($row['ticket_resolved_at'])->getTimestamp() : time();
     $resolution_met = $ended_at <= $resolution_due_epoch ? 1 : 0;
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_resolution_sla_met = $resolution_met WHERE ticket_id = $ticket_id");
+    $updated = mysqli_query($mysqli, "UPDATE tickets SET ticket_resolution_sla_met = $resolution_met WHERE ticket_id = $ticket_id");
+    if (!$updated && $strict) {
+        throw new RuntimeException('Could not record the ticket resolution SLA verdict: ' . mysqli_error($mysqli));
+    }
 
-    syncTicketSlaClock($ticket_id);
+    syncTicketSlaClock($ticket_id, $strict);
 }
 
 // A reopened ticket goes back on the resolution clock. syncTicketSlaClock

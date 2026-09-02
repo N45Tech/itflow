@@ -12,6 +12,7 @@ DEFINE("MAX_EMAIL_ATTACHMENT_BYTES", 10 * 1024 * 1024);
 // under functions/ - see each file's header comment for scope.
 
 require_once __DIR__ . '/functions/security.php';
+require_once __DIR__ . '/functions/n45_lock_order.php';
 require_once __DIR__ . '/n45/bootstrap.php';
 n45RequireModule('schema');
 n45RequireModule('entra');

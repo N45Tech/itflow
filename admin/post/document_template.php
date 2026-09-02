@@ -10,25 +10,42 @@ if (isset($_POST['add_document_template'])) {
 
     $name = escapeSql($_POST['name']);
     $description = escapeSql($_POST['description']);
-
-    mysqli_query($mysqli,"INSERT INTO document_templates SET document_template_name = '$name', document_template_description = '$description', document_template_content = '', document_template_created_by = $session_user_id");
-
-    $document_template_id = mysqli_insert_id($mysqli);
-
-    $processed_content = mysqli_escape_string(
-        $mysqli,
-        saveBase64Images(
-            $_POST['content'],
-            $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/",
-            "uploads/document_templates/",
-            $document_template_id
-        )
-    );
-
-    // Document template update content
-    mysqli_query($mysqli,"UPDATE document_templates SET document_template_content = '$processed_content' WHERE document_template_id = $document_template_id");
-
-    logAudit("Document Template", "Create", "$session_name created document template $name", 0, $document_template_id);
+    $staging_batch = fileStagingBatchToken();
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document-template transaction');
+        }
+        if (!mysqli_query($mysqli,"INSERT INTO document_templates SET document_template_name = '$name', document_template_description = '$description', document_template_content = '', document_template_created_by = $session_user_id")) {
+            throw new RuntimeException('Could not create the document template');
+        }
+        $document_template_id = intval(mysqli_insert_id($mysqli));
+        $processed_content = mysqli_escape_string(
+            $mysqli,
+            saveBase64Images(
+                $_POST['content'],
+                $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/",
+                "uploads/document_templates/",
+                $document_template_id,
+                $staging_batch,
+                'document_template'
+            )
+        );
+        if (!mysqli_query($mysqli,"UPDATE document_templates SET document_template_content = '$processed_content' WHERE document_template_id = $document_template_id")) {
+            throw new RuntimeException('Could not save document-template content');
+        }
+        if (!logAudit("Document Template", "Create", "$session_name created document template $name", 0, $document_template_id)) {
+            throw new RuntimeException('Could not audit document-template creation');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit document-template creation');
+        }
+    } catch (Throwable $error) {
+        mysqli_rollback($mysqli);
+        logApp('Document Template', 'error', $error->getMessage());
+        flashAlert('The document template could not be created.', 'error');
+        redirect();
+    }
+    fileStagingFinalizeBatch($staging_batch);
 
     flashAlert("Document template <strong>$name</strong> created");
 
@@ -43,27 +60,47 @@ if (isset($_POST['edit_document_template'])) {
     $document_template_id = intval($_POST['document_template_id']);
     $name = escapeSql($_POST['name']);
     $description = escapeSql($_POST['description']);
-
-    $processed_content = saveBase64Images(
-        $_POST['content'],
-        $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/",
-        "uploads/document_templates/",
-        $document_template_id
-    );
-
-    $processed_content_escaped = mysqli_escape_string($mysqli, $processed_content);
-
-    // CLEAN UP unused images
+    $staging_batch = fileStagingBatchToken();
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document-template edit transaction');
+        }
+        $locked_template = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT document_template_id
+            FROM document_templates WHERE document_template_id = $document_template_id
+            LIMIT 1 FOR UPDATE"));
+        if (!$locked_template) {
+            throw new RuntimeException('The document template no longer exists');
+        }
+        $processed_content = saveBase64Images(
+            $_POST['content'],
+            $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/",
+            "uploads/document_templates/",
+            $document_template_id,
+            $staging_batch,
+            'document_template'
+        );
+        $processed_content_escaped = mysqli_escape_string($mysqli, $processed_content);
+        if (!mysqli_query($mysqli,"UPDATE document_templates SET document_template_name = '$name', document_template_description = '$description', document_template_content = '$processed_content_escaped', document_template_updated_by = $session_user_id WHERE document_template_id = $document_template_id")) {
+            throw new RuntimeException('Could not update the document template');
+        }
+        if (!logAudit("Document Template", "Edit", "$session_name edited document template $name", 0, $document_template_id)) {
+            throw new RuntimeException('Could not audit the document-template edit');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the document-template edit');
+        }
+    } catch (Throwable $error) {
+        mysqli_rollback($mysqli);
+        logApp('Document Template', 'error', $error->getMessage());
+        flashAlert('The document template could not be edited.', 'error');
+        redirect();
+    }
+    fileStagingFinalizeBatch($staging_batch);
     cleanupUnusedImages(
         $processed_content,
         $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/" . $document_template_id,
         "/uploads/document_templates/" . $document_template_id
     );
-
-    // Document edit query
-    mysqli_query($mysqli,"UPDATE document_templates SET document_template_name = '$name', document_template_description = '$description', document_template_content = '$processed_content_escaped', document_template_updated_by = $session_user_id WHERE document_template_id = $document_template_id");
-
-    logAudit("Document Template", "Edit", "$session_name edited document template $name", 0, $document_template_id);
 
     flashAlert("Document Template <strong>$name</strong> edited");
 

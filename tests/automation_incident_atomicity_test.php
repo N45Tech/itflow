@@ -1,14 +1,9 @@
 <?php
 
-/*
- * Source contract for atomic automation incident ticket creation. The release
- * database harness exercises the underlying transaction and SLA writes; this
- * test protects their ordering and the durable-event retry seam.
- */
+/* Source contract for lease-owned, exactly-once automation processing. */
 
 $root = dirname(__DIR__);
 $failures = [];
-
 $read = static function (string $path) use ($root, &$failures): string {
     $contents = @file_get_contents($root . '/' . $path);
     if ($contents === false) {
@@ -26,170 +21,99 @@ $section = static function (string $contents, string $start, string $end, string
     }
     return substr($contents, $start_at, $end_at - $start_at);
 };
-$position = static function (string $contents, string $needle, string $message) use (&$failures) {
-    $at = strpos($contents, $needle);
-    if ($at === false) {
+$assertContains = static function (string $needle, string $contents, string $message) use (&$failures): void {
+    if (!str_contains($contents, $needle)) {
         $failures[] = $message;
     }
-    return $at;
+};
+$assertOrdered = static function (string $contents, array $needles, string $message) use (&$failures): void {
+    $offset = -1;
+    foreach ($needles as $needle) {
+        $position = strpos($contents, $needle, $offset + 1);
+        if ($position === false || $position <= $offset) {
+            $failures[] = "$message (missing/out of order: $needle)";
+            return;
+        }
+        $offset = $position;
+    }
 };
 
-$automation = $read('functions/automation.php');
 $events = $read('functions/automation_events.php');
-$create = $section(
-    $automation,
-    'function automationCreateIncidentTicket(',
-    'function automationAddIncidentReply(',
-    'automation incident ticket creation'
-);
-$process = $section(
-    $events,
-    'function automationProcessStoredEvent(',
-    'function automationProcessEventQueue(',
-    'stored automation event processing'
-);
+$automation = $read('functions/automation.php');
+$schema = $read('db.sql');
+$migration = $read('n45/migrations/n45-0016-release-safety-hardening.php');
+$queue = $section($events, 'function automationEventQueue(', 'function automationEventLockAuthority(', 'event queue');
+$process = $section($events, 'function automationProcessStoredEvent(', 'function automationProcessEventQueue(', 'event processor');
+$failure = $section($events, 'function automationEventFail(', 'function automationProcessStoredEvent(', 'event failure');
+$complete = $section($events, 'function automationEventComplete(', 'function automationEventFail(', 'event completion');
+$create = $section($automation, 'function automationCreateIncidentTicket(', 'function automationAddIncidentReply(', 'ticket creation');
+$reply_at = strpos($automation, 'function automationAddIncidentReply(');
+$reply = $reply_at === false ? '' : substr($automation, $reply_at);
 
-$begin = $position(
-    $create,
-    'if (!mysqli_begin_transaction($mysqli))',
-    'Automation incident creation does not check that its transaction began'
-);
-$client_lock = $position(
-    $create,
-    'if ($client_id > 0 && !agreementLockClientForAuditRetention($client_id))',
-    'Automation incident creation does not lock its client before ticket creation'
-);
-$number_allocation = $position(
-    $create,
-    'automationDbQuery("UPDATE settings SET',
-    'Automation incident creation no longer allocates its number after the client lock'
-);
-$insert = $position(
-    $create,
-    'automationDbQuery("INSERT INTO tickets SET',
-    'Automation incident creation no longer inserts its ticket inside the protected section'
-);
-$ticket_id = $position(
-    $create,
-    '$ticket_id = intval(mysqli_insert_id($mysqli));',
-    'Automation incident creation does not capture its new ticket before SLA selection'
-);
-$ticket_id_check = $position(
-    $create,
-    'if ($ticket_id < 1)',
-    'Automation incident creation does not reject a missing ticket ID before SLA selection'
-);
-$sla = $position(
-    $create,
-    'applyTicketSla($ticket_id, null, null, true);',
-    'Automation incident creation does not join SLA selection to its caller-owned transaction'
-);
-$commit = $position(
-    $create,
-    'if (!mysqli_commit($mysqli))',
-    'Automation incident creation does not check its commit'
-);
-$catch = $position(
-    $create,
-    'catch (Throwable $e)',
-    'Automation incident creation does not catch transaction failures'
-);
-$rollback = $position(
-    $create,
-    'mysqli_rollback($mysqli);',
-    'Automation incident creation cannot roll back a ticket or SLA failure'
-);
-$rethrow = $position(
-    $create,
-    'throw $e;',
-    'Automation incident creation swallows failures instead of exposing the retry seam'
-);
-$history = $position(
-    $create,
-    'logTicketHistory(',
-    'Automation incident creation no longer records ticket history after commit'
-);
-$audit = $position(
-    $create,
-    "logAudit('Automation', 'Create'",
-    'Automation incident creation no longer records its audit event after commit'
-);
-$notify = $position(
-    $create,
-    "appNotify('Automation Event'",
-    'Automation incident creation no longer notifies after commit'
-);
-
-$ordered = [
-    $begin,
-    $client_lock,
-    $number_allocation,
-    $insert,
-    $ticket_id,
-    $ticket_id_check,
-    $sla,
-    $commit,
-    $catch,
-    $rollback,
-    $rethrow,
-    $history,
-    $audit,
-    $notify,
-];
-if (!in_array(false, $ordered, true)) {
-    for ($index = 1; $index < count($ordered); $index++) {
-        if ($ordered[$index - 1] >= $ordered[$index]) {
-            $failures[] = 'Ticket insert, SLA stamp, commit, rollback path, and post-commit side effects are not safely ordered';
-            break;
-        }
-    }
+foreach (['automation_event_api_key_id', 'automation_event_api_user_id',
+          'automation_event_authorized_client_id', 'automation_event_lease_token'] as $column) {
+    $assertContains($column, $schema, "Baseline automation events omit $column");
+    $assertContains($column, $migration, "Release migration omits $column");
 }
-if (strpos($create, 'applyTicketSla($ticket_id);') !== false) {
-    $failures[] = 'Automation incident SLA selection still owns a separate transaction';
+$assertOrdered($queue, [
+    'automation_event_api_key_id = $origin_api_key_id',
+    'automation_event_api_user_id = $origin_api_user_id',
+    'automation_event_authorized_client_id = $authorized_client_id',
+], 'Ingestion does not persist its complete authority provenance');
+
+$assertContains('$lease_token = hash(\'sha256\', random_bytes(32));', $process,
+    'The processor does not create an unguessable per-attempt lease');
+$assertOrdered($process, [
+    "automation_event_status = 'Processing'",
+    'automation_event_lease_token = \'$lease_sql\'',
+    'automationIdentityLockNames($identity)',
+    "'itflow_automation_' . sha1(",
+    'automationAcquireNamedLocks($lock_names)',
+    'mysqli_begin_transaction($mysqli)',
+    'automationEventLockAuthority($row, $lock_order)',
+    'automationEventCandidateClientId($event)',
+    'automationEventLockClient($candidate_client_id, $authorized_client_id, $lock_order)',
+    "'Could not lock automation ticket settings'",
+    'automationResolveIdentityUnlocked($identity)',
+    "'Could not lock the automation incident'",
+    'automationCreateIncidentTicket(',
+    'automationEventSaveIncident(',
+    'automationEventComplete(',
+    '$lease_token, $lock_order',
+    'automationEventFlushAudits($lock_order)',
+    'mysqli_commit($mysqli)',
+], 'Lease, authority, identity, ticket, incident, event, audit, and commit are not one ordered transaction');
+$assertContains('mysqli_rollback($mysqli)', $process, 'A processing failure cannot roll back all event side effects');
+$assertContains('automationReleaseNamedLocks($acquired_locks)', $process, 'Processing does not release every advisory lock');
+if (str_contains($process, 'automationResolveIdentity($event')) {
+    $failures[] = 'Stored event processing still commits identity resolution in a nested transaction';
 }
 
-// The incident advisory lock must continue to span ticket creation and event
-// linkage. The event link is written only after the atomic helper returns, so
-// an SLA rollback leaves no durable ticket ID for a retry to duplicate.
-$lock = $position(
-    $process,
-    'SELECT GET_LOCK(\'$lock_name\', 10)',
-    'Stored event processing no longer acquires the incident advisory lock'
-);
-$create_call = $position(
-    $process,
-    '$ticket = automationCreateIncidentTicket($event, $resolved);',
-    'Stored event processing no longer uses the atomic incident ticket helper'
-);
-$returned_ticket = $position(
-    $process,
-    '$ticket_id = intval($ticket[\'ticket_id\']);',
-    'Stored event processing does not consume the committed ticket ID'
-);
-$event_link = $position(
-    $process,
-    'UPDATE automation_events SET automation_event_ticket_id = $ticket_id',
-    'Stored event processing no longer links a successful ticket to its durable event'
-);
-$incident_save = $position(
-    $process,
-    'automationEventSaveIncident($event, $resolved, $incident, $status, $action,',
-    'Stored event processing no longer saves the incident after its ticket link'
-);
-$release = $position(
-    $process,
-    'SELECT RELEASE_LOCK(\'$lock_name\')',
-    'Stored event processing no longer releases the incident advisory lock'
-);
-$retry_order = [$lock, $create_call, $returned_ticket, $event_link, $incident_save, $release];
-if (!in_array(false, $retry_order, true)) {
-    for ($index = 1; $index < count($retry_order); $index++) {
-        if ($retry_order[$index - 1] >= $retry_order[$index]) {
-            $failures[] = 'Incident locking, atomic ticket creation, event linking, and incident persistence no longer protect retries from duplication';
-            break;
-        }
-    }
+foreach ([$failure, $complete] as $lease_owned_update) {
+    $assertContains("automation_event_status = 'Processing'", $lease_owned_update,
+        'A terminal event update is not restricted to an active processing lease');
+    $assertContains('automation_event_lease_token = \'$lease_sql\'', $lease_owned_update,
+        'A terminal event update is not compare-and-set by lease token');
+    $assertContains('automation_event_lease_token = NULL', $lease_owned_update,
+        'A terminal event update does not clear its lease token');
 }
+
+$assertContains('bool $caller_transaction = false', $create,
+    'Ticket creation cannot join the event transaction');
+$assertContains('applyTicketSla($ticket_id, null, null, true)', $create,
+    'SLA selection does not join ticket creation atomically');
+$assertContains('if (!logTicketHistory(', $create,
+    'Ticket history failure does not abort ticket creation');
+$assertContains('automationEventQueueAudit(', $create,
+    'Ticket audit is not buffered into the event transaction');
+$assertContains('bool $caller_transaction = false', $reply,
+    'Incident replies cannot join the event transaction');
+$assertContains('runbookTicketCanResolve($ticket_id)', $reply,
+    'Recovery resolution bypasses the runbook gate');
+$assertContains('documentationRecordChangePassport($ticket_id, 4, 0, true)', $reply,
+    'Recovery resolution does not create its passport in the caller transaction');
+$assertContains('setTicketResolutionSlaMet($ticket_id, true)', $reply,
+    'Recovery resolution does not fail closed on SLA evidence writes');
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);

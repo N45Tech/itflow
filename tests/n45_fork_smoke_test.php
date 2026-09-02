@@ -90,8 +90,11 @@ $assertTrue(
 );
 $post_integration_reservations = $manifest['maintenance']['post_integration_migration_reservations'] ?? [];
 $assertTrue(
-    array_keys($post_integration_reservations) === ['n45-0015-documentation-evidence-reference-index'],
-    'The post-integration documentation compatibility repair is not reserved'
+    array_keys($post_integration_reservations) === [
+        'n45-0015-documentation-evidence-reference-index',
+        'n45-0016-release-safety-hardening',
+    ],
+    'The post-integration compatibility and release-safety migrations are not reserved'
 );
 $required_migration_ids = array_keys($expected_legacy_migrations);
 $manifest_migration_ids = array_keys($manifest['migrations'] ?? []);
@@ -108,8 +111,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0015-documentation-evidence-reference-index',
-    'The documentation evidence-index repair is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0016-release-safety-hardening',
+    'The release-safety hardening migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -120,6 +123,12 @@ $assertTrue(
     ($repair_migration['fingerprint']['indexes']['documentation_evidence_locker']['documentation_evidence_reference'] ?? null)
         === ($post_integration_reservations['n45-0015-documentation-evidence-reference-index']['altered_indexes']['documentation_evidence_locker']['documentation_evidence_reference'] ?? null),
     'The documentation evidence-index repair does not match its exact final reservation'
+);
+$safety_migration = $manifest['migrations']['n45-0016-release-safety-hardening'] ?? [];
+$assertTrue(
+    ($safety_migration['fingerprint']['indexes']['api_keys']['api_key_secret_unique'] ?? null)
+        === ($post_integration_reservations['n45-0016-release-safety-hardening']['altered_indexes']['api_keys']['api_key_secret_unique'] ?? null),
+    'The release-safety migration does not match its API-key uniqueness reservation'
 );
 
 $manifest_migration_files = array_map(

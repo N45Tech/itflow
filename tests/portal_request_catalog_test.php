@@ -391,6 +391,21 @@ $starter_keys = array_column($starter_definitions, 0);
 if (count($starter_keys) !== count(array_unique($starter_keys))) {
     $failures[] = 'Starter request stable keys are not unique';
 }
+$starter_policies = [];
+foreach ($starter_definitions as $starter_definition) {
+    $starter_policies[$starter_definition[0]] = [
+        'permission' => $starter_definition[5],
+        'approval' => $starter_definition[6],
+    ];
+}
+foreach (['new-user', 'termination', 'new-device', 'access-change', 'scheduled-work'] as $planned_key) {
+    if (($starter_policies[$planned_key] ?? null) !== ['permission' => 'manager', 'approval' => 'manager']) {
+        $failures[] = "Planned request $planned_key is not manager-submitted with independent manager approval";
+    }
+}
+if (($starter_policies['incident-report'] ?? null) !== ['permission' => 'any', 'approval' => 'none']) {
+    $failures[] = 'Incident reporting is not direct for every portal contact';
+}
 if (portalRequestDefinitionHash(['z' => 1, 'a' => ['y' => 2, 'b' => 3]])
     !== portalRequestDefinitionHash(['a' => ['b' => 3, 'y' => 2], 'z' => 1])) {
     $failures[] = 'Definition hashes are not deterministic across associative key order';

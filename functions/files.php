@@ -48,12 +48,318 @@ function mkdirMissing($dir) {
     }
 }
 
-function saveBase64Images(string $html, string $baseFsPath, string $baseWebPath, int $ownerId): string {
+function fileStagingBatchToken(): string {
+    return hash('sha256', random_bytes(32));
+}
+
+/**
+ * Stage an existing uploads directory inside the caller's database transaction.
+ * The returned paths are relative to the source directory and can be checked
+ * against the HTML that will reference them before the transaction commits.
+ */
+function fileStagingStageDirectory(string $source_directory, string $final_relative_directory,
+    string $batch_token, string $owner_type, int $owner_id): array {
+    global $mysqli;
+
+    if (preg_match('/^[a-f0-9]{64}$/', $batch_token) !== 1) {
+        throw new InvalidArgumentException('Invalid file staging batch token');
+    }
+    $owner_type = substr(preg_replace('/[^a-z0-9_-]+/i', '_', $owner_type), 0, 40);
+    if ($owner_type === '') {
+        throw new InvalidArgumentException('A file staging owner type is required');
+    }
+    if (!is_dir($source_directory)) {
+        return [];
+    }
+
+    $uploads_root = realpath(dirname(__DIR__) . '/uploads');
+    $source_root = realpath($source_directory);
+    if ($uploads_root === false || $source_root === false
+        || ($source_root !== $uploads_root
+            && !str_starts_with($source_root, $uploads_root . DIRECTORY_SEPARATOR))) {
+        throw new InvalidArgumentException('The staged source directory is outside uploads');
+    }
+    $final_root = rtrim(fileStagingRelativePath($final_relative_directory), '/');
+    if (str_starts_with($final_root, 'uploads/.staging')) {
+        throw new InvalidArgumentException('A staging directory cannot be used as the final destination');
+    }
+
+    $batch_sql = mysqli_real_escape_string($mysqli, $batch_token);
+    $owner_type_sql = mysqli_real_escape_string($mysqli, $owner_type);
+    $owner_id = max(0, $owner_id);
+    $staged_files = [];
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($source_root, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::LEAVES_ONLY
+    );
+    foreach ($iterator as $file) {
+        if ($file->isLink()) {
+            throw new RuntimeException('Symbolic links cannot be copied into a staged upload');
+        }
+        if (!$file->isFile()) {
+            continue;
+        }
+        $source_path = $file->getPathname();
+        $relative = ltrim(str_replace('\\', '/', substr($source_path, strlen($source_root))), '/');
+        if ($relative === '' || preg_match('#(?:^|/)\.\.(?:/|$)#', $relative)) {
+            throw new RuntimeException('A staged upload has an invalid relative path');
+        }
+
+        $staged_relative = fileStagingRelativePath("uploads/.staging/$batch_token/$relative");
+        $final_relative = fileStagingRelativePath("$final_root/$relative");
+        $staged_path = fileStagingAbsolutePath($staged_relative);
+        $staged_directory = dirname($staged_path);
+        if (!is_dir($staged_directory) && !mkdir($staged_directory, 0775, true)
+            && !is_dir($staged_directory)) {
+            throw new RuntimeException('Could not create the staged upload directory');
+        }
+
+        $source_handle = fopen($source_path, 'rb');
+        $staged_handle = fopen($staged_path, 'xb');
+        if ($source_handle === false || $staged_handle === false) {
+            if (is_resource($source_handle)) {
+                fclose($source_handle);
+            }
+            if (is_resource($staged_handle)) {
+                fclose($staged_handle);
+            }
+            @unlink($staged_path);
+            throw new RuntimeException('Could not open a template upload for staging');
+        }
+        $copied = false;
+        try {
+            if (!flock($staged_handle, LOCK_EX)) {
+                throw new RuntimeException('Could not lock a staged template upload');
+            }
+            $bytes = stream_copy_to_stream($source_handle, $staged_handle);
+            if ($bytes === false || !fflush($staged_handle)) {
+                throw new RuntimeException('Could not copy a template upload into staging');
+            }
+            $copied = true;
+        } finally {
+            fclose($source_handle);
+            fclose($staged_handle);
+            if (!$copied) {
+                @unlink($staged_path);
+            }
+        }
+
+        $size = filesize($staged_path);
+        $sha = hash_file('sha256', $staged_path);
+        if ($size === false || $sha === false) {
+            @unlink($staged_path);
+            throw new RuntimeException('Could not verify a staged template upload');
+        }
+        $staged_sql = mysqli_real_escape_string($mysqli, $staged_relative);
+        $final_sql = mysqli_real_escape_string($mysqli, $final_relative);
+        $sha_sql = mysqli_real_escape_string($mysqli, $sha);
+        if (!mysqli_query($mysqli, "INSERT INTO file_staging_operations SET
+            file_staging_batch_token = '$batch_sql',
+            file_staging_owner_type = '$owner_type_sql',
+            file_staging_owner_id = $owner_id,
+            file_staging_staged_path = '$staged_sql',
+            file_staging_final_path = '$final_sql',
+            file_staging_sha256 = '$sha_sql', file_staging_size = " . intval($size))) {
+            @unlink($staged_path);
+            throw new RuntimeException('Could not journal a staged template upload');
+        }
+        $staged_files[] = $relative;
+    }
+    sort($staged_files, SORT_STRING);
+    return $staged_files;
+}
+
+function fileStagingRelativePath(string $path): string {
+    $path = str_replace('\\', '/', trim($path));
+    $path = ltrim($path, '/');
+    if ($path === '' || strpos($path, "\0") !== false
+        || !str_starts_with($path, 'uploads/')
+        || preg_match('#(?:^|/)\.\.(?:/|$)#', $path)) {
+        throw new InvalidArgumentException('File staging path is outside the application uploads directory');
+    }
+    return preg_replace('#/+#', '/', $path);
+}
+
+function fileStagingAbsolutePath(string $relative_path): string {
+    return dirname(__DIR__) . '/' . fileStagingRelativePath($relative_path);
+}
+
+function fileStagingDiscardBatch(string $batch_token): void {
+    if (preg_match('/^[a-f0-9]{64}$/', $batch_token) !== 1) {
+        return;
+    }
+    $directory = dirname(__DIR__) . '/uploads/.staging/' . $batch_token;
+    if (is_dir($directory)) {
+        removeDirectory($directory);
+    }
+}
+
+function fileStagingQueueRecovery(): void {
+    global $mysqli;
+    mysqli_query($mysqli, "INSERT IGNORE INTO cron_jobs SET
+        cron_job_name = 'file_staging_recovery', cron_job_enabled = 1,
+        cron_job_schedule = 'Interval', cron_job_interval_minutes = 1");
+    mysqli_query($mysqli, "UPDATE cron_jobs SET cron_job_run_now = 1
+        WHERE cron_job_name = 'file_staging_recovery'");
+}
+
+/**
+ * Move a committed batch into place. The journal is deliberately updated only
+ * after the rename; a crash in between is recovered by verifying the final
+ * file's hash on the next run.
+ */
+function fileStagingFinalizeBatch(string $batch_token): bool {
+    global $mysqli;
+    if (preg_match('/^[a-f0-9]{64}$/', $batch_token) !== 1) {
+        return false;
+    }
+
+    $lock_name = 'itflow_file_stage_' . substr($batch_token, 0, 44);
+    $lock_name_sql = mysqli_real_escape_string($mysqli, $lock_name);
+    $lock_sql = mysqli_query($mysqli, "SELECT GET_LOCK('$lock_name_sql', 0)");
+    $lock = $lock_sql ? mysqli_fetch_row($lock_sql) : null;
+    if (intval($lock[0] ?? 0) !== 1) {
+        return false;
+    }
+
+    $batch_sql = mysqli_real_escape_string($mysqli, $batch_token);
+    $success = true;
+    try {
+        $operations = mysqli_query($mysqli, "SELECT * FROM file_staging_operations
+            WHERE file_staging_batch_token = '$batch_sql'
+            AND file_staging_status IN ('Pending', 'Failed')
+            ORDER BY file_staging_id ASC");
+        if (!$operations) {
+            return false;
+        }
+        while ($operation = mysqli_fetch_assoc($operations)) {
+            $operation_id = intval($operation['file_staging_id']);
+            try {
+                $staged_relative = fileStagingRelativePath($operation['file_staging_staged_path']);
+                $final_relative = fileStagingRelativePath($operation['file_staging_final_path']);
+                if (!str_starts_with($staged_relative, "uploads/.staging/$batch_token/")) {
+                    throw new RuntimeException('Staged file escaped its recorded batch');
+                }
+                $staged_path = fileStagingAbsolutePath($staged_relative);
+                $final_path = fileStagingAbsolutePath($final_relative);
+                $expected_hash = (string) $operation['file_staging_sha256'];
+                $expected_size = intval($operation['file_staging_size']);
+
+                if (is_file($final_path)) {
+                    if (filesize($final_path) !== $expected_size
+                        || !hash_equals($expected_hash, hash_file('sha256', $final_path))) {
+                        throw new RuntimeException('A different file already occupies the final path');
+                    }
+                    if (is_file($staged_path)) {
+                        @unlink($staged_path);
+                    }
+                } else {
+                    if (!is_file($staged_path)
+                        || filesize($staged_path) !== $expected_size
+                        || !hash_equals($expected_hash, hash_file('sha256', $staged_path))) {
+                        throw new RuntimeException('The staged file is missing or failed integrity verification');
+                    }
+                    $final_directory = dirname($final_path);
+                    if (!is_dir($final_directory) && !mkdir($final_directory, 0775, true)
+                        && !is_dir($final_directory)) {
+                        throw new RuntimeException('Could not create the final upload directory');
+                    }
+                    if (!rename($staged_path, $final_path)) {
+                        throw new RuntimeException('Could not atomically finalize the staged file');
+                    }
+                }
+
+                if (!mysqli_query($mysqli, "UPDATE file_staging_operations SET
+                    file_staging_status = 'Finalized', file_staging_attempts = file_staging_attempts + 1,
+                    file_staging_last_error = NULL, file_staging_finalized_at = NOW()
+                    WHERE file_staging_id = $operation_id
+                    AND file_staging_status IN ('Pending', 'Failed') LIMIT 1")) {
+                    throw new RuntimeException('Could not finalize the staging journal');
+                }
+            } catch (Throwable $error) {
+                $success = false;
+                $error_sql = mysqli_real_escape_string($mysqli, substr($error->getMessage(), 0, 4000));
+                mysqli_query($mysqli, "UPDATE file_staging_operations SET
+                    file_staging_status = 'Failed', file_staging_attempts = file_staging_attempts + 1,
+                    file_staging_last_error = '$error_sql' WHERE file_staging_id = $operation_id LIMIT 1");
+            }
+        }
+    } finally {
+        mysqli_query($mysqli, "SELECT RELEASE_LOCK('$lock_name_sql')");
+    }
+
+    $batch_directory = dirname(__DIR__) . '/uploads/.staging/' . $batch_token;
+    if (is_dir($batch_directory) && count(scandir($batch_directory)) === 2) {
+        @rmdir($batch_directory);
+    }
+    if (!$success) {
+        fileStagingQueueRecovery();
+    }
+    return $success;
+}
+
+function fileStagingRecover(int $limit = 100): array {
+    global $mysqli;
+    $limit = min(500, max(1, $limit));
+    $summary = ['finalized' => 0, 'failed' => 0, 'batches' => 0, 'orphans_removed' => 0];
+    $batches = mysqli_query($mysqli, "SELECT DISTINCT file_staging_batch_token
+        FROM file_staging_operations WHERE file_staging_status IN ('Pending', 'Failed')
+        ORDER BY file_staging_created_at ASC LIMIT $limit");
+    while ($batches && $batch = mysqli_fetch_assoc($batches)) {
+        $summary['batches']++;
+        if (fileStagingFinalizeBatch((string) $batch['file_staging_batch_token'])) {
+            $summary['finalized']++;
+        } else {
+            $summary['failed']++;
+        }
+    }
+    mysqli_query($mysqli, "DELETE FROM file_staging_operations
+        WHERE file_staging_status = 'Finalized'
+        AND file_staging_finalized_at < DATE_SUB(NOW(), INTERVAL 30 DAY) LIMIT 1000");
+
+    $staging_root = dirname(__DIR__) . '/uploads/.staging';
+    if (is_dir($staging_root)) {
+        foreach (scandir($staging_root) as $entry) {
+            if (preg_match('/^[a-f0-9]{64}$/', $entry) !== 1) {
+                continue;
+            }
+            $directory = $staging_root . '/' . $entry;
+            if (!is_dir($directory) || filemtime($directory) > time() - 86400) {
+                continue;
+            }
+            $entry_sql = mysqli_real_escape_string($mysqli, $entry);
+            $journal_sql = mysqli_query($mysqli, "SELECT COUNT(*)
+                FROM file_staging_operations WHERE file_staging_batch_token = '$entry_sql'
+                AND file_staging_status IN ('Pending', 'Failed')");
+            if (!$journal_sql) {
+                continue;
+            }
+            $journal = mysqli_fetch_row($journal_sql);
+            if (intval($journal[0] ?? 0) === 0) {
+                removeDirectory($directory);
+                $summary['orphans_removed']++;
+            }
+        }
+    }
+    return $summary;
+}
+
+function saveBase64Images(string $html, string $baseFsPath, string $baseWebPath, int $ownerId,
+    ?string $stagingBatchToken = null, string $ownerType = 'document'): string {
+    global $mysqli;
     // Normalize paths
     $baseFsPath  = rtrim($baseFsPath, '/\\') . '/';
-    $baseWebPath = rtrim($baseWebPath, '/\\') . '/';
+    $baseWebPath = rtrim(fileStagingRelativePath($baseWebPath), '/\\') . '/';
 
     $targetDir = $baseFsPath . $ownerId . "/";
+    $staging = $stagingBatchToken !== null;
+    if ($staging && preg_match('/^[a-f0-9]{64}$/', $stagingBatchToken) !== 1) {
+        throw new InvalidArgumentException('Invalid file staging batch token');
+    }
+    $ownerType = substr(preg_replace('/[^a-z0-9_-]+/i', '_', $ownerType), 0, 40);
+    if ($ownerType === '') {
+        throw new InvalidArgumentException('A file staging owner type is required');
+    }
 
     $folderCreated = false;   // <-- NEW FLAG
     $savedAny      = false;   // <-- Track if ANY images processed
@@ -75,8 +381,12 @@ function saveBase64Images(string $html, string $baseFsPath, string $baseWebPath,
 
             // Create folder ONLY when needed
             if (!$folderCreated) {
-                if (!is_dir($targetDir)) {
-                    mkdir($targetDir, 0775, true);
+                $write_directory = $staging
+                    ? dirname(__DIR__) . '/uploads/.staging/' . $stagingBatchToken . '/'
+                    : $targetDir;
+                if (!is_dir($write_directory) && !mkdir($write_directory, 0775, true)
+                    && !is_dir($write_directory)) {
+                    throw new RuntimeException('Could not create the embedded-image directory');
                 }
                 $folderCreated = true;
             }
@@ -84,9 +394,9 @@ function saveBase64Images(string $html, string $baseFsPath, string $baseWebPath,
             $mimeType = strtolower($matches[1]);
             $base64   = $matches[2];
 
-            $binary = base64_decode($base64);
+            $binary = base64_decode($base64, true);
             if ($binary === false) {
-                continue;
+                throw new InvalidArgumentException('An embedded image is not valid base64');
             }
 
             // Extension mapping
@@ -96,19 +406,44 @@ function saveBase64Images(string $html, string $baseFsPath, string $baseWebPath,
                 case 'png': $ext = 'png'; break;
                 case 'gif': $ext = 'gif'; break;
                 case 'webp': $ext = 'webp'; break;
-                default: $ext = 'png';
+                default: throw new InvalidArgumentException('Embedded image type is not supported');
+            }
+            if (strlen($binary) > 10 * 1024 * 1024 || @getimagesizefromstring($binary) === false) {
+                throw new InvalidArgumentException('Embedded image failed size or content validation');
             }
 
             // Secure random filename
             $uid = bin2hex(random_bytes(16));
             $filename = "img_{$uid}.{$ext}";
 
-            $filePath = $targetDir . $filename;
-
-            if (file_put_contents($filePath, $binary) !== false) {
-                $webPath = "/" . $baseWebPath . $ownerId . "/" . $filename;
-                $img->setAttribute('src', $webPath);
+            $finalRelative = fileStagingRelativePath($baseWebPath . $ownerId . "/" . $filename);
+            $filePath = $staging
+                ? dirname(__DIR__) . '/uploads/.staging/' . $stagingBatchToken . '/' . $filename
+                : $targetDir . $filename;
+            $written = file_put_contents($filePath, $binary, LOCK_EX);
+            if ($written === false || $written !== strlen($binary)) {
+                throw new RuntimeException('Could not write an embedded image');
             }
+            if ($staging) {
+                $stagedRelative = "uploads/.staging/$stagingBatchToken/$filename";
+                $batch_sql = mysqli_real_escape_string($mysqli, $stagingBatchToken);
+                $owner_type_sql = mysqli_real_escape_string($mysqli, $ownerType);
+                $staged_sql = mysqli_real_escape_string($mysqli, $stagedRelative);
+                $final_sql = mysqli_real_escape_string($mysqli, $finalRelative);
+                $sha_sql = hash('sha256', $binary);
+                $size = strlen($binary);
+                if (!mysqli_query($mysqli, "INSERT INTO file_staging_operations SET
+                    file_staging_batch_token = '$batch_sql',
+                    file_staging_owner_type = '$owner_type_sql',
+                    file_staging_owner_id = " . max(0, $ownerId) . ",
+                    file_staging_staged_path = '$staged_sql',
+                    file_staging_final_path = '$final_sql',
+                    file_staging_sha256 = '$sha_sql', file_staging_size = $size")) {
+                    @unlink($filePath);
+                    throw new RuntimeException('Could not journal an embedded image');
+                }
+            }
+            $img->setAttribute('src', '/' . $finalRelative);
         }
     }
 

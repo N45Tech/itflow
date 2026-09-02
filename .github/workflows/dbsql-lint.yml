@@ -64,7 +64,9 @@ jobs:
           sudo apt-get install --yes mariadb-client
 
       - name: Check release harness syntax
-        run: bash -n tests/n45_release_database_test.sh
+        run: |
+          bash -n tests/n45_release_database_test.sh
+          bash -n tests/n45_lock_order_database_test.sh
 
       - name: Validate generated n8n workflows
         run: |
@@ -91,3 +93,8 @@ jobs:
         env:
           MYSQL_PWD: n45-ci-root-password
         run: bash tests/n45_release_database_test.sh
+
+      - name: Exercise canonical database lock order
+        env:
+          MYSQL_PWD: n45-ci-root-password
+        run: bash tests/n45_lock_order_database_test.sh

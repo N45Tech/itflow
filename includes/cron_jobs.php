@@ -89,6 +89,14 @@ function cronJobRegistry(): array
             'interval_minutes' => 1,
         ],
         [
+            'name' => 'file_staging_recovery',
+            'label' => 'File Staging Recovery',
+            'script' => 'file_staging_recovery.php',
+            'description' => 'Finalizes committed embedded images left pending by interrupted web or API requests.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 1,
+        ],
+        [
             'name' => 'documentation_evaluator',
             'label' => 'Documentation Freshness',
             'script' => 'documentation_evaluator.php',

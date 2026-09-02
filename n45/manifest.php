@@ -228,6 +228,35 @@ return [
                 ]],
                 'legacy_bridge_index_overrides' => [],
             ],
+            'n45-0016-release-safety-hardening' => [
+                'module' => 'schema',
+                'legacy_version' => null,
+                'data_change' => true,
+                'rollback' => 'Disable automation ingress and file finalization, preserve audit evidence, and restore the pre-upgrade database snapshot before reverting application code.',
+                'created_tables' => ['file_staging_operations'],
+                'altered_columns' => [
+                    'api_keys' => ['api_key_secret'],
+                    'automation_events' => [
+                        'automation_event_api_key_id',
+                        'automation_event_api_user_id',
+                        'automation_event_authorized_client_id',
+                        'automation_event_lease_token',
+                    ],
+                ],
+                'altered_indexes' => [
+                    'api_keys' => [
+                        'api_key_secret_unique' => $index_fingerprint(true, ['api_key_secret']),
+                    ],
+                    'automation_events' => [
+                        'automation_event_lease' => $index_fingerprint(false, [
+                            'automation_event_status',
+                            'automation_event_processing_at',
+                            'automation_event_lease_token',
+                        ]),
+                    ],
+                ],
+                'legacy_bridge_index_overrides' => [],
+            ],
         ],
     ],
     'features' => [
@@ -247,7 +276,7 @@ return [
     'modules' => [
         'schema' => [
             'runtime_files' => ['functions/n45_schema.php'],
-            'migrations' => ['n45-0000-namespace-foundation'],
+            'migrations' => ['n45-0000-namespace-foundation', 'n45-0016-release-safety-hardening'],
             'toggleable' => false,
             'reason' => 'Migration status and integrity contracts must always be available.',
         ],
@@ -1697,6 +1726,70 @@ return [
                         'documentation_evidence_reference_hash',
                     ]),
                 ]],
+            ],
+        ],
+        'n45-0016-release-safety-hardening' => [
+            'module' => 'schema', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0016-release-safety-hardening.php',
+            'summary' => 'Add lease-owned automation processing, binary-unique API keys, and a crash-recoverable file staging journal.',
+            'data_change' => true,
+            'rollback' => 'Disable automation ingress and file finalization, preserve audit evidence, and restore the pre-upgrade database snapshot before reverting application code.',
+            'fingerprint' => [
+                'tables' => ['file_staging_operations'],
+                'columns' => [
+                    'file_staging_operations' => [
+                        'file_staging_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'file_staging_batch_token' => $column_fingerprint('char(64)', false, null),
+                        'file_staging_owner_type' => $column_fingerprint('varchar(40)', false, null),
+                        'file_staging_owner_id' => $column_fingerprint('bigint(20)', false, 0),
+                        'file_staging_staged_path' => $column_fingerprint('varchar(1024)', false, null),
+                        'file_staging_final_path' => $column_fingerprint('varchar(1024)', false, null),
+                        'file_staging_sha256' => $column_fingerprint('char(64)', false, null),
+                        'file_staging_size' => $column_fingerprint('bigint(20) unsigned', false, 0),
+                        'file_staging_status' => $column_fingerprint('varchar(20)', false, 'Pending'),
+                        'file_staging_attempts' => $column_fingerprint('int(11)', false, 0),
+                        'file_staging_last_error' => $column_fingerprint('text', true, null),
+                        'file_staging_created_at' => $column_fingerprint('datetime', false, 'current_timestamp'),
+                        'file_staging_finalized_at' => $column_fingerprint('datetime', true, null),
+                    ],
+                    'api_keys' => [
+                        'api_key_secret' => $column_fingerprint('varbinary(255)', false, null),
+                    ],
+                    'automation_events' => [
+                        'automation_event_api_key_id' => $column_fingerprint('int(11)', false, 0),
+                        'automation_event_api_user_id' => $column_fingerprint('int(11)', false, 0),
+                        'automation_event_authorized_client_id' => $column_fingerprint('int(11)', false, 0),
+                        'automation_event_lease_token' => $column_fingerprint('char(64)', true, null),
+                    ],
+                ],
+                'indexes' => [
+                    'file_staging_operations' => [
+                        'PRIMARY' => $index_fingerprint(true, ['file_staging_id']),
+                        'file_staging_batch' => $index_fingerprint(false, [
+                            'file_staging_batch_token', 'file_staging_status', 'file_staging_id',
+                        ]),
+                        'file_staging_recovery' => $index_fingerprint(false, [
+                            'file_staging_status', 'file_staging_created_at', 'file_staging_id',
+                        ]),
+                    ],
+                    'api_keys' => [
+                        'api_key_secret_unique' => $index_fingerprint(true, ['api_key_secret']),
+                    ],
+                    'automation_events' => [
+                        'automation_event_lease' => $index_fingerprint(false, [
+                            'automation_event_status',
+                            'automation_event_processing_at',
+                            'automation_event_lease_token',
+                        ]),
+                    ],
+                ],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM api_keys WHERE OCTET_LENGTH(api_key_secret) = 0",
+                    "SELECT COUNT(*) FROM automation_events WHERE automation_event_status IN ('Pending','Failed','Processing') AND (automation_event_api_key_id = 0 OR automation_event_api_user_id = 0)",
+                    "SELECT COUNT(*) FROM automation_events WHERE automation_event_status = 'Processing' AND (automation_event_lease_token IS NULL OR automation_event_lease_token = '')",
+                    "SELECT COUNT(*) FROM automation_events WHERE automation_event_status <> 'Processing' AND automation_event_lease_token IS NOT NULL",
+                    "SELECT COUNT(*) FROM file_staging_operations WHERE file_staging_status NOT IN ('Pending','Failed','Finalized')",
+                ],
             ],
         ],
     ],

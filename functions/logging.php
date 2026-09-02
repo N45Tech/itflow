@@ -63,7 +63,7 @@ function logAudit($type, $action, $description, $client_id = 0, $entity_id = 0) 
     $action = substr($action, 0, 255);
     $description = substr($description, 0, 1000);
 
-    mysqli_query($mysqli, "INSERT INTO logs SET log_type = '$type', log_action = '$action', log_description = '$description', log_ip = '$session_ip', log_user_agent = '$session_user_agent', log_client_id = $client_id, log_user_id = $session_user_id, log_entity_id = $entity_id");
+    return mysqli_query($mysqli, "INSERT INTO logs SET log_type = '$type', log_action = '$action', log_description = '$description', log_ip = '$session_ip', log_user_agent = '$session_user_agent', log_client_id = $client_id, log_user_id = $session_user_id, log_entity_id = $entity_id") !== false;
 }
 
 /*
@@ -103,7 +103,7 @@ function logTicketHistory($ticket_id, $description) {
         $status_name = escapeSql(mysqli_fetch_assoc($sql)['ticket_status_name']);
     }
 
-    mysqli_query($mysqli, "INSERT INTO ticket_history SET ticket_history_status = '$status_name', ticket_history_description = '$description', ticket_history_ticket_id = $ticket_id");
+    return mysqli_query($mysqli, "INSERT INTO ticket_history SET ticket_history_status = '$status_name', ticket_history_description = '$description', ticket_history_ticket_id = $ticket_id") !== false;
 }
 
 function logApp($category, $type, $details) {

@@ -88,12 +88,13 @@ DROP TABLE IF EXISTS `api_keys`;
 CREATE TABLE `api_keys` (
   `api_key_id` int(11) NOT NULL AUTO_INCREMENT,
   `api_key_name` varchar(255) NOT NULL,
-  `api_key_secret` varchar(255) NOT NULL,
+  `api_key_secret` varbinary(255) NOT NULL,
   `api_key_decrypt_hash` varchar(200) NOT NULL,
   `api_key_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `api_key_expire` date NOT NULL,
   `api_key_user_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`api_key_id`)
+  PRIMARY KEY (`api_key_id`),
+  UNIQUE KEY `api_key_secret_unique` (`api_key_secret`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -591,7 +592,11 @@ CREATE TABLE `automation_events` (
   `automation_event_delivery_count` int(11) NOT NULL DEFAULT 1,
   `automation_event_process_attempts` int(11) NOT NULL DEFAULT 1,
   `automation_event_max_attempts` int(11) NOT NULL DEFAULT 5,
+  `automation_event_api_key_id` int(11) NOT NULL DEFAULT 0,
+  `automation_event_api_user_id` int(11) NOT NULL DEFAULT 0,
+  `automation_event_authorized_client_id` int(11) NOT NULL DEFAULT 0,
   `automation_event_processing_at` datetime DEFAULT NULL,
+  `automation_event_lease_token` char(64) DEFAULT NULL,
   `automation_event_next_attempt_at` datetime DEFAULT NULL,
   `automation_event_last_error` text DEFAULT NULL,
   `automation_event_suppressed_reason` varchar(80) DEFAULT NULL,
@@ -610,6 +615,7 @@ CREATE TABLE `automation_events` (
   KEY `automation_event_incident` (`automation_event_source`,`automation_event_incident_key`),
   KEY `automation_event_fingerprint` (`automation_event_source`,`automation_event_incident_key`,`automation_event_fingerprint`),
   KEY `automation_event_queue` (`automation_event_status`,`automation_event_next_attempt_at`,`automation_event_received_at`),
+  KEY `automation_event_lease` (`automation_event_status`,`automation_event_processing_at`,`automation_event_lease_token`),
   KEY `automation_event_ticket` (`automation_event_ticket_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -2172,6 +2178,33 @@ CREATE TABLE `files` (
   `file_folder_id` int(11) NOT NULL DEFAULT 0,
   `file_client_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`file_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `file_staging_operations`
+--
+
+DROP TABLE IF EXISTS `file_staging_operations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `file_staging_operations` (
+  `file_staging_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `file_staging_batch_token` char(64) NOT NULL,
+  `file_staging_owner_type` varchar(40) NOT NULL,
+  `file_staging_owner_id` bigint(20) NOT NULL DEFAULT 0,
+  `file_staging_staged_path` varchar(1024) NOT NULL,
+  `file_staging_final_path` varchar(1024) NOT NULL,
+  `file_staging_sha256` char(64) NOT NULL,
+  `file_staging_size` bigint(20) unsigned NOT NULL DEFAULT 0,
+  `file_staging_status` varchar(20) NOT NULL DEFAULT 'Pending',
+  `file_staging_attempts` int(11) NOT NULL DEFAULT 0,
+  `file_staging_last_error` text DEFAULT NULL,
+  `file_staging_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `file_staging_finalized_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`file_staging_id`),
+  KEY `file_staging_batch` (`file_staging_batch_token`,`file_staging_status`,`file_staging_id`),
+  KEY `file_staging_recovery` (`file_staging_status`,`file_staging_created_at`,`file_staging_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

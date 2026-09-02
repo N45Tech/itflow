@@ -1401,32 +1401,52 @@ if (isset($_POST['client_add_document'])) {
     $document_description = escapeSql($_POST['document_description']);
     $document_content_raw = escapeSql($document_name . " " . strip_tags($_POST['document_content']));
 
-    // Create document
-    mysqli_query($mysqli, "INSERT INTO documents SET
-        document_name = '$document_name',
-        document_description = '$document_description',
-        document_content = '',
-        document_content_raw = '$document_content_raw',
-        document_client_visible = 1,
-        document_client_id = $session_client_id,
-        document_created_by = $session_contact_id");
-
-    $document_id = mysqli_insert_id($mysqli);
-
-    $processed_content = mysqli_escape_string(
-        $mysqli,
-        saveBase64Images(
-            $_POST['document_content'],
-            $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
-            "uploads/documents/",
-            $document_id
-        )
-    );
-
-    // Document update content
-    mysqli_query($mysqli,"UPDATE documents SET document_content = '$processed_content' WHERE document_id = $document_id");
-
-    logAudit("Document", "Create", "Client contact $session_contact_name created document $document_name", $session_client_id, $document_id);
+    $staging_batch = fileStagingBatchToken();
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the portal document transaction');
+        }
+        if (!documentationLockClient($session_client_id)) {
+            throw new RuntimeException('The portal document client is unavailable');
+        }
+        if (!mysqli_query($mysqli, "INSERT INTO documents SET
+            document_name = '$document_name',
+            document_description = '$document_description',
+            document_content = '',
+            document_content_raw = '$document_content_raw',
+            document_client_visible = 1,
+            document_client_id = $session_client_id,
+            document_created_by = $session_contact_id")) {
+            throw new RuntimeException('Could not create the portal document');
+        }
+        $document_id = intval(mysqli_insert_id($mysqli));
+        $processed_content = mysqli_escape_string(
+            $mysqli,
+            saveBase64Images(
+                $_POST['document_content'],
+                $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
+                "uploads/documents/",
+                $document_id,
+                $staging_batch,
+                'document'
+            )
+        );
+        if (!mysqli_query($mysqli,"UPDATE documents SET document_content = '$processed_content' WHERE document_id = $document_id")) {
+            throw new RuntimeException('Could not save portal document content');
+        }
+        if (!logAudit("Document", "Create", "Client contact $session_contact_name created document $document_name", $session_client_id, $document_id)) {
+            throw new RuntimeException('Could not audit portal document creation');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit portal document creation');
+        }
+    } catch (Throwable $error) {
+        mysqli_rollback($mysqli);
+        logApp('Document', 'error', $error->getMessage());
+        flashAlert('The document could not be created.', 'error');
+        redirect('documents.php');
+    }
+    fileStagingFinalizeBatch($staging_batch);
 
     flashAlert("Document <strong>$document_name</strong> created successfully");
 
