@@ -27,6 +27,7 @@ final class N45LockOrder
         'document' => 130,
         'file_stage' => 140,
         'automation_event' => 150,
+        'custom_action_outbox' => 155,
         'audit' => 160,
     ];
 

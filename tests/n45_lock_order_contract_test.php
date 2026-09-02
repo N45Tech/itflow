@@ -18,7 +18,7 @@ $order = new N45LockOrder('valid contract');
 foreach ([
     ['authorization', 0], ['api_key', 2], ['client', 3], ['settings', 1],
     ['asset', 7], ['identity', 0], ['automation_incident', 0], ['ticket', 11],
-    ['automation_event', 19], ['audit', 0],
+    ['automation_event', 19], ['custom_action_outbox', 19], ['audit', 0],
 ] as [$resource, $id]) {
     $order->observe($resource, $id);
 }
@@ -41,13 +41,14 @@ $ranks = N45LockOrder::ranks();
 if (($ranks['authorization'] ?? 0) >= ($ranks['api_key'] ?? 0)
     || ($ranks['client'] ?? 0) >= ($ranks['asset'] ?? 0)
     || ($ranks['automation_incident'] ?? 0) >= ($ranks['ticket'] ?? 0)
-    || ($ranks['automation_event'] ?? 0) >= ($ranks['audit'] ?? 0)) {
+    || ($ranks['automation_event'] ?? 0) >= ($ranks['custom_action_outbox'] ?? 0)
+    || ($ranks['custom_action_outbox'] ?? 0) >= ($ranks['audit'] ?? 0)) {
     $failures[] = 'The canonical lock class order drifted';
 }
 
 $documentation = (string) file_get_contents($root . '/docs/n45/transaction-lock-order.md');
 foreach (['authorization', 'API key', 'client', 'asset', 'automation incident',
-          'ticket', 'automation event', 'audit'] as $resource) {
+          'ticket', 'automation event', 'custom-action outbox', 'audit'] as $resource) {
     if (stripos($documentation, $resource) === false) {
         $failures[] = "Lock-order documentation omits $resource";
     }

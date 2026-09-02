@@ -470,6 +470,13 @@ function automationDeleteTicketOperations(int $ticket_id): int
     }
 
     foreach ($incident_keys as [$source, $incident_key]) {
+        automationDbQuery("DELETE automation_event_dispatch_outbox
+            FROM automation_event_dispatch_outbox
+            INNER JOIN automation_events
+                ON automation_event_id = automation_dispatch_event_id
+            WHERE automation_event_source = '$source'
+            AND automation_event_incident_key = '$incident_key'",
+            'Could not delete the Operations action outbox associated with the ticket');
         automationDbQuery("DELETE FROM automation_events
             WHERE automation_event_source = '$source'
             AND automation_event_incident_key = '$incident_key'",
@@ -477,6 +484,11 @@ function automationDeleteTicketOperations(int $ticket_id): int
     }
 
     // Also remove any standalone event rows left by an interrupted incident write.
+    automationDbQuery("DELETE automation_event_dispatch_outbox
+        FROM automation_event_dispatch_outbox
+        INNER JOIN automation_events ON automation_event_id = automation_dispatch_event_id
+        WHERE automation_event_ticket_id = $ticket_id",
+        'Could not delete the Operations action outbox associated with the ticket');
     automationDbQuery("DELETE FROM automation_events
         WHERE automation_event_ticket_id = $ticket_id",
         'Could not delete the Operations events associated with the ticket');
@@ -1043,6 +1055,11 @@ function automationAddIncidentReply(int $ticket_id, int $client_id, string $repl
             throw new RuntimeException('Could not append automation update history');
         }
         automationEventQueueAudit('Update', "Updated automation incident ticket $ticket_id", $client_id, $ticket_id);
+        if ($owns_transaction && $resolved) {
+            throw new LogicException(
+                'Automation resolution requires a caller-owned transaction for durable action dispatch'
+            );
+        }
         if ($owns_transaction && !mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the automation incident update');
         }
@@ -1054,8 +1071,8 @@ function automationAddIncidentReply(int $ticket_id, int $client_id, string $repl
     }
 
     $post_commit_action = $resolved ? ['trigger' => 'ticket_resolve', 'entity_id' => $ticket_id] : null;
-    if ($owns_transaction && $post_commit_action) {
-        triggerCustomAction($post_commit_action['trigger'], $post_commit_action['entity_id']);
-    }
+    // The caller persists this action in the automation event outbox before
+    // committing its surrounding transaction. Never invoke tenant-owned code
+    // here: a process crash after commit would otherwise lose the action.
     return ['resolved' => $resolved, 'blocked' => $blocked, 'post_commit_action' => $post_commit_action];
 }

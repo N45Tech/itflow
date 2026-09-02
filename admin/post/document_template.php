@@ -41,11 +41,12 @@ if (isset($_POST['add_document_template'])) {
         }
     } catch (Throwable $error) {
         mysqli_rollback($mysqli);
+        fileStagingDiscardBatch($staging_batch);
         logApp('Document Template', 'error', $error->getMessage());
         flashAlert('The document template could not be created.', 'error');
         redirect();
     }
-    fileStagingFinalizeBatch($staging_batch);
+    fileStagingFinalizeCommittedBatch($staging_batch, "Document template $document_template_id creation");
 
     flashAlert("Document template <strong>$name</strong> created");
 
@@ -91,16 +92,18 @@ if (isset($_POST['edit_document_template'])) {
         }
     } catch (Throwable $error) {
         mysqli_rollback($mysqli);
+        fileStagingDiscardBatch($staging_batch);
         logApp('Document Template', 'error', $error->getMessage());
         flashAlert('The document template could not be edited.', 'error');
         redirect();
     }
-    fileStagingFinalizeBatch($staging_batch);
-    cleanupUnusedImages(
-        $processed_content,
-        $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/" . $document_template_id,
-        "/uploads/document_templates/" . $document_template_id
-    );
+    if (fileStagingFinalizeCommittedBatch($staging_batch, "Document template $document_template_id update")) {
+        cleanupUnusedImages(
+            $processed_content,
+            $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/" . $document_template_id,
+            "/uploads/document_templates/" . $document_template_id
+        );
+    }
 
     flashAlert("Document Template <strong>$name</strong> edited");
 

@@ -1442,11 +1442,12 @@ if (isset($_POST['client_add_document'])) {
         }
     } catch (Throwable $error) {
         mysqli_rollback($mysqli);
+        fileStagingDiscardBatch($staging_batch);
         logApp('Document', 'error', $error->getMessage());
         flashAlert('The document could not be created.', 'error');
         redirect('documents.php');
     }
-    fileStagingFinalizeBatch($staging_batch);
+    fileStagingFinalizeCommittedBatch($staging_batch, "Portal document $document_id creation");
 
     flashAlert("Document <strong>$document_name</strong> created successfully");
 

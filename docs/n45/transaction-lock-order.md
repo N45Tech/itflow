@@ -19,7 +19,8 @@ or rolls back. Row locks inside the transaction then use this global order:
 13. documents and document versions
 14. staged-file journal rows
 15. automation delivery rows
-16. audit rows
+16. custom-action outbox rows
+17. audit rows
 
 Rows in the same class are locked by ascending primary key. A caller may omit a
 class, but it may never return to an earlier class. Preflight reads used only to
@@ -36,7 +37,7 @@ tenant predicates, and immutable evidence checks remain mandatory.
 - Project lifecycle: client -> project -> ticket -> task -> documentation -> audit.
 - Documentation mutation: client -> ticket/task when applicable -> obligation -> document -> file stage -> audit.
 - Endpoint reconciliation: client -> asset -> identity -> audit.
-- Automation delivery: authorization -> API key -> client -> asset/identity -> incident -> ticket -> agreement/documentation -> delivery -> audit.
+- Automation delivery: authorization -> API key -> client -> asset/identity -> incident -> ticket -> agreement/documentation -> delivery -> custom-action outbox -> audit.
 - API-key administration: authorization -> API key -> audit.
 
 Never hold a row lock while acquiring a new named advisory lock. Any new path

@@ -562,6 +562,11 @@ function automationEventQueueAudit(string $action, string $description,
     int $client_id = 0, int $entity_id = 0): void
 {
     global $automation_event_audit_buffer;
+    // logAudit() follows the legacy already-escaped calling convention. Bound
+    // the raw byte length before escaping so quote-bearing source names cannot
+    // alter the statement or be truncated through a trailing escape byte.
+    $action = automationDbEscape(mb_strcut(trim($action), 0, 120, 'UTF-8'));
+    $description = automationDbEscape(mb_strcut(trim($description), 0, 496, 'UTF-8'));
     if (is_array($automation_event_audit_buffer ?? null)) {
         $automation_event_audit_buffer[] = [$action, $description, $client_id, $entity_id];
         return;
@@ -581,6 +586,178 @@ function automationEventFlushAudits(N45LockOrder $lock_order): void
         }
     }
     $automation_event_audit_buffer = [];
+}
+
+function automationEventEnqueueCustomAction(int $event_id, array $action,
+    N45LockOrder $lock_order): string
+{
+    $event_id = max(0, $event_id);
+    $trigger = automationLimitText($action['trigger'] ?? '', 40);
+    $entity_id = max(0, intval($action['entity_id'] ?? 0));
+    if ($event_id < 1 || $entity_id < 1 || !in_array($trigger, ['ticket_resolve'], true)) {
+        throw new RuntimeException('Invalid automation custom-action dispatch');
+    }
+
+    $event_key = hash('sha256', "automation-event:$event_id:$trigger:$entity_id");
+    $event_key_sql = automationDbEscape($event_key);
+    $trigger_sql = automationDbEscape($trigger);
+    $lock_order->observe('custom_action_outbox', $event_id);
+    automationDbQuery("INSERT INTO automation_event_dispatch_outbox SET
+        automation_dispatch_event_key = '$event_key_sql',
+        automation_dispatch_event_id = $event_id,
+        automation_dispatch_entity_id = $entity_id,
+        automation_dispatch_trigger = '$trigger_sql'",
+        'Could not enqueue the automation custom action');
+    return $event_key;
+}
+
+function automationEventClaimCustomAction(int $event_id = 0): ?array
+{
+    global $mysqli;
+
+    $event_id = max(0, $event_id);
+    $event_filter = $event_id > 0 ? "AND automation_dispatch_event_id = $event_id" : '';
+    if (!mysqli_begin_transaction($mysqli)) {
+        throw new RuntimeException('Could not begin the automation dispatch claim');
+    }
+    try {
+        $row = mysqli_fetch_assoc(automationDbQuery("SELECT *
+            FROM automation_event_dispatch_outbox
+            WHERE automation_dispatch_delivered_at IS NULL
+            $event_filter
+            AND (
+                (automation_dispatch_status IN ('Pending', 'Failed')
+                    AND automation_dispatch_available_at <= NOW())
+                OR (automation_dispatch_status = 'Processing'
+                    AND automation_dispatch_processing_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE))
+            )
+            ORDER BY automation_dispatch_id ASC LIMIT 1 FOR UPDATE",
+            'Could not lock an automation custom action')) ?: null;
+        if (!$row) {
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not finish the empty automation dispatch claim');
+            }
+            return null;
+        }
+
+        $dispatch_id = intval($row['automation_dispatch_id']);
+        $lease = hash('sha256', random_bytes(32));
+        $lease_sql = automationDbEscape($lease);
+        automationDbQuery("UPDATE automation_event_dispatch_outbox SET
+            automation_dispatch_status = 'Processing',
+            automation_dispatch_attempts = automation_dispatch_attempts + 1,
+            automation_dispatch_processing_at = NOW(),
+            automation_dispatch_lease_token = '$lease_sql',
+            automation_dispatch_last_error = NULL
+            WHERE automation_dispatch_id = $dispatch_id
+            AND automation_dispatch_delivered_at IS NULL LIMIT 1",
+            'Could not claim the automation custom action');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The automation custom action was claimed concurrently');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the automation dispatch claim');
+        }
+        $row['automation_dispatch_attempts'] = intval($row['automation_dispatch_attempts']) + 1;
+        $row['automation_dispatch_lease_token'] = $lease;
+        return $row;
+    } catch (Throwable $error) {
+        mysqli_rollback($mysqli);
+        throw $error;
+    }
+}
+
+/**
+ * Deliver one durable action. Delivery is at-least-once; the stable event key
+ * lets the tenant-owned handler make downstream work idempotent after a crash
+ * between handler completion and acknowledgement.
+ */
+function automationEventProcessCustomActionOutbox(int $event_id = 0): array
+{
+    global $mysqli;
+
+    $row = automationEventClaimCustomAction($event_id);
+    if (!$row) {
+        return ['status' => 'skipped', 'dispatch_id' => 0];
+    }
+
+    $dispatch_id = intval($row['automation_dispatch_id']);
+    $event_id = intval($row['automation_dispatch_event_id']);
+    $entity_id = intval($row['automation_dispatch_entity_id']);
+    $trigger = (string) $row['automation_dispatch_trigger'];
+    $event_key = (string) $row['automation_dispatch_event_key'];
+    $lease = (string) $row['automation_dispatch_lease_token'];
+    $lease_sql = automationDbEscape($lease);
+
+    try {
+        $expected_key = hash('sha256', "automation-event:$event_id:$trigger:$entity_id");
+        if ($event_id < 1 || $entity_id < 1 || !in_array($trigger, ['ticket_resolve'], true)
+            || preg_match('/^[a-f0-9]{64}$/', $event_key) !== 1
+            || !hash_equals($expected_key, $event_key)) {
+            throw new RuntimeException('The automation custom-action envelope is invalid');
+        }
+        $target = mysqli_fetch_assoc(automationDbQuery("SELECT automation_event_id
+            FROM automation_events
+            INNER JOIN tickets ON ticket_id = automation_event_ticket_id
+            WHERE automation_event_id = $event_id
+            AND automation_event_status = 'Processed'
+            AND automation_event_ticket_id = $entity_id LIMIT 1",
+            'Could not validate the automation custom-action target'));
+        if (!$target) {
+            throw new RuntimeException('The automation custom-action target no longer matches its event');
+        }
+        if (triggerCustomAction($trigger, $entity_id, $event_key) === false) {
+            throw new RuntimeException('The custom-action handler already ran in this PHP process; retry in a fresh worker');
+        }
+
+        automationDbQuery("UPDATE automation_event_dispatch_outbox SET
+            automation_dispatch_status = 'Delivered',
+            automation_dispatch_delivered_at = NOW(),
+            automation_dispatch_processing_at = NULL,
+            automation_dispatch_lease_token = NULL,
+            automation_dispatch_available_at = NOW()
+            WHERE automation_dispatch_id = $dispatch_id
+            AND automation_dispatch_status = 'Processing'
+            AND automation_dispatch_lease_token = '$lease_sql'
+            AND automation_dispatch_delivered_at IS NULL LIMIT 1",
+            'Could not acknowledge the automation custom action');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The automation custom-action lease changed before acknowledgement');
+        }
+        return ['status' => 'delivered', 'dispatch_id' => $dispatch_id];
+    } catch (Throwable $error) {
+        $attempts = max(1, intval($row['automation_dispatch_attempts']));
+        $delay = min(3600, 30 * (2 ** min(7, $attempts - 1)));
+        $available_at = automationDbEscape(date('Y-m-d H:i:s', time() + $delay));
+        $error_sql = automationDbEscape(mb_strcut($error->getMessage(), 0, 900, 'UTF-8'));
+        try {
+            automationDbQuery("UPDATE automation_event_dispatch_outbox SET
+                automation_dispatch_status = 'Failed',
+                automation_dispatch_available_at = '$available_at',
+                automation_dispatch_processing_at = NULL,
+                automation_dispatch_lease_token = NULL,
+                automation_dispatch_last_error = '$error_sql'
+                WHERE automation_dispatch_id = $dispatch_id
+                AND automation_dispatch_status = 'Processing'
+                AND automation_dispatch_lease_token = '$lease_sql'
+                AND automation_dispatch_delivered_at IS NULL LIMIT 1",
+                'Could not record the automation custom-action failure');
+        } catch (Throwable $record_error) {
+            error_log("Automation custom action $dispatch_id failure could not be recorded: "
+                . $record_error->getMessage());
+        }
+        error_log("Automation custom action $dispatch_id failed: " . $error->getMessage());
+        return ['status' => 'failed', 'dispatch_id' => $dispatch_id];
+    }
+}
+
+function automationEventDispatchAfterCommit(int $event_id): void
+{
+    try {
+        automationQueueEventProcessor();
+    } catch (Throwable $error) {
+        error_log("Automation event $event_id custom-action wake-up failed: " . $error->getMessage());
+    }
 }
 
 function automationEventMergeIncidentBindings(array $incident, array $resolved): array
@@ -1056,6 +1233,9 @@ function automationProcessStoredEvent(int $event_id): array
                 $event_id, $action, $ticket_id, $suppressed_reason, $maintenance_id,
                 $lease_token, $lock_order
             );
+            if ($post_commit_action) {
+                automationEventEnqueueCustomAction($event_id, $post_commit_action, $lock_order);
+            }
             if ($notification) {
                 appNotify($notification['type'], $notification['details'], $notification['action'],
                     $notification['client_id'], $notification['entity_id']);
@@ -1072,11 +1252,7 @@ function automationProcessStoredEvent(int $event_id): array
 
         $automation_event_audit_buffer = null;
         if ($post_commit_action) {
-            triggerCustomAction(
-                $post_commit_action['trigger'],
-                $post_commit_action['entity_id'],
-                'automation-event-' . $event_id
-            );
+            automationEventDispatchAfterCommit($event_id);
         }
         return [
             'event_id' => $event_id,
@@ -1102,7 +1278,15 @@ function automationProcessEventQueue(int $limit = 100): array
     }
 
     $limit = min(500, max(1, $limit));
-    $summary = ['processed' => 0, 'failed' => 0, 'dead' => 0, 'skipped' => 0];
+    $summary = [
+        'processed' => 0,
+        'failed' => 0,
+        'dead' => 0,
+        'skipped' => 0,
+        'actions_delivered' => 0,
+        'actions_failed' => 0,
+        'actions_skipped' => 0,
+    ];
     mysqli_query($mysqli, "UPDATE automation_events SET
         automation_event_status = 'Dead',
         automation_event_action = 'processing_failed',
@@ -1136,6 +1320,24 @@ function automationProcessEventQueue(int $limit = 100): array
         } else {
             $summary['skipped']++;
         }
+    }
+
+    // triggerCustomAction() loads a tenant-owned handler with include_once, so
+    // deliver at most one action per short-lived cron process. The next minute
+    // claims the next due row or retries a failed/stale lease.
+    try {
+        $dispatch = automationEventProcessCustomActionOutbox();
+        $dispatch_status = strtolower((string) ($dispatch['status'] ?? 'skipped'));
+        if ($dispatch_status === 'delivered') {
+            $summary['actions_delivered']++;
+        } elseif ($dispatch_status === 'failed') {
+            $summary['actions_failed']++;
+        } else {
+            $summary['actions_skipped']++;
+        }
+    } catch (Throwable $error) {
+        $summary['actions_failed']++;
+        error_log('Automation custom-action queue failed: ' . $error->getMessage());
     }
 
     // Retain event metadata indefinitely but remove old redacted payload bodies

@@ -54,6 +54,8 @@ $assertOrdered($files, [
 $assertContains($files, "file_staging_status IN ('Pending', 'Failed')",
     'Failed finalization is not retryable');
 $assertContains($files, 'fileStagingQueueRecovery()', 'A failed finalization does not wake recovery');
+$assertContains($files, 'function fileStagingFinalizeCommittedBatch(',
+    'Post-commit finalization has no non-throwing recovery boundary');
 $assertContains($files, 'function fileStagingStageDirectory(',
     'Existing document-template images have no journaled staging path');
 $assertContains($registry, "'name' => 'file_staging_recovery'", 'The recovery job is absent from the cron registry');
@@ -76,8 +78,24 @@ foreach ($callers as $path => $expected_calls) {
     }
     $assertContains($contents, 'mysqli_begin_transaction($mysqli)', "$path does not transactionally own image journaling");
     $assertContains($contents, 'mysqli_commit($mysqli)', "$path does not commit image metadata");
-    $assertContains($contents, 'fileStagingFinalizeBatch($staging_batch)', "$path does not finalize after commit");
+    if (substr_count($contents, 'fileStagingDiscardBatch($staging_batch)') < $expected_calls) {
+        $failures[] = "$path does not discard every uncommitted staged-file batch after rollback";
+    }
+    $assertContains($contents, 'fileStagingFinalizeCommittedBatch($staging_batch,',
+        "$path does not finalize through the post-commit recovery boundary");
 }
+$api_create = $read('api/v1/documents/create.php');
+$api_update = $read('api/v1/documents/update.php');
+$assertOrdered($api_create, [
+    'mysqli_commit($mysqli)',
+    '} catch (Throwable $error)',
+    'fileStagingFinalizeCommittedBatch($staging_batch,',
+], 'API document creation can still report a committed row as rolled back after finalization');
+$assertOrdered($api_update, [
+    'mysqli_commit($mysqli)',
+    '} catch (Throwable $error)',
+    'fileStagingFinalizeCommittedBatch($staging_batch,',
+], 'API document update can still report a committed row as rolled back after finalization');
 $agent_documents = $read('agent/post/document.php');
 $assertContains($agent_documents, 'fileStagingStageDirectory(',
     'Template-based document creation does not stage copied images');

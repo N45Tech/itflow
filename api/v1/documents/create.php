@@ -44,11 +44,14 @@ if (!empty($name) && !(empty($content))) {
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit API document creation');
         }
-        fileStagingFinalizeBatch($staging_batch);
     } catch (Throwable $error) {
         mysqli_rollback($mysqli);
+        fileStagingDiscardBatch($staging_batch);
         $insert_id = false;
         logApp('API', 'error', 'Document creation failed safely: ' . $error->getMessage());
+    }
+    if ($insert_id !== false) {
+        fileStagingFinalizeCommittedBatch($staging_batch, "API document $insert_id creation");
     }
 }
 

@@ -621,6 +621,35 @@ CREATE TABLE `automation_events` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `automation_event_dispatch_outbox`
+--
+
+DROP TABLE IF EXISTS `automation_event_dispatch_outbox`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `automation_event_dispatch_outbox` (
+  `automation_dispatch_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `automation_dispatch_event_key` char(64) NOT NULL,
+  `automation_dispatch_event_id` bigint(20) NOT NULL,
+  `automation_dispatch_entity_id` int(11) NOT NULL,
+  `automation_dispatch_trigger` varchar(40) NOT NULL,
+  `automation_dispatch_status` varchar(20) NOT NULL DEFAULT 'Pending',
+  `automation_dispatch_attempts` int(11) NOT NULL DEFAULT 0,
+  `automation_dispatch_available_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_dispatch_processing_at` datetime DEFAULT NULL,
+  `automation_dispatch_lease_token` char(64) DEFAULT NULL,
+  `automation_dispatch_delivered_at` datetime DEFAULT NULL,
+  `automation_dispatch_last_error` varchar(1000) DEFAULT NULL,
+  `automation_dispatch_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_dispatch_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`automation_dispatch_id`),
+  UNIQUE KEY `automation_dispatch_event_key` (`automation_dispatch_event_key`),
+  UNIQUE KEY `automation_dispatch_event_trigger` (`automation_dispatch_event_id`,`automation_dispatch_trigger`),
+  KEY `automation_dispatch_status_available` (`automation_dispatch_status`,`automation_dispatch_available_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `automation_incidents`
 --
 

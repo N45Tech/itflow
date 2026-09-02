@@ -257,6 +257,16 @@ return [
                 ],
                 'legacy_bridge_index_overrides' => [],
             ],
+            'n45-0017-automation-action-outbox' => [
+                'module' => 'automation',
+                'legacy_version' => null,
+                'data_change' => false,
+                'rollback' => 'Disable automation processing, preserve queued and delivered action evidence, and restore the pre-upgrade database snapshot before reverting application code.',
+                'created_tables' => ['automation_event_dispatch_outbox'],
+                'altered_columns' => [],
+                'altered_indexes' => [],
+                'legacy_bridge_index_overrides' => [],
+            ],
         ],
     ],
     'features' => [
@@ -270,7 +280,7 @@ return [
             'default' => true,
             'toggleable' => true,
             'environment' => 'N45_FEATURE_AUTOMATION',
-            'scope' => 'Automation API ingress, mirroring, and background event processing',
+            'scope' => 'Automation API ingress, mirroring, background event processing, and durable custom-action dispatch',
         ],
     ],
     'modules' => [
@@ -313,7 +323,12 @@ return [
         ],
         'automation' => [
             'runtime_files' => ['functions/automation.php', 'functions/automation_events.php'],
-            'migrations' => ['n45-0003-automation-integration', 'n45-0006-operations-ticket-delete-integrity', 'n45-0009-automation-event-lifecycle'],
+            'migrations' => [
+                'n45-0003-automation-integration',
+                'n45-0006-operations-ticket-delete-integrity',
+                'n45-0009-automation-event-lifecycle',
+                'n45-0017-automation-action-outbox',
+            ],
             'feature' => 'automation',
             'toggleable' => true,
             'reason' => 'Ingress and processing can stop while cleanup and audit history stay available.',
@@ -1789,6 +1804,52 @@ return [
                     "SELECT COUNT(*) FROM automation_events WHERE automation_event_status = 'Processing' AND (automation_event_lease_token IS NULL OR automation_event_lease_token = '')",
                     "SELECT COUNT(*) FROM automation_events WHERE automation_event_status <> 'Processing' AND automation_event_lease_token IS NOT NULL",
                     "SELECT COUNT(*) FROM file_staging_operations WHERE file_staging_status NOT IN ('Pending','Failed','Finalized')",
+                ],
+            ],
+        ],
+        'n45-0017-automation-action-outbox' => [
+            'module' => 'automation', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0017-automation-action-outbox.php',
+            'summary' => 'Persist automation custom actions atomically for leased, idempotent post-commit delivery.',
+            'data_change' => false,
+            'rollback' => 'Disable automation processing, preserve queued and delivered action evidence, and restore the pre-upgrade database snapshot before reverting application code.',
+            'fingerprint' => [
+                'tables' => ['automation_event_dispatch_outbox'],
+                'columns' => [
+                    'automation_event_dispatch_outbox' => [
+                        'automation_dispatch_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'automation_dispatch_event_key' => $column_fingerprint('char(64)', false, null),
+                        'automation_dispatch_event_id' => $column_fingerprint('bigint(20)', false, null),
+                        'automation_dispatch_entity_id' => $column_fingerprint('int(11)', false, null),
+                        'automation_dispatch_trigger' => $column_fingerprint('varchar(40)', false, null),
+                        'automation_dispatch_status' => $column_fingerprint('varchar(20)', false, 'Pending'),
+                        'automation_dispatch_attempts' => $column_fingerprint('int(11)', false, 0),
+                        'automation_dispatch_available_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                        'automation_dispatch_processing_at' => $column_fingerprint('datetime', true, null),
+                        'automation_dispatch_lease_token' => $column_fingerprint('char(64)', true, null),
+                        'automation_dispatch_delivered_at' => $column_fingerprint('datetime', true, null),
+                        'automation_dispatch_last_error' => $column_fingerprint('varchar(1000)', true, null),
+                        'automation_dispatch_created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                        'automation_dispatch_updated_at' => $column_fingerprint('datetime', true, null, 'on update current_timestamp'),
+                    ],
+                ],
+                'indexes' => [
+                    'automation_event_dispatch_outbox' => [
+                        'PRIMARY' => $index_fingerprint(true, ['automation_dispatch_id']),
+                        'automation_dispatch_event_key' => $index_fingerprint(true, ['automation_dispatch_event_key']),
+                        'automation_dispatch_event_trigger' => $index_fingerprint(true, [
+                            'automation_dispatch_event_id', 'automation_dispatch_trigger',
+                        ]),
+                        'automation_dispatch_status_available' => $index_fingerprint(false, [
+                            'automation_dispatch_status', 'automation_dispatch_available_at',
+                        ]),
+                    ],
+                ],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM automation_event_dispatch_outbox WHERE automation_dispatch_status NOT IN ('Pending','Failed','Processing','Delivered')",
+                    "SELECT COUNT(*) FROM automation_event_dispatch_outbox WHERE automation_dispatch_status = 'Processing' AND (automation_dispatch_processing_at IS NULL OR automation_dispatch_lease_token IS NULL OR automation_dispatch_lease_token = '')",
+                    "SELECT COUNT(*) FROM automation_event_dispatch_outbox WHERE automation_dispatch_status <> 'Processing' AND (automation_dispatch_processing_at IS NOT NULL OR automation_dispatch_lease_token IS NOT NULL)",
+                    "SELECT COUNT(*) FROM automation_event_dispatch_outbox WHERE (automation_dispatch_status = 'Delivered') <> (automation_dispatch_delivered_at IS NOT NULL)",
                 ],
             ],
         ],

@@ -59,11 +59,12 @@ if (isset($_POST['add_document'])) {
         }
     } catch (Throwable $error) {
         mysqli_rollback($mysqli);
+        fileStagingDiscardBatch($staging_batch);
         logApp('Document', 'error', $error->getMessage());
         flashAlert('The document could not be created.', 'error');
         redirect();
     }
-    fileStagingFinalizeBatch($staging_batch);
+    fileStagingFinalizeCommittedBatch($staging_batch, "Document $document_id creation");
 
     flashAlert("Document <strong>$name</strong> created");
 
@@ -174,11 +175,12 @@ if (isset($_POST['add_document_from_template'])) {
         if ($transaction_started) {
             mysqli_rollback($mysqli);
         }
+        fileStagingDiscardBatch($staging_batch);
         logApp('Document', 'error', $error->getMessage());
         flashAlert('The document could not be created from its template.', 'error');
         redirect();
     }
-    fileStagingFinalizeBatch($staging_batch);
+    fileStagingFinalizeCommittedBatch($staging_batch, "Document $document_id template creation");
 
     flashAlert("Document <strong>$document_name</strong> created from template");
 
@@ -284,16 +286,18 @@ if (isset($_POST['edit_document'])) {
         if ($transaction_started) {
             mysqli_rollback($mysqli);
         }
+        fileStagingDiscardBatch($staging_batch);
         error_log("Document $document_id edit failed safely: " . $e->getMessage());
         flashAlert('The document could not be edited. Refresh and try again.', 'error');
         redirect("document.php?client_id=$client_id&document_id=$document_id");
     }
-    fileStagingFinalizeBatch($staging_batch);
-    cleanupUnusedImages(
-        $processed_html,
-        $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id,
-        "/uploads/documents/" . $document_id
-    );
+    if (fileStagingFinalizeCommittedBatch($staging_batch, "Document $document_id update")) {
+        cleanupUnusedImages(
+            $processed_html,
+            $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id,
+            "/uploads/documents/" . $document_id
+        );
+    }
 
     flashAlert("Document <strong>$name</strong> edited, previous version kept");
 

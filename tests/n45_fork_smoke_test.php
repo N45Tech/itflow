@@ -93,8 +93,9 @@ $assertTrue(
     array_keys($post_integration_reservations) === [
         'n45-0015-documentation-evidence-reference-index',
         'n45-0016-release-safety-hardening',
+        'n45-0017-automation-action-outbox',
     ],
-    'The post-integration compatibility and release-safety migrations are not reserved'
+    'The post-integration migrations are not reserved'
 );
 $required_migration_ids = array_keys($expected_legacy_migrations);
 $manifest_migration_ids = array_keys($manifest['migrations'] ?? []);
@@ -111,8 +112,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0016-release-safety-hardening',
-    'The release-safety hardening migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0017-automation-action-outbox',
+    'The automation action-outbox migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -129,6 +130,16 @@ $assertTrue(
     ($safety_migration['fingerprint']['indexes']['api_keys']['api_key_secret_unique'] ?? null)
         === ($post_integration_reservations['n45-0016-release-safety-hardening']['altered_indexes']['api_keys']['api_key_secret_unique'] ?? null),
     'The release-safety migration does not match its API-key uniqueness reservation'
+);
+$action_outbox_migration = $manifest['migrations']['n45-0017-automation-action-outbox'] ?? [];
+$assertTrue(
+    ($action_outbox_migration['fingerprint']['tables'] ?? null)
+        === ($post_integration_reservations['n45-0017-automation-action-outbox']['created_tables'] ?? null),
+    'The automation action-outbox migration does not match its table reservation'
+);
+$assertTrue(
+    in_array('n45-0017-automation-action-outbox', $manifest['modules']['automation']['migrations'] ?? [], true),
+    'The durable action outbox is not owned by the automation module'
 );
 
 $manifest_migration_files = array_map(
@@ -417,6 +428,18 @@ $assertTrue(substr_count($compose, 'N45_FEATURE_LEVEL: ${N45_FEATURE_LEVEL:-1}')
 $assertTrue(substr_count($compose, 'N45_FEATURE_AUTOMATION: ${N45_FEATURE_AUTOMATION:-1}') === 2, 'Automation flag is not passed to both web and cron containers');
 $assertContains('N45_FEATURE_LEVEL=1', $environment_example, 'Deployment environment example omits the Level flag');
 $assertContains('N45_FEATURE_AUTOMATION=1', $environment_example, 'Deployment environment example omits the automation flag');
+
+$automation_delete = $section(
+    $automation_service,
+    'function automationDeleteTicketOperations(',
+    'function automationResolveIdentityUnlocked(',
+    'Operations ticket cleanup'
+);
+$assertOrdered($automation_delete, [
+    'DELETE automation_event_dispatch_outbox',
+    'DELETE FROM automation_events',
+    'DELETE FROM automation_incidents',
+], 'Operations cleanup can orphan durable custom actions when a ticket is deleted');
 
 // Deletion smoke: the automation flag must never bypass referential cleanup.
 $single_delete = $section($ticket_post, "if (isset(\$_GET['delete_ticket']))", "if (isset(\$_POST['bulk_delete_tickets']))", 'single ticket deletion');

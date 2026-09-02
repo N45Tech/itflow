@@ -190,7 +190,11 @@ function fileStagingDiscardBatch(string $batch_token): void {
     }
     $directory = dirname(__DIR__) . '/uploads/.staging/' . $batch_token;
     if (is_dir($directory)) {
-        removeDirectory($directory);
+        try {
+            removeDirectory($directory);
+        } catch (Throwable $error) {
+            error_log('Could not discard rolled-back file staging batch: ' . $error->getMessage());
+        }
     }
 }
 
@@ -296,6 +300,38 @@ function fileStagingFinalizeBatch(string $batch_token): bool {
         fileStagingQueueRecovery();
     }
     return $success;
+}
+
+/**
+ * Best-effort finalization for a batch whose owning database transaction has
+ * already committed. This boundary must never turn a durable database success
+ * into a false rollback response: failures are logged and handed to recovery.
+ */
+function fileStagingFinalizeCommittedBatch(string $batch_token, string $context = ''): bool {
+    $failure = '';
+    try {
+        $finalized = fileStagingFinalizeBatch($batch_token);
+    } catch (Throwable $error) {
+        $finalized = false;
+        $failure = $error->getMessage();
+    }
+
+    if (!$finalized) {
+        try {
+            fileStagingQueueRecovery();
+        } catch (Throwable $queue_error) {
+            $failure = trim($failure . '; recovery wake-up failed: ' . $queue_error->getMessage(), '; ');
+        }
+        $details = trim($context . ': committed files are queued for recovery'
+            . ($failure === '' ? '' : " ($failure)"), ': ');
+        try {
+            logApp('File Staging', 'warning', $details);
+        } catch (Throwable $log_error) {
+            error_log('File staging post-commit warning: ' . $details
+                . '; application log failed: ' . $log_error->getMessage());
+        }
+    }
+    return $finalized;
 }
 
 function fileStagingRecover(int $limit = 100): array {

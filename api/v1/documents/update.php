@@ -78,17 +78,20 @@ if (!empty($document_id)) {
             throw new RuntimeException('Could not commit the API document edit');
         }
         $update_count = 1;
-        fileStagingFinalizeBatch($staging_batch);
+    } catch (Throwable $error) {
+        mysqli_rollback($mysqli);
+        fileStagingDiscardBatch($staging_batch);
+        $update_count = false;
+        logApp('API', 'error', 'Document update failed safely: ' . $error->getMessage());
+        logAudit("API", "Error", "Document update failed (not found or unauthorized) via API ($api_key_name)", $client_id);
+    }
+    if ($update_count === 1
+        && fileStagingFinalizeCommittedBatch($staging_batch, "API document $document_id update")) {
         cleanupUnusedImages(
             $processed_html,
             $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id,
             "/uploads/documents/" . $document_id
         );
-    } catch (Throwable $error) {
-        mysqli_rollback($mysqli);
-        $update_count = false;
-        logApp('API', 'error', 'Document update failed safely: ' . $error->getMessage());
-        logAudit("API", "Error", "Document update failed (not found or unauthorized) via API ($api_key_name)", $client_id);
     }
 }
 

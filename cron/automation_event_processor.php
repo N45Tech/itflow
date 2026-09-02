@@ -26,9 +26,12 @@ if (empty($row['config_enable_cron'])) {
 
 $summary = automationProcessEventQueue(100);
 $details = "processed {$summary['processed']}; failed {$summary['failed']}; "
-    . "dead {$summary['dead']}; skipped {$summary['skipped']}";
+    . "dead {$summary['dead']}; skipped {$summary['skipped']}; "
+    . "actions delivered {$summary['actions_delivered']}; "
+    . "actions failed {$summary['actions_failed']}; "
+    . "actions skipped {$summary['actions_skipped']}";
 
-if ($summary['failed'] > 0) {
+if ($summary['failed'] > 0 || $summary['actions_failed'] > 0) {
     logApp('Automation', 'warning', "Operational event retry run: $details");
 }
 

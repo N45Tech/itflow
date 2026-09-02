@@ -47,6 +47,7 @@ $required_migration_prefix = [
     'n45-0014-agreement-entitlements.php',
     'n45-0015-documentation-evidence-reference-index.php',
     'n45-0016-release-safety-hardening.php',
+    'n45-0017-automation-action-outbox.php',
 ];
 $disk_migration_files = array_map('basename', glob($root . '/n45/migrations/*.php') ?: []);
 sort($disk_migration_files);
@@ -77,8 +78,9 @@ $assertTrue(
     array_keys($post_integration_reservations) === [
         'n45-0015-documentation-evidence-reference-index',
         'n45-0016-release-safety-hardening',
+        'n45-0017-automation-action-outbox',
     ],
-    'The compatibility and release-safety reservations are missing'
+    'The post-integration migration reservations are missing'
 );
 $repair_index = $post_integration_reservations['n45-0015-documentation-evidence-reference-index']['altered_indexes']['documentation_evidence_locker']['documentation_evidence_reference'] ?? [];
 $assertTrue(($repair_index['unique'] ?? null) === false, 'The compatibility repair would restore the obsolete unique evidence index');
@@ -195,9 +197,10 @@ $skipped_reservation = $definitions;
 unset(
     $skipped_reservation['n45-0014-agreement-entitlements'],
     $skipped_reservation['n45-0015-documentation-evidence-reference-index'],
-    $skipped_reservation['n45-0016-release-safety-hardening']
+    $skipped_reservation['n45-0016-release-safety-hardening'],
+    $skipped_reservation['n45-0017-automation-action-outbox']
 );
-$skipped_reservation['n45-0017-future-feature'] = ['legacy_version' => null];
+$skipped_reservation['n45-0018-future-feature'] = ['legacy_version' => null];
 $assertThrows(
     static function () use ($skipped_reservation): void {
         n45AssertMigrationNamespaceReservations($skipped_reservation);
@@ -522,6 +525,40 @@ $assertTrue($portal_request_index_count === 29, 'The portal request migration do
 $assertTrue(($portal_request_fingerprint['failure_queries'] ?? []) === [
     "SELECT COUNT(*) FROM portal_request_submissions WHERE portal_request_submission_request_hash IS NULL OR BINARY portal_request_submission_request_hash NOT REGEXP '^[0-9a-f]{64}$'",
 ], 'The portal request migration does not verify its restart-repair fingerprint backfill');
+
+$automation_outbox_fingerprint = $definitions['n45-0017-automation-action-outbox']['fingerprint'] ?? [];
+$assertTrue(
+    ($automation_outbox_fingerprint['tables'] ?? []) === ['automation_event_dispatch_outbox'],
+    'The automation custom-action outbox table inventory is incomplete'
+);
+$automation_outbox_columns = $baselineColumns('automation_event_dispatch_outbox');
+$automation_outbox_indexes = $baselineIndexes('automation_event_dispatch_outbox');
+$assertTrue(
+    array_keys($automation_outbox_fingerprint['columns']['automation_event_dispatch_outbox'] ?? [])
+        === array_keys($automation_outbox_columns),
+    'The automation custom-action outbox column fingerprint is incomplete'
+);
+$assertTrue(
+    array_keys($automation_outbox_fingerprint['indexes']['automation_event_dispatch_outbox'] ?? [])
+        === array_keys($automation_outbox_indexes),
+    'The automation custom-action outbox index fingerprint is incomplete'
+);
+foreach (($automation_outbox_fingerprint['columns']['automation_event_dispatch_outbox'] ?? []) as $column => $contract) {
+    $comparison = n45CompareColumnFingerprint(
+        'db.sql', 'automation_event_dispatch_outbox', $column, $contract,
+        $automation_outbox_columns[$column] ?? null
+    );
+    $assertTrue($comparison === [], 'The automation outbox column contract does not match db.sql for '
+        . $column . ': ' . implode('; ', $comparison));
+}
+foreach (($automation_outbox_fingerprint['indexes']['automation_event_dispatch_outbox'] ?? []) as $index => $contract) {
+    $comparison = n45CompareIndexFingerprint(
+        'db.sql', 'automation_event_dispatch_outbox', $index, $contract,
+        $automation_outbox_indexes[$index] ?? null
+    );
+    $assertTrue($comparison === [], 'The automation outbox index contract does not match db.sql for '
+        . $index . ': ' . implode('; ', $comparison));
+}
 
 $expected_agreement_tables = [
     'agreement_versions',

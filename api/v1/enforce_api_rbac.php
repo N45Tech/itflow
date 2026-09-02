@@ -59,7 +59,8 @@ if (empty($api_key_user_id)) {
 // --- 1) Load the linked user's session context (mirrors load_user_session.php) ---
 $sql_api_user = mysqli_query($mysqli,
     "SELECT users.user_id, user_name, user_type, user_status, user_archived_at,
-            user_role_id, role_is_admin
+            user_role_id, user_roles.role_id AS linked_role_id,
+            role_is_admin, role_archived_at
      FROM users
      LEFT JOIN user_roles ON user_role_id = role_id
      WHERE users.user_id = $api_key_user_id
@@ -67,11 +68,15 @@ $sql_api_user = mysqli_query($mysqli,
 
 $api_user = $sql_api_user ? mysqli_fetch_assoc($sql_api_user) : null;
 
-// Linked user must exist, be an active agent (user_type 1), and not be archived.
+// Linked user and its role must both remain active. An archived or missing role
+// cannot retain permissions merely because the user row itself is still active.
 if (!$api_user
     || intval($api_user['user_type']) !== 1
     || intval($api_user['user_status']) !== 1
-    || $api_user['user_archived_at'] !== null) {
+    || $api_user['user_archived_at'] !== null
+    || intval($api_user['user_role_id']) < 1
+    || intval($api_user['linked_role_id']) !== intval($api_user['user_role_id'])
+    || $api_user['role_archived_at'] !== null) {
     apiDeny("The user linked to this API key is inactive, archived, or invalid.");
 }
 

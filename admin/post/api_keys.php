@@ -52,11 +52,14 @@ function apiKeyLockAuthorization(array $target_user_ids, N45LockOrder $lock_orde
     $roles = [];
     if ($role_ids) {
         $role_id_sql = implode(',', $role_ids);
-        $role_rows = apiKeyDbQuery("SELECT role_id, role_is_admin FROM user_roles
+        $role_rows = apiKeyDbQuery("SELECT role_id, role_is_admin, role_archived_at FROM user_roles
             WHERE role_id IN ($role_id_sql) ORDER BY role_id FOR UPDATE",
             'Could not lock API-key authorization roles');
         while ($row = mysqli_fetch_assoc($role_rows)) {
-            $roles[intval($row['role_id'])] = intval($row['role_is_admin']);
+            $roles[intval($row['role_id'])] = [
+                'is_admin' => intval($row['role_is_admin']),
+                'archived_at' => $row['role_archived_at'],
+            ];
         }
     }
 
@@ -77,7 +80,9 @@ function apiKeyLockAuthorization(array $target_user_ids, N45LockOrder $lock_orde
         || intval($actor['user_type']) !== 1
         || intval($actor['user_status']) !== 1
         || $actor['user_archived_at'] !== null
-        || intval($roles[$actor_role_id] ?? 0) !== 1) {
+        || !isset($roles[$actor_role_id])
+        || $roles[$actor_role_id]['archived_at'] !== null
+        || intval($roles[$actor_role_id]['is_admin']) !== 1) {
         throw new RuntimeException('Administrator authorization changed before the API-key mutation');
     }
 
@@ -87,7 +92,8 @@ function apiKeyLockAuthorization(array $target_user_ids, N45LockOrder $lock_orde
             || intval($target['user_type']) !== 1
             || intval($target['user_status']) !== 1
             || $target['user_archived_at'] !== null
-            || !array_key_exists(intval($target['user_role_id']), $roles)) {
+            || !isset($roles[intval($target['user_role_id'])])
+            || $roles[intval($target['user_role_id'])]['archived_at'] !== null) {
             throw new RuntimeException('The API key must run as an active agent');
         }
     }
