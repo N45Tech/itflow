@@ -109,7 +109,8 @@ if (isset($_GET['asset_id'])) {
             LEFT JOIN users ON ticket_assigned_to = user_id
             LEFT JOIN ticket_statuses ON ticket_status_id = ticket_status
             LEFT JOIN ticket_assets ON tickets.ticket_id = ticket_assets.ticket_id
-            WHERE ticket_asset_id = $asset_id OR ticket_assets.asset_id = $asset_id
+            WHERE tickets.ticket_deleted_at IS NULL
+                AND (ticket_asset_id = $asset_id OR ticket_assets.asset_id = $asset_id)
             GROUP BY tickets.ticket_id
             ORDER BY ticket_number DESC
         ");
@@ -164,6 +165,7 @@ if (isset($_GET['asset_id'])) {
             LEFT JOIN files ON asset_files.file_id = files.file_id
             WHERE asset_files.asset_id = $asset_id
             AND file_archived_at IS NULL
+            AND files.file_deleted_at IS NULL
             ORDER BY file_name DESC"
         );
         $files_count = mysqli_num_rows($sql_related_files);

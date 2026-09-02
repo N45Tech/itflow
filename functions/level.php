@@ -1802,7 +1802,8 @@ function levelRecordOperationalAlert(array $alert, string $state, array $result,
             $location_id = intval($asset['asset_location_id'] ?? 0);
         } elseif ($ticket_id > 0) {
             $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_asset_id, ticket_client_id,
-                ticket_location_id FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+                ticket_location_id FROM tickets WHERE ticket_id = $ticket_id
+                AND ticket_deleted_at IS NULL LIMIT 1"));
             $asset_id = intval($ticket['ticket_asset_id'] ?? 0);
             $client_id = intval($ticket['ticket_client_id'] ?? 0);
             $location_id = intval($ticket['ticket_location_id'] ?? 0);

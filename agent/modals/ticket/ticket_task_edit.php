@@ -8,7 +8,7 @@ $task_id = intval($_GET['id']);
 
 $sql = mysqli_query($mysqli, "SELECT task_completed_at, task_completion_estimate, task_name, task_state,
     task_assigned_to, task_due_at, task_runbook_version_task_id, ticket_client_id
-    FROM tasks LEFT JOIN tickets ON task_ticket_id = ticket_id
+    FROM tasks INNER JOIN tickets ON task_ticket_id = ticket_id AND ticket_deleted_at IS NULL
     WHERE task_id = $task_id
     LIMIT 1"
 );

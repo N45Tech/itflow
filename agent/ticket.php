@@ -42,6 +42,7 @@ if (isset($_GET['ticket_id'])) {
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
         LEFT JOIN categories ON ticket_category = category_id
         WHERE ticket_id = $ticket_id
+        AND ticket_deleted_at IS NULL
         $access_permission_query_overide
         LIMIT 1"
     );
@@ -249,7 +250,8 @@ if (isset($_GET['ticket_id'])) {
             $contact_open_tickets = intval(mysqli_fetch_row(mysqli_query(
                 $mysqli,
                 "SELECT COUNT(ticket_id) FROM tickets
-                WHERE ticket_contact_id = $contact_id
+                WHERE ticket_deleted_at IS NULL
+                AND ticket_contact_id = $contact_id
                 AND ticket_id != $ticket_id
                 AND ticket_resolved_at IS NULL"
             ))[0]);
@@ -317,7 +319,8 @@ if (isset($_GET['ticket_id'])) {
         $sql_all_attachments = mysqli_query(
             $mysqli,
             "SELECT ticket_attachment_id, ticket_attachment_name, ticket_attachment_reply_id
-            FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id"
+            FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id
+            AND ticket_attachment_deleted_at IS NULL"
         );
         while ($attachment_row = mysqli_fetch_assoc($sql_all_attachments)) {
             $attachment_reply_id = intval($attachment_row['ticket_attachment_reply_id']);
@@ -638,10 +641,10 @@ if (isset($_GET['ticket_id'])) {
                                         <a class="dropdown-item ajax-modal" href="#" id="clientChangeTicketModalLoad" data-modal-url="modals/ticket/ticket_change_client.php?ticket_id=<?= $ticket_id ?>">
                                             <i class="fas fa-fw fa-people-carry mr-2"></i>Change Client
                                         </a>
-                                        <?php if (lookupUserPermission("module_support") == 3) { ?>
+                                        <?php if (!empty($session_is_admin) && $ticket_is_closed) { ?>
                                             <div class="dropdown-divider"></div>
-                                            <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?delete_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                                <i class="fas fa-fw fa-trash mr-2"></i>Delete
+                                            <a class="dropdown-item text-danger text-bold" href="/admin/retention.php?record_type=ticket&record_id=<?= $ticket_id ?>">
+                                                <i class="fas fa-fw fa-trash-restore mr-2"></i>Move to Deleted Records
                                             </a>
                                         <?php } ?>
                                     </div>
@@ -798,8 +801,8 @@ if (isset($_GET['ticket_id'])) {
                                         <i class="fas fa-fw fa-paperclip text-secondary mr-1"></i><?= $ticket_attachment_name ?>
                                         <a target="_blank" class="ml-2 small" href="ticket_attachment.php?attachment_id=<?= $ticket_attachment_id ?>&action=view">View</a>
                                         <a class="ml-2 small" href="ticket_attachment.php?attachment_id=<?= $ticket_attachment_id ?>">Download</a>
-                                        <?php if (lookupUserPermission("module_support") >= 3) { ?>
-                                            <a class="confirm-link ml-2 small text-danger" href="post.php?delete_ticket_attachment=<?= $ticket_attachment_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">Delete</a>
+                                        <?php if (!empty($session_is_admin)) { ?>
+                                            <a class="ml-2 small text-danger" href="/admin/retention.php?record_type=attachment&record_id=<?= $ticket_attachment_id ?>">Move to Deleted Records</a>
                                         <?php } ?>
                                     </div>
                                 <?php } ?>
@@ -1020,8 +1023,8 @@ if (isset($_GET['ticket_id'])) {
                                             <i class="fas fa-fw fa-paperclip text-secondary mr-1"></i><?= $ticket_attachment_name ?>
                                             <a target="_blank" class="ml-2 small" href="ticket_attachment.php?attachment_id=<?= $ticket_attachment_id ?>&action=view">View</a>
                                             <a class="ml-2 small" href="ticket_attachment.php?attachment_id=<?= $ticket_attachment_id ?>">Download</a>
-                                            <?php if (lookupUserPermission("module_support") >= 3) { ?>
-                                                <a class="confirm-link ml-2 small text-danger" href="post.php?delete_ticket_attachment=<?= $ticket_attachment_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">Delete</a>
+                                            <?php if (!empty($session_is_admin)) { ?>
+                                                <a class="ml-2 small text-danger" href="/admin/retention.php?record_type=attachment&record_id=<?= $ticket_attachment_id ?>">Move to Deleted Records</a>
                                             <?php } ?>
                                         </div>
                                     <?php } ?>

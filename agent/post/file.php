@@ -6,6 +6,32 @@
 
 defined('FROM_POST_HANDLER') || die("Direct file access is not allowed");
 
+// Deleted file metadata and quarantined bytes are mutable only through the
+// administrator retention workflow. Cover both single and bulk forged posts.
+$retention_file_ids = [];
+foreach (['file_id', 'archive_file', 'restore_file'] as $retention_file_key) {
+    if (isset($_POST[$retention_file_key])) {
+        $retention_file_ids[] = intval($_POST[$retention_file_key]);
+    }
+    if (isset($_GET[$retention_file_key])) {
+        $retention_file_ids[] = intval($_GET[$retention_file_key]);
+    }
+}
+foreach ((array) ($_POST['file_ids'] ?? []) as $retention_file_id) {
+    $retention_file_ids[] = intval($retention_file_id);
+}
+$retention_file_ids = array_values(array_unique(array_filter($retention_file_ids)));
+if ($retention_file_ids) {
+    $retention_file_id_sql = implode(',', $retention_file_ids);
+    $retention_deleted_count = retentionCount("SELECT COUNT(*) FROM files
+        WHERE file_id IN ($retention_file_id_sql) AND file_deleted_at IS NOT NULL",
+        'Could not inspect deleted file mutation targets');
+    if ($retention_deleted_count > 0) {
+        flashAlert('Deleted files are immutable outside Administration > Retention.', 'error');
+        redirect('/admin/retention.php');
+    }
+}
+
 $documentation_document_evidence_in_use = static function ($document_id, $client_id) use ($mysqli) {
     $document_id = intval($document_id);
     $client_id = intval($client_id);
@@ -34,6 +60,15 @@ $documentation_mutate_file = static function ($file_id, $client_id, $operation) 
         throw new InvalidArgumentException('A valid file mutation is required');
     }
 
+    if ($operation === 'delete') {
+        return retentionSoftDeleteFile(
+            $file_id,
+            $client_id,
+            intval($GLOBALS['session_user_id'] ?? 0),
+            (string) ($_POST['delete_reason'] ?? '')
+        );
+    }
+
     $transaction_started = false;
     try {
         if (!mysqli_begin_transaction($mysqli)) {
@@ -45,8 +80,9 @@ $documentation_mutate_file = static function ($file_id, $client_id, $operation) 
         // both rows makes the Evidence Locker recheck authoritative for this write.
         documentationLockClient($client_id);
         $file = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT file_client_id,
-            file_name, file_reference_name, file_has_thumbnail, file_has_preview,
-            file_archived_at FROM files WHERE file_id = $file_id LIMIT 1 FOR UPDATE",
+            file_name, file_reference_name,
+            file_archived_at FROM files WHERE file_id = $file_id
+            AND file_deleted_at IS NULL LIMIT 1 FOR UPDATE",
             'Could not lock the file mutation'));
         if (!$file || intval($file['file_client_id']) !== $client_id) {
             throw new RuntimeException('The file client changed before the mutation');
@@ -55,14 +91,9 @@ $documentation_mutate_file = static function ($file_id, $client_id, $operation) 
             throw new DomainException('The file is retained in the Evidence Locker');
         }
 
-        if ($operation === 'archive') {
-            documentationLifecycleDbQuery("UPDATE files SET file_archived_at = NOW()
-                WHERE file_id = $file_id AND file_client_id = $client_id
-                AND file_archived_at IS NULL LIMIT 1", 'Could not archive the file');
-        } else {
-            documentationLifecycleDbQuery("DELETE FROM files WHERE file_id = $file_id
-                AND file_client_id = $client_id LIMIT 1", 'Could not delete the file');
-        }
+        documentationLifecycleDbQuery("UPDATE files SET file_archived_at = NOW()
+            WHERE file_id = $file_id AND file_client_id = $client_id
+            AND file_archived_at IS NULL AND file_deleted_at IS NULL LIMIT 1", 'Could not archive the file');
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The file changed before the mutation');
         }
@@ -76,28 +107,6 @@ $documentation_mutate_file = static function ($file_id, $client_id, $operation) 
             mysqli_rollback($mysqli);
         }
         throw $e;
-    }
-};
-
-$documentation_delete_file_uploads = static function ($file) {
-    $client_id = intval($file['file_client_id'] ?? 0);
-    $reference_name = (string) ($file['file_reference_name'] ?? '');
-    if (!$client_id || $reference_name === '' || basename($reference_name) !== $reference_name) {
-        error_log('Committed file deletion left an invalid upload reference for cleanup');
-        return;
-    }
-
-    $paths = ["../uploads/clients/$client_id/$reference_name"];
-    if (intval($file['file_has_thumbnail'] ?? 0) === 1) {
-        $paths[] = "../uploads/clients/$client_id/thumbnail_$reference_name";
-    }
-    if (intval($file['file_has_preview'] ?? 0) === 1) {
-        $paths[] = "../uploads/clients/$client_id/preview_$reference_name";
-    }
-    foreach ($paths as $path) {
-        if (is_file($path) && !unlink($path)) {
-            error_log("Committed file deletion could not remove upload $path");
-        }
     }
 };
 
@@ -174,7 +183,34 @@ if (isset($_POST['upload_files'])) {
     $asset_id = intval($_POST['asset_id'] ?? 0);
     $client_dir  = "../uploads/clients/$client_id";
 
-    enforceClientAccess();
+    enforceClientAccess($client_id);
+
+    if ($folder_id) {
+        $folder = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT folder_id FROM folders
+            WHERE folder_id = $folder_id AND folder_client_id = $client_id LIMIT 1"));
+        if (!$folder) {
+            flashAlert('The selected folder is unavailable for this client.', 'error');
+            redirect();
+        }
+    }
+    if ($contact_id) {
+        $contact = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT contact_id FROM contacts
+            WHERE contact_id = $contact_id AND contact_client_id = $client_id
+            AND contact_archived_at IS NULL LIMIT 1"));
+        if (!$contact) {
+            flashAlert('The selected contact is unavailable for this client.', 'error');
+            redirect();
+        }
+    }
+    if ($asset_id) {
+        $asset = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT asset_id FROM assets
+            WHERE asset_id = $asset_id AND asset_client_id = $client_id
+            AND asset_archived_at IS NULL LIMIT 1"));
+        if (!$asset) {
+            flashAlert('The selected asset is unavailable for this client.', 'error');
+            redirect();
+        }
+    }
 
     // Create client directory if it doesn't exist
     if (!is_dir($client_dir)) {
@@ -239,11 +275,27 @@ if (isset($_POST['upload_files'])) {
             $file_id = mysqli_insert_id($mysqli);
 
             if ($contact_id) {
-                mysqli_query($mysqli,"INSERT INTO contact_files SET contact_id = $contact_id, file_id = $file_id");
+                $contact_linked = mysqli_query($mysqli, "INSERT INTO contact_files (contact_id, file_id)
+                    SELECT c.contact_id, f.file_id FROM contacts c
+                    INNER JOIN files f ON f.file_client_id = c.contact_client_id
+                    WHERE c.contact_id = $contact_id AND c.contact_client_id = $client_id
+                    AND c.contact_archived_at IS NULL AND f.file_id = $file_id
+                    AND f.file_client_id = $client_id AND f.file_deleted_at IS NULL");
+                if (!$contact_linked || mysqli_affected_rows($mysqli) !== 1) {
+                    flashAlert('The file was uploaded, but the contact changed before it could be linked.', 'error');
+                }
             }
 
             if ($asset_id) {
-                mysqli_query($mysqli,"INSERT INTO asset_files SET asset_id = $asset_id, file_id = $file_id");
+                $asset_linked = mysqli_query($mysqli, "INSERT INTO asset_files (asset_id, file_id)
+                    SELECT a.asset_id, f.file_id FROM assets a
+                    INNER JOIN files f ON f.file_client_id = a.asset_client_id
+                    WHERE a.asset_id = $asset_id AND a.asset_client_id = $client_id
+                    AND a.asset_archived_at IS NULL AND f.file_id = $file_id
+                    AND f.file_client_id = $client_id AND f.file_deleted_at IS NULL");
+                if (!$asset_linked || mysqli_affected_rows($mysqli) !== 1) {
+                    flashAlert('The file was uploaded, but the asset changed before it could be linked.', 'error');
+                }
             }
 
             logAudit("File", "Upload", "$session_name uploaded file $file_name", $client_id, $file_id);
@@ -268,15 +320,46 @@ if (isset($_POST['rename_file'])) {
     $file_description = escapeSql($_POST['file_description']);
 
     // Get File Details Client ID for Logging
-    $sql = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
+    $sql = mysqli_query($mysqli, "SELECT file_name, file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1");
     $row = mysqli_fetch_assoc($sql);
-    $old_file_name = escapeSql($row['file_name']);
+    if (!$row) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
     $client_id = intval($row['file_client_id']);
 
-    enforceClientAccess();
+    enforceClientAccess($client_id);
 
-    // file edit query
-    mysqli_query($mysqli,"UPDATE files SET file_name = '$file_name' ,file_description = '$file_description' WHERE file_id = $file_id");
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the file rename transaction');
+        }
+        $transaction_started = true;
+        documentationLockClient($client_id);
+        $locked_file = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT file_name,
+            file_client_id FROM files WHERE file_id = $file_id AND file_client_id = $client_id
+            AND file_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the active file for rename'));
+        if (!$locked_file) {
+            throw new RuntimeException('The active file changed before it could be renamed');
+        }
+        $old_file_name = escapeSql($locked_file['file_name']);
+        documentationLifecycleDbQuery("UPDATE files SET file_name = '$file_name',
+            file_description = '$file_description' WHERE file_id = $file_id
+            AND file_client_id = $client_id AND file_deleted_at IS NULL LIMIT 1",
+            'Could not rename the active file');
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the file rename');
+        }
+        $transaction_started = false;
+    } catch (Throwable $e) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        flashAlert('The file could not be renamed. Refresh and try again.', 'error');
+        redirect();
+    }
 
     logAudit("File", "Rename", "$session_name renamed file $old_file_name to $file_name", $client_id, $file_id);
 
@@ -296,17 +379,56 @@ if (isset($_POST['move_file'])) {
     $folder_id = intval($_POST['folder_id']);
 
     // Get File Name and  Client ID for Logging
-    $sql = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
+    $sql = mysqli_query($mysqli, "SELECT file_name, file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1");
     $row = mysqli_fetch_assoc($sql);
-    $file_name = escapeSql($row['file_name']);
+    if (!$row) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
     $client_id = intval($row['file_client_id']);
 
-    enforceClientAccess();
+    enforceClientAccess($client_id);
 
-    // Get Folder Name for Logging
-    $folder_name = escapeSql(getFieldById('folders', $folder_id, 'folder_name'));
-
-    mysqli_query($mysqli,"UPDATE files SET file_folder_id = $folder_id WHERE file_id = $file_id");
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the file move transaction');
+        }
+        $transaction_started = true;
+        documentationLockClient($client_id);
+        $locked_file = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT file_name,
+            file_client_id FROM files WHERE file_id = $file_id AND file_client_id = $client_id
+            AND file_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the active file for move'));
+        if (!$locked_file) {
+            throw new RuntimeException('The active file changed before it could be moved');
+        }
+        $folder_name = '/';
+        if ($folder_id) {
+            $folder = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT folder_name FROM folders
+                WHERE folder_id = $folder_id AND folder_client_id = $client_id LIMIT 1 FOR UPDATE",
+                'Could not lock the destination file folder'));
+            if (!$folder) {
+                throw new DomainException('The destination folder is unavailable for this client');
+            }
+            $folder_name = escapeSql($folder['folder_name']);
+        }
+        $file_name = escapeSql($locked_file['file_name']);
+        documentationLifecycleDbQuery("UPDATE files SET file_folder_id = $folder_id
+            WHERE file_id = $file_id AND file_client_id = $client_id
+            AND file_deleted_at IS NULL LIMIT 1", 'Could not move the active file');
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the file move');
+        }
+        $transaction_started = false;
+    } catch (Throwable $e) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        flashAlert($e instanceof DomainException
+            ? $e->getMessage() : 'The file could not be moved. Refresh and try again.', 'error');
+        redirect();
+    }
 
     logAudit("File", "Move", "$session_name moved file $file_name to $folder_name", $client_id, $file_id);
 
@@ -325,8 +447,13 @@ if (isset($_GET['archive_file'])) {
     $file_id = intval($_GET['archive_file']);
 
     // Get Contact Name and Client ID for logging and alert message
-    $sql = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
+    $sql = mysqli_query($mysqli, "SELECT file_name, file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1");
     $row = mysqli_fetch_assoc($sql);
+    if (!$row) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
     $file_name = escapeSql($row['file_name']);
     $client_id = intval($row['file_client_id']);
 
@@ -360,14 +487,21 @@ if (isset($_GET['restore_file'])) {
     $file_id = intval($_GET['restore_file']);
 
     // Get Document Name and Client ID for logging and alert message
-    $sql = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
+    $sql = mysqli_query($mysqli, "SELECT file_name, file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1");
     $row = mysqli_fetch_assoc($sql);
+    if (!$row) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
     $file_name = escapeSql($row['file_name']);
     $client_id = intval($row['file_client_id']);
 
     enforceClientAccess();
 
-    mysqli_query($mysqli,"UPDATE files SET file_archived_at = NULL WHERE file_id = $file_id");
+    mysqli_query($mysqli, "UPDATE files SET file_archived_at = NULL
+        WHERE file_id = $file_id AND file_client_id = $client_id
+        AND file_deleted_at IS NULL LIMIT 1");
 
     logAudit("File", "Restore", "$session_name restored file $file_name", $client_id, $file_id);
 
@@ -381,7 +515,7 @@ if (isset($_POST['delete_file'])) {
 
     validateCSRFToken();
 
-    enforceUserPermission('module_support', 3);
+    enforceAdminPermission();
 
     $file_id = intval($_POST['file_id']);
 
@@ -396,18 +530,13 @@ if (isset($_POST['delete_file'])) {
         $file_name = escapeSql($locked_file['file_name']);
     } catch (Throwable $e) {
         error_log("File $file_id deletion failed safely: " . $e->getMessage());
-        flashAlert($e instanceof DomainException
-            ? 'This file is retained in the documentation Evidence Locker and cannot be deleted.'
-            : 'The file could not be deleted. Refresh and try again.', 'error');
+        flashAlert($e->getMessage(), 'error');
         redirect();
     }
 
-    // Database deletion commits before its non-transactional filesystem cleanup.
-    $documentation_delete_file_uploads($locked_file);
+    logAudit("Retention", "Soft Delete", "$session_name moved file $file_name to recoverable deletion", $client_id, $file_id);
 
-    logAudit("File", "Delete", "$session_name deleted file $file_name", $client_id);
-
-    flashAlert("File <strong>$file_name</strong> deleted", 'alert');
+    flashAlert("File <strong>$file_name</strong> moved to Deleted Records", 'info');
 
     redirect();
 
@@ -432,8 +561,13 @@ if (isset($_POST['bulk_archive_files'])) {
 
             $file_id = intval($file_id);
 
-            $sql_file = mysqli_query($mysqli,"SELECT file_client_id, file_name FROM files WHERE file_id = $file_id");
+            $sql_file = mysqli_query($mysqli, "SELECT file_client_id, file_name FROM files
+                WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1");
             $row = mysqli_fetch_assoc($sql_file);
+            if (!$row) {
+                $skipped_count++;
+                continue;
+            }
             $client_id = intval($row['file_client_id']);
             $file_name = escapeSql($row['file_name']);
 
@@ -504,91 +638,10 @@ if (isset($_POST['bulk_delete_files'])) {
 
     validateCSRFToken();
 
-    enforceUserPermission('module_support', 3);
+    enforceAdminPermission();
 
-    $file_count = 0;
-    $document_count = 0;
-    $skipped_count = 0;
-    $client_id = 0;
-
-    // Delete file loop
-    if (isset($_POST['file_ids'])) {
-
-        // Get selected file Count
-        foreach($_POST['file_ids'] as $file_id) {
-
-            $file_id = intval($file_id);
-
-            $sql_file = mysqli_query($mysqli,"SELECT * FROM files WHERE file_id = $file_id");
-            $row = mysqli_fetch_assoc($sql_file);
-            $client_id = intval($row['file_client_id']);
-            $file_name = escapeSql($row['file_name']);
-            enforceClientAccess();
-
-            try {
-                $locked_file = $documentation_mutate_file($file_id, $client_id, 'delete');
-                $file_name = escapeSql($locked_file['file_name']);
-            } catch (Throwable $e) {
-                error_log("File $file_id bulk deletion failed safely: " . $e->getMessage());
-                $skipped_count++;
-                continue;
-            }
-
-            // Database deletion commits before its non-transactional filesystem cleanup.
-            $documentation_delete_file_uploads($locked_file);
-            $file_count++;
-
-            logAudit("File", "Delete", "$session_name deleted file $file_name", $client_id);
-        }
-
-    }
-
-    // Delete documents loop
-    if (isset($_POST['document_ids'])) {
-
-        // Get selected document count
-        // Delete document loop
-        foreach($_POST['document_ids'] as $document_id) {
-            $document_id = intval($document_id);
-            // Get Document Name and Client ID for logging
-            $sql = mysqli_query($mysqli,"SELECT document_name, document_client_id FROM documents WHERE document_id = $document_id");
-            $row = mysqli_fetch_assoc($sql);
-            $client_id = intval($row['document_client_id']);
-            $document_name = escapeSql($row['document_name']);
-
-            enforceClientAccess();
-
-            try {
-                $documentation_mutate_document(
-                    $document_id,
-                    $client_id,
-                    $session_user_id,
-                    'delete'
-                );
-            } catch (Throwable $e) {
-                error_log("Document $document_id bulk deletion failed safely: " . $e->getMessage());
-                $skipped_count++;
-                continue;
-            }
-
-            // Delete uploads/document/$document_id if exists
-            removeDirectory($_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id);
-            $document_count++;
-
-            logAudit("Document", "Delete", "$session_name deleted document $document_name and all versions", $client_id);
-
-        }
-
-    }
-
-    logAudit("File", "Bulk Delete", "$session_name deleted $document_count document(s) and $file_count file(s)", $client_id);
-
-    flashAlert("Deleted <strong>$document_count</strong> Documents and <strong>$file_count</strong> files", 'error');
-    if ($skipped_count) {
-        flashAlert("Skipped <strong>$skipped_count</strong> protected or changed documentation record(s).", 'info');
-    }
-
-    redirect();
+    flashAlert('Bulk deletion is disabled. Use Administration > Retention so every file has an owner reason, quarantine result, and restore window.', 'info');
+    redirect('/admin/retention.php');
 
 }
 
@@ -608,14 +661,21 @@ if (isset($_POST['bulk_restore_files'])) {
 
             $file_id = intval($file_id);
 
-            $sql_file = mysqli_query($mysqli,"SELECT file_client_id, file_name FROM files WHERE file_id = $file_id");
+            $sql_file = mysqli_query($mysqli, "SELECT file_client_id, file_name FROM files
+                WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1");
             $row = mysqli_fetch_assoc($sql_file);
+            if (!$row) {
+                $file_count--;
+                continue;
+            }
             $client_id = intval($row['file_client_id']);
             $file_name = escapeSql($row['file_name']);
 
             enforceClientAccess();
 
-            mysqli_query($mysqli,"UPDATE files SET file_archived_at = NULL WHERE file_id = $file_id");
+            mysqli_query($mysqli, "UPDATE files SET file_archived_at = NULL
+                WHERE file_id = $file_id AND file_client_id = $client_id
+                AND file_deleted_at IS NULL LIMIT 1");
 
             logAudit("File", "Restore", "$session_name restored file $file_name", $client_id, $file_id);
         }
@@ -782,19 +842,23 @@ if (isset($_POST['link_asset_to_file'])) {
     $file_id = intval($_POST['file_id']);
     $asset_id = intval($_POST['asset_id']);
 
-    // Get File Name and  Client ID for Logging
-    $sql = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
-    $row = mysqli_fetch_assoc($sql);
-    $file_name = escapeSql($row['file_name']);
-    $client_id = intval($row['file_client_id']);
-
-    enforceClientAccess();
-
-    // Get Asset Name for Logging
-    $asset_name = escapeSql(getFieldById('assets', $asset_id, 'asset_name'));
-
-    // Contact add query
-    mysqli_query($mysqli,"INSERT INTO asset_files SET asset_id = $asset_id, file_id = $file_id");
+    $scope = mysqli_fetch_assoc(retentionDbQuery("SELECT file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1",
+        'Could not locate the active file relation'));
+    if (!$scope) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
+    $client_id = intval($scope['file_client_id']);
+    enforceClientAccess($client_id);
+    try {
+        $relation = retentionMutateScopedFileRelation('asset', $asset_id, $file_id, $client_id, true);
+    } catch (Throwable $e) {
+        flashAlert($e->getMessage(), 'error');
+        redirect();
+    }
+    $file_name = escapeSql($relation['file_name']);
+    $asset_name = escapeSql($relation['target_name']);
 
     logAudit("File", "Link", "$session_name linked asset $asset_name to file $file_name", $client_id, $file_id);
 
@@ -813,18 +877,23 @@ if (isset($_GET['unlink_asset_from_file'])) {
     $asset_id = intval($_GET['asset_id']);
     $file_id = intval($_GET['file_id']);
 
-    // Get File Name and  Client ID for Logging
-    $sql = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
-    $row = mysqli_fetch_assoc($sql);
-    $file_name = escapeSql($row['file_name']);
-    $client_id = intval($row['file_client_id']);
-
-    enforceClientAccess();
-
-    // Get Asset Name for Logging
-    $asset_name = escapeSql(getFieldById('assets', $asset_id, 'asset_name'));
-
-    mysqli_query($mysqli,"DELETE FROM asset_files WHERE asset_id = $asset_id AND file_id = $file_id");
+    $scope = mysqli_fetch_assoc(retentionDbQuery("SELECT file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1",
+        'Could not locate the active file relation'));
+    if (!$scope) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
+    $client_id = intval($scope['file_client_id']);
+    enforceClientAccess($client_id);
+    try {
+        $relation = retentionMutateScopedFileRelation('asset', $asset_id, $file_id, $client_id, false);
+    } catch (Throwable $e) {
+        flashAlert($e->getMessage(), 'error');
+        redirect();
+    }
+    $file_name = escapeSql($relation['file_name']);
+    $asset_name = escapeSql($relation['target_name']);
 
     logAudit("File", "Link", "$session_name unlinked asset $asset_name from file $file_name", $client_id, $file_id);
 

@@ -143,7 +143,7 @@ $ticket_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     SUM(ticket_sla_id > 0 AND (ticket_response_sla_alert_stage = 1 OR ticket_resolution_sla_alert_stage = 1)) AS sla_at_risk,
     SUM(ticket_sla_id > 0 AND (ticket_response_sla_alert_stage = 2 OR ticket_resolution_sla_alert_stage = 2 OR ticket_response_sla_met = 0 OR ticket_resolution_sla_met = 0)) AS sla_breached
     FROM tickets
-    WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $ticket_scope"));
+    WHERE ticket_deleted_at IS NULL AND ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $ticket_scope"));
 
 $level_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     COUNT(*) AS managed_assets,
@@ -365,7 +365,7 @@ $sql_open_incidents = mysqli_query($mysqli, "SELECT automation_incidents.*,
     LEFT JOIN locations ON automation_incident_location_id = location_id
     LEFT JOIN assets ON automation_incident_asset_id = asset_id
     LEFT JOIN services ON automation_incident_service_id = service_id
-    LEFT JOIN tickets ON automation_incident_ticket_id = ticket_id
+    LEFT JOIN tickets ON automation_incident_ticket_id = ticket_id AND ticket_deleted_at IS NULL
     WHERE automation_incident_status = 'Open' $incident_scope $source_filter_incident
     ORDER BY CASE LOWER(automation_incident_severity)
         WHEN 'emergency' THEN 1 WHEN 'critical' THEN 2 WHEN 'high' THEN 3

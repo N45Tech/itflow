@@ -172,7 +172,7 @@ if (isset($_GET['reopen_ticket'], $_GET['url_key'])) {
         }
         $locked_ticket = runbookLockTicketForReopen($ticket_id);
         $key_row = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_url_key FROM tickets
-            WHERE ticket_id = $ticket_id LIMIT 1", 'Could not verify the guest ticket link'));
+            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not verify the guest ticket link'));
         if (!$key_row || !hash_equals((string) $key_row['ticket_url_key'], (string) $_GET['url_key'])) {
             throw new RuntimeException('Invalid or expired ticket link');
         }
@@ -182,6 +182,7 @@ if (isset($_GET['reopen_ticket'], $_GET['url_key'])) {
         }
         runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
             WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
+            AND ticket_deleted_at IS NULL
             AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
             AND ticket_closed_at IS NULL LIMIT 1", 'Could not reopen the ticket');
         if (mysqli_affected_rows($mysqli) !== 1) {
@@ -221,7 +222,7 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
         documentationLockClientTicket($ticket_id);
         $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
         $key_row = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_url_key FROM tickets
-            WHERE ticket_id = $ticket_id LIMIT 1", 'Could not verify the guest ticket link'));
+            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not verify the guest ticket link'));
         if (!$key_row || !hash_equals((string) $key_row['ticket_url_key'], (string) $_GET['url_key'])) {
             throw new RuntimeException('Invalid or expired ticket link');
         }
@@ -235,6 +236,7 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
         }
         runbookDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW()
             WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
+            AND ticket_deleted_at IS NULL
             AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
             AND ticket_closed_at IS NULL LIMIT 1", 'Could not close the ticket');
         if (mysqli_affected_rows($mysqli) !== 1) {
@@ -270,15 +272,18 @@ if (isset($_GET['add_ticket_feedback'], $_GET['url_key'])) {
     $feedback = escapeSql($_GET['feedback']);
 
     // Select only the necessary fields
-    $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key' AND ticket_closed_at IS NOT NULL");
+    $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_id = $ticket_id
+        AND ticket_url_key = '$url_key' AND ticket_closed_at IS NOT NULL
+        AND ticket_deleted_at IS NULL");
 
     if (mysqli_num_rows($sql) == 1) {
         // Add feedback
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_feedback = '$feedback' WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'");
+        mysqli_query($mysqli, "UPDATE tickets SET ticket_feedback = '$feedback' WHERE ticket_id = $ticket_id
+            AND ticket_url_key = '$url_key' AND ticket_deleted_at IS NULL");
 
         // Notify on bad feedback
         if ($feedback == "Bad") {
-            $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+            $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
             $ticket_prefix = escapeSql($ticket_details['ticket_prefix']);
             $ticket_number = intval($ticket_details['ticket_number']);
 
@@ -334,7 +339,7 @@ if (isset($_POST['decide_ticket_task_approval'])) {
         ticket_client_id
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
-        INNER JOIN tickets ON ticket_id = task_ticket_id
+        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
         WHERE approval_id = $approval_id
         AND approval_scope = 'client'
         AND approval_status = 'pending'

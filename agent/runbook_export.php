@@ -350,7 +350,7 @@ function runbookExportStateActor($event) {
 
 $ticket_id = intval($_GET['ticket_id'] ?? 0);
 $scope_result = runbookExportQuery("SELECT ticket_id, ticket_client_id
-    FROM tickets WHERE ticket_id = $ticket_id LIMIT 1", 'Could not scope runbook closeout');
+    FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not scope runbook closeout');
 $scope_ticket = mysqli_fetch_assoc($scope_result);
 if (!$scope_ticket) {
     http_response_code(404);
@@ -372,7 +372,7 @@ if (!mysqli_begin_transaction($mysqli)) {
 // Every workflow mutation locks the ticket first. Retaining that parent lock
 // makes all definition/runtime reads below one coherent completed snapshot.
 $locked_ticket_result = runbookExportQuery("SELECT ticket_id, ticket_client_id
-    FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not lock runbook closeout');
+    FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock runbook closeout');
 $locked_ticket = mysqli_fetch_assoc($locked_ticket_result);
 if (!$locked_ticket || intval($locked_ticket['ticket_client_id']) !== $client_id) {
     runbookExportConflict('The ticket changed while its closeout was being prepared. Try the export again.');
@@ -386,7 +386,7 @@ $execution_result = runbookExportQuery("SELECT
     runbook_version_id, runbook_version_number, runbook_version_definition_hash,
     runbook_version_key, runbook_version_name, runbook_version_type
     FROM runbook_executions
-    INNER JOIN tickets ON ticket_id = runbook_execution_ticket_id
+    INNER JOIN tickets ON ticket_id = runbook_execution_ticket_id AND ticket_deleted_at IS NULL
     INNER JOIN runbook_versions ON runbook_version_id = runbook_execution_version_id
     LEFT JOIN clients ON client_id = ticket_client_id
     WHERE runbook_execution_ticket_id = $ticket_id LIMIT 1", 'Could not load runbook closeout');

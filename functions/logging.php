@@ -97,13 +97,15 @@ function logTicketHistory($ticket_id, $description) {
         $mysqli,
         "SELECT ticket_status_name FROM tickets
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_id = $ticket_id"
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
     );
-    if ($sql && mysqli_num_rows($sql)) {
-        $status_name = escapeSql(mysqli_fetch_assoc($sql)['ticket_status_name']);
+    if (!$sql || !mysqli_num_rows($sql)) {
+        return false;
     }
+    $status_name = escapeSql(mysqli_fetch_assoc($sql)['ticket_status_name']);
 
     mysqli_query($mysqli, "INSERT INTO ticket_history SET ticket_history_status = '$status_name', ticket_history_description = '$description', ticket_history_ticket_id = $ticket_id");
+    return mysqli_affected_rows($mysqli) === 1;
 }
 
 function logApp($category, $type, $details) {

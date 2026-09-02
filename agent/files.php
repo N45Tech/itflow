@@ -115,6 +115,7 @@ function displayFolders($parent_folder_id, $client_id, $indent = 0, $render_root
              FROM files
              WHERE file_folder_id = $folder_id
              AND file_client_id = $client_id
+             AND file_deleted_at IS NULL
              AND file_$archive_query"
         ));
         $num_files = intval($row_files['num']);
@@ -190,7 +191,7 @@ function displayFolders($parent_folder_id, $client_id, $indent = 0, $render_root
                 <?php if ($session_user_role == 3 && $num_total == 0 && $subfolder_count == 0) { ?>
                     <div class="dropdown-divider"></div>
                     <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?delete_folder=<?= $folder_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                        <i class="fas fa-fw fa-trash mr-2"></i>Delete
+                        <i class="fas fa-fw fa-trash-restore mr-2"></i>Move to Deleted Records
                     </a>
                 <?php } ?>
             </div>
@@ -231,6 +232,7 @@ if ($view == 1) {
             "SELECT SQL_CALC_FOUND_ROWS * FROM files
              LEFT JOIN users ON file_created_by = user_id
              WHERE file_client_id = $client_id
+             AND file_deleted_at IS NULL
              AND file_$archive_query
              AND (file_name LIKE '%$q%' OR file_ext LIKE '%$q%' OR file_description LIKE '%$q%')
              $query_images
@@ -244,6 +246,7 @@ if ($view == 1) {
              LEFT JOIN users ON file_created_by = user_id
              WHERE file_client_id = $client_id
              AND file_folder_id = $folder_id
+             AND file_deleted_at IS NULL
              AND file_$archive_query
              AND (file_name LIKE '%$q%' OR file_ext LIKE '%$q%' OR file_description LIKE '%$q%')
              $query_images
@@ -287,6 +290,7 @@ if ($view == 1) {
          FROM files
          LEFT JOIN users ON file_created_by = user_id
          WHERE file_client_id = $client_id
+         AND file_deleted_at IS NULL
          AND file_$archive_query
          $file_folder_snippet
          $file_search_snippet"
@@ -420,7 +424,7 @@ if ($view == 1) {
 // ---------------------------------------------
 // Root folder count (for "/" badge)
 // ---------------------------------------------
-$row_root_files = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('file_id') AS num FROM files WHERE file_folder_id = 0 AND file_client_id = $client_id AND file_$archive_query"));
+$row_root_files = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('file_id') AS num FROM files WHERE file_folder_id = 0 AND file_client_id = $client_id AND file_deleted_at IS NULL AND file_$archive_query"));
 $row_root_docs  = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('document_id') AS num FROM documents WHERE document_folder_id = 0 AND document_client_id = $client_id AND document_$archive_query"));
 $num_root_items = intval($row_root_files['num']) + intval($row_root_docs['num']);
 
@@ -545,10 +549,11 @@ $num_root_items = intval($row_root_files['num']) + intval($row_root_docs['num'])
                                                 <i class="fas fa-fw fa-redo mr-2"></i>Restore Files
                                             </button>
                                             <div class="dropdown-divider"></div>
-                                            <button class="dropdown-item text-danger text-bold"
-                                                type="submit" form="bulkActions" name="bulk_delete_files">
-                                                <i class="fas fa-fw fa-trash mr-2"></i>Delete Files
-                                            </button>
+                                            <?php if (!empty($session_is_admin)) { ?>
+                                                <a class="dropdown-item text-danger text-bold" href="/admin/retention.php">
+                                                    <i class="fas fa-fw fa-trash-restore mr-2"></i>Retention Center
+                                                </a>
+                                            <?php } ?>
                                             <?php } else { ?>
                                             <div class="dropdown-divider"></div>
                                             <button class="dropdown-item text-danger"
@@ -644,10 +649,10 @@ $num_root_items = intval($row_root_files['num']) + intval($row_root_docs['num'])
                                                 <a class="dropdown-item text-info" href="post.php?restore_file=<?= $file_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                                                     <i class="fas fa-fw fa-redo mr-2"></i>Restore
                                                 </a>
-                                                <?php if ($session_user_role == 3) { ?>
+                                                <?php if (!empty($session_is_admin)) { ?>
                                                     <div class="dropdown-divider"></div>
                                                     <a class="dropdown-item text-danger text-bold" href="#" data-toggle="modal" data-target="#deleteFileModal" onclick="populateFileDeleteModal(<?= "$file_id , '$file_name'" ?>)">
-                                                        <i class="fas fa-fw fa-trash mr-2"></i>Delete
+                                                        <i class="fas fa-fw fa-trash-restore mr-2"></i>Move to Recoverable Deletion
                                                     </a>
                                                 <?php } ?>
                                             <?php } else { ?>
@@ -812,10 +817,10 @@ $num_root_items = intval($row_root_files['num']) + intval($row_root_docs['num'])
                                                             <a class="dropdown-item text-info" href="post.php?restore_file=<?= $file_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                                                                 <i class="fas fa-fw fa-redo mr-2"></i>Restore
                                                             </a>
-                                                            <?php if ($session_user_role == 3) { ?>
+                                                            <?php if (!empty($session_is_admin)) { ?>
                                                                 <div class="dropdown-divider"></div>
                                                                 <a class="dropdown-item text-danger text-bold" href="#" data-toggle="modal" data-target="#deleteFileModal" onclick="populateFileDeleteModal(<?= "$file_id , '$file_name'" ?>)">
-                                                                    <i class="fas fa-fw fa-trash mr-2"></i>Delete
+                                                                    <i class="fas fa-fw fa-trash-restore mr-2"></i>Move to Recoverable Deletion
                                                                 </a>
                                                             <?php } ?>
                                                         <?php } else { ?>
@@ -934,7 +939,7 @@ $num_root_items = intval($row_root_files['num']) + intval($row_root_docs['num'])
                                                             <?php if ($session_user_role == 3) { ?>
                                                                 <div class="dropdown-divider"></div>
                                                                 <a class="dropdown-item text-danger text-bold" href="post.php?delete_document=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                                                    <i class="fas fa-fw fa-trash mr-2"></i>Delete
+                                                                    <i class="fas fa-fw fa-trash-restore mr-2"></i>Move to Deleted Records
                                                                 </a>
                                                             <?php } ?>
                                                         <?php } else { ?>

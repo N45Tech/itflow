@@ -1244,6 +1244,7 @@ function portalRequestProcessCustomActionOutbox($submission_id = 0) {
             FROM portal_request_submissions s
             INNER JOIN tickets t ON t.ticket_id = s.portal_request_submission_ticket_id
                 AND t.ticket_client_id = s.portal_request_submission_client_id
+                AND t.ticket_deleted_at IS NULL
             WHERE s.portal_request_submission_id = $submission_id
             AND s.portal_request_submission_ticket_id = $ticket_id
             AND s.portal_request_submission_status = 'Initiated'",

@@ -7,7 +7,7 @@ enforceUserPermission('module_support', 2);
 $ticket_reply_id = intval($_GET['id']);
 
 $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_reply FROM ticket_replies
-    LEFT JOIN tickets ON ticket_id = ticket_reply_ticket_id
+    INNER JOIN tickets ON ticket_id = ticket_reply_ticket_id AND ticket_deleted_at IS NULL
     WHERE ticket_reply_id = $ticket_reply_id
     LIMIT 1"
 );

@@ -491,7 +491,7 @@ function getTicketSlaConsumedMinutes($ticket_id, ?array $calendar = null, bool $
     }
 
     if (!$has_history) {
-        $ticket_sql = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_resolved_at, ticket_closed_at FROM tickets WHERE ticket_id = $ticket_id LIMIT 1");
+        $ticket_sql = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_resolved_at, ticket_closed_at FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
         if (!$ticket_sql) {
             if ($strict) {
                 throw new RuntimeException('Could not load the ticket for consumed SLA time: ' . mysqli_error($mysqli));
@@ -578,7 +578,7 @@ function syncTicketSlaClock($ticket_id, bool $strict = false)
         FROM tickets
         LEFT JOIN slas ON ticket_sla_id = sla_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_id = $ticket_id
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
         LIMIT 1", 'Could not load the ticket SLA clock');
     if (!$sql || !mysqli_num_rows($sql)) {
         return false;
@@ -637,7 +637,8 @@ function syncTicketSlaClock($ticket_id, bool $strict = false)
             $alert_stage = intval($row['ticket_resolution_sla_alert_stage']) == 2 ? 2 : 0;
             $clock_query("UPDATE tickets SET ticket_resolution_due_at = '$resolution_due_at',
                 ticket_resolution_due_at_utc = '$resolution_due_at_utc',
-                ticket_resolution_sla_alert_stage = $alert_stage WHERE ticket_id = $ticket_id",
+                ticket_resolution_sla_alert_stage = $alert_stage WHERE ticket_id = $ticket_id
+                AND ticket_deleted_at IS NULL",
                 'Could not rebase the ticket SLA clock');
         }
 
@@ -821,7 +822,7 @@ function applyTicketSla(
         // then lock and revalidate the ticket. Holding both through selection,
         // stamping, and the decision insert closes hard-delete races.
         $owner_sql = $sla_query("SELECT ticket_client_id FROM tickets
-            WHERE ticket_id = $ticket_id LIMIT 1",
+            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1",
             'Could not locate the ticket client for SLA selection');
         if (!mysqli_num_rows($owner_sql)) {
             throw new RuntimeException('Ticket not found while applying its SLA');
@@ -853,7 +854,7 @@ function applyTicketSla(
             ticket_resolution_due_at, ticket_resolution_due_at_utc
             FROM tickets LEFT JOIN categories
                 ON category_id = ticket_category AND category_type = 'Ticket'
-            WHERE tickets.ticket_id = $ticket_id LIMIT 1 FOR UPDATE",
+            WHERE tickets.ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE",
             'Could not lock the ticket for SLA selection');
         if (!mysqli_num_rows($sql)) {
             throw new RuntimeException('Ticket not found while applying its SLA');
@@ -1059,7 +1060,8 @@ function applyTicketSla(
             ticket_resolution_sla_met = $resolution_met_set,
             ticket_response_sla_alert_stage = 0,
             ticket_resolution_sla_alert_stage = 0
-            WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id",
+            WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+            AND ticket_deleted_at IS NULL",
             'Could not stamp the ticket SLA terms');
 
         $verification = mysqli_fetch_assoc($sla_query("SELECT ticket_client_id, ticket_priority,
@@ -1070,7 +1072,7 @@ function applyTicketSla(
             ticket_sla_business_hours_end, ticket_sla_timezone,
             ticket_response_due_at, ticket_response_due_at_utc,
             ticket_resolution_due_at, ticket_resolution_due_at_utc
-            FROM tickets WHERE ticket_id = $ticket_id LIMIT 1",
+            FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1",
             'Could not verify the stamped ticket SLA terms'));
         if (!$verification || intval($verification['ticket_client_id']) !== $client_id
             || (string) $verification['ticket_priority'] !== (string) $row['ticket_priority']
@@ -1128,7 +1130,7 @@ function setTicketFirstResponse($ticket_id)
     $ticket_id = intval($ticket_id);
 
     $sql = mysqli_query($mysqli, "SELECT ticket_first_response_at, ticket_response_due_at,
-        ticket_response_due_at_utc FROM tickets WHERE ticket_id = $ticket_id LIMIT 1");
+        ticket_response_due_at_utc FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
     if (!$sql || !mysqli_num_rows($sql)) {
         return;
     }
@@ -1144,7 +1146,7 @@ function setTicketFirstResponse($ticket_id)
         $response_met_set = time() <= $response_due_epoch ? 1 : 0;
     }
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_first_response_at = NOW(), ticket_response_sla_met = $response_met_set WHERE ticket_id = $ticket_id");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_first_response_at = NOW(), ticket_response_sla_met = $response_met_set WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
 }
 
 // Judge the resolution SLA when a ticket is resolved (or closed without being
@@ -1158,7 +1160,7 @@ function setTicketResolutionSlaMet($ticket_id)
 
     $sql = mysqli_query($mysqli, "SELECT ticket_resolution_due_at, ticket_resolution_due_at_utc,
         ticket_resolved_at, ticket_resolution_sla_met
-        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1");
+        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
     if (!$sql || !mysqli_num_rows($sql)) {
         return;
     }
@@ -1182,7 +1184,7 @@ function setTicketResolutionSlaMet($ticket_id)
         ? slaAppTimestampInstant($row['ticket_resolved_at'])->getTimestamp() : time();
     $resolution_met = $ended_at <= $resolution_due_epoch ? 1 : 0;
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_resolution_sla_met = $resolution_met WHERE ticket_id = $ticket_id");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_resolution_sla_met = $resolution_met WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
 
     syncTicketSlaClock($ticket_id);
 }
@@ -1206,7 +1208,7 @@ function resetTicketResolutionSla($ticket_id)
         ticket_sla_business_days, ticket_sla_business_hours_start,
         ticket_sla_business_hours_end, ticket_sla_timezone, sla_resolution_minutes
         FROM tickets LEFT JOIN slas ON ticket_sla_id = sla_id
-        WHERE ticket_id = $ticket_id LIMIT 1");
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
     if ($sql && mysqli_num_rows($sql)) {
         $row = mysqli_fetch_assoc($sql);
         $resolution_minutes = intval(slaTicketTargetMinutes($row, 'resolution'));
@@ -1222,7 +1224,7 @@ function resetTicketResolutionSla($ticket_id)
         }
     }
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_resolution_sla_met = NULL, ticket_resolution_sla_alert_stage = 0 WHERE ticket_id = $ticket_id");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_resolution_sla_met = NULL, ticket_resolution_sla_alert_stage = 0 WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
 
     syncTicketSlaClock($ticket_id);
 }

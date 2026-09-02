@@ -50,10 +50,10 @@
                         </a>
                     <?php } ?>
 
-                    <?php if (lookupUserPermission("module_client") >= 3 && $client_archived_at) { ?>
+                    <?php if (!empty($session_is_admin) && $client_archived_at) { ?>
                     <div class="dropdown-divider"></div>
-                    <a class="dropdown-item text-danger text-bold" href="#" data-toggle="modal" data-target="#deleteClientModal<?= $client_id ?>">
-                        <i class="fas fa-fw fa-trash mr-2"></i>Delete Client
+                    <a class="dropdown-item text-danger text-bold" href="/admin/retention.php">
+                        <i class="fas fa-fw fa-trash-restore mr-2"></i>Retention Center
                     </a>
                     <?php } ?>
 
@@ -190,5 +190,4 @@
 
 <?php
 // require_once "modals/client/client_credit_add.php"; --Credit Not Ready 2025-08-27
-require_once "modals/client/client_delete.php";
 require_once "modals/client/client_download_pdf.php";

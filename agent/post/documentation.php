@@ -24,7 +24,7 @@ $documentation_load_ticket = static function ($ticket_id) use ($mysqli) {
     return mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT ticket_id, ticket_client_id,
         ticket_prefix, ticket_number, ticket_documentation_impact,
         ticket_configuration_change, ticket_resolved_at, ticket_closed_at
-        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1",
+        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1",
         'Could not load the ticket documentation context'));
 };
 
@@ -210,6 +210,7 @@ if (isset($_POST['verify_documentation_obligation'])) {
         $verification_ticket = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT ticket.ticket_id
             FROM ticket_documentation_obligations link
             INNER JOIN tickets ticket ON ticket.ticket_id = link.ticket_documentation_obligation_ticket_id
+                AND ticket.ticket_deleted_at IS NULL
             WHERE link.ticket_documentation_obligation_ticket_id = $ticket_id
             AND link.ticket_documentation_obligation_obligation_id = $obligation_id
             AND link.ticket_documentation_obligation_client_id = $client_id
@@ -243,7 +244,8 @@ if (isset($_POST['verify_documentation_obligation'])) {
         $evidence_file_id = intval($_POST['evidence_file_id'] ?? 0);
         $evidence_file = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT file_id FROM files
             WHERE file_id = $evidence_file_id AND file_client_id = $client_id
-            AND file_archived_at IS NULL LIMIT 1", 'Could not validate documentation file evidence'));
+            AND file_archived_at IS NULL AND file_deleted_at IS NULL LIMIT 1",
+            'Could not validate documentation file evidence'));
         if (!$evidence_file) {
             flashAlert('Select active file evidence belonging to this client.', 'error');
             redirect("documentation.php?client_id=$client_id&owner=all");
@@ -368,6 +370,7 @@ if (isset($_POST['link_task_documentation_obligation'])) {
     $task = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT task.task_id,
         task.task_ticket_id, ticket.ticket_client_id
         FROM tasks task INNER JOIN tickets ticket ON ticket.ticket_id = task.task_ticket_id
+            AND ticket.ticket_deleted_at IS NULL
         WHERE task.task_id = $task_id AND task.task_ticket_id = $ticket_id LIMIT 1",
         'Could not validate the task documentation context'));
     if (!$task || !intval($task['ticket_client_id'])) {

@@ -31,6 +31,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
             LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
             LEFT JOIN categories ON ticket_category = category_id
             WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+             AND ticket_deleted_at IS NULL
              $ticket_contact_snippet"
     );
 
@@ -66,7 +67,8 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
             $mysqli,
             "SELECT ticket_attachment_id, ticket_attachment_name FROM ticket_attachments
             WHERE ticket_attachment_reply_id IS NULL
-            AND ticket_attachment_ticket_id = $ticket_id"
+            AND ticket_attachment_ticket_id = $ticket_id
+            AND ticket_attachment_deleted_at IS NULL"
         );
 
         // Get Tasks
@@ -318,7 +320,8 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                 $mysqli,
                 "SELECT ticket_attachment_id, ticket_attachment_name FROM ticket_attachments
                         WHERE ticket_attachment_reply_id = $ticket_reply_id
-                        AND ticket_attachment_ticket_id = $ticket_id"
+                        AND ticket_attachment_ticket_id = $ticket_id
+                        AND ticket_attachment_deleted_at IS NULL"
             );
             ?>
 

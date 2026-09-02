@@ -203,6 +203,7 @@ if (isset($_POST['add_quote_to_invoice'])) {
     $sql_ticket = "SELECT ticket_id, ticket_prefix, ticket_number
         FROM tickets
         WHERE ticket_quote_id = $quote_id
+        AND ticket_deleted_at IS NULL
         LIMIT 1";
     $result_ticket = mysqli_query($mysqli, $sql_ticket);
 
@@ -211,7 +212,7 @@ if (isset($_POST['add_quote_to_invoice'])) {
         $ticket_prefix = escapeSql($row['ticket_prefix']);
         $ticket_number = intval($row['ticket_number']);
 
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_invoice_id = $new_invoice_id WHERE ticket_id = $ticket_id AND ticket_invoice_id = '0'"); // Only if ticket doesn't already have an invoice
+        mysqli_query($mysqli, "UPDATE tickets SET ticket_invoice_id = $new_invoice_id WHERE ticket_id = $ticket_id AND ticket_invoice_id = '0' AND ticket_deleted_at IS NULL"); // Only if ticket doesn't already have an invoice
     }
 
     triggerCustomAction('invoice_create', $new_invoice_id);

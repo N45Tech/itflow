@@ -48,6 +48,7 @@ ob_start();
                             AND document_files.document_id = $document_id
                         WHERE file_client_id = $client_id
                         AND file_archived_at IS NULL
+                        AND file_deleted_at IS NULL
                         AND document_files.file_id IS NULL
                         ORDER BY folder_name ASC, file_name ASC
                     ");

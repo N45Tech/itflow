@@ -83,15 +83,29 @@ function runbookLockTicketForTransition($ticket_id, $allow_resolved = false) {
         throw new RuntimeException('A ticket is required for this workflow mutation');
     }
 
+    $prelock = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_client_id FROM tickets
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1",
+        'Could not locate the workflow ticket client'));
+    if (!$prelock) {
+        throw new RuntimeException('The workflow ticket no longer exists');
+    }
+    $client_id = intval($prelock['ticket_client_id']);
+    documentationLockClient($client_id);
     $ticket = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_id, ticket_client_id,
         ticket_contact_id, ticket_project_id, ticket_assigned_to, ticket_status,
         ticket_created_at, ticket_prefix, ticket_number, ticket_subject,
         ticket_configuration_change, ticket_documentation_impact,
         ticket_documentation_assessed_by, ticket_documentation_assessed_at,
-        ticket_resolved_at, ticket_closed_at
-        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not lock the workflow ticket'));
+        ticket_resolved_at, ticket_closed_at, ticket_deleted_at
+        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the workflow ticket'));
     if (!$ticket) {
         throw new RuntimeException('The workflow ticket no longer exists');
+    }
+    if (intval($ticket['ticket_client_id']) !== $client_id) {
+        throw new RuntimeException('The workflow ticket changed client scope; refresh and try again');
+    }
+    if (!empty($ticket['ticket_deleted_at'])) {
+        throw new RuntimeException('Deleted tickets cannot be changed outside the retention workflow');
     }
     if (intval($ticket['ticket_status']) === 5 || !empty($ticket['ticket_closed_at'])) {
         throw new RuntimeException('Closed tickets cannot be changed');
@@ -115,7 +129,7 @@ function runbookLockOpenTicket($ticket_id) {
 function runbookLockTicketForReopen($ticket_id) {
     $ticket_id = intval($ticket_id);
     $prelock_ticket = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_project_id
-        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1", 'Could not locate the ticket project'));
+        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not locate the ticket project'));
     if (!$prelock_ticket) {
         throw new RuntimeException('The workflow ticket no longer exists');
     }
@@ -1308,7 +1322,7 @@ function instantiateRunbookForTicket($ticket_id, $ticket_template_id, $context =
     $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_client_id,
         ticket_contact_id, ticket_assigned_to, ticket_project_id, ticket_created_at,
         ticket_prefix, ticket_number, ticket_subject
-        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
     if (!$ticket) {
         if ($caller_transaction) {
             throw new RuntimeException('The runbook ticket could not be loaded');

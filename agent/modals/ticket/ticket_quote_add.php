@@ -17,7 +17,7 @@ $ticket_sql = mysqli_query(
     LEFT JOIN assets ON ticket_asset_id = asset_id
     LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
     LEFT JOIN categories ON ticket_category = category_id
-    WHERE ticket_id = $ticket_id
+    WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
     " . clientScopeSql('ticket_client_id') . "
     LIMIT 1"
 );

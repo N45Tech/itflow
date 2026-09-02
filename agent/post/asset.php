@@ -1058,19 +1058,23 @@ if (isset($_POST['link_asset_to_file'])) {
     $file_id = intval($_POST['file_id']);
     $asset_id = intval($_POST['asset_id']);
 
-    // Get file Name and Client ID for logging
-    $sql_file = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
-    $row = mysqli_fetch_assoc($sql_file);
-    $file_name = escapeSql($row['file_name']);
-    $client_id = intval($row['file_client_id']);
-
-    enforceClientAccess();
-
-    // Get Asset Name for logging
-    $asset_name = escapeSql(getFieldById('assets', $asset_id, 'asset_name'));
-
-    // asset add query
-    mysqli_query($mysqli,"INSERT INTO asset_files SET asset_id = $asset_id, file_id = $file_id");
+    $scope = mysqli_fetch_assoc(retentionDbQuery("SELECT file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1",
+        'Could not locate the active file relation'));
+    if (!$scope) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
+    $client_id = intval($scope['file_client_id']);
+    enforceClientAccess($client_id);
+    try {
+        $relation = retentionMutateScopedFileRelation('asset', $asset_id, $file_id, $client_id, true);
+    } catch (Throwable $e) {
+        flashAlert($e->getMessage(), 'error');
+        redirect();
+    }
+    $file_name = escapeSql($relation['file_name']);
+    $asset_name = escapeSql($relation['target_name']);
 
     logAudit("File", "Link", "$session_name linked asset $asset_name to file $file_name", $client_id, $file_id);
 
@@ -1089,18 +1093,23 @@ if (isset($_GET['unlink_asset_from_file'])) {
     $asset_id = intval($_GET['asset_id']);
     $file_id = intval($_GET['file_id']);
 
-    // Get file Name and Client ID for logging
-    $sql_file = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
-    $row = mysqli_fetch_assoc($sql_file);
-    $file_name = escapeSql($row['file_name']);
-    $client_id = intval($row['file_client_id']);
-
-    enforceClientAccess();
-
-    // Get Asset Name for logging
-    $asset_name = escapeSql(getFieldById('assets', $asset_id, 'asset_name'));
-
-    mysqli_query($mysqli,"DELETE FROM asset_files WHERE asset_id = $asset_id AND file_id = $file_id");
+    $scope = mysqli_fetch_assoc(retentionDbQuery("SELECT file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1",
+        'Could not locate the active file relation'));
+    if (!$scope) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
+    $client_id = intval($scope['file_client_id']);
+    enforceClientAccess($client_id);
+    try {
+        $relation = retentionMutateScopedFileRelation('asset', $asset_id, $file_id, $client_id, false);
+    } catch (Throwable $e) {
+        flashAlert($e->getMessage(), 'error');
+        redirect();
+    }
+    $file_name = escapeSql($relation['file_name']);
+    $asset_name = escapeSql($relation['target_name']);
 
     logAudit("File", "Unlink", "$session_name unlinked asset $asset_name from file $file_name", $client_id, $file_id);
 

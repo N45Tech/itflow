@@ -47,6 +47,7 @@ $sql = mysqli_query($mysqli,
      INNER JOIN documents d ON df.document_id = d.document_id
      WHERE f.file_id = $file_id
      AND f.file_client_id = $session_client_id
+     AND f.file_deleted_at IS NULL
      AND d.document_client_id = $session_client_id
      AND d.document_client_visible = 1
      AND d.document_archived_at IS NULL
@@ -63,12 +64,8 @@ $file_name = $row['file_name'];
 $file_name_escaped = escapeSql($row['file_name']);
 $file_reference_name = $row['file_reference_name'];
 
-// Build the on-disk path
-$uploads_base = realpath(__DIR__ . "/../uploads");
-$file_path = realpath(__DIR__ . "/../uploads/clients/$session_client_id/$file_reference_name");
-
-// Path traversal guard - resolved path must stay inside uploads
-if ($file_path === false || $uploads_base === false || strpos($file_path, $uploads_base) !== 0) {
+$file_path = retentionResolveReadableUploadFile("clients/$session_client_id", (string) $file_reference_name);
+if ($file_path === null) {
     http_response_code(404);
     exit("File not found");
 }
@@ -118,6 +115,8 @@ logAudit("File", "Download", "Client contact $session_contact_name viewed file $
 
 // Send the file
 header("Content-Type: $file_mime_type");
+header('Cache-Control: private, no-store, max-age=0');
+header('Pragma: no-cache');
 header("Content-Disposition: $disposition; filename=\"$safe_file_name\"");
 header("Content-Length: " . filesize($file_path));
 header("X-Content-Type-Options: nosniff");

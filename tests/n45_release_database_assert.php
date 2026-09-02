@@ -105,6 +105,92 @@ try {
         }
         $assert(($ledger[$id]['migration_applied_by'] ?? '') === $expected_source, "$id has the wrong ledger source for the $expected_source_mode path");
     }
+
+    // Goal 10 release contract: enumerate every 0018 table/column/index from
+    // the manifest independently of the generic migration-status summary, and
+    // verify the owner-decision seed rows that make fresh installs usable.
+    $retention_fingerprint = $definitions['n45-0018-retention-controls']['fingerprint'] ?? [];
+    $db_escape = static fn (string $value): string => mysqli_real_escape_string($mysqli, $value);
+    foreach (($retention_fingerprint['tables'] ?? []) as $table) {
+        $table_sql = $db_escape((string) $table);
+        $result = mysqli_query($mysqli, "SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = '$table_sql'");
+        $assert($result !== false && intval(mysqli_fetch_row($result)[0] ?? 0) === 1,
+            "Retention table $table is missing from the release database");
+    }
+    foreach (($retention_fingerprint['columns'] ?? []) as $table => $columns) {
+        foreach (array_keys($columns) as $column) {
+            $table_sql = $db_escape((string) $table);
+            $column_sql = $db_escape((string) $column);
+            $result = mysqli_query($mysqli, "SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = '$table_sql'
+                AND column_name = '$column_sql'");
+            $assert($result !== false && intval(mysqli_fetch_row($result)[0] ?? 0) === 1,
+                "Retention column $table.$column is missing from the release database");
+        }
+    }
+    foreach (($retention_fingerprint['indexes'] ?? []) as $table => $indexes) {
+        foreach (array_keys($indexes) as $index) {
+            $table_sql = $db_escape((string) $table);
+            $index_sql = $db_escape((string) $index);
+            $result = mysqli_query($mysqli, "SELECT COUNT(*) FROM information_schema.statistics
+                WHERE table_schema = DATABASE() AND table_name = '$table_sql'
+                AND index_name = '$index_sql'");
+            $assert($result !== false && intval(mysqli_fetch_row($result)[0] ?? 0) > 0,
+                "Retention index $table.$index is missing from the release database");
+        }
+    }
+    $trigger_rows = mysqli_query($mysqli, "SELECT trigger_name, event_manipulation,
+        action_timing, action_statement FROM information_schema.triggers
+        WHERE trigger_schema = DATABASE() AND event_object_table = 'retention_events'");
+    $observed_triggers = [];
+    if ($trigger_rows !== false) {
+        while ($trigger = mysqli_fetch_assoc($trigger_rows)) {
+            $observed_triggers[$trigger['trigger_name']] = [
+                strtoupper((string) $trigger['event_manipulation']),
+                strtoupper((string) $trigger['action_timing']),
+                strtolower(trim((string) $trigger['action_statement'])),
+            ];
+        }
+    }
+    $expected_trigger_statement = strtolower(
+        "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'retention_events is append-only'"
+    );
+    $assert(($observed_triggers['retention_events_no_update'] ?? null)
+        === ['UPDATE', 'BEFORE', $expected_trigger_statement],
+        'The retention event UPDATE immutability trigger is missing or drifted');
+    $assert(($observed_triggers['retention_events_no_delete'] ?? null)
+        === ['DELETE', 'BEFORE', $expected_trigger_statement],
+        'The retention event DELETE immutability trigger is missing or drifted');
+    $expected_policy_defaults = [
+        'tickets' => [2555, 30, 'manual'],
+        'files' => [2555, 30, 'manual'],
+        'attachments' => [2555, 30, 'manual'],
+        'automation_payloads' => [30, 0, 'automatic'],
+        'normalized_payloads' => [90, 0, 'automatic'],
+        'evidence' => [2555, 0, 'disabled'],
+    ];
+    $policy_rows = mysqli_query($mysqli, "SELECT retention_policy_key,
+        retention_policy_retention_days, retention_policy_restore_window_days,
+        retention_policy_purge_mode, retention_policy_owner_note FROM retention_policies");
+    $observed_policy_defaults = [];
+    if ($policy_rows !== false) {
+        while ($policy = mysqli_fetch_assoc($policy_rows)) {
+            if (isset($expected_policy_defaults[$policy['retention_policy_key']])) {
+                $observed_policy_defaults[$policy['retention_policy_key']] = [
+                    intval($policy['retention_policy_retention_days']),
+                    intval($policy['retention_policy_restore_window_days']),
+                    (string) $policy['retention_policy_purge_mode'],
+                ];
+                $assert(trim((string) $policy['retention_policy_owner_note']) !== '',
+                    "Retention policy {$policy['retention_policy_key']} has no owner-decision note");
+            }
+        }
+    }
+    ksort($expected_policy_defaults);
+    ksort($observed_policy_defaults);
+    $assert($observed_policy_defaults === $expected_policy_defaults,
+        'Retention policy defaults do not match 7y/30d manual, 30d/90d automatic, evidence-disabled owner defaults');
 } catch (Throwable $e) {
     $failures[] = $e->getMessage();
 }

@@ -30,6 +30,7 @@ $submissions = mysqli_query($mysqli, "SELECT s.portal_request_submission_id,
         AND requester.contact_client_id = s.portal_request_submission_client_id
     LEFT JOIN tickets t ON t.ticket_id = s.portal_request_submission_ticket_id
         AND t.ticket_client_id = s.portal_request_submission_client_id
+        AND t.ticket_deleted_at IS NULL
     WHERE 1 = 1 $scope $status_filter
     ORDER BY s.portal_request_submission_submitted_at DESC LIMIT 100");
 

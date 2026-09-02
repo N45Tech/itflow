@@ -48,27 +48,47 @@ $assertContains = static function ($needle, $contents, $message) use (&$failures
 };
 
 $file_post = $read('agent/post/file.php');
+$retention = $read('functions/retention.php');
 $file_mutator = $section(
     $file_post,
     '$documentation_mutate_file = static function',
-    '$documentation_delete_file_uploads = static function',
+    '$documentation_mutate_document = static function',
     'file mutator'
 );
 $assertOrdered($file_mutator, [
+    "if (\$operation === 'delete')",
+    'retentionSoftDeleteFile(',
     'mysqli_begin_transaction($mysqli)',
     'documentationLockClient($client_id)',
     'FROM files WHERE file_id = $file_id LIMIT 1 FOR UPDATE',
     "documentationEvidenceReferenceInUse('file'",
-    'DELETE FROM files WHERE file_id = $file_id',
+    'UPDATE files SET file_archived_at = NOW()',
     'mysqli_affected_rows($mysqli)',
     'mysqli_commit($mysqli)',
-], 'File deletion');
+], 'File mutation routing');
 $assertContains('UPDATE files SET file_archived_at = NOW()', $file_mutator,
     'File archival bypasses the locked mutator');
-$assertContains('return $file;', $file_mutator,
-    'Committed file metadata is unavailable for post-commit cleanup');
-$assertContains('is_file($path) && !unlink($path)', $file_post,
-    'File cleanup is not guarded after the database commit');
+
+$retained_file_delete = $section(
+    $retention,
+    'function retentionSoftDeleteFile(',
+    'function retentionSoftDeleteAttachment(',
+    'recoverable file deletion'
+);
+$assertOrdered($retained_file_delete, [
+    'retentionRequireAdministratorActor($actor_id)',
+    'mysqli_begin_transaction($mysqli)',
+    'documentationLockClient($client_id)',
+    'LIMIT 1 FOR UPDATE',
+    "documentationEvidenceReferenceInUse('file'",
+    'retentionMoveToQuarantine(',
+    'UPDATE files SET file_deleted_at',
+    "retentionWriteDeletionLedger('file'",
+    "retentionAppendEvent('file'",
+    'mysqli_commit($mysqli)',
+], 'Recoverable file deletion');
+$assertContains('retentionRollbackQuarantine(', $retained_file_delete,
+    'Failed file soft deletion cannot roll quarantined bytes back');
 
 $single_file_delete = $section(
     $file_post,
@@ -77,9 +97,10 @@ $single_file_delete = $section(
     'single file delete'
 );
 $assertOrdered($single_file_delete, [
+    'enforceAdminPermission()',
     '$documentation_mutate_file($file_id, $client_id, \'delete\')',
-    '$documentation_delete_file_uploads($locked_file)',
-], 'Single file cleanup');
+    "logAudit(\"Retention\", \"Soft Delete\"",
+], 'Single file recoverable deletion');
 $bulk_file_delete = $section(
     $file_post,
     "if (isset(\$_POST['bulk_delete_files']))",
@@ -87,9 +108,10 @@ $bulk_file_delete = $section(
     'bulk file delete'
 );
 $assertOrdered($bulk_file_delete, [
-    '$documentation_mutate_file($file_id, $client_id, \'delete\')',
-    '$documentation_delete_file_uploads($locked_file)',
-], 'Bulk file cleanup');
+    'enforceAdminPermission()',
+    'Bulk deletion is disabled',
+    "redirect('/admin/retention.php')",
+], 'Bulk file deletion boundary');
 
 $document_post = $read('agent/post/document.php');
 $archive_document = $section(
@@ -154,16 +176,16 @@ $single_ticket_delete = $section(
     'single ticket delete'
 );
 $assertOrdered($single_ticket_delete, [
-    'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id)',
-    'SELECT COUNT(*) FROM runbook_executions',
-    'documentationTicketHasAuditRecords($ticket_id)',
-    "documentationEvidenceReferenceInUse('ticket'",
-    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
-    'mysqli_affected_rows($mysqli)',
-    'mysqli_commit($mysqli)',
-    'removeDirectory(',
-], 'Single ticket delete');
+    'enforceAdminPermission()',
+    '/admin/retention.php?record_type=ticket',
+], 'Legacy ticket delete redirect');
+$ticket_protection = $section($retention, 'function retentionTicketProtectionSummary(',
+    'function retentionProtectionSummary(', 'ticket dependency retention');
+foreach (['documentation_evidence_locker', 'ticket_documentation_obligations',
+          'documentation_change_passports', 'documentation_promise_ledger'] as $history) {
+    $assertContains($history, $ticket_protection,
+        "Permanent ticket purge ignores $history");
+}
 $bulk_ticket_delete = $section(
     $ticket_post,
     "if (isset(\$_POST['bulk_delete_tickets']))",
@@ -171,16 +193,10 @@ $bulk_ticket_delete = $section(
     'bulk ticket delete'
 );
 $assertOrdered($bulk_ticket_delete, [
-    'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id)',
-    'SELECT COUNT(*) FROM runbook_executions',
-    'documentationTicketHasAuditRecords($ticket_id)',
-    "documentationEvidenceReferenceInUse('ticket'",
-    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
-    'mysqli_affected_rows($mysqli)',
-    'mysqli_commit($mysqli)',
-    'removeDirectory(',
-], 'Bulk ticket delete');
+    'enforceAdminPermission()',
+    'Bulk ticket deletion is disabled',
+    "redirect('/admin/retention.php')",
+], 'Bulk ticket delete boundary');
 
 if ($failures) {
     fwrite(STDERR, "Documentation destructive-lock contract test failed:\n- " . implode("\n- ", $failures) . "\n");

@@ -66,6 +66,7 @@ if (!empty($ticket_id) && !empty($reply)) {
         $mysqli,
         "SELECT * FROM tickets
          WHERE ticket_id = $ticket_id
+           AND ticket_deleted_at IS NULL
            AND 1=1 " . apiClientScopeSql('ticket_client_id') . "
          LIMIT 1"
     );
@@ -189,6 +190,7 @@ if (!empty($ticket_id) && !empty($reply)) {
 
                 $status_sql = mysqli_query($mysqli, "UPDATE tickets SET $status_set
                     WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                    AND ticket_deleted_at IS NULL
                     AND ticket_status = $locked_status AND $resolved_at_predicate
                     AND $closed_at_predicate LIMIT 1");
                 if (!$status_sql || mysqli_affected_rows($mysqli) !== 1) {
@@ -262,7 +264,7 @@ if (!empty($ticket_id) && !empty($reply)) {
                      FROM tickets
                      LEFT JOIN contacts ON ticket_contact_id = contact_id
                      LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-                     WHERE ticket_id = $ticket_id"
+                     WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
                 );
                 $notify_row = mysqli_fetch_assoc($notify_sql);
 
@@ -306,7 +308,9 @@ if (!empty($ticket_id) && !empty($reply)) {
                 }
 
                 // Also email all the watchers
-                $sql_watchers = mysqli_query($mysqli, "SELECT watcher_name, watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
+                $sql_watchers = mysqli_query($mysqli, "SELECT tw.watcher_name, tw.watcher_email FROM ticket_watchers tw
+                    INNER JOIN tickets t ON t.ticket_id = tw.watcher_ticket_id AND t.ticket_deleted_at IS NULL
+                    WHERE tw.watcher_ticket_id = $ticket_id");
                 while ($watcher_row = mysqli_fetch_assoc($sql_watchers)) {
                     $watcher_name = escapeSql($watcher_row['watcher_name']);
                     $watcher_email = escapeSql($watcher_row['watcher_email']);

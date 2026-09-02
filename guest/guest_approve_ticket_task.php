@@ -93,7 +93,7 @@ $ticket_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT task_name, ticket
     FROM tasks
     INNER JOIN tickets ON task_ticket_id = ticket_id
     LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-    WHERE task_id = $task_id LIMIT 1"));
+    WHERE task_id = $task_id AND ticket_deleted_at IS NULL LIMIT 1"));
 if (!$ticket_row) {
     echo "<br><h2>Oops, something went wrong! Please raise a ticket if you believe this is an error.</h2>";
     require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/footer.php';

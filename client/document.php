@@ -50,6 +50,7 @@ $sql_files = mysqli_query($mysqli,
      FROM files f
      INNER JOIN document_files df ON f.file_id = df.file_id
      WHERE df.document_id = $document_id AND f.file_client_id = $session_client_id
+     AND f.file_deleted_at IS NULL
      ORDER BY f.file_name ASC"
 );
 

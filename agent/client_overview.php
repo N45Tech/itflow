@@ -48,6 +48,7 @@ $sql_recent_tickets = mysqli_query(
     $mysqli,
     "SELECT * FROM tickets
     WHERE ticket_client_id = $client_id
+        AND ticket_deleted_at IS NULL
     ORDER BY ticket_created_at ASC
     LIMIT 5"
 );
@@ -80,6 +81,7 @@ $sql_stale_tickets = mysqli_query(
     $mysqli,
     "SELECT ticket_created_at, ticket_id, ticket_number, ticket_prefix, ticket_subject FROM tickets
     WHERE ticket_client_id = $client_id
+        AND ticket_deleted_at IS NULL
         AND ticket_updated_at < CURRENT_DATE - INTERVAL 7 DAY
         AND ticket_resolved_At IS NULL
         AND ticket_closed_at IS NULL
@@ -453,9 +455,11 @@ $sql_asset_retired = mysqli_query(
                                 $item_name = escapeHtml($share_item['document_name']);
                                 $item_icon = "fas fa-folder";
                             } elseif ($item_type == 'File') {
-                                $share_item_sql = mysqli_query($mysqli, "SELECT file_name FROM files WHERE file_id = $item_related_id AND file_client_id = $client_id");
+                                $share_item_sql = mysqli_query($mysqli, "SELECT file_name FROM files
+                                    WHERE file_id = $item_related_id AND file_client_id = $client_id
+                                    AND file_deleted_at IS NULL");
                                 $share_item = mysqli_fetch_assoc($share_item_sql);
-                                $item_name = escapeHtml($share_item['file_name']);
+                                $item_name = $share_item ? escapeHtml($share_item['file_name']) : 'Unavailable file';
                                 $item_icon = "fas fa-paperclip";
                             }
                             ?>

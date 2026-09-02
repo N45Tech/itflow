@@ -108,8 +108,12 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0015-documentation-evidence-reference-index',
-    'The documentation evidence-index repair is not the final stable N45 migration'
+    isset($manifest['migrations']['n45-0015-documentation-evidence-reference-index']),
+    'The documentation evidence-index repair is missing from the stable N45 stream'
+);
+$assertTrue(
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0018-retention-controls',
+    'Recoverable deletion is not the final reserved stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -224,6 +228,7 @@ $assertOrdered($functions, [
     "n45RequireModule('runbooks');",
     "n45RequireModule('portal_requests');",
     "n45RequireModule('agreements');",
+    "n45RequireModule('retention');",
     "require_once __DIR__ . '/functions/app.php';",
 ], 'Fork runtime modules are not loaded through the stable boundary in dependency order');
 $assertNotContains("require_once __DIR__ . '/functions/endpoint.php';", $functions, 'Endpoint runtime bypasses the stable module boundary');

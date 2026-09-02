@@ -27,7 +27,7 @@ $sql_years_select = mysqli_query($mysqli, "
     UNION DISTINCT SELECT YEAR(payment_date) FROM payments
     UNION DISTINCT SELECT YEAR(revenue_date) FROM revenues
     UNION DISTINCT SELECT YEAR(invoice_date) FROM invoices
-    UNION DISTINCT SELECT YEAR(ticket_created_at) FROM tickets
+    UNION DISTINCT SELECT YEAR(ticket_created_at) FROM tickets WHERE ticket_deleted_at IS NULL
     UNION DISTINCT SELECT YEAR(client_created_at) FROM clients
     UNION DISTINCT SELECT YEAR(user_created_at) FROM users
     ORDER BY all_years DESC
@@ -157,7 +157,7 @@ if ($user_config_dashboard_financial_enable == 1) {
     $total_miles = floatval($row['total_miles']);
 
     if ($config_module_enable_ticketing && $config_module_enable_accounting) {
-        $sql_unbilled_tickets = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS unbilled_tickets FROM tickets WHERE ticket_closed_at IS NOT NULL AND ticket_billable = 1 AND ticket_invoice_id = 0 AND YEAR(ticket_created_at) = $year");
+        $sql_unbilled_tickets = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS unbilled_tickets FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_closed_at IS NOT NULL AND ticket_billable = 1 AND ticket_invoice_id = 0 AND YEAR(ticket_created_at) = $year");
         $row = mysqli_fetch_assoc($sql_unbilled_tickets);
         $unbilled_tickets = intval($row['unbilled_tickets']);
     } else {
@@ -585,10 +585,10 @@ if ($user_config_dashboard_technical_enable == 1) {
     $sql_assets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(asset_id) AS assets_added FROM assets WHERE YEAR(asset_created_at) = $year $dashboard_asset_scope"));
     $assets_added = $sql_assets['assets_added'];
 
-    $sql_tickets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS active_tickets FROM tickets WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
+    $sql_tickets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS active_tickets FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
     $active_tickets = $sql_tickets['active_tickets'];
 
-    $sql_your_ticket_count = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS your_tickets FROM tickets WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL AND ticket_assigned_to = $session_user_id $dashboard_ticket_scope"));
+    $sql_your_ticket_count = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS your_tickets FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_archived_at IS NULL AND ticket_resolved_at IS NULL AND ticket_assigned_to = $session_user_id $dashboard_ticket_scope"));
     $your_ticket_count = intval($sql_your_ticket_count['your_tickets']);
 
     $sql_domains_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(domain_id) AS expiring_domains FROM domains WHERE domain_expire IS NOT NULL AND domain_expire > CURRENT_DATE AND domain_expire < CURRENT_DATE + INTERVAL 30 DAY AND domain_archived_at IS NULL $dashboard_domain_scope"));
@@ -609,7 +609,7 @@ if ($user_config_dashboard_technical_enable == 1) {
         SUM(ticket_sla_id > 0 AND (ticket_response_sla_alert_stage = 2 OR ticket_resolution_sla_alert_stage = 2 OR ticket_response_sla_met = 0 OR ticket_resolution_sla_met = 0)) AS sla_breached
         FROM tickets
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
+        WHERE ticket_deleted_at IS NULL AND ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
 
     $dashboard_incident_scope = clientScopeSql('automation_incident_client_id');
     $automation_pulse = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
@@ -635,6 +635,7 @@ if ($user_config_dashboard_technical_enable == 1) {
         LEFT JOIN clients ON ticket_client_id = client_id
         LEFT JOIN contacts ON ticket_contact_id = contact_id
         WHERE ticket_assigned_to = $session_user_id
+            AND ticket_deleted_at IS NULL
         AND ticket_archived_at IS NULL
         AND ticket_resolved_at IS NULL
         $dashboard_ticket_scope

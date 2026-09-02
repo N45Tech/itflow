@@ -63,6 +63,7 @@ $documentation_post = $read('agent/post/documentation.php');
 $document_post = $read('agent/post/document.php');
 $file_post = $read('agent/post/file.php');
 $ticket_post = $read('agent/post/ticket.php');
+$retention = $read('functions/retention.php');
 $queue = $read('agent/documentation.php');
 $operations = $read('agent/operations.php');
 $global_counts = $read('agent/includes/get_side_nav_counts.php');
@@ -165,7 +166,9 @@ foreach (['document', 'document-version'] as $reference_type) {
         "Bulk document handlers do not retain $reference_type evidence");
 }
 $assertContains("documentationEvidenceReferenceInUse('file'", $file_post, 'File archive/delete can discard Evidence Locker references');
-$assertContains("documentationEvidenceReferenceInUse('ticket'", $ticket_post, 'Ticket deletion can discard Evidence Locker references');
+$assertContains('documentation_evidence_locker', $retention, 'Ticket purge can discard Evidence Locker references');
+$assertContains('documentation_change_passports', $retention, 'Ticket purge can discard Change Passport evidence');
+$assertContains('documentation_promise_ledger', $retention, 'Ticket purge can discard Promise Ledger accountability');
 
 // Assert exact core interfaces once this UI commit is composed with the core
 // commit. Keeping this conditional lets either isolated worktree test itself.

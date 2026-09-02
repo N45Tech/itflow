@@ -189,7 +189,7 @@ if (isset($_POST['edit_client'])) {
 
         if ($sla_assignments_changed) {
             // Re-resolve this client's open tickets against the new assignments
-            $sql_sla_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_client_id = $client_id AND ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
+            $sql_sla_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_client_id = $client_id AND ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
             while ($sla_ticket_row = mysqli_fetch_assoc($sql_sla_tickets)) {
                 applyTicketSla($sla_ticket_row['ticket_id']);
             }
@@ -259,150 +259,19 @@ if (isset($_GET['delete_client'])) {
 
     validateCSRFToken();
 
-    enforceUserPermission('module_client', 3);
+    enforceAdminPermission();
 
     $client_id = intval($_GET['delete_client']);
     enforceClientAccess($client_id);
 
-    $client_name = '';
-    $client_delete_transaction_started = false;
-    try {
-        if (!mysqli_begin_transaction($mysqli)) {
-            throw new RuntimeException('Could not start the client deletion transaction');
-        }
-        $client_delete_transaction_started = true;
-
-        // All writers that create immutable client history lock this row first.
-        // Holding it through the final delete closes the check/delete race.
-        $locked_client = portalRequestLockClientForAuditRetention($client_id);
-        if (!$locked_client) {
-            throw new RuntimeException('The client no longer exists');
-        }
-        $client_name = escapeSql($locked_client['client_name']);
-
-        // Lock the ticket range before checking immutable runbook and
-        // documentation history or enumerating dependent ticket records.
-        $ticket_ids = [];
-        $sql = automationDbQuery(
-            "SELECT ticket_id FROM tickets WHERE ticket_client_id = $client_id FOR UPDATE",
-            'Could not lock client tickets for deletion'
-        );
-        while ($row = mysqli_fetch_assoc($sql)) {
-            $ticket_ids[] = intval($row['ticket_id']);
-        }
-
-        $runbook_execution_count = intval(mysqli_fetch_row(automationDbQuery(
-            "SELECT COUNT(*) FROM runbook_executions
-                INNER JOIN tickets ON ticket_id = runbook_execution_ticket_id
-                WHERE ticket_client_id = $client_id",
-            'Could not inspect client runbook history'
-        ))[0] ?? 0);
-        if ($runbook_execution_count > 0) {
-            throw new DomainException('The client has immutable runbook history');
-        }
-        if (documentationClientHasAuditRecords($client_id)) {
-            throw new DomainException('The client has immutable documentation or evidence history');
-        }
-        if (portalRequestClientHasAuditHistory($client_id)) {
-            throw new DomainException('The client has immutable portal request or approval history');
-        }
-        if (agreementClientHasAuditHistory($client_id)) {
-            throw new DomainException('The client has immutable agreement, SLA, or service-review history');
-        }
-
-        // Delete every database association inside the same transaction. Each
-        // query throws on failure so a partial client teardown is rolled back.
-        automationDbQuery("DELETE FROM certificates WHERE certificate_client_id = $client_id", 'Could not delete client certificates');
-        automationDbQuery("DELETE FROM documents WHERE document_client_id = $client_id", 'Could not delete client documents');
-        automationDbQuery("DELETE FROM contacts WHERE contact_client_id = $client_id", 'Could not delete client contacts');
-        automationDbQuery("DELETE FROM assets WHERE asset_client_id = $client_id", 'Could not delete client assets');
-        automationDbQuery("DELETE FROM domains WHERE domain_client_id = $client_id", 'Could not delete client domains');
-        automationDbQuery("DELETE FROM calendar_events WHERE event_client_id = $client_id", 'Could not delete client calendar events');
-        automationDbQuery("DELETE FROM files WHERE file_client_id = $client_id", 'Could not delete client files');
-        automationDbQuery("DELETE FROM folders WHERE folder_client_id = $client_id", 'Could not delete client folders');
-
-        $sql = automationDbQuery(
-            "SELECT invoice_id FROM invoices WHERE invoice_client_id = $client_id FOR UPDATE",
-            'Could not enumerate client invoices'
-        );
-        while ($row = mysqli_fetch_assoc($sql)) {
-            $invoice_id = intval($row['invoice_id']);
-            automationDbQuery("DELETE FROM invoice_items WHERE item_invoice_id = $invoice_id", 'Could not delete client invoice items');
-            automationDbQuery("DELETE FROM payments WHERE payment_invoice_id = $invoice_id", 'Could not delete client invoice payments');
-            automationDbQuery("DELETE FROM history WHERE history_invoice_id = $invoice_id", 'Could not delete client invoice history');
-        }
-        automationDbQuery("DELETE FROM invoices WHERE invoice_client_id = $client_id", 'Could not delete client invoices');
-
-        automationDbQuery("DELETE FROM locations WHERE location_client_id = $client_id", 'Could not delete client locations');
-        automationDbQuery("DELETE FROM credentials WHERE credential_client_id = $client_id", 'Could not delete client credentials');
-        automationDbQuery("DELETE FROM logs WHERE log_client_id = $client_id", 'Could not delete client logs');
-        automationDbQuery("DELETE FROM networks WHERE network_client_id = $client_id", 'Could not delete client networks');
-        automationDbQuery("DELETE FROM notifications WHERE notification_client_id = $client_id", 'Could not delete client notifications');
-
-        $sql = automationDbQuery(
-            "SELECT quote_id FROM quotes WHERE quote_client_id = $client_id FOR UPDATE",
-            'Could not enumerate client quotes'
-        );
-        while ($row = mysqli_fetch_assoc($sql)) {
-            $quote_id = intval($row['quote_id']);
-            automationDbQuery("DELETE FROM quote_items WHERE item_quote_id = $quote_id", 'Could not delete client quote items');
-        }
-        automationDbQuery("DELETE FROM quotes WHERE quote_client_id = $client_id", 'Could not delete client quotes');
-
-        $sql = automationDbQuery(
-            "SELECT recurring_invoice_id FROM recurring_invoices WHERE recurring_invoice_client_id = $client_id FOR UPDATE",
-            'Could not enumerate client recurring invoices'
-        );
-        while ($row = mysqli_fetch_assoc($sql)) {
-            $recurring_invoice_id = intval($row['recurring_invoice_id']);
-            automationDbQuery("DELETE FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id", 'Could not delete client recurring invoice items');
-        }
-        automationDbQuery("DELETE FROM recurring_invoices WHERE recurring_invoice_client_id = $client_id", 'Could not delete client recurring invoices');
-
-        automationDbQuery("DELETE FROM revenues WHERE revenue_client_id = $client_id", 'Could not delete client revenues');
-        automationDbQuery("DELETE FROM recurring_tickets WHERE recurring_ticket_client_id = $client_id", 'Could not delete client recurring tickets');
-        automationDbQuery("DELETE FROM services WHERE service_client_id = $client_id", 'Could not delete client services');
-        automationDbQuery("DELETE FROM shared_items WHERE item_client_id = $client_id", 'Could not delete client shared items');
-        automationDbQuery("DELETE FROM software WHERE software_client_id = $client_id", 'Could not delete client software');
-
-        foreach ($ticket_ids as $ticket_id) {
-            automationDeleteTicketOperations($ticket_id);
-            automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id", 'Could not delete client ticket replies');
-            automationDbQuery("DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id", 'Could not delete client ticket views');
-            automationDbQuery("DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id", 'Could not delete client ticket watchers');
-            automationDbQuery("DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id", 'Could not delete client ticket attachments');
-        }
-        automationDbQuery("DELETE FROM tickets WHERE ticket_client_id = $client_id", 'Could not delete client tickets');
-        automationDbQuery("DELETE FROM trips WHERE trip_client_id = $client_id", 'Could not delete client trips');
-        automationDbQuery("DELETE FROM vendors WHERE vendor_client_id = $client_id", 'Could not delete client vendors');
-        automationDbQuery("DELETE FROM clients WHERE client_id = $client_id", 'Could not delete the client');
-
-        if (!mysqli_commit($mysqli)) {
-            throw new RuntimeException('Could not commit the client deletion transaction');
-        }
-        $client_delete_transaction_started = false;
-    } catch (Throwable $e) {
-        if ($client_delete_transaction_started) {
-            mysqli_rollback($mysqli);
-        }
-        error_log("Client $client_id deletion failed: " . $e->getMessage());
-        flashAlert(
-            $e instanceof DomainException
-                ? 'This client has immutable runbook, documentation, portal request, agreement, SLA, service-review, approval, or evidence history and cannot be permanently deleted. Archive the client to preserve its audit trail.'
-                : 'The client could not be deleted. No database records or uploaded files were removed.',
-            'error'
-        );
-        redirect();
-    }
-
-    // Delete files only after every database delete has succeeded.
-    removeDirectory("../uploads/clients/$client_id");
-
-    logAudit("Client", "Deleted", "$session_name deleted Client $client_name and all associated data");
-
-    flashAlert("Client <strong>$client_name</strong> deleted along with all associated data", 'error');
-
-    redirect('clients.php');
+    // Client teardown would bypass every record-level retention ledger and
+    // cascade operational, financial, evidence, and approval history. Archive
+    // is the explicit offboarding state; retained records can then be reviewed
+    // individually without silently erasing accountability.
+    logAudit('Retention', 'Blocked Delete', "$session_name attempted permanent client deletion",
+        $client_id, $client_id);
+    flashAlert('Permanent client deletion is disabled by retention policy. Archive the client and use Administration &gt; Retention for eligible operational records.', 'error');
+    redirect("client_overview.php?client_id=$client_id");
 
 }
 

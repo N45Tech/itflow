@@ -10,7 +10,7 @@ if (isset($_GET['year'])) {
     $year = date('Y');
 }
 
-$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets ORDER BY ticket_year DESC");
+$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets WHERE ticket_deleted_at IS NULL ORDER BY ticket_year DESC");
 
 $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients ORDER BY client_name ASC");
 
@@ -61,7 +61,8 @@ $rows = 0;
                             FROM
                                 tickets
                             WHERE
-                                YEAR(ticket_created_at) = $year
+                                ticket_deleted_at IS NULL
+                            AND YEAR(ticket_created_at) = $year
                             AND
                                 ticket_client_id = $client_id"
                         );
@@ -76,7 +77,8 @@ $rows = 0;
                             FROM
                                 tickets
                             WHERE
-                                YEAR(ticket_created_at) = $year
+                                ticket_deleted_at IS NULL
+                            AND YEAR(ticket_created_at) = $year
                             AND
                                 ticket_client_id = $client_id
                             AND
@@ -95,7 +97,8 @@ $rows = 0;
                             FROM
                                 tickets
                             WHERE
-                                YEAR(ticket_created_at) = $year
+                                ticket_deleted_at IS NULL
+                            AND YEAR(ticket_created_at) = $year
                             AND
                                 ticket_client_id = $client_id
                             AND

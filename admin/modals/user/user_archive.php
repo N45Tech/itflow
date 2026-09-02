@@ -13,7 +13,8 @@ $user_avatar = escapeHtml($row['user_avatar']);
 $user_initials = escapeHtml(initials($user_name));
 
 $sql_related_tickets = mysqli_query($mysqli, "SELECT 1 FROM tickets
-    WHERE ticket_assigned_to = $user_id AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL");
+    WHERE ticket_assigned_to = $user_id AND ticket_resolved_at IS NULL
+    AND ticket_closed_at IS NULL AND ticket_deleted_at IS NULL");
 
 $ticket_count = mysqli_num_rows($sql_related_tickets);
 
