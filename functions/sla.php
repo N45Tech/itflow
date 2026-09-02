@@ -275,6 +275,14 @@ function getBusinessHolidays($refresh = false)
         return $holidays;
     }
 
+    // SLA calendar helpers are also used by the deterministic regression
+    // suite without bootstrapping a database connection. An unavailable
+    // connection means that no deployment-specific closure days can be
+    // loaded; the caller still gets the snapshotted weekday/hour behavior.
+    if (!isset($mysqli) || !($mysqli instanceof mysqli)) {
+        return [];
+    }
+
     $holidays = [];
 
     $sql = mysqli_query($mysqli, "SELECT holiday_date, holiday_name FROM business_holidays");

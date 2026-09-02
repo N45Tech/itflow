@@ -872,7 +872,7 @@ function portalRequestLockContactForAuditRetention($contact_id, $client_id) {
         return null;
     }
     return mysqli_fetch_assoc(portalRequestDbQuery("SELECT contact_id, contact_name,
-        contact_email, contact_phone, contact_client_id, contact_user_id
+        contact_email, contact_phone, contact_client_id, contact_user_id, contact_archived_at
         FROM contacts WHERE contact_id = $contact_id AND contact_client_id = $client_id
         LIMIT 1 FOR UPDATE",
         'Could not lock the contact for portal request audit retention'));

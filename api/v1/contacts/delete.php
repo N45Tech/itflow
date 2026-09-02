@@ -20,12 +20,16 @@ if (!empty($contact_id)) {
             if (!$row) {
                 throw new RuntimeException('The contact is unavailable for the requested client');
             }
+            if (is_null($row['contact_archived_at'])) {
+                throw new RuntimeException('The contact must be archived before API deletion');
+            }
             if (portalRequestContactHasAuditHistory($contact_id, $client_id)) {
                 throw new RuntimeException('The contact is retained by portal request audit history');
             }
             $contact_name = escapeSql((string) $row['contact_name']);
             portalRequestDbQuery("DELETE FROM contacts
-                WHERE contact_id = $contact_id AND contact_client_id = $client_id LIMIT 1",
+                WHERE contact_id = $contact_id AND contact_client_id = $client_id
+                AND contact_archived_at IS NOT NULL LIMIT 1",
                 'Could not delete the API contact');
             $delete_count = mysqli_affected_rows($mysqli);
             if ($delete_count !== 1 || !mysqli_commit($mysqli)) {
