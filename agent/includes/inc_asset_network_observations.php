@@ -14,7 +14,7 @@ $network_evidence_id = 'assetNetworkEvidence' . intval($asset_id);
     <div class="d-flex flex-wrap align-items-center justify-content-between px-3 py-2 bg-light">
         <div class="mr-3">
             <button class="btn btn-link btn-sm text-left p-0" type="button"
-                data-toggle="collapse" data-target="#<?= $network_evidence_id ?>"
+                data-bs-toggle="collapse" data-bs-target="#<?= $network_evidence_id ?>"
                 aria-expanded="false" aria-controls="<?= $network_evidence_id ?>">
                 <i class="fas fa-fw fa-satellite-dish mr-1"></i>Source observations
             </button>

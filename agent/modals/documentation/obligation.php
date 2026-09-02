@@ -19,7 +19,8 @@ $obligation = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT o.*,
     WHERE o.documentation_obligation_id = $obligation_id LIMIT 1"));
 
 if (!$obligation) {
-    exit('<div class="modal-body"><div class="alert alert-danger mb-0">The documentation obligation is unavailable.</div></div>');
+    echo json_encode(['error' => 'The documentation obligation is unavailable.']);
+    exit;
 }
 
 $obligation = documentationApplyCurrentRequirementMetadata($obligation);
@@ -75,7 +76,8 @@ while ($linked_ticket = mysqli_fetch_assoc($sql_verification_tickets)) {
 }
 if ($verification_ticket_id
     && !in_array($verification_ticket_id, array_map(static fn ($ticket) => intval($ticket['ticket_id']), $verification_tickets), true)) {
-    exit('<div class="modal-body"><div class="alert alert-danger mb-0">The verification ticket is not linked to this obligation.</div></div>');
+    echo json_encode(['error' => 'The verification ticket is not linked to this obligation.']);
+    exit;
 }
 
 $documents = mysqli_query($mysqli, "SELECT document_id, document_name FROM documents
@@ -89,6 +91,8 @@ $events = mysqli_query($mysqli, "SELECT e.*, u.user_name
     WHERE e.documentation_obligation_event_obligation_id = $obligation_id
     ORDER BY e.documentation_obligation_event_id DESC LIMIT 20");
 
+ob_start();
+
 ?>
 
 <div class="modal-header bg-dark">
@@ -96,7 +100,7 @@ $events = mysqli_query($mysqli, "SELECT e.*, u.user_name
         <h5 class="modal-title"><i class="fas fa-book-medical mr-2"></i><?= escapeHtml($obligation['documentation_requirement_version_name']) ?></h5>
         <div class="small text-light"><code class="text-light"><?= escapeHtml($obligation['documentation_requirement_version_key']) ?></code> · <?= escapeHtml($obligation['client_name']) ?></div>
     </div>
-    <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
 </div>
 
 <div class="modal-body">
@@ -219,4 +223,6 @@ $events = mysqli_query($mysqli, "SELECT e.*, u.user_name
     </div>
 </div>
 
-<div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">Close</button></div>
+<div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button></div>
+
+<?php require_once '../../../includes/modal_footer.php'; ?>
