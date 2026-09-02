@@ -882,6 +882,7 @@ if (isset($_GET['anonymize_contact'])) {
         // Lock and redact only tickets raised by this contact for this client.
         $contact_tickets_sql = portalRequestDbQuery("SELECT ticket_details, ticket_id, ticket_subject
             FROM tickets WHERE ticket_client_id = $client_id AND ticket_contact_id = $contact_id
+            AND ticket_deleted_at IS NULL
             FOR UPDATE",
             'Could not lock contact tickets for anonymization');
         while ($ticket = mysqli_fetch_assoc($contact_tickets_sql)) {
@@ -898,6 +899,7 @@ if (isset($_GET['anonymize_contact'])) {
             ));
             portalRequestDbQuery("UPDATE tickets SET ticket_subject = '$subject', ticket_details = '$details'
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                AND ticket_deleted_at IS NULL
                 AND ticket_contact_id = $contact_id LIMIT 1",
                 'Could not anonymize a contact ticket');
 
@@ -913,6 +915,7 @@ if (isset($_GET['anonymize_contact'])) {
                 ));
                 portalRequestDbQuery("UPDATE ticket_replies tr
                     INNER JOIN tickets t ON t.ticket_id = tr.ticket_reply_ticket_id
+                        AND t.ticket_deleted_at IS NULL
                     SET tr.ticket_reply = '$ticket_reply_details'
                     WHERE tr.ticket_reply_id = $ticket_reply_id
                     AND tr.ticket_reply_ticket_id = $ticket_id
@@ -1325,19 +1328,23 @@ if (isset($_POST['link_contact_to_file'])) {
     $file_id = intval($_POST['file_id']);
     $contact_id = intval($_POST['contact_id']);
 
-    // Get file Name and Client ID for logging
-    $sql_file = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
-    $row = mysqli_fetch_assoc($sql_file);
-    $file_name = escapeSql($row['file_name']);
-    $client_id = intval($row['file_client_id']);
-
-    enforceClientAccess();
-
-    // Get Contact Name for logging
-    $contact_name = escapeSql(getFieldById('contacts', $contact_id, 'contact_name'));
-
-    // Contact add query
-    mysqli_query($mysqli,"INSERT INTO contact_files SET contact_id = $contact_id, file_id = $file_id");
+    $scope = mysqli_fetch_assoc(retentionDbQuery("SELECT file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1",
+        'Could not locate the active file relation'));
+    if (!$scope) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
+    $client_id = intval($scope['file_client_id']);
+    enforceClientAccess($client_id);
+    try {
+        $relation = retentionMutateScopedFileRelation('contact', $contact_id, $file_id, $client_id, true);
+    } catch (Throwable $e) {
+        flashAlert($e->getMessage(), 'error');
+        redirect();
+    }
+    $file_name = escapeSql($relation['file_name']);
+    $contact_name = escapeSql($relation['target_name']);
 
     logAudit("File", "Link", "$session_name linked contact $contact_name to file $file_name", $client_id, $file_id);
 
@@ -1356,18 +1363,23 @@ if (isset($_GET['unlink_contact_from_file'])) {
     $contact_id = intval($_GET['contact_id']);
     $file_id = intval($_GET['file_id']);
 
-    // Get file Name and Client ID for logging
-    $sql_file = mysqli_query($mysqli,"SELECT file_name, file_client_id FROM files WHERE file_id = $file_id");
-    $row = mysqli_fetch_assoc($sql_file);
-    $file_name = escapeSql($row['file_name']);
-    $client_id = intval($row['file_client_id']);
-
-    enforceClientAccess();
-
-    // Get Contact Name for logging
-    $contact_name = escapeSql(getFieldById('contacts', $contact_id, 'contact_name'));
-
-    mysqli_query($mysqli,"DELETE FROM contact_files WHERE contact_id = $contact_id AND file_id = $file_id");
+    $scope = mysqli_fetch_assoc(retentionDbQuery("SELECT file_client_id FROM files
+        WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1",
+        'Could not locate the active file relation'));
+    if (!$scope) {
+        flashAlert('The active file is unavailable.', 'error');
+        redirect();
+    }
+    $client_id = intval($scope['file_client_id']);
+    enforceClientAccess($client_id);
+    try {
+        $relation = retentionMutateScopedFileRelation('contact', $contact_id, $file_id, $client_id, false);
+    } catch (Throwable $e) {
+        flashAlert($e->getMessage(), 'error');
+        redirect();
+    }
+    $file_name = escapeSql($relation['file_name']);
+    $contact_name = escapeSql($relation['target_name']);
 
     logAudit("File", "Unlink", "$session_name unlinked contact $contact_name from file $file_name", $client_id, $file_id);
 

@@ -54,6 +54,7 @@ $sla = $read('functions/sla.php');
 $ticket_post = $read('agent/post/ticket.php');
 $client_post = $read('agent/post/client.php');
 $agreement_post = $read('agent/post/agreement.php');
+$retention = $read('functions/retention.php');
 
 $client_lock = $section(
     $agreements,
@@ -119,7 +120,7 @@ $record_decision = $section(
 );
 $assertOrdered($record_decision, [
     'agreementLockClientForAuditRetention($decision_client_id)',
-    'WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE',
+    'WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE',
     'INSERT INTO ticket_agreement_decisions',
 ], 'Ticket agreement decisions do not lock client then ticket before insert');
 
@@ -229,15 +230,12 @@ $single_delete = $section(
     "if (isset(\$_POST['bulk_delete_tickets']))",
     'single ticket deletion'
 );
-$assertOrdered($single_delete, [
-    'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id)',
-    'agreementTicketHasAuditHistory($ticket_id, $client_id)',
-    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
-    'mysqli_commit($mysqli)',
-], 'Single ticket deletion checks agreement evidence outside its retained locks');
-$assertContains('Close the ticket to preserve its audit trail', $single_delete,
-    'Single ticket retention does not give an actionable close alternative');
+$assertContains('enforceAdminPermission()', $single_delete,
+    'Legacy ticket deletion redirect is not administrator-only');
+$assertContains('/admin/retention.php?record_type=ticket', $single_delete,
+    'Legacy ticket deletion bypasses the retention center');
+$assertNotContains('DELETE FROM tickets', $single_delete,
+    'Legacy ticket deletion still permanently removes agreement evidence');
 
 $bulk_delete = $section(
     $ticket_post,
@@ -245,15 +243,39 @@ $bulk_delete = $section(
     "if (isset(\$_POST['bulk_assign_ticket']))",
     'bulk ticket deletion'
 );
-$assertOrdered($bulk_delete, [
+$assertContains('enforceAdminPermission()', $bulk_delete,
+    'Bulk deletion redirect is not administrator-only');
+$assertContains('Bulk ticket deletion is disabled', $bulk_delete,
+    'Bulk ticket deletion can bypass per-record owner decisions');
+$assertNotContains('DELETE FROM tickets', $bulk_delete,
+    'Bulk deletion still permanently removes agreement evidence');
+
+$ticket_protection = $section(
+    $retention,
+    'function retentionTicketProtectionSummary(',
+    'function retentionProtectionSummary(',
+    'retention ticket dependency matrix'
+);
+foreach (['ticket_agreement_decisions', 'sla_history', 'ticket_replies', 'ticket_history'] as $evidence) {
+    $assertContains($evidence, $ticket_protection,
+        "Central retention purge ignores agreement/accountability evidence $evidence");
+}
+$ticket_soft_delete = $section(
+    $retention,
+    'function retentionSoftDeleteTicket(',
+    'function retentionFilePaths(',
+    'recoverable ticket deletion'
+);
+$assertOrdered($ticket_soft_delete, [
     'mysqli_begin_transaction($mysqli)',
     'documentationLockClientTicket($ticket_id, $client_id)',
-    'agreementTicketHasAuditHistory($ticket_id, $client_id)',
-    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
+    'UPDATE tickets SET',
+    'ticket_deleted_at',
+    "retentionAppendEvent('ticket'",
     'mysqli_commit($mysqli)',
-], 'Bulk ticket deletion checks agreement evidence outside its retained locks');
-$assertContains('agreement, or SLA evidence', $bulk_delete,
-    'Bulk ticket retention does not explain why selected tickets were kept');
+], 'Recoverable ticket deletion is not atomic and audit-backed');
+$assertNotContains('ticket_status =', $ticket_soft_delete,
+    'Recoverable deletion mutates immutable closed-ticket status history');
 
 $client_delete = $section(
     $client_post,
@@ -261,17 +283,12 @@ $client_delete = $section(
     "if (isExportRequest('export_clients'))",
     'client deletion'
 );
-$assertOrdered($client_delete, [
-    'mysqli_begin_transaction($mysqli)',
-    'portalRequestLockClientForAuditRetention($client_id)',
-    'agreementClientHasAuditHistory($client_id)',
-    'DELETE FROM clients WHERE client_id = $client_id',
-    'mysqli_commit($mysqli)',
-], 'Client deletion checks agreement evidence outside its retained client lock');
-$assertContains('Archive the client to preserve its audit trail', $client_delete,
-    'Client agreement retention does not give an actionable archive alternative');
-$assertContains('service-review', $client_delete,
-    'Client retention message does not identify service-review evidence');
+$assertContains('enforceAdminPermission()', $client_delete,
+    'Legacy client teardown is not administrator-gated');
+$assertContains('Permanent client deletion is disabled by retention policy', $client_delete,
+    'Client teardown does not direct administrators to archival/retention');
+$assertNotContains('DELETE FROM clients', $client_delete,
+    'Client teardown can still cascade immutable agreement or service-review evidence');
 
 if ($failures) {
     fwrite(STDERR, "Agreement retention contract failed:\n- " . implode("\n- ", $failures) . "\n");

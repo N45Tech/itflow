@@ -23,7 +23,7 @@ if ($month) {
     $period_label = date("F", mktime(1, 1, 1, $month, 1)) . " $year";
 }
 
-$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets ORDER BY ticket_year DESC");
+$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets WHERE ticket_deleted_at IS NULL ORDER BY ticket_year DESC");
 
 $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_archived_at IS NULL ORDER BY client_name ASC");
 
@@ -40,7 +40,8 @@ $sql_resolve_times = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_id,
     SUM(sla_history_minutes) AS logged_minutes
     FROM tickets
     LEFT JOIN sla_history ON sla_history_ticket_id = ticket_id
-    WHERE ticket_sla_id > 0
+    WHERE ticket_deleted_at IS NULL
+    AND ticket_sla_id > 0
     AND ticket_resolved_at IS NOT NULL
     AND $period_query
     GROUP BY ticket_id, ticket_client_id, ticket_created_at, ticket_resolved_at,
@@ -127,7 +128,7 @@ while ($resolve_row = mysqli_fetch_assoc($sql_resolve_times)) {
                                     SUM(ticket_resolution_sla_met = 0) AS resolution_missed,
                                     AVG(CASE WHEN ticket_first_response_at IS NOT NULL THEN TIMESTAMPDIFF(SECOND, ticket_created_at, ticket_first_response_at) END) AS avg_response_seconds
                                     FROM tickets
-                                    WHERE ticket_sla_id > 0 AND ticket_client_id = $client_id AND $period_query"
+                                    WHERE ticket_deleted_at IS NULL AND ticket_sla_id > 0 AND ticket_client_id = $client_id AND $period_query"
                                 ));
 
                                 $ticket_count = intval($stats['ticket_count']);

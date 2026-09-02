@@ -47,6 +47,7 @@ ob_start();
                         LEFT JOIN folders
                             ON folders.folder_id = files.file_folder_id
                         WHERE files.file_client_id = $client_id
+                        AND files.file_deleted_at IS NULL
                         AND contact_files.contact_id IS NULL
                         ORDER BY folders.folder_name ASC, files.file_name ASC
                     ");

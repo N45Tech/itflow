@@ -225,12 +225,16 @@ if (isset($_GET['disable_user'])) {
     // Un-assign tickets. Collect them first so each one gets a history entry -
     // otherwise a whole queue silently goes unassigned with nothing to explain it
     $affected_ticket_ids = array();
-    $sql_affected_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_assigned_to = $user_id AND ticket_closed_at IS NULL");
+    $sql_affected_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets
+        WHERE ticket_assigned_to = $user_id AND ticket_closed_at IS NULL
+        AND ticket_deleted_at IS NULL");
     while ($affected_ticket_row = mysqli_fetch_assoc($sql_affected_tickets)) {
         $affected_ticket_ids[] = intval($affected_ticket_row['ticket_id']);
     }
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_assigned_to = 0 WHERE ticket_assigned_to = $user_id AND ticket_closed_at IS NULL");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_assigned_to = 0
+        WHERE ticket_assigned_to = $user_id AND ticket_closed_at IS NULL
+        AND ticket_deleted_at IS NULL");
     mysqli_query($mysqli, "UPDATE recurring_tickets SET recurring_ticket_assigned_to = 0 WHERE recurring_ticket_assigned_to = $user_id");
 
     foreach ($affected_ticket_ids as $affected_ticket_id) {
@@ -276,12 +280,16 @@ if (isset($_POST['archive_user'])) {
     // Un-assign / Re-assign tickets. Same as above - collect them first so the
     // move shows up on each ticket's history
     $affected_ticket_ids = array();
-    $sql_affected_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_assigned_to = $user_id AND ticket_closed_at IS NULL AND ticket_resolved_at IS NULL");
+    $sql_affected_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets
+        WHERE ticket_assigned_to = $user_id AND ticket_closed_at IS NULL
+        AND ticket_resolved_at IS NULL AND ticket_deleted_at IS NULL");
     while ($affected_ticket_row = mysqli_fetch_assoc($sql_affected_tickets)) {
         $affected_ticket_ids[] = intval($affected_ticket_row['ticket_id']);
     }
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_assigned_to = $ticket_assign WHERE ticket_assigned_to = $user_id AND ticket_closed_at IS NULL AND ticket_resolved_at IS NULL");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_assigned_to = $ticket_assign
+        WHERE ticket_assigned_to = $user_id AND ticket_closed_at IS NULL
+        AND ticket_resolved_at IS NULL AND ticket_deleted_at IS NULL");
     mysqli_query($mysqli, "UPDATE recurring_tickets SET recurring_ticket_assigned_to = $ticket_assign WHERE recurring_ticket_assigned_to = $user_id");
 
     $reassigned_to_name = $ticket_assign ? escapeSql(getFieldById('users', $ticket_assign, 'user_name')) : '';

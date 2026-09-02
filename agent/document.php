@@ -245,6 +245,7 @@ $page_title = $row['document_name'];
             $sql_files = mysqli_query($mysqli, "SELECT file_folder_id, files.file_id, file_name FROM files, document_files
                 WHERE document_files.file_id = files.file_id
                 AND document_files.document_id = $document_id
+                AND files.file_deleted_at IS NULL
                 ORDER BY file_name ASC"
             );
 

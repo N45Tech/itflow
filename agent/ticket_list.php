@@ -130,11 +130,11 @@ if ($tickets) {
                                 <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_bulk_resolve.php" data-modal-size="lg" data-bulk="true">
                                     <i class="fas fa-fw fa-check mr-2"></i>Resolve
                                 </a>
-                                <?php if (lookupUserPermission("module_support") === 3) { ?>
+                                <?php if (!empty($session_is_admin)) { ?>
                                     <div class="dropdown-divider"></div>
-                                    <button class="dropdown-item text-danger text-bold confirm-link" type="submit" form="bulkActions" name="bulk_delete_tickets">
-                                        <i class="fas fa-fw fa-trash mr-2"></i>Delete
-                                    </button>
+                                    <a class="dropdown-item text-danger text-bold" href="/admin/retention.php">
+                                        <i class="fas fa-fw fa-trash-restore mr-2"></i>Retention Center
+                                    </a>
                                 <?php } ?>
                             </div>
                         </div>

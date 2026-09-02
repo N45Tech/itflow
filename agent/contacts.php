@@ -436,7 +436,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                         }
 
                         // Ticket Count
-                        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('ticket_id') AS num FROM tickets WHERE ticket_contact_id = $contact_id AND ticket_archived_at IS NULL"));
+                        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('ticket_id') AS num FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_contact_id = $contact_id AND ticket_archived_at IS NULL"));
                         $ticket_count = $row['num'];
                         if ($ticket_count) {
                             $ticket_count_display = "<a href='contact.php?client_id=$client_id&contact_id=$contact_id#tickets' class='mr-2 mb-1 badge badge-pill badge-secondary p-2' title='Tickets ($ticket_count)'><i class='fas fa-fw fa-life-ring mr-2'></i>$ticket_count</a>";

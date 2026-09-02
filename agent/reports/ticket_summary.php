@@ -10,9 +10,9 @@ if (isset($_GET['year'])) {
     $year = date('Y');
 }
 
-$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets ORDER BY ticket_year DESC");
+$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets WHERE ticket_deleted_at IS NULL ORDER BY ticket_year DESC");
 
-$sql_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets");
+$sql_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_deleted_at IS NULL");
 
 // Track largest month for chart y-axis max
 $largest_ticket_month = 0;
@@ -75,7 +75,7 @@ $largest_ticket_month = 0;
 
                 for ($month = 1; $month <= 12; $month++) {
 
-                    $sql_tickets = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS tickets_for_month FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month");
+                    $sql_tickets = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS tickets_for_month FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month");
                     $row = mysqli_fetch_assoc($sql_tickets);
                     $tickets_for_month = intval($row['tickets_for_month']);
 
@@ -110,7 +110,7 @@ $largest_ticket_month = 0;
             <?php
             // Recompute for the chart dataset (values already gathered above, but we echo directly again)
             for ($month = 1; $month <= 12; $month++) {
-                $sql_tickets = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS tickets_for_month FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month");
+                $sql_tickets = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS tickets_for_month FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month");
                 $row = mysqli_fetch_assoc($sql_tickets);
                 $tickets_for_month = intval($row['tickets_for_month']);
                 echo "$tickets_for_month,";

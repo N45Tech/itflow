@@ -11,7 +11,8 @@ $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_cli
     ticket_prefix, ticket_number, ticket_work_type, ticket_impact, ticket_urgency,
     ticket_priority, ticket_next_action, ticket_next_action_due_at, ticket_waiting_on,
     ticket_waiting_on_detail, ticket_closed_at FROM tickets
-    WHERE ticket_id = $ticket_id $access_scope $active_ticket_scope LIMIT 1"));
+    WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+    $access_scope $active_ticket_scope LIMIT 1"));
 if (!$ticket) {
     exit;
 }
@@ -21,7 +22,8 @@ if ($client_id) {
 }
 $related_candidates = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number,
     ticket_subject FROM tickets WHERE ticket_client_id = $client_id
-    AND ticket_id <> $ticket_id AND ticket_closed_at IS NULL $active_ticket_scope
+    AND ticket_id <> $ticket_id AND ticket_closed_at IS NULL
+    AND tickets.ticket_deleted_at IS NULL $active_ticket_scope
     ORDER BY ticket_updated_at DESC, ticket_id DESC LIMIT 250");
 $relationships = ticketOperationalRelationships($ticket_id);
 $promises = ticketOperationalPromises($ticket_id);

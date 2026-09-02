@@ -105,6 +105,15 @@ function cronJobRegistry(): array
             'interval_minutes' => 60,
         ],
         [
+            'name' => 'retention_maintenance',
+            'label' => 'Retention Maintenance',
+            'script' => 'retention_maintenance.php',
+            'description' => 'Reconciles recoverable deletions, minimizes retained payloads, cleans quarantined bytes, and captures an idempotent purge dry-run.',
+            'schedule' => 'Daily',
+            'daily_at' => '03:30',
+            'interval_safe' => false,
+        ],
+        [
             'name' => 'identity_reconciliation',
             'label' => 'Endpoint Identity Reconciliation',
             'script' => 'identity_reconciliation.php',

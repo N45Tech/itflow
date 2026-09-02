@@ -33,6 +33,7 @@ n45RequireModule('runbooks');
 n45RequireModule('ticket_operations');
 n45RequireModule('portal_requests');
 n45RequireModule('agreements');
+n45RequireModule('retention');
 require_once __DIR__ . '/functions/app.php';
 require_once __DIR__ . '/functions/payments.php';
 require_once __DIR__ . '/functions/sla.php';

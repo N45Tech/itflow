@@ -682,6 +682,7 @@ function automationProcessStoredEvent(int $event_id): array
                 if ($incident_status === 'Resolved' && $event_ticket_id < 1 && $ticket_id > 0) {
                     $open_ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id FROM tickets
                         WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL
+                        AND ticket_deleted_at IS NULL
                         AND ticket_resolved_at IS NULL AND ticket_status <> 4 LIMIT 1"));
                     if (!$open_ticket) {
                         $ticket_id = 0;
@@ -691,7 +692,8 @@ function automationProcessStoredEvent(int $event_id): array
                 $recovering_ticket = false;
                 if ($event_ticket_id > 0 && (!$incident || $incident_status === 'Resolved')) {
                     $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id
-                        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+                        FROM tickets WHERE ticket_id = $ticket_id
+                        AND ticket_deleted_at IS NULL LIMIT 1"));
                     if (!$ticket || (intval($resolved['client_id']) > 0
                         && intval($ticket['ticket_client_id']) !== intval($resolved['client_id']))) {
                         throw new AutomationConflictException('The previously created automation ticket is unavailable');
@@ -811,17 +813,11 @@ function automationProcessEventQueue(int $limit = 100): array
         }
     }
 
-    // Retain event metadata indefinitely but remove old redacted payload bodies
-    // according to each source policy. Dead letters keep their payload until an
-    // administrator resolves or replays them.
-    mysqli_query($mysqli, "UPDATE automation_events SET automation_event_payload = NULL
-        WHERE automation_event_status = 'Processed'
-        AND automation_event_payload IS NOT NULL
-        AND TIMESTAMPDIFF(DAY, automation_event_last_received_at, NOW()) >=
-            COALESCE((SELECT automation_policy_payload_retention_days
-                FROM automation_event_policies
-                WHERE automation_policy_source = automation_event_source LIMIT 1), 30)
-        LIMIT 1000");
+    // The shared retention service performs the payload minimization so every
+    // redaction has an immutable hash-backed lifecycle event. Dead letters keep
+    // their body until replay/resolution, and normalized snapshots use the same
+    // idempotent worker.
+    retentionRedactPayloads(1000);
 
     return $summary;
 }

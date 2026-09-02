@@ -120,7 +120,8 @@ if (isset($_GET['invoice_id'])) {
         LEFT JOIN
             ticket_replies ON tickets.ticket_id = ticket_replies.ticket_reply_ticket_id
         WHERE
-            ticket_invoice_id = $invoice_id
+            tickets.ticket_deleted_at IS NULL
+        AND ticket_invoice_id = $invoice_id
         GROUP BY
             tickets.ticket_id
         ORDER BY
@@ -134,7 +135,8 @@ if (isset($_GET['invoice_id'])) {
         FROM
             tickets
         WHERE
-            ticket_client_id = $client_id
+            ticket_deleted_at IS NULL
+        AND ticket_client_id = $client_id
         AND
             ticket_billable = 1
         AND

@@ -157,6 +157,40 @@ seed_marker "$UPGRADE_DATABASE" "$UPSTREAM_MARKER"
 run_update "$UPGRADE_DATABASE" "$TEMP_DIRECTORY/upgrade.log"
 assert_current "$UPGRADE_DATABASE"
 
+echo 'Exercising append-only retention events and exact trigger drift refusal'
+RETENTION_EVENT_ID=$("${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "INSERT INTO retention_events
+    (retention_event_record_type, retention_event_record_id, retention_event_client_id,
+     retention_event_generation, retention_event_action, retention_event_actor_type,
+     retention_event_actor_id, retention_event_reason, retention_event_metadata,
+     retention_event_metadata_hash, retention_event_batch_id)
+    VALUES ('release-test', 1, 0, 0, 'created', 'system', 0, 'Trigger contract',
+        '{}', SHA2('{}',256), 0); SELECT LAST_INSERT_ID();")
+[[ "$RETENTION_EVENT_ID" =~ ^[1-9][0-9]*$ ]] || fail 'could not create the retention trigger fixture'
+set +e
+"${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "UPDATE retention_events SET retention_event_reason = 'mutated' WHERE retention_event_id = $RETENTION_EVENT_ID;" > "$TEMP_DIRECTORY/retention-update.log" 2>&1
+RETENTION_UPDATE_STATUS=$?
+"${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "DELETE FROM retention_events WHERE retention_event_id = $RETENTION_EVENT_ID;" > "$TEMP_DIRECTORY/retention-delete.log" 2>&1
+RETENTION_DELETE_STATUS=$?
+set -e
+[[ "$RETENTION_UPDATE_STATUS" -ne 0 ]] || fail 'the retention UPDATE trigger allowed immutable history to change'
+[[ "$RETENTION_DELETE_STATUS" -ne 0 ]] || fail 'the retention DELETE trigger allowed immutable history to disappear'
+
+"${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "DROP TRIGGER retention_events_no_update;
+    CREATE TRIGGER retention_events_no_update BEFORE UPDATE ON retention_events FOR EACH ROW
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'wrong retention trigger';"
+export N45_CI_DB_NAME="$UPGRADE_DATABASE"
+set +e
+php tests/n45_release_database_assert.php runner > "$TEMP_DIRECTORY/retention-trigger-drift.log" 2>&1
+RETENTION_DRIFT_STATUS=$?
+set -e
+[[ "$RETENTION_DRIFT_STATUS" -ne 0 ]] || fail 'an unexpected same-name retention trigger passed release validation'
+grep -Fq 'retention event UPDATE immutability trigger is missing or drifted' "$TEMP_DIRECTORY/retention-trigger-drift.log" \
+    || fail 'retention trigger drift was not identified precisely'
+"${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "DROP TRIGGER retention_events_no_update;
+    CREATE TRIGGER retention_events_no_update BEFORE UPDATE ON retention_events FOR EACH ROW
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'retention_events is append-only';"
+assert_current "$UPGRADE_DATABASE"
+
 echo 'Exercising n45-0012 historical index repair and unexpected-drift refusal'
 HISTORICAL_SNAPSHOT_INDEX='automation_snapshot_source,automation_snapshot_entity_type,automation_snapshot_external_id,automation_snapshot_payload_hash'
 FINAL_SNAPSHOT_INDEX='automation_snapshot_source,automation_snapshot_entity_type,automation_snapshot_external_id,automation_snapshot_client_id,automation_snapshot_asset_id,automation_snapshot_payload_hash'

@@ -37,7 +37,9 @@ if (isset($_POST['edit_sla'])) {
 
     // Re-stamp open tickets on this SLA so their targets follow the new minutes
     $restamped = 0;
-    $sql_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_sla_id = $sla_id AND ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
+    $sql_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets
+        WHERE ticket_sla_id = $sla_id AND ticket_closed_at IS NULL
+        AND ticket_archived_at IS NULL AND ticket_deleted_at IS NULL");
     while ($ticket_row = mysqli_fetch_assoc($sql_tickets)) {
         $restamp_ticket_id = intval($ticket_row['ticket_id']);
         $decision = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_agreement_decision_source
@@ -122,7 +124,9 @@ if (isset($_POST['edit_sla_settings'])) {
 
     // Business hours feed the due date math - re-stamp open SLA tickets
     $restamped = 0;
-    $sql_tickets = mysqli_query($mysqli, "SELECT ticket_id, ticket_sla_id FROM tickets WHERE ticket_sla_id > 0 AND ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
+    $sql_tickets = mysqli_query($mysqli, "SELECT ticket_id, ticket_sla_id FROM tickets
+        WHERE ticket_sla_id > 0 AND ticket_closed_at IS NULL
+        AND ticket_archived_at IS NULL AND ticket_deleted_at IS NULL");
     while ($ticket_row = mysqli_fetch_assoc($sql_tickets)) {
         $restamp_ticket_id = intval($ticket_row['ticket_id']);
         $decision = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_agreement_decision_source
@@ -163,7 +167,9 @@ if (isset($_POST['save_sla_assignments'])) {
 
     // Re-resolve open tickets against the new defaults
     $restamped = 0;
-    $sql_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
+    $sql_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets
+        WHERE ticket_closed_at IS NULL AND ticket_archived_at IS NULL
+        AND ticket_deleted_at IS NULL");
     while ($ticket_row = mysqli_fetch_assoc($sql_tickets)) {
         applyTicketSla($ticket_row['ticket_id']);
         $restamped++;

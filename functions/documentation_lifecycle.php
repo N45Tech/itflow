@@ -135,6 +135,7 @@ function documentationAssessTicket($ticket_id, $client_id, $configuration_change
         ticket_documentation_assessed_at = NOW()
         WHERE ticket_id = $ticket_id
         AND ticket_client_id = $client_id
+        AND ticket_deleted_at IS NULL
         AND ticket_configuration_change = $old_configuration_change
         AND ticket_documentation_impact = '$old_impact_sql'
         LIMIT 1", 'Could not save the ticket documentation assessment');
@@ -177,7 +178,7 @@ function documentationTicketCanTransfer($ticket_id, $target_client_id) {
             SELECT 1 FROM ticket_documentation_obligations
             WHERE ticket_documentation_obligation_ticket_id = $ticket_id
         ) AS has_documentation_history
-        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1",
+        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1",
         'Could not inspect the ticket documentation context'));
     if (!$row) {
         return [false, 'The ticket is unavailable.'];

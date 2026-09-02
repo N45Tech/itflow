@@ -304,7 +304,6 @@ $assertContains('$custom_action_idempotency_key', $logging, 'Custom-action handl
 $assertContains('get_included_files()', $logging, 'The durable dispatcher cannot detect an include_once no-op in a shared cron process');
 $assertContains('triggerCustomAction($trigger, $ticket_id, $event_key) === false', $outbox, 'A skipped include_once hook can be acknowledged as delivered');
 
-$assertContains('portalRequestClientHasAuditHistory($client_id)', $client_model_handler, 'Client hard deletion does not preserve portal request audit rows');
 $assertContains('portalRequestContactHasAuditHistory($contact_id, $client_id)', $contact_handler, 'Contact hard deletion/anonymization does not preserve portal request audit rows');
 $client_retention_lock = $section($service, 'function portalRequestLockClientForAuditRetention(', 'function portalRequestLockContactForAuditRetention(', 'client retention lock');
 $contact_retention_lock = $section($service, 'function portalRequestLockContactForAuditRetention(', 'function portalRequestContactHasAuditHistory(', 'contact retention lock');
@@ -313,8 +312,9 @@ $assertOrdered($contact_retention_lock, ['portalRequestLockClientForAuditRetenti
 $contact_context = $section($service, 'function portalRequestContactContext(', 'function portalRequestContactMatchesRule(', 'portal requester lock');
 $assertOrdered($contact_context, ['SELECT client_id FROM clients', 'LIMIT 1 FOR UPDATE', 'SELECT contact_id, contact_client_id'], 'Portal submission does not lock client before contact to serialize with retention');
 $client_delete = $section($client_model_handler, "if (isset(\$_GET['delete_client']))", "if (isExportRequest('export_clients'))", 'client hard deletion');
-$assertOrdered($client_delete, ['enforceClientAccess($client_id)', 'portalRequestClientHasAuditHistory($client_id)', 'DELETE FROM contacts', 'DELETE FROM clients'], 'Client scope/audit retention is checked after destructive deletion starts');
-$assertOrdered($client_delete, ['mysqli_begin_transaction($mysqli)', 'portalRequestLockClientForAuditRetention($client_id)', 'portalRequestClientHasAuditHistory($client_id)', 'DELETE FROM clients', 'mysqli_commit($mysqli)'], 'Client hard deletion does not hold its retention lock through a transactional delete');
+$assertOrdered($client_delete, ['enforceAdminPermission()', 'enforceClientAccess($client_id)', 'Permanent client deletion is disabled by retention policy'], 'Client deletion does not fail closed before retained portal request history can be destroyed');
+$assertNotContains('DELETE FROM contacts', $client_delete, 'Disabled client deletion still destroys portal requester identities');
+$assertNotContains('DELETE FROM clients', $client_delete, 'Disabled client deletion still destroys the client audit boundary');
 $contact_bulk_delete = $section($contact_handler, "if (isset(\$_POST['bulk_delete_contacts']))", "if (isset(\$_GET['anonymize_contact']))", 'bulk contact deletion');
 $assertOrdered($contact_bulk_delete, ['portalRequestContactHasAuditHistory($contact_id, $client_id)', 'DELETE FROM users', 'DELETE FROM contacts'], 'Bulk contact audit retention is checked after destructive deletion starts');
 $assertOrdered($contact_bulk_delete, ['mysqli_begin_transaction($mysqli)', 'portalRequestLockContactForAuditRetention($contact_id, $client_id)', 'portalRequestContactHasAuditHistory($contact_id, $client_id)', 'DELETE FROM contacts', 'mysqli_commit($mysqli)'], 'Bulk contact hard deletion does not hold its retention lock through a transactional delete');

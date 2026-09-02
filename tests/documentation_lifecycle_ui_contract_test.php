@@ -34,6 +34,7 @@ $ticket_post = $read('agent/post/ticket.php');
 $documentation_post = $read('agent/post/documentation.php');
 $document_post = $read('agent/post/document.php');
 $client_post = $read('agent/post/client.php');
+$retention = $read('functions/retention.php');
 $queue = $read('agent/documentation.php');
 $operations = $read('agent/operations.php');
 $obligation_modal = $read('agent/modals/documentation/obligation.php');
@@ -95,9 +96,12 @@ $assertContains('enforceClientAccess($client_id)', $ticket_modal, 'Ticket docume
 $assertContains('ticketLifecycleCanResolve($ticket_id, true)', $ticket_page, 'Authorized ticket UI does not show composite gate detail');
 
 $assertContains('documentationDocumentHasObligations($document_id)', $document_post, 'Canonical documents can be archived or deleted without a guard');
-$assertContains('documentationTicketHasAuditRecords($ticket_id)', $ticket_post, 'Tickets with documentation history can be permanently deleted');
+$assertContains('documentation_evidence_locker', $retention, 'Tickets with documentation evidence can be permanently purged');
+$assertContains('documentation_change_passports', $retention, 'Tickets with Change Passports can be permanently purged');
+$assertContains('documentation_promise_ledger', $retention, 'Tickets with Promise Ledger history can be permanently purged');
 $assertContains('documentationTicketCanTransfer($ticket_id, $client_id)', $ticket_post, 'Ticket transfer does not preserve client-bound documentation history');
-$assertContains('documentationClientHasAuditRecords($client_id)', $client_post, 'Clients with documentation history can be permanently deleted');
+$assertContains('Permanent client deletion is disabled by retention policy', $client_post, 'Clients with documentation history can be permanently deleted');
+$assertNotContains('DELETE FROM clients WHERE client_id = $client_id', $client_post, 'Client teardown can erase documentation history');
 $assertContains('runbookLockOpenTicket($ticket_id)', $lifecycle, 'Documentation lifecycle mutation helpers do not lock their ticket context');
 
 $assertContains('documentationSaveRequirementDraft(', $admin_requirement_post, 'Administrators cannot save a requirement draft through the immutable core API');

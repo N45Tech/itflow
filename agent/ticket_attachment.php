@@ -37,7 +37,9 @@ if (isset($_GET['thumb']) && intval($_GET['thumb']) == 1) {
 // Look up the attachment and its parent ticket
 $sql = mysqli_query($mysqli, "SELECT * FROM ticket_attachments
     LEFT JOIN tickets ON ticket_attachment_ticket_id = ticket_id
-    WHERE ticket_attachment_id = $attachment_id LIMIT 1");
+    WHERE ticket_attachment_id = $attachment_id
+    AND ticket_attachment_deleted_at IS NULL
+    AND ticket_deleted_at IS NULL LIMIT 1");
 
 if (mysqli_num_rows($sql) !== 1) {
     http_response_code(404);
@@ -56,12 +58,8 @@ if ($client_id) {
     enforceClientAccess();
 }
 
-// Build the on-disk path, anchored to this file's directory
-$uploads_base = realpath(__DIR__ . "/../uploads");
-$file_path = realpath(__DIR__ . "/../uploads/tickets/$ticket_id/$attachment_reference_name");
-
-// Path traversal guard - resolved path must stay inside uploads
-if ($file_path === false || $uploads_base === false || strpos($file_path, $uploads_base) !== 0) {
+$file_path = retentionResolveReadableUploadFile("tickets/$ticket_id", (string) $attachment_reference_name);
+if ($file_path === null) {
     http_response_code(404);
     exit("Attachment not found");
 }
@@ -113,6 +111,8 @@ if (!$thumb) {
 
 // Send the file
 header("Content-Type: $attachment_mime_type");
+header('Cache-Control: private, no-store, max-age=0');
+header('Pragma: no-cache');
 header("Content-Disposition: $disposition; filename=\"$safe_attachment_name\"");
 header("Content-Length: " . filesize($file_path));
 header("X-Content-Type-Options: nosniff");

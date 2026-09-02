@@ -9,7 +9,7 @@ $ticket_id = intval($_GET['id']);
 $sql = mysqli_query($mysqli, "SELECT client_name, ticket_client_id, ticket_number, ticket_prefix,
     ticket_priority, ticket_impact, ticket_urgency FROM tickets
     LEFT JOIN clients ON client_id = ticket_client_id
-    WHERE ticket_id = $ticket_id
+    WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
     LIMIT 1"
 );
 

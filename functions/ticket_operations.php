@@ -287,7 +287,8 @@ function ticketOperationalNormalizeLegacyTicket(int $ticket_id): void
     $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_id, ticket_source,
         ticket_subject, ticket_priority, ticket_project_id, ticket_created_by,
         ticket_created_at, ticket_operational_updated_at FROM tickets
-        WHERE ticket_id = $ticket_id $active_scope LIMIT 1", 'Could not load a ticket for operational normalization'));
+        WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        $active_scope LIMIT 1", 'Could not load a ticket for operational normalization'));
     if (!$ticket) {
         return;
     }
@@ -295,7 +296,8 @@ function ticketOperationalNormalizeLegacyTicket(int $ticket_id): void
         // Once dimensions exist they are the sole priority authority. This
         // also repairs direct/custom writes that try to change only priority.
         $state = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_impact,
-            ticket_urgency FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+            ticket_urgency FROM tickets WHERE ticket_id = $ticket_id
+            AND tickets.ticket_deleted_at IS NULL LIMIT 1"));
         try {
             $priority = ticketOperationalPriorityFromImpactUrgency(
                 $state['ticket_impact'] ?? '',
@@ -307,12 +309,14 @@ function ticketOperationalNormalizeLegacyTicket(int $ticket_id): void
             $impact_sql = mysqli_real_escape_string($mysqli, $impact);
             $urgency_sql = mysqli_real_escape_string($mysqli, $urgency);
             ticketOperationalDbQuery("UPDATE tickets SET ticket_impact = '$impact_sql',
-                ticket_urgency = '$urgency_sql' WHERE ticket_id = $ticket_id",
+                ticket_urgency = '$urgency_sql' WHERE ticket_id = $ticket_id
+                AND tickets.ticket_deleted_at IS NULL",
                 'Could not repair ticket priority dimensions');
         }
         $priority_sql = mysqli_real_escape_string($mysqli, $priority);
         ticketOperationalDbQuery("UPDATE tickets SET ticket_priority = '$priority_sql'
-            WHERE ticket_id = $ticket_id AND (ticket_priority IS NULL OR ticket_priority <> '$priority_sql')",
+            WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+            AND (ticket_priority IS NULL OR ticket_priority <> '$priority_sql')",
             'Could not enforce deterministic ticket priority');
         return;
     }
@@ -330,7 +334,8 @@ function ticketOperationalNormalizeLegacyTicket(int $ticket_id): void
         ticket_next_action = 'Review and triage this ticket.',
         ticket_operational_updated_by = $actor_id,
         ticket_operational_updated_at = COALESCE(ticket_created_at, NOW())
-        WHERE ticket_id = $ticket_id AND ticket_operational_updated_at IS NULL",
+        WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        AND ticket_operational_updated_at IS NULL",
         'Could not normalize the new ticket operational state');
 }
 
@@ -396,7 +401,8 @@ function ticketOperationalUpdateTicket(int $ticket_id, array $input, int $actor_
         $projection = ticketOperationalSoftDeleteProjection('tickets');
         $active_scope = ticketOperationalActiveTicketSql('tickets');
         $advisory = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id FROM tickets
-            WHERE ticket_id = $ticket_id $active_scope LIMIT 1", 'Could not locate the operational ticket'));
+            WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+            $active_scope LIMIT 1", 'Could not locate the operational ticket'));
         if (!$advisory) {
             throw new RuntimeException('Ticket not found');
         }
@@ -410,7 +416,8 @@ function ticketOperationalUpdateTicket(int $ticket_id, array $input, int $actor_
             throw new RuntimeException('The ticket client is unavailable');
         }
         $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT tickets.* $projection FROM tickets
-            WHERE ticket_id = $ticket_id $active_scope LIMIT 1 FOR UPDATE", 'Could not lock the operational ticket'));
+            WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+            $active_scope LIMIT 1 FOR UPDATE", 'Could not lock the operational ticket'));
         if (!$ticket || intval($ticket['ticket_client_id']) !== $client_id) {
             throw new RuntimeException('The ticket client changed before the operational update');
         }
@@ -434,7 +441,8 @@ function ticketOperationalUpdateTicket(int $ticket_id, array $input, int $actor_
             ticket_next_action_due_at = $next_due_sql, ticket_waiting_on = '$waiting_on_sql',
             ticket_waiting_on_detail = $waiting_detail_sql,
             ticket_operational_updated_by = $actor_id, ticket_operational_updated_at = NOW()
-            WHERE ticket_id = $ticket_id AND ticket_status NOT IN (4, 5)
+            WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+            AND ticket_status NOT IN (4, 5)
             AND ticket_closed_at IS NULL AND ticket_archived_at IS NULL",
             'Could not update ticket operational fields');
         if (mysqli_affected_rows($mysqli) !== 1) {
@@ -492,7 +500,8 @@ function ticketOperationalSetResolution(
     $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id,
         ticket_work_type, ticket_resolution_code, ticket_resolution_summary, ticket_root_cause,
         ticket_status, ticket_closed_at, ticket_archived_at $projection
-        FROM tickets WHERE ticket_id = $ticket_id $active_scope LIMIT 1 FOR UPDATE",
+        FROM tickets WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        $active_scope LIMIT 1 FOR UPDATE",
         'Could not lock the ticket resolution'));
     if (!$ticket) {
         throw new RuntimeException('Ticket not found');
@@ -509,7 +518,8 @@ function ticketOperationalSetResolution(
     ticketOperationalDbQuery("UPDATE tickets SET ticket_resolution_code = '$code_sql',
         ticket_resolution_summary = '$summary_sql', ticket_root_cause = $root_cause_sql,
         ticket_operational_updated_by = $actor_id, ticket_operational_updated_at = NOW()
-        WHERE ticket_id = $ticket_id AND ticket_status NOT IN (4, 5)
+        WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        AND ticket_status NOT IN (4, 5)
         AND ticket_closed_at IS NULL AND ticket_archived_at IS NULL",
         'Could not save ticket resolution evidence');
     ticketOperationalRecordEvent($ticket_id, intval($ticket['ticket_client_id']), 'ResolutionPrepared', [
@@ -537,7 +547,8 @@ function ticketOperationalCanResolve(int $ticket_id, bool $include_detail = fals
     $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_work_type,
         ticket_waiting_on, ticket_resolution_code, ticket_resolution_summary, ticket_root_cause,
         ticket_status, ticket_closed_at, ticket_archived_at $projection
-        FROM tickets WHERE ticket_id = $ticket_id $active_scope LIMIT 1",
+        FROM tickets WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        $active_scope LIMIT 1",
         'Could not evaluate the ticket operational gate'));
     if (!$ticket) {
         return [false, 'Ticket not found.'];
@@ -579,7 +590,8 @@ function ticketOperationalOnResolved(int $ticket_id, int $actor_id = 0, string $
     $active_scope = ticketOperationalActiveTicketSql('tickets');
     $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id,
         ticket_resolution_code, ticket_status, ticket_archived_at $projection
-        FROM tickets WHERE ticket_id = $ticket_id $active_scope LIMIT 1 FOR UPDATE",
+        FROM tickets WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        $active_scope LIMIT 1 FOR UPDATE",
         'Could not lock the resolved ticket operational state'));
     if (!$ticket) {
         throw new RuntimeException('Ticket not found');
@@ -591,6 +603,7 @@ function ticketOperationalOnResolved(int $ticket_id, int $actor_id = 0, string $
         ticket_waiting_on_detail = NULL, ticket_next_action = 'No further action — ticket resolved.',
         ticket_next_action_due_at = NULL, ticket_operational_updated_by = $actor_id,
         ticket_operational_updated_at = NOW() WHERE ticket_id = $ticket_id
+        AND tickets.ticket_deleted_at IS NULL
         AND ticket_status IN (4, 5) AND ticket_archived_at IS NULL",
         'Could not finalize the resolved ticket operational state');
     ticketOperationalFulfillPromisesLocked($ticket_id, 'customer_update', $actor_id, $actor_type, $ticket_id);
@@ -606,7 +619,8 @@ function ticketOperationalOnReopened(int $ticket_id, int $actor_id = 0, string $
     $active_scope = ticketOperationalActiveTicketSql('tickets');
     $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id, ticket_status,
         ticket_closed_at, ticket_archived_at $projection FROM tickets
-        WHERE ticket_id = $ticket_id $active_scope LIMIT 1 FOR UPDATE", 'Could not lock the reopened ticket'));
+        WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        $active_scope LIMIT 1 FOR UPDATE", 'Could not lock the reopened ticket'));
     if (!$ticket) {
         throw new RuntimeException('Ticket not found');
     }
@@ -621,7 +635,8 @@ function ticketOperationalOnReopened(int $ticket_id, int $actor_id = 0, string $
         ticket_next_action = 'Review the new response and confirm the next action.',
         ticket_waiting_on = 'none', ticket_waiting_on_detail = NULL,
         ticket_operational_updated_by = $actor_id, ticket_operational_updated_at = NOW()
-        WHERE ticket_id = $ticket_id", 'Could not reset reopened ticket resolution evidence');
+        WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL",
+        'Could not reset reopened ticket resolution evidence');
     ticketOperationalRecordEvent($ticket_id, intval($ticket['ticket_client_id']), 'Reopened', [], $actor_id, $actor_type);
 }
 
@@ -673,7 +688,8 @@ function ticketOperationalAddRelationship(
         [$source_ticket_id, $target_ticket_id] = [$target_ticket_id, $source_ticket_id];
     }
     $advisory = ticketOperationalDbQuery("SELECT ticket_id, ticket_client_id FROM tickets
-        WHERE ticket_id IN ($source_ticket_id, $target_ticket_id) ORDER BY ticket_id",
+        WHERE ticket_id IN ($source_ticket_id, $target_ticket_id)
+        AND tickets.ticket_deleted_at IS NULL ORDER BY ticket_id",
         'Could not locate tickets for the relationship');
     $advisory_clients = [];
     while ($ticket = mysqli_fetch_assoc($advisory)) {
@@ -699,7 +715,8 @@ function ticketOperationalAddRelationship(
         $active_scope = ticketOperationalActiveTicketSql('tickets');
         $tickets = ticketOperationalDbQuery("SELECT ticket_id, ticket_client_id, ticket_status,
             ticket_closed_at, ticket_archived_at $projection FROM tickets
-            WHERE ticket_id IN ($first, $second) $active_scope ORDER BY ticket_id FOR UPDATE",
+            WHERE ticket_id IN ($first, $second) AND tickets.ticket_deleted_at IS NULL
+            $active_scope ORDER BY ticket_id FOR UPDATE",
             'Could not lock related tickets');
         $locked = [];
         while ($ticket = mysqli_fetch_assoc($tickets)) {
@@ -796,7 +813,8 @@ function ticketOperationalRemoveRelationship(int $relationship_id, int $ticket_i
         $active_scope = ticketOperationalActiveTicketSql('tickets');
         $tickets = ticketOperationalDbQuery("SELECT ticket_id, ticket_client_id, ticket_status,
             ticket_closed_at, ticket_archived_at $projection FROM tickets
-            WHERE ticket_id IN ($first, $second) $active_scope ORDER BY ticket_id FOR UPDATE",
+            WHERE ticket_id IN ($first, $second) AND tickets.ticket_deleted_at IS NULL
+            $active_scope ORDER BY ticket_id FOR UPDATE",
             'Could not lock the relationship tickets');
         $locked = [];
         while ($ticket = mysqli_fetch_assoc($tickets)) {
@@ -981,7 +999,8 @@ function ticketOperationalCreatePromise(
     $source_type_sql = mysqli_real_escape_string($mysqli, $source_type);
     $active_scope = ticketOperationalActiveTicketSql('tickets');
     $advisory = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id $active_scope LIMIT 1", 'Could not locate the promise ticket'));
+        WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        $active_scope LIMIT 1", 'Could not locate the promise ticket'));
     if (!$advisory) {
         throw new RuntimeException('Ticket not found');
     }
@@ -998,7 +1017,8 @@ function ticketOperationalCreatePromise(
         $projection = ticketOperationalSoftDeleteProjection('tickets');
         $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id,
             ticket_status, ticket_closed_at, ticket_archived_at $projection FROM tickets
-            WHERE ticket_id = $ticket_id $active_scope LIMIT 1 FOR UPDATE",
+            WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+            $active_scope LIMIT 1 FOR UPDATE",
             'Could not lock the promise ticket'));
         if (!$ticket || intval($ticket['ticket_client_id']) !== $advisory_client_id
             || ticketOperationalTicketIsImmutable($ticket)) {
@@ -1122,7 +1142,8 @@ function ticketOperationalFulfillPromises(
     global $mysqli;
     $active_scope = ticketOperationalActiveTicketSql('tickets');
     $advisory = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id $active_scope LIMIT 1", 'Could not locate the promise ticket'));
+        WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        $active_scope LIMIT 1", 'Could not locate the promise ticket'));
     if (!$advisory) {
         throw new RuntimeException('Ticket not found');
     }
@@ -1139,7 +1160,8 @@ function ticketOperationalFulfillPromises(
         $projection = ticketOperationalSoftDeleteProjection('tickets');
         $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id,
             ticket_status, ticket_closed_at, ticket_archived_at $projection FROM tickets
-            WHERE ticket_id = $ticket_id $active_scope LIMIT 1 FOR UPDATE",
+            WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+            $active_scope LIMIT 1 FOR UPDATE",
             'Could not lock the promise fulfillment ticket'));
         if (!$ticket || intval($ticket['ticket_client_id']) !== $client_id
             || ticketOperationalTicketIsImmutable($ticket)) {
@@ -1166,7 +1188,8 @@ function ticketOperationalCancelPromise(int $promise_id, int $ticket_id, int $ac
     global $mysqli;
     $active_scope = ticketOperationalActiveTicketSql('tickets');
     $advisory = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id $active_scope LIMIT 1", 'Could not locate the customer promise ticket'));
+        WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+        $active_scope LIMIT 1", 'Could not locate the customer promise ticket'));
     if (!$advisory) {
         throw new RuntimeException('Ticket not found');
     }
@@ -1183,7 +1206,8 @@ function ticketOperationalCancelPromise(int $promise_id, int $ticket_id, int $ac
         $projection = ticketOperationalSoftDeleteProjection('tickets');
         $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id,
             ticket_status, ticket_closed_at, ticket_archived_at $projection FROM tickets
-            WHERE ticket_id = $ticket_id $active_scope LIMIT 1 FOR UPDATE",
+            WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+            $active_scope LIMIT 1 FOR UPDATE",
             'Could not lock the customer promise ticket'));
         if (!$ticket || intval($ticket['ticket_client_id']) !== $advisory_client_id
             || ticketOperationalTicketIsImmutable($ticket)) {
@@ -1236,7 +1260,8 @@ function ticketOperationalReconcilePromises(int $limit = 200): int
         ticket_customer_promise_ticket_id, ticket_customer_promise_client_id
         FROM ticket_customer_promises
         INNER JOIN tickets ON ticket_id = ticket_customer_promise_ticket_id
-        WHERE ticket_customer_promise_status = 'Open'
+        WHERE tickets.ticket_deleted_at IS NULL
+        AND ticket_customer_promise_status = 'Open'
         AND ticket_customer_promise_due_at < NOW() $active_scope
         ORDER BY ticket_customer_promise_due_at, ticket_customer_promise_id LIMIT $limit",
         'Could not select overdue customer promises');
@@ -1257,7 +1282,8 @@ function ticketOperationalReconcilePromises(int $limit = 200): int
             $projection = ticketOperationalSoftDeleteProjection('tickets');
             $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id,
                 ticket_status, ticket_closed_at, ticket_archived_at $projection FROM tickets
-                WHERE ticket_id = $ticket_id $active_scope LIMIT 1 FOR UPDATE",
+                WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+                $active_scope LIMIT 1 FOR UPDATE",
                 'Could not lock an overdue promise ticket'));
             if (!$ticket || intval($ticket['ticket_client_id']) !== $client_id
                 || ticketOperationalTicketIsImmutable($ticket)) {

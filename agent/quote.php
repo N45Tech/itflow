@@ -129,7 +129,11 @@ if (isset($_GET['quote_id'])) {
     // Quote File Attachments
     $sql_quote_files = mysqli_query(
         $mysqli,
-        "SELECT file_reference_name, file_name, file_created_at FROM quote_files LEFT JOIN files ON quote_files.file_id = files.file_id WHERE quote_id = $quote_id"
+        "SELECT files.file_id, file_name, file_created_at FROM quote_files
+        INNER JOIN files ON quote_files.file_id = files.file_id
+            AND files.file_deleted_at IS NULL
+            AND files.file_client_id = $client_id
+        WHERE quote_id = $quote_id"
     );
 
 ?>
@@ -510,12 +514,12 @@ if (isset($_GET['quote_id'])) {
 
                         while ($quote_file = mysqli_fetch_assoc($sql_quote_files)) {
                             $name = escapeHtml($quote_file['file_name']);
-                            $ref_name = escapeHtml($quote_file['file_reference_name']);
+                            $file_id = intval($quote_file['file_id']);
                             $created = escapeHtml($quote_file['file_created_at']);
 
                             ?>
                             <tr>
-                                <td><a target="_blank" href="../uploads/clients/<?= $client_id ?>/<?= $ref_name ?>"><?= $name ?></a></td>
+                                <td><a target="_blank" rel="noopener" href="file.php?file_id=<?= $file_id ?>"><?= $name ?></a></td>
                                 <td><?= $created ?></td>
                             </tr>
                             <?php

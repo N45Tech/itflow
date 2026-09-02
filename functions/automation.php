@@ -863,7 +863,8 @@ function automationAddIncidentReply(int $ticket_id, int $client_id, string $repl
         return;
     }
     $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_status FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id LIMIT 1"));
+        WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+        AND ticket_deleted_at IS NULL LIMIT 1"));
     if (!$ticket) {
         throw new AutomationConflictException('The mapped automation ticket is unavailable');
     }
@@ -900,6 +901,7 @@ function automationAddIncidentReply(int $ticket_id, int $client_id, string $repl
                 : "ticket_resolved_at = '" . automationDbEscape($locked_ticket['ticket_resolved_at']) . "'";
             automationDbQuery("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                AND ticket_deleted_at IS NULL
                 AND ticket_status = $locked_status AND $resolved_at_predicate
                 AND ticket_closed_at IS NULL LIMIT 1", 'Could not resolve the automation incident ticket');
             if (mysqli_affected_rows($mysqli) !== 1) {

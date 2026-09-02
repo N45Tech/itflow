@@ -349,7 +349,8 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
         FROM tickets
         LEFT JOIN contacts on tickets.ticket_contact_id = contacts.contact_id
         LEFT JOIN clients on tickets.ticket_client_id = clients.client_id
-        WHERE ticket_number = $ticket_number_esc $active_ticket_scope LIMIT 1"));
+        WHERE ticket_number = $ticket_number_esc
+        AND tickets.ticket_deleted_at IS NULL $active_ticket_scope LIMIT 1"));
 
     if ($row) {
         $ticket_id = intval($row['ticket_id']);
@@ -444,6 +445,7 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
                     : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
                 $reopen_sql = mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
                     WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                    AND ticket_deleted_at IS NULL
                     AND ticket_status = $ticket_status AND $resolved_at_predicate
                     AND ticket_closed_at IS NULL LIMIT 1");
                 if (!$reopen_sql || mysqli_affected_rows($mysqli) !== 1) {
@@ -493,7 +495,7 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
             }
         }
 
-        $ticket_assigned_to_sql = mysqli_query($mysqli, "SELECT ticket_assigned_to FROM tickets WHERE ticket_id = $ticket_id LIMIT 1");
+        $ticket_assigned_to_sql = mysqli_query($mysqli, "SELECT ticket_assigned_to FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
         if ($ticket_assigned_to_sql) {
             $row3 = mysqli_fetch_assoc($ticket_assigned_to_sql);
             $ticket_assigned_to = intval($row3['ticket_assigned_to']);

@@ -334,7 +334,7 @@ foreach ($warranty_alert_array as $day) {
 
 // Notify of New Tickets
 // Get Ticket Pending Assignment
-$sql_tickets_pending_assignment = mysqli_query($mysqli,"SELECT ticket_id FROM tickets WHERE ticket_status = 1");
+$sql_tickets_pending_assignment = mysqli_query($mysqli,"SELECT ticket_id FROM tickets WHERE ticket_status = 1 AND ticket_deleted_at IS NULL");
 
 $tickets_pending_assignment = mysqli_num_rows($sql_tickets_pending_assignment);
 
@@ -448,7 +448,7 @@ if (mysqli_num_rows($sql_recurring_tickets) > 0) {
             "SELECT client_name, contact_name, contact_email, ticket_prefix, ticket_number, ticket_priority, ticket_subject, ticket_details FROM tickets
                 LEFT JOIN clients ON ticket_client_id = client_id
                 LEFT JOIN contacts ON ticket_contact_id = contact_id
-                WHERE ticket_id = $id"
+                WHERE ticket_id = $id AND ticket_deleted_at IS NULL"
         );
         $row = mysqli_fetch_assoc($sql);
 
@@ -562,6 +562,7 @@ $sql_resolved_tickets_to_close = mysqli_query(
     "SELECT ticket_assigned_to, ticket_client_id, ticket_id, ticket_number, ticket_prefix,
         ticket_status, ticket_subject FROM tickets
     WHERE ticket_status = 4
+    AND ticket_deleted_at IS NULL
     AND ticket_updated_at < NOW() - INTERVAL $config_ticket_autoclose_hours HOUR"
 );
 
@@ -593,6 +594,7 @@ while ($row = mysqli_fetch_assoc($sql_resolved_tickets_to_close)) {
         $close_sql = mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 5,
             ticket_closed_at = NOW(), ticket_closed_by = $ticket_assigned_to
             WHERE ticket_id = $ticket_id AND ticket_status = 4
+            AND ticket_deleted_at IS NULL
             AND ticket_resolved_at = '$resolved_at' AND ticket_closed_at IS NULL
             AND ticket_updated_at < NOW() - INTERVAL $config_ticket_autoclose_hours HOUR
             LIMIT 1");
@@ -1252,7 +1254,7 @@ if ($config_telemetry > 0 || $config_telemetry == 2) {
     $client_count = $row['num'];
 
     // Ticket Count
-    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('recurring_id') AS num FROM tickets"));
+    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('recurring_id') AS num FROM tickets WHERE ticket_deleted_at IS NULL"));
     $ticket_count = $row['num'];
 
     // Recurring Ticket Count

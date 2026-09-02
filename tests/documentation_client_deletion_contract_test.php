@@ -1,6 +1,6 @@
 <?php
 
-/* Source contract for atomic client deletion and immutable audit retention. */
+/* Source contract for disabled client teardown and immutable audit retention. */
 
 $root = dirname(__DIR__);
 $client_post = file_get_contents($root . '/agent/post/client.php');
@@ -22,15 +22,13 @@ if ($start === false || $end === false || $end <= $start) {
 }
 
 $ordered_needles = [
-    'mysqli_begin_transaction($mysqli)',
-    'portalRequestLockClientForAuditRetention($client_id)',
-    'SELECT ticket_id FROM tickets WHERE ticket_client_id = $client_id FOR UPDATE',
-    'documentationClientHasAuditRecords($client_id)',
-    'DELETE FROM certificates WHERE certificate_client_id = $client_id',
-    'automationDeleteTicketOperations($ticket_id)',
-    'DELETE FROM clients WHERE client_id = $client_id',
-    'mysqli_commit($mysqli)',
-    'removeDirectory("../uploads/clients/$client_id")',
+    'validateCSRFToken()',
+    'enforceAdminPermission()',
+    '$client_id = intval',
+    'enforceClientAccess($client_id)',
+    "logAudit('Retention', 'Blocked Delete'",
+    'Permanent client deletion is disabled by retention policy',
+    'redirect("client_overview.php?client_id=$client_id")',
 ];
 $last_position = -1;
 foreach ($ordered_needles as $needle) {
@@ -44,11 +42,10 @@ foreach ($ordered_needles as $needle) {
     }
 }
 
-if (strpos($delete, 'mysqli_query(') !== false) {
-    $failures[] = 'Client deletion still contains an unchecked database query';
-}
-if (strpos($delete, 'mysqli_rollback($mysqli)') === false) {
-    $failures[] = 'Client deletion cannot roll back a failed association delete';
+foreach (['DELETE FROM ', 'removeDirectory(', 'mysqli_begin_transaction('] as $destructive_primitive) {
+    if (strpos($delete, $destructive_primitive) !== false) {
+        $failures[] = "Disabled client teardown still contains $destructive_primitive";
+    }
 }
 
 foreach ([

@@ -8,7 +8,8 @@ $active_ticket_scope = ticketOperationalActiveTicketSql('tickets');
 $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_client_id,
     ticket_prefix, ticket_number, ticket_work_type, ticket_resolution_code,
     ticket_resolution_summary, ticket_root_cause FROM tickets
-    WHERE ticket_id = $ticket_id AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL $scope $active_ticket_scope LIMIT 1"));
+    WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
+    AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL $scope $active_ticket_scope LIMIT 1"));
 if (!$ticket) { exit; }
 $client_id = intval($ticket['ticket_client_id']);
 if ($client_id) { enforceClientAccess($client_id); }

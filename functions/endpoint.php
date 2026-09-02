@@ -912,6 +912,7 @@ function endpointValidateChangeReferences(
         $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_asset_id,
             ticket_prefix, ticket_number, ticket_subject FROM tickets
             WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+            AND ticket_deleted_at IS NULL
             LIMIT 1 FOR UPDATE"));
         if (!$ticket) {
             throw new EndpointConflictException('Endpoint change ticket is not in this client');
@@ -957,7 +958,7 @@ function endpointValidateChangeReferences(
         $ticket = $evidence_ticket_id > 0
             ? mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_asset_id
                 FROM tickets WHERE ticket_id = $evidence_ticket_id
-                AND ticket_client_id = $client_id LIMIT 1 FOR UPDATE"))
+                AND ticket_client_id = $client_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE"))
             : null;
         if (!$task || !$ticket) {
             throw new EndpointConflictException('Endpoint change evidence is not in this client');
@@ -2494,6 +2495,7 @@ function endpointLoadUnifiedRecord(int $asset_id, int $client_id): array
         LEFT JOIN tickets event_ticket
             ON event_ticket.ticket_id = asset_change_event_ticket_id
             AND event_ticket.ticket_client_id = asset_change_event_client_id
+            AND event_ticket.ticket_deleted_at IS NULL
         LEFT JOIN documents event_document
             ON event_document.document_id = asset_change_event_document_id
             AND event_document.document_client_id = asset_change_event_client_id
@@ -2504,6 +2506,7 @@ function endpointLoadUnifiedRecord(int $asset_id, int $client_id): array
         LEFT JOIN tickets evidence_ticket
             ON evidence_ticket.ticket_id = evidence_task.task_ticket_id
             AND evidence_ticket.ticket_client_id = asset_change_event_client_id
+            AND evidence_ticket.ticket_deleted_at IS NULL
         WHERE asset_change_event_asset_id = $asset_id
         AND asset_change_event_client_id = $client_id
         AND asset_change_event_canonical = 1
@@ -2534,6 +2537,7 @@ function endpointLoadUnifiedRecord(int $asset_id, int $client_id): array
         FROM task_evidence
         INNER JOIN tasks ON task_id = task_evidence_task_id
         INNER JOIN tickets ON tickets.ticket_id = task_ticket_id
+            AND tickets.ticket_deleted_at IS NULL
         WHERE tickets.ticket_client_id = $client_id
         AND (tickets.ticket_asset_id = $asset_id OR EXISTS (
             SELECT 1 FROM ticket_assets
@@ -2552,6 +2556,7 @@ function endpointLoadUnifiedRecord(int $asset_id, int $client_id): array
         ticket_resolved_at
         FROM tickets
         WHERE ticket_client_id = $client_id
+        AND tickets.ticket_deleted_at IS NULL
         AND (ticket_asset_id = $asset_id OR EXISTS (
             SELECT 1 FROM ticket_assets
             WHERE ticket_assets.ticket_id = tickets.ticket_id

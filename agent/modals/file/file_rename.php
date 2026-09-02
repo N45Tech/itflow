@@ -5,9 +5,14 @@ enforceUserPermission('module_support', 2);
 
 $file_id = intval($_GET['id']);
 
-$sql = mysqli_query($mysqli, "SELECT file_client_id, file_description, file_name FROM files WHERE file_id = $file_id LIMIT 1");
+$sql = mysqli_query($mysqli, "SELECT file_client_id, file_description, file_name FROM files
+    WHERE file_id = $file_id AND file_deleted_at IS NULL LIMIT 1");
 
 $row = mysqli_fetch_assoc($sql);
+if (!$row) {
+    http_response_code(404);
+    exit('File not found');
+}
 $client_id = intval($row['file_client_id']);
 $file_name = escapeHtml($row['file_name']);
 $file_description = escapeHtml($row['file_description']);

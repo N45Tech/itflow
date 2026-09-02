@@ -199,9 +199,9 @@ if (isset($_POST['bulk_force_recurring_tickets'])) {
                 $sql = mysqli_query(
                     $mysqli,
                     "SELECT client_name, contact_name, contact_email, ticket_prefix, ticket_number, ticket_priority, ticket_subject, ticket_details FROM tickets
-                LEFT JOIN clients ON ticket_client_id = client_id
-                LEFT JOIN contacts ON ticket_contact_id = contact_id
-                WHERE ticket_id = $id"
+                        LEFT JOIN clients ON ticket_client_id = client_id
+                        LEFT JOIN contacts ON ticket_contact_id = contact_id
+                        WHERE ticket_id = $id AND ticket_deleted_at IS NULL"
                 );
                 $row = mysqli_fetch_assoc($sql);
 
@@ -388,7 +388,7 @@ if (isset($_GET['force_recurring_ticket'])) {
             "SELECT client_name, contact_name, contact_email, ticket_prefix, ticket_number, ticket_priority, ticket_subject, ticket_details FROM tickets
                 LEFT JOIN clients ON ticket_client_id = client_id
                 LEFT JOIN contacts ON ticket_contact_id = contact_id
-                WHERE ticket_id = $id"
+                WHERE ticket_id = $id AND ticket_deleted_at IS NULL"
         );
         $row = mysqli_fetch_assoc($sql);
 

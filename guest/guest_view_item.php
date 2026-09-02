@@ -153,7 +153,8 @@ if ($item_type == "Document") {
 
 
 } elseif ($item_type == "File") {
-    $file_sql = mysqli_query($mysqli, "SELECT * FROM files WHERE file_id = $item_related_id AND file_client_id = $client_id LIMIT 1");
+    $file_sql = mysqli_query($mysqli, "SELECT * FROM files WHERE file_id = $item_related_id
+        AND file_client_id = $client_id AND file_deleted_at IS NULL LIMIT 1");
     $file_row = mysqli_fetch_assoc($file_sql);
 
     if (mysqli_num_rows($file_sql) !== 1 || !$file_row) {

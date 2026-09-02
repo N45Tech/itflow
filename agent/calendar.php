@@ -363,7 +363,7 @@ while ($row = mysqli_fetch_assoc($sql)) {
             // Tickets Created
             $sql = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_id, ticket_number, ticket_prefix, ticket_status,
                 ticket_status_name, ticket_subject, user_name FROM clients
-                LEFT JOIN tickets ON client_id = ticket_client_id
+                LEFT JOIN tickets ON client_id = ticket_client_id AND ticket_deleted_at IS NULL
                 LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
                 LEFT JOIN users ON ticket_assigned_to = user_id
                 $client_query " . clientScopeSql('clients.client_id') . ""
@@ -424,7 +424,7 @@ while ($row = mysqli_fetch_assoc($sql)) {
             // Tickets Scheduled
             $sql = mysqli_query($mysqli, "SELECT ticket_id, ticket_number, ticket_prefix, ticket_schedule, ticket_status_name,
                 ticket_subject, user_name FROM clients
-                LEFT JOIN tickets ON client_id = ticket_client_id
+                LEFT JOIN tickets ON client_id = ticket_client_id AND ticket_deleted_at IS NULL
                 LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
                 LEFT JOIN users ON ticket_assigned_to = user_id
                 $client_query " . clientScopeSql('clients.client_id') . " AND ticket_schedule IS NOT NULL"

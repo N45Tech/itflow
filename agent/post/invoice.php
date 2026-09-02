@@ -295,7 +295,7 @@ if (isset($_GET['delete_invoice'])) {
     }
 
     //unlink tickets from invoice
-    mysqli_query($mysqli,"UPDATE tickets SET ticket_invoice_id = 0 WHERE ticket_invoice_id = $invoice_id");
+    mysqli_query($mysqli,"UPDATE tickets SET ticket_invoice_id = 0 WHERE ticket_invoice_id = $invoice_id AND ticket_deleted_at IS NULL");
 
     logAudit("Invoice", "Delete", "$session_name deleted invoice $invoice_prefix$invoice_number", $client_id);
 
@@ -794,7 +794,18 @@ if (isset($_POST['link_invoice_to_ticket'])) {
 
     enforceClientAccess();
 
-    mysqli_query($mysqli,"UPDATE invoices SET invoice_ticket_id = $ticket_id WHERE invoice_id = $invoice_id");
+    $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id FROM tickets
+        WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+        AND ticket_deleted_at IS NULL LIMIT 1"));
+    if (!$ticket) {
+        flashAlert('The ticket is unavailable for this invoice.', 'error');
+        redirect();
+    }
+
+    mysqli_query($mysqli, "UPDATE invoices i
+        INNER JOIN tickets t ON t.ticket_id = $ticket_id
+            AND t.ticket_client_id = i.invoice_client_id AND t.ticket_deleted_at IS NULL
+        SET i.invoice_ticket_id = t.ticket_id WHERE i.invoice_id = $invoice_id");
 
     flashAlert("Invoice linked to ticket");
 
@@ -811,11 +822,21 @@ if (isset($_POST['add_ticket_to_invoice'])) {
     $invoice_id = intval($_POST['invoice_id']);
     $ticket_id = intval($_POST['ticket_id']);
 
-    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+    $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+    if (!$ticket) {
+        flashAlert('The ticket is unavailable.', 'error');
+        redirect();
+    }
+    $client_id = intval($ticket['ticket_client_id']);
 
     enforceClientAccess();
 
-    mysqli_query($mysqli,"UPDATE tickets SET ticket_invoice_id = $invoice_id WHERE ticket_id = $ticket_id");
+    mysqli_query($mysqli, "UPDATE tickets t
+        INNER JOIN invoices i ON i.invoice_id = $invoice_id
+            AND i.invoice_client_id = t.ticket_client_id
+        SET t.ticket_invoice_id = i.invoice_id
+        WHERE t.ticket_id = $ticket_id AND t.ticket_deleted_at IS NULL");
 
     flashAlert("Ticket linked to invoice");
 

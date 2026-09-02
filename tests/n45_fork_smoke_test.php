@@ -93,8 +93,9 @@ $assertTrue(
     array_keys($post_integration_reservations) === [
         'n45-0015-documentation-evidence-reference-index',
         'n45-0016-ticket-operational-discipline',
+        'n45-0018-retention-controls',
     ],
-    'The post-integration compatibility and ticket-operation migrations are not reserved'
+    'The post-integration compatibility, ticket-operation, and retention migrations are not reserved'
 );
 $required_migration_ids = array_keys($expected_legacy_migrations);
 $manifest_migration_ids = array_keys($manifest['migrations'] ?? []);
@@ -111,8 +112,16 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0016-ticket-operational-discipline',
-    'Ticket operational discipline is not the final stable N45 migration'
+    isset($manifest['migrations']['n45-0015-documentation-evidence-reference-index']),
+    'The documentation evidence-index repair is missing from the stable N45 stream'
+);
+$assertTrue(
+    ($manifest_migration_ids[16] ?? '') === 'n45-0016-ticket-operational-discipline',
+    'Ticket operational discipline is missing or out of order in the stable N45 stream'
+);
+$assertTrue(
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0018-retention-controls',
+    'Recoverable deletion is not the final reserved stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -227,6 +236,7 @@ $assertOrdered($functions, [
     "n45RequireModule('runbooks');",
     "n45RequireModule('portal_requests');",
     "n45RequireModule('agreements');",
+    "n45RequireModule('retention');",
     "require_once __DIR__ . '/functions/app.php';",
 ], 'Fork runtime modules are not loaded through the stable boundary in dependency order');
 $assertNotContains("require_once __DIR__ . '/functions/endpoint.php';", $functions, 'Endpoint runtime bypasses the stable module boundary');
@@ -412,45 +422,32 @@ $assertTrue(substr_count($compose, 'N45_FEATURE_AUTOMATION: ${N45_FEATURE_AUTOMA
 $assertContains('N45_FEATURE_LEVEL=1', $environment_example, 'Deployment environment example omits the Level flag');
 $assertContains('N45_FEATURE_AUTOMATION=1', $environment_example, 'Deployment environment example omits the automation flag');
 
-// Deletion smoke: the automation flag must never bypass referential cleanup.
+// Deletion smoke: legacy destructive routes must defer to recoverable retention.
 $single_delete = $section($ticket_post, "if (isset(\$_GET['delete_ticket']))", "if (isset(\$_POST['bulk_delete_tickets']))", 'single ticket deletion');
 $bulk_delete = $section($ticket_post, "if (isset(\$_POST['bulk_delete_tickets']))", "if (isset(\$_POST['bulk_assign_ticket']))", 'bulk ticket deletion');
-foreach ([$single_delete, $bulk_delete] as $index => $delete_handler) {
-    $label = $index === 0 ? 'Single ticket deletion' : 'Bulk ticket deletion';
-    $assertOrdered($delete_handler, [
-        'mysqli_begin_transaction($mysqli)',
-        'automationDeleteTicketOperations($ticket_id)',
-        'DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id',
-        'DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id',
-        'DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id',
-        'DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id',
-        'DELETE FROM tickets WHERE ticket_id = $ticket_id',
-        'mysqli_commit($mysqli)',
-    ], "$label does not atomically remove Operations records with the ticket");
-    $assertContains('mysqli_rollback($mysqli)', $delete_handler, "$label cannot roll back failed Operations cleanup");
-    $assertTrue(!str_contains($delete_handler, "n45FeatureEnabled('automation')"), "$label incorrectly skips cleanup when automation ingress is disabled");
-    $assertOrdered($delete_handler, [
-        'if (!mysqli_commit($mysqli))',
-        'removeDirectory("../uploads/tickets/$ticket_id")',
-    ], "$label mutates filesystem state before the database transaction commits");
-}
+$assertOrdered($single_delete, [
+    'enforceAdminPermission()',
+    'redirect("/admin/retention.php?record_type=ticket&record_id=$ticket_id")',
+], 'Single ticket deletion does not defer to the recoverable retention workflow');
+$assertTrue(!str_contains($single_delete, 'DELETE FROM tickets') && !str_contains($single_delete, 'removeDirectory('),
+    'Single ticket deletion still exposes a permanent-delete side path');
+$assertOrdered($bulk_delete, [
+    'enforceAdminPermission()',
+    'Bulk ticket deletion is disabled',
+    "redirect('/admin/retention.php')",
+], 'Bulk ticket deletion does not fail closed into the retention workflow');
+$assertTrue(!str_contains($bulk_delete, 'DELETE FROM tickets') && !str_contains($bulk_delete, 'removeDirectory('),
+    'Bulk ticket deletion still exposes a permanent-delete side path');
 
 $client_handler = $read('agent/post/client.php');
 $client_delete = $section($client_handler, "if (isset(\$_GET['delete_client']))", "if (isExportRequest('export_clients'))", 'client deletion');
 $assertOrdered($client_delete, [
-    'if (!mysqli_begin_transaction($mysqli))',
-    'automationDeleteTicketOperations($ticket_id)',
-    'DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id',
-    'DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id',
-    'DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id',
-    'DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id',
-    'DELETE FROM tickets WHERE ticket_client_id = $client_id',
-    'DELETE FROM clients WHERE client_id = $client_id',
-    'if (!mysqli_commit($mysqli))',
-    'removeDirectory("../uploads/clients/$client_id")',
-], 'Client deletion does not preserve atomic ticket/Operations cleanup before filesystem deletion');
-$assertContains('mysqli_rollback($mysqli)', $client_delete, 'Client deletion cannot roll back failed ticket/Operations cleanup');
-$assertTrue(!str_contains($client_delete, "n45FeatureEnabled('automation')"), 'Client deletion incorrectly skips Operations cleanup when automation is disabled');
+    'enforceAdminPermission()',
+    'Permanent client deletion is disabled by retention policy',
+    'redirect("client_overview.php?client_id=$client_id")',
+], 'Client deletion does not fail closed under retention policy');
+$assertTrue(!str_contains($client_delete, 'DELETE FROM clients') && !str_contains($client_delete, 'removeDirectory('),
+    'Client deletion still exposes a permanent-delete side path');
 
 foreach (glob($root . '/api/v1/tickets/*.php') ?: [] as $api_ticket_file) {
     $assertTrue(!str_contains((string) file_get_contents($api_ticket_file), 'DELETE FROM tickets'), 'Ticket deletion was added to the API without the shared Operations cleanup contract: ' . basename($api_ticket_file));

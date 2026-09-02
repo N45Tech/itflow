@@ -309,7 +309,7 @@ $assertContains('runbook_export.php?ticket_id=', $ticket, 'Completed executions 
 // integrity/detail read, then release it before audit logging and output.
 $assertSame(1, substr_count($export, 'mysqli_begin_transaction($mysqli)'), 'Export opens more than one read snapshot transaction');
 $assertSame(1, substr_count($export, 'mysqli_commit($mysqli)'), 'Export does not commit exactly one read snapshot transaction');
-$assertContains('FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE', $export, 'Export does not lock the workflow parent ticket');
+$assertContains('FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE', $export, 'Export does not lock and revalidate the active workflow parent ticket');
 $begin_position = strpos($export, 'mysqli_begin_transaction($mysqli)');
 $lock_position = strpos($export, 'LIMIT 1 FOR UPDATE', $begin_position === false ? 0 : $begin_position);
 $completed_position = strpos($export, "runbook_execution_status'] !== 'Completed'", $lock_position === false ? 0 : $lock_position);

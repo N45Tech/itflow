@@ -121,7 +121,11 @@ if (isset($_POST['asset_set_notes'])) {
 if (isset($_GET['ticket_add_view'])) {
     $ticket_id = intval($_GET['ticket_id']);
 
-    mysqli_query($mysqli, "INSERT INTO ticket_views SET view_ticket_id = $ticket_id, view_user_id = $session_user_id, view_timestamp = NOW()");
+    mysqli_query($mysqli, "INSERT INTO ticket_views
+        (view_ticket_id, view_user_id, view_timestamp)
+        SELECT ticket_id, $session_user_id, NOW() FROM tickets
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL "
+        . clientScopeSql('ticket_client_id'));
 }
 
 /*
@@ -132,7 +136,13 @@ if (isset($_GET['ticket_add_view'])) {
 if (isset($_GET['ticket_query_views'])) {
     $ticket_id = intval($_GET['ticket_id']);
 
-    $query = mysqli_query($mysqli, "SELECT user_name FROM ticket_views LEFT JOIN users ON view_user_id = user_id WHERE view_ticket_id = $ticket_id AND view_user_id != $session_user_id AND view_timestamp > DATE_SUB(NOW(), INTERVAL 2 MINUTE)");
+    $query = mysqli_query($mysqli, "SELECT user_name FROM ticket_views
+        INNER JOIN tickets ON tickets.ticket_id = view_ticket_id
+            AND tickets.ticket_deleted_at IS NULL
+        LEFT JOIN users ON view_user_id = user_id
+        WHERE view_ticket_id = $ticket_id AND view_user_id != $session_user_id
+        AND view_timestamp > DATE_SUB(NOW(), INTERVAL 2 MINUTE) "
+        . clientScopeSql('tickets.ticket_client_id'));
     while ($row = mysqli_fetch_assoc($query)) {
         $users[] = $row['user_name'];
     }
@@ -198,7 +208,14 @@ if (isset($_GET['share_generate_link'])) {
     }
 
     if ($item_type == "File") {
-        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT file_name FROM files WHERE file_id = $item_id AND file_client_id = $client_id LIMIT 1"));
+        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT file_name FROM files
+            WHERE file_id = $item_id AND file_client_id = $client_id
+            AND file_deleted_at IS NULL LIMIT 1"));
+        if (!$row) {
+            http_response_code(404);
+            echo json_encode(['error' => 'File not found']);
+            exit;
+        }
         $item_name = escapeSql($row['file_name']);
     }
 
@@ -522,7 +539,10 @@ if (isset($_POST['update_kanban_ticket'])) {
         $ticket_id = intval($position['ticket_id']);
 
         // Client perms check
-        $client_query = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets WHERE ticket_id = $ticket_id"));
+        $client_query = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"));
+        if (!$client_query) {
+            continue;
+        }
         $client_id = intval($client_query['ticket_client_id']);
         enforceClientAccess();
 
@@ -545,7 +565,7 @@ if (isset($_POST['update_kanban_ticket'])) {
         if ($oldStatus === false) {
             // If the ticket was not moved, just update its order on the kanban.
             mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban
-                WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id");
+                WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id AND ticket_deleted_at IS NULL");
             triggerCustomAction('ticket_update', $ticket_id);
         } else {
             $status_changed = false;
@@ -599,6 +619,7 @@ if (isset($_POST['update_kanban_ticket'])) {
 
                 $update_sql = mysqli_query($mysqli, "UPDATE tickets SET $status_set
                     WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                    AND ticket_deleted_at IS NULL
                     AND ticket_status = $actual_old_status
                     AND $resolved_at_predicate AND $closed_at_predicate LIMIT 1");
                 if (!$update_sql || mysqli_affected_rows($mysqli) !== 1) {
@@ -650,6 +671,7 @@ if (isset($_POST['update_kanban_ticket'])) {
                         LEFT JOIN contacts ON ticket_contact_id = contact_id
                         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
                         WHERE ticket_id = $ticket_id
+                            AND ticket_deleted_at IS NULL
                     ");
                     $row = mysqli_fetch_assoc($ticket_sql);
 
@@ -748,7 +770,20 @@ if (isset($_POST['update_ticket_tasks_order'])) {
 
     $positions = $_POST['positions'];
     $ticket_id = intval($_POST['ticket_id']);
-    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+    if (!mysqli_begin_transaction($mysqli)) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'The ticket could not be locked.']);
+        exit;
+    }
+    $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE"));
+    if (!$ticket) {
+        mysqli_rollback($mysqli);
+        http_response_code(404);
+        echo json_encode(['status' => 'error', 'message' => 'The ticket is unavailable.']);
+        exit;
+    }
+    $client_id = intval($ticket['ticket_client_id']);
     if ($client_id) {
         enforceClientAccess();
     }
@@ -759,9 +794,24 @@ if (isset($_POST['update_ticket_tasks_order'])) {
 
         // Published runbook ordering is part of the immutable execution
         // definition. Legacy ticket tasks remain freely reorderable.
-        mysqli_query($mysqli, "UPDATE tasks SET task_order = $order
+        $updated = mysqli_query($mysqli, "UPDATE tasks SET task_order = $order
             WHERE task_ticket_id = $ticket_id AND task_id = $id
-            AND task_runbook_version_task_id = 0");
+            AND task_runbook_version_task_id = 0
+            AND EXISTS (SELECT 1 FROM tickets WHERE ticket_id = $ticket_id
+                AND ticket_deleted_at IS NULL)");
+        if (!$updated) {
+            mysqli_rollback($mysqli);
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'The task order could not be saved.']);
+            exit;
+        }
+    }
+
+    if (!mysqli_commit($mysqli)) {
+        mysqli_rollback($mysqli);
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'The task order could not be saved.']);
+        exit;
     }
 
     // return a response
@@ -1041,9 +1091,15 @@ if (isset($_GET['ai_ticket_summary'])) {
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
         LEFT JOIN categories ON ticket_category = category_id
         WHERE ticket_id = $ticket_id
+            AND ticket_deleted_at IS NULL
         LIMIT 1
     ");
     $row = mysqli_fetch_assoc($sql);
+    if (!$row) {
+        http_response_code(404);
+        echo '<p>The ticket is unavailable.</p>';
+        exit;
+    }
     $ticket_subject = $row['ticket_subject'];
     $ticket_details = strip_tags($row['ticket_details']); // strip HTML for cleaner prompt
     $ticket_status = $row['ticket_status_name'];

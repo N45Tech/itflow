@@ -47,18 +47,30 @@ $required_migration_prefix = [
     'n45-0014-agreement-entitlements.php',
     'n45-0015-documentation-evidence-reference-index.php',
     'n45-0016-ticket-operational-discipline.php',
+    'n45-0018-retention-controls.php',
 ];
 $disk_migration_files = array_map('basename', glob($root . '/n45/migrations/*.php') ?: []);
 sort($disk_migration_files);
 $assertTrue(array_slice($disk_migration_files, 0, count($required_migration_prefix)) === $required_migration_prefix, 'The established migration inventory is incomplete on disk');
 $assertTrue(in_array('n45-0013-portal-request-catalog.php', $disk_migration_files, true), 'The released portal request migration is missing on disk');
 $released_migration_files = $disk_migration_files;
+$has_reserved_0017 = count(array_filter(
+    $released_migration_files,
+    static fn (string $file): bool => str_starts_with($file, 'n45-0017-')
+)) === 1;
 
 foreach ($released_migration_files as $position => $migration_file) {
     $matches = [];
     $assertTrue(preg_match('/^n45-(\d{4})-[a-z0-9-]+\.php$/', $migration_file, $matches) === 1, "$migration_file is not a stable migration filename");
     if ($matches) {
-        $assertTrue(intval($matches[1]) === $position, "$migration_file leaves a gap in the ordered migration stream");
+        // Goal 10 owns 0018; the reserved 0017 slot is supplied by the Goal 9
+        // Field Mode integration. Until that sibling snapshot is composed,
+        // this is the only permitted gap in the recovered partial stream.
+        $expected_position = $position;
+        if (!$has_reserved_0017 && $position >= 17) {
+            $expected_position++;
+        }
+        $assertTrue(intval($matches[1]) === $expected_position, "$migration_file leaves an unexpected gap in the ordered migration stream");
     }
 }
 
@@ -77,6 +89,7 @@ $assertTrue(
     array_keys($post_integration_reservations) === [
         'n45-0015-documentation-evidence-reference-index',
         'n45-0016-ticket-operational-discipline',
+        'n45-0018-retention-controls',
     ],
     'The post-integration migration reservations are missing or out of order'
 );

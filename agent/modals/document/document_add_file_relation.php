@@ -22,7 +22,8 @@
                                 <?php
                                 $sql_files_select = mysqli_query($mysqli, "SELECT file_id, file_name, folder_name FROM files
                                     LEFT JOIN folders ON folder_id = file_folder_id
-                                    WHERE file_client_id = $client_id ORDER BY folder_name ASC, file_name ASC");
+                                    WHERE file_client_id = $client_id AND file_archived_at IS NULL
+                                    AND file_deleted_at IS NULL ORDER BY folder_name ASC, file_name ASC");
                                 while ($row = mysqli_fetch_assoc($sql_files_select)) {
                                     $file_id = intval($row['file_id']);
                                     $file_name = escapeHtml($row['file_name']);

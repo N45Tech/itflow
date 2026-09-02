@@ -198,6 +198,12 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a href="/admin/retention.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'retention.php' ? 'active' : '') ?>">
+                        <i class="nav-icon fas fa-trash-restore"></i>
+                        <p>Retention</p>
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a href="/admin/app_logs.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'app_logs.php' ? 'active' : '') ?>">
                         <i class="nav-icon fas fa-clipboard-list"></i>
                         <p>App Logs</p>

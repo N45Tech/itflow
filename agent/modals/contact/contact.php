@@ -102,7 +102,7 @@ $sql_related_tickets = mysqli_query($mysqli, "SELECT ticket_assigned_to, ticket_
     ticket_updated_at, user_name FROM tickets
     LEFT JOIN users ON ticket_assigned_to = user_id
     LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-    WHERE ticket_contact_id = $contact_id
+    WHERE ticket_deleted_at IS NULL AND ticket_contact_id = $contact_id
     ORDER BY ticket_id DESC
 ");
 $ticket_count = mysqli_num_rows($sql_related_tickets);

@@ -135,7 +135,7 @@ ob_start();
                 <select class="form-control select2" name="client">
                     <option value="">- All Clients -</option>
                     <?php
-                    $sql_clients_filter = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE EXISTS (SELECT 1 FROM tickets WHERE ticket_client_id = client_id) ORDER BY client_name ASC");
+                    $sql_clients_filter = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE EXISTS (SELECT 1 FROM tickets WHERE ticket_client_id = client_id AND ticket_deleted_at IS NULL) ORDER BY client_name ASC");
                     while ($row = mysqli_fetch_assoc($sql_clients_filter)) {
                         $filter_client_id = intval($row['client_id']);
                         $filter_client_name = escapeHtml($row['client_name']);

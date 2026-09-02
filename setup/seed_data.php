@@ -24,6 +24,21 @@ function seedDefaultData($mysqli)
 {
     $latest_database_version = LATEST_DATABASE_VERSION;
     mysqli_query($mysqli,"INSERT INTO settings SET company_id = 1, config_current_database_version = '$latest_database_version', config_invoice_prefix = 'INV-', config_invoice_next_number = 1, config_recurring_invoice_prefix = 'REC-', config_quote_prefix = 'QUO-', config_quote_next_number = 1, config_default_net_terms = 30, config_ticket_next_number = 1, config_ticket_prefix = 'TCK-', config_business_days = '1,2,3,4,5', config_business_hours_start = '08:00:00', config_business_hours_end = '17:00:00', config_sla_warning_percent = 75");
+    // Fresh installs import the final schema and then fingerprint/record every
+    // N45 migration without executing it. Seed schema-owned retention defaults
+    // before that validation so the fail-closed policy service is usable from
+    // the first request and 0018's required-key postcondition can pass.
+    if (!mysqli_query($mysqli, "INSERT IGNORE INTO retention_policies
+        (retention_policy_key,retention_policy_label,retention_policy_retention_days,
+         retention_policy_restore_window_days,retention_policy_purge_mode,retention_policy_owner_note) VALUES
+        ('tickets','Tickets',2555,30,'manual','Seven-year operational record baseline; explicit purge batch required.'),
+        ('files','Client files',2555,30,'manual','Evidence references remain an unconditional deletion lock.'),
+        ('attachments','Ticket attachments',2555,30,'manual','Runbook evidence references remain an unconditional deletion lock.'),
+        ('automation_payloads','Redacted event payloads',30,0,'automatic','Payload bodies are minimized; hashes and event metadata remain.'),
+        ('normalized_payloads','Normalized integration payloads',90,0,'automatic','Normalized bodies are minimized; identity and hashes remain.'),
+        ('evidence','Evidence and approvals',2555,0,'disabled','Immutable evidence is locked from purge by default.')")) {
+        throw new RuntimeException('Could not seed safe retention policy defaults: ' . mysqli_error($mysqli));
+    }
     n45SeedFreshInstallMigrations($mysqli);
 
     // Create Categories

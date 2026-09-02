@@ -230,7 +230,7 @@ function ticketAssignProjectSafely($ticket_id, $target_project_id, $preserve_upd
     $preserve_updated_at = (bool) $preserve_updated_at;
     $ticket = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT ticket_client_id,
         ticket_project_id, ticket_prefix, ticket_number, ticket_subject FROM tickets
-        WHERE ticket_id = $ticket_id LIMIT 1", 'Could not load the ticket project assignment'));
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not load the ticket project assignment'));
     if (!$ticket) {
         throw new RuntimeException('The ticket is unavailable');
     }
@@ -287,7 +287,8 @@ function ticketAssignProjectSafely($ticket_id, $target_project_id, $preserve_upd
         }
 
         $locked_ticket = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT ticket_client_id,
-            ticket_project_id, ticket_updated_at FROM tickets WHERE ticket_id = $ticket_id FOR UPDATE",
+            ticket_project_id, ticket_updated_at FROM tickets WHERE ticket_id = $ticket_id
+            AND ticket_deleted_at IS NULL FOR UPDATE",
             'Could not lock the ticket project assignment'));
         if (!$locked_ticket || intval($locked_ticket['ticket_client_id']) !== $client_id
             || intval($locked_ticket['ticket_project_id']) !== $source_project_id) {
@@ -310,6 +311,7 @@ function ticketAssignProjectSafely($ticket_id, $target_project_id, $preserve_upd
         ticketCreationDbQuery("UPDATE tickets SET ticket_project_id = $target_project_id
             $updated_at_assignment
             WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+            AND ticket_deleted_at IS NULL
             AND ticket_project_id = $source_project_id", 'Could not assign the ticket project');
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket project assignment was not changed');

@@ -2213,9 +2213,11 @@ function documentationValidateEvidenceReference($client_id, $document_id, $evide
             AND version.document_version_document_id = $document_id
             AND document.document_client_id = $client_id AND document.document_archived_at IS NULL LIMIT 1$lock_sql",
         'file' => "SELECT file_id AS documentation_evidence_entity_id FROM files WHERE file_id = $reference_id
-            AND file_client_id = $client_id AND file_archived_at IS NULL LIMIT 1$lock_sql",
+            AND file_client_id = $client_id AND file_archived_at IS NULL
+            AND file_deleted_at IS NULL LIMIT 1$lock_sql",
         'ticket' => "SELECT ticket_id AS documentation_evidence_entity_id FROM tickets WHERE ticket_id = $reference_id
-            AND ticket_client_id = $client_id AND ticket_archived_at IS NULL LIMIT 1$lock_sql",
+            AND ticket_client_id = $client_id AND ticket_archived_at IS NULL
+            AND ticket_deleted_at IS NULL LIMIT 1$lock_sql",
         'automation' => "SELECT automation_mapping_id AS documentation_evidence_entity_id
             FROM automation_entity_mappings
             WHERE automation_mapping_id = $reference_id AND automation_mapping_client_id = $client_id
@@ -2659,7 +2661,7 @@ function documentationLockTicket($ticket_id) {
     $ticket = mysqli_fetch_assoc(documentationDbQuery("SELECT ticket_id, ticket_client_id,
         ticket_configuration_change, ticket_documentation_impact, ticket_status,
         ticket_resolved_at, ticket_closed_at FROM tickets
-        WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not lock the documentation ticket'));
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the documentation ticket'));
     if (!$ticket) {
         throw new RuntimeException('The documentation ticket no longer exists');
     }
@@ -2670,7 +2672,7 @@ function documentationLockClientTicket($ticket_id, $expected_client_id = 0) {
     $ticket_id = intval($ticket_id);
     $expected_client_id = max(0, intval($expected_client_id));
     $prelock = mysqli_fetch_assoc(documentationDbQuery("SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id LIMIT 1", 'Could not locate the documentation ticket client'));
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not locate the documentation ticket client'));
     if (!$prelock) {
         throw new RuntimeException('The documentation ticket no longer exists');
     }
@@ -2761,6 +2763,7 @@ function documentationLinkTicketObligation(
                 ticket_documentation_assessed_by = $actor_id,
                 ticket_documentation_assessed_at = NOW()
                 WHERE ticket_id = $ticket_id
+                AND ticket_deleted_at IS NULL
                 AND ticket_documentation_impact = '$observed_impact_sql'", 'Could not mark the ticket documentation impact as linked');
             if (mysqli_affected_rows($mysqli) !== 1) {
                 throw new RuntimeException('The ticket documentation assessment changed; refresh and try again');

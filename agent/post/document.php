@@ -368,19 +368,53 @@ if (isset($_POST['link_file_to_document'])) {
     $document_id = intval($_POST['document_id']);
     $file_id = intval($_POST['file_id']);
 
-    // Get Document Name and Client ID for logging
-    $sql_document = mysqli_query($mysqli,"SELECT document_name, document_client_id FROM documents WHERE document_id = $document_id");
+    // Get active document scope for authorization; the transaction below
+    // repeats this check while both relation endpoints are locked.
+    $sql_document = mysqli_query($mysqli, "SELECT document_name, document_client_id FROM documents
+        WHERE document_id = $document_id AND document_archived_at IS NULL LIMIT 1");
     $row = mysqli_fetch_assoc($sql_document);
+    if (!$row) {
+        flashAlert('The active document is unavailable.', 'error');
+        redirect();
+    }
     $document_name = escapeSql($row['document_name']);
     $client_id = intval($row['document_client_id']);
 
-    enforceClientAccess();
+    enforceClientAccess($client_id);
 
-    // Get File Name for logging
-    $file_name = escapeSql(getFieldById('files', $file_id, 'file_name'));
-
-    // Document add query
-    mysqli_query($mysqli,"INSERT INTO document_files SET file_id = $file_id, document_id = $document_id");
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document file-link transaction');
+        }
+        documentationLockClient($client_id);
+        $file = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT file_id, file_name,
+            file_client_id FROM files WHERE file_id = $file_id AND file_client_id = $client_id
+            AND file_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the active linked file'));
+        $document = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT document_id,
+            document_name, document_client_id FROM documents WHERE document_id = $document_id
+            AND document_client_id = $client_id AND document_archived_at IS NULL
+            LIMIT 1 FOR UPDATE", 'Could not lock the active linked document'));
+        if (!$file || !$document
+            || intval($file['file_client_id']) !== intval($document['document_client_id'])) {
+            throw new DomainException('The active file and document must belong to the same authorized client');
+        }
+        documentationLifecycleDbQuery("INSERT IGNORE INTO document_files (file_id, document_id)
+            SELECT f.file_id, d.document_id FROM files f
+            INNER JOIN documents d ON d.document_client_id = f.file_client_id
+            WHERE f.file_id = $file_id AND f.file_client_id = $client_id
+            AND f.file_deleted_at IS NULL AND d.document_id = $document_id
+            AND d.document_client_id = $client_id AND d.document_archived_at IS NULL",
+            'Could not create the active document file relation');
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the document file link');
+        }
+        $file_name = escapeSql($file['file_name']);
+        $document_name = escapeSql($document['document_name']);
+    } catch (Throwable $e) {
+        mysqli_rollback($mysqli);
+        flashAlert($e->getMessage(), 'error');
+        redirect();
+    }
 
     logAudit("Document", "Link", "$session_name linked file $file_name to document $document_name", $client_id, $document_id);
 
@@ -399,18 +433,53 @@ if (isset($_GET['unlink_file_from_document'])) {
     $file_id = intval($_GET['file_id']);
     $document_id = intval($_GET['document_id']);
 
-    // Get Document Name and Client ID for logging
-    $sql_document = mysqli_query($mysqli,"SELECT document_name, document_client_id FROM documents WHERE document_id = $document_id");
+    // Get active document scope for authorization; the transaction below
+    // repeats this check while both relation endpoints are locked.
+    $sql_document = mysqli_query($mysqli, "SELECT document_name, document_client_id FROM documents
+        WHERE document_id = $document_id AND document_archived_at IS NULL LIMIT 1");
     $row = mysqli_fetch_assoc($sql_document);
+    if (!$row) {
+        flashAlert('The active document is unavailable.', 'error');
+        redirect();
+    }
     $document_name = escapeSql($row['document_name']);
     $client_id = intval($row['document_client_id']);
 
-    enforceClientAccess();
+    enforceClientAccess($client_id);
 
-    // Get File Name for logging
-    $file_name = escapeSql(getFieldById('files', $file_id, 'file_name'));
-
-    mysqli_query($mysqli,"DELETE FROM document_files WHERE file_id = $file_id AND document_id = $document_id");
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document file-unlink transaction');
+        }
+        documentationLockClient($client_id);
+        $file = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT file_id, file_name,
+            file_client_id FROM files WHERE file_id = $file_id AND file_client_id = $client_id
+            AND file_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the active unlinked file'));
+        $document = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT document_id,
+            document_name, document_client_id FROM documents WHERE document_id = $document_id
+            AND document_client_id = $client_id AND document_archived_at IS NULL
+            LIMIT 1 FOR UPDATE", 'Could not lock the active unlinked document'));
+        if (!$file || !$document
+            || intval($file['file_client_id']) !== intval($document['document_client_id'])) {
+            throw new DomainException('The active file and document must belong to the same authorized client');
+        }
+        documentationLifecycleDbQuery("DELETE df FROM document_files df
+            INNER JOIN files f ON f.file_id = df.file_id AND f.file_deleted_at IS NULL
+            INNER JOIN documents d ON d.document_id = df.document_id
+                AND d.document_client_id = f.file_client_id AND d.document_archived_at IS NULL
+            WHERE df.file_id = $file_id AND df.document_id = $document_id
+            AND f.file_client_id = $client_id AND d.document_client_id = $client_id",
+            'Could not remove the active document file relation');
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the document file unlink');
+        }
+        $file_name = escapeSql($file['file_name']);
+        $document_name = escapeSql($document['document_name']);
+    } catch (Throwable $e) {
+        mysqli_rollback($mysqli);
+        flashAlert($e->getMessage(), 'error');
+        redirect();
+    }
 
     logAudit("Document", "Unlink", "$session_name unlinked file $file_name from document $document_name", $client_id, $document_id);
 

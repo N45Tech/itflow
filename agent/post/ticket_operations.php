@@ -10,7 +10,8 @@ if (isset($_POST['edit_ticket_operations']) || isset($_POST['add_ticket_relation
     $ticket_id = intval($_POST['ticket_id'] ?? 0);
     $active_ticket_scope = ticketOperationalActiveTicketSql('tickets');
     $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id, ticket_prefix,
-        ticket_number FROM tickets WHERE ticket_id = $ticket_id $active_ticket_scope LIMIT 1"));
+        ticket_number FROM tickets WHERE ticket_id = $ticket_id
+        AND tickets.ticket_deleted_at IS NULL $active_ticket_scope LIMIT 1"));
     if (!$ticket) {
         flashAlert('Ticket not found', 'error');
         redirect();

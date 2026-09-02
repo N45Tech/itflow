@@ -5,7 +5,12 @@ require_once '../../../includes/modal_header.php';
 enforceUserPermission('module_support', 2);
 
 $ticket_id = intval($_GET['ticket_id']);
-$client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+$ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets
+    WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+if (!$ticket) {
+    exit('<div class="modal-body"><div class="alert alert-danger mb-0">The ticket is unavailable.</div></div>');
+}
+$client_id = intval($ticket['ticket_client_id']);
 
 if ($client_id) {
     enforceClientAccess();

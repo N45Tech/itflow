@@ -7,7 +7,7 @@ enforceUserPermission('module_support', 2);
 $ticket_id = intval($_GET['id']);
 
 $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_number, ticket_prefix, ticket_sla_id FROM tickets
-    WHERE ticket_id = $ticket_id
+    WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
     LIMIT 1"
 );
 

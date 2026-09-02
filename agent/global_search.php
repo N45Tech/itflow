@@ -91,7 +91,7 @@ if (isset($_GET['query'])) {
         FROM files
         LEFT JOIN clients ON file_client_id = client_id
         LEFT JOIN folders ON folder_id = file_folder_id
-        WHERE file_archived_at IS NULL
+        WHERE file_archived_at IS NULL AND file_deleted_at IS NULL
             AND (file_name LIKE '%$query%'
             OR file_description LIKE '%$query%')
             " . clientScopeSql('file_client_id') . "
@@ -103,7 +103,7 @@ if (isset($_GET['query'])) {
         FROM tickets
         LEFT JOIN clients on tickets.ticket_client_id = clients.client_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_archived_at IS NULL
+        WHERE ticket_archived_at IS NULL AND ticket_deleted_at IS NULL
             AND (ticket_subject LIKE '%$query%'
             OR ticket_details LIKE '%$query%'
             OR CONCAT(ticket_prefix,ticket_number) LIKE '%$query%'
@@ -172,7 +172,7 @@ if (isset($_GET['query'])) {
     $sql_ticket_replies = !$can_support ? false : mysqli_query($mysqli,"SELECT client_name, ticket_client_id, ticket_id, ticket_number, ticket_prefix, ticket_reply,
         ticket_subject
         FROM ticket_replies
-        LEFT JOIN tickets ON ticket_reply_ticket_id = ticket_id
+        INNER JOIN tickets ON ticket_reply_ticket_id = ticket_id AND ticket_deleted_at IS NULL
         LEFT JOIN clients ON ticket_client_id = client_id
         WHERE ticket_reply_archived_at IS NULL
             AND (ticket_reply LIKE '%$query%')

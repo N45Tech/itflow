@@ -1436,7 +1436,7 @@ function agreementRecordTicketDecision(int $ticket_id, array $decision): int
     }
 
     $ticket_sql = agreementDbQuery("SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not validate the ticket agreement decision');
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not validate the ticket agreement decision');
     if (!mysqli_num_rows($ticket_sql)) {
         throw new RuntimeException('Ticket not found while recording its agreement decision');
     }
@@ -2250,13 +2250,13 @@ function agreementServiceReviewSnapshot(int $client_id, string $period_start, st
         SUM(ticket_response_sla_met = 0) AS response_missed,
         SUM(ticket_resolution_sla_met = 1) AS resolution_met,
         SUM(ticket_resolution_sla_met = 0) AS resolution_missed
-        FROM tickets WHERE ticket_client_id = $client_id
+        FROM tickets WHERE ticket_client_id = $client_id AND ticket_deleted_at IS NULL
         AND DATE(ticket_created_at) BETWEEN '$period_start_sql' AND '$period_end_sql'",
         'Could not calculate ticket review metrics'));
 
     $recurring_issues = [];
     $recurring_sql = agreementDbQuery("SELECT ticket_subject, COUNT(*) AS occurrences
-        FROM tickets WHERE ticket_client_id = $client_id
+        FROM tickets WHERE ticket_client_id = $client_id AND ticket_deleted_at IS NULL
         AND DATE(ticket_created_at) BETWEEN '$period_start_sql' AND '$period_end_sql'
         GROUP BY ticket_subject HAVING COUNT(*) > 1
         ORDER BY occurrences DESC, ticket_subject ASC LIMIT 10", 'Could not calculate recurring issues');

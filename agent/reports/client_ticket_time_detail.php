@@ -106,7 +106,8 @@ $stmt = $mysqli->prepare("
         AND TIME_TO_SEC(tr.ticket_reply_time_worked) > 0
         AND tr.ticket_reply_created_at BETWEEN ? AND ?
 
-    WHERE c.client_archived_at IS NULL
+    WHERE t.ticket_deleted_at IS NULL
+      AND c.client_archived_at IS NULL
       $billable_sql
 
     ORDER BY c.client_name ASC,

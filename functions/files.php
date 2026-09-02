@@ -199,6 +199,12 @@ function saveTicketAttachments($ticket_id, $reply_id = null, $field_name = 'atta
         return $stored_attachments;
     }
 
+    $active_ticket = mysqli_fetch_row(mysqli_query($mysqli, "SELECT 1 FROM tickets
+        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+    if (!$active_ticket) {
+        return $stored_attachments;
+    }
+
     $allowed_extensions = array(
         'jpg', 'jpeg', 'gif', 'png', 'webp', 'pdf', 'txt', 'md', 'doc', 'docx',
         'odt', 'csv', 'xls', 'xlsx', 'ods', 'pptx', 'odp', 'zip', 'tar', 'gz',
@@ -246,7 +252,11 @@ function saveTicketAttachments($ticket_id, $reply_id = null, $field_name = 'atta
         $attachment_name = escapeSql($single_file['name']);
         $attachment_reference_name_sql = escapeSql($attachment_reference_name);
 
-        $attachment_insert = mysqli_query($mysqli, "INSERT INTO ticket_attachments SET ticket_attachment_name = '$attachment_name', ticket_attachment_reference_name = '$attachment_reference_name_sql', ticket_attachment_reply_id = $reply_id_sql, ticket_attachment_ticket_id = $ticket_id");
+        $attachment_insert = mysqli_query($mysqli, "INSERT INTO ticket_attachments
+            (ticket_attachment_name, ticket_attachment_reference_name,
+                ticket_attachment_reply_id, ticket_attachment_ticket_id)
+            SELECT '$attachment_name', '$attachment_reference_name_sql', $reply_id_sql, ticket_id
+            FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
         $attachment_id = $attachment_insert ? intval(mysqli_insert_id($mysqli)) : 0;
         if (!$attachment_insert || mysqli_affected_rows($mysqli) !== 1 || !$attachment_id) {
             error_log("Ticket $ticket_id attachment metadata insert failed: " . mysqli_error($mysqli));

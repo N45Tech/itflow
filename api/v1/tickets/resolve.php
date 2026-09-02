@@ -16,7 +16,7 @@ $update_count = false;
 if (!empty($ticket_id)) {
 
     $active_ticket_scope = ticketOperationalActiveTicketSql('tickets');
-    $ticket_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_first_response_at, ticket_id, ticket_number, ticket_prefix FROM tickets WHERE ticket_id = '$ticket_id' AND ticket_resolved_at IS NULL AND ticket_client_id = $client_id $active_ticket_scope LIMIT 1"));
+    $ticket_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_first_response_at, ticket_id, ticket_number, ticket_prefix FROM tickets WHERE ticket_id = '$ticket_id' AND tickets.ticket_deleted_at IS NULL AND ticket_resolved_at IS NULL AND ticket_client_id = $client_id $active_ticket_scope LIMIT 1"));
 
     if ($ticket_row) {
         // Grab what we need, not using the model
@@ -55,6 +55,7 @@ if (!empty($ticket_id)) {
                 : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
             $update_sql = mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                AND ticket_deleted_at IS NULL
                 AND ticket_status = $locked_status AND $resolved_at_predicate
                 AND ticket_closed_at IS NULL LIMIT 1");
             if (!$update_sql || mysqli_affected_rows($mysqli) !== 1) {

@@ -164,6 +164,7 @@ if (isset($_POST['add_ticket_comment'])) {
                     : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
                 runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
                     WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+                    AND ticket_deleted_at IS NULL
                     AND ticket_status = $original_ticket_status AND $resolved_predicate
                     AND ticket_closed_at IS NULL LIMIT 1", 'Could not reopen the ticket for the client reply');
                 if (mysqli_affected_rows($mysqli) !== 1) {
@@ -193,7 +194,7 @@ if (isset($_POST['add_ticket_comment'])) {
 
 
         // Get ticket details &  Notify the assigned tech (if any)
-        $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT client_name, ticket_assigned_to, ticket_number, ticket_subject FROM tickets LEFT JOIN clients ON ticket_client_id = client_id WHERE ticket_id = $ticket_id LIMIT 1"));
+        $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT client_name, ticket_assigned_to, ticket_number, ticket_subject FROM tickets LEFT JOIN clients ON ticket_client_id = client_id WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
 
         $ticket_number = intval($ticket_details['ticket_number']);
         $ticket_assigned_to = intval($ticket_details['ticket_assigned_to']);
@@ -262,7 +263,7 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
         approval_type, task_name, task_ticket_id, ticket_client_id
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
-        INNER JOIN tickets ON ticket_id = task_ticket_id
+        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
         WHERE approval_id = $approval_id AND approval_task_id = $task_id
         AND approval_status = 'pending' AND approval_scope = 'client'
         AND task_state NOT IN ('Completed','Skipped')
@@ -386,11 +387,11 @@ if (isset($_POST['add_ticket_feedback'])) {
     if (verifyContactTicketAccess($ticket_id, "Closed")) {
 
         // Add feedback
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_feedback = '$feedback' WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id LIMIT 1");
+        mysqli_query($mysqli, "UPDATE tickets SET ticket_feedback = '$feedback' WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id AND ticket_deleted_at IS NULL LIMIT 1");
 
         // Notify on bad feedback
         if ($feedback == "Bad") {
-            $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+            $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
             $ticket_number = intval($ticket_details['ticket_number']);
             appNotify("Feedback", "$session_contact_name rated ticket $config_ticket_prefix$ticket_number as bad (ID: $ticket_id)", "/agent/ticket.php?ticket_id=$ticket_id&client_id=$session_client_id", $session_client_id, $ticket_id);
         }
@@ -438,6 +439,7 @@ if (isset($_GET['resolve_ticket'])) {
             }
             runbookDbQuery("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+                AND ticket_deleted_at IS NULL
                 AND ticket_status NOT IN (4, 5) AND ticket_resolved_at IS NULL
                 AND ticket_closed_at IS NULL LIMIT 1", 'Could not resolve the ticket');
             if (mysqli_affected_rows($mysqli) !== 1) {
@@ -455,7 +457,7 @@ if (isset($_GET['resolve_ticket'])) {
             redirect("ticket.php?id=" . $ticket_id);
         }
 
-        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
         $ticket_prefix = escapeSql($row['ticket_prefix'] ?? '');
         $ticket_number = intval($row['ticket_number'] ?? 0);
         setTicketResolutionSlaMet($ticket_id);
@@ -486,7 +488,7 @@ if (isset($_GET['reopen_ticket'])) {
     $ticket_id = intval($_GET['reopen_ticket']);
 
     // Get ticket details for logging
-    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
 
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
@@ -507,6 +509,7 @@ if (isset($_GET['reopen_ticket'])) {
             }
             runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+                AND ticket_deleted_at IS NULL
                 AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
                 AND ticket_closed_at IS NULL LIMIT 1", 'Could not reopen the ticket');
             if (mysqli_affected_rows($mysqli) !== 1) {
@@ -569,6 +572,7 @@ if (isset($_GET['close_ticket'])) {
             }
             runbookDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW()
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+                AND ticket_deleted_at IS NULL
                 AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
                 AND ticket_closed_at IS NULL LIMIT 1", 'Could not close the ticket');
             if (mysqli_affected_rows($mysqli) !== 1) {
@@ -585,7 +589,7 @@ if (isset($_GET['close_ticket'])) {
             redirect("ticket.php?id=" . $ticket_id);
         }
 
-        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
         $ticket_prefix = escapeSql($row['ticket_prefix'] ?? '');
         $ticket_number = intval($row['ticket_number'] ?? 0);
         syncTicketSlaClock($ticket_id);

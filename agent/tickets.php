@@ -298,6 +298,7 @@ $ticket_joins =
 
 $ticket_where =
     "WHERE $ticket_status_snippet
+    AND ticket_deleted_at IS NULL
     $ticket_assigned_query
     $category_query
     $ticket_priority_query
@@ -313,10 +314,10 @@ $ticket_where =
 
 // Counts for the quick views in the header - scope-wide, not filter-aware
 $count_where = "$access_permission_query_overide $client_query";
-$total_tickets_open = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_resolved_at IS NULL $count_where"))[0]);
-$total_tickets_closed = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_resolved_at IS NOT NULL $count_where"))[0]);
-$total_tickets_unassigned = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_assigned_to = 0 AND ticket_resolved_at IS NULL $count_where"))[0]);
-$user_active_assigned_tickets = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_assigned_to = $session_user_id AND ticket_resolved_at IS NULL $count_where"))[0]);
+$total_tickets_open = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_resolved_at IS NULL $count_where"))[0]);
+$total_tickets_closed = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_resolved_at IS NOT NULL $count_where"))[0]);
+$total_tickets_unassigned = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_assigned_to = 0 AND ticket_resolved_at IS NULL $count_where"))[0]);
+$user_active_assigned_tickets = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_assigned_to = $session_user_id AND ticket_resolved_at IS NULL $count_where"))[0]);
 
 // Only offer the SLA filter once SLAs are actually in use
 $sla_filter_in_use = mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(sla_id) FROM slas WHERE sla_archived_at IS NULL"))[0] > 0;
