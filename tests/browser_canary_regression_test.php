@@ -54,7 +54,7 @@ if ($auth_script_start === false || $auth_script_end === false) {
     $failures[] = 'Could not isolate the asset authentication-method script';
 } else {
     $auth_script = substr($asset_view, $auth_script_start, $auth_script_end - $auth_script_start);
-    if (substr_count($auth_script, '});') !== 3) {
+    if (substr_count($auth_script, '});') !== 4) {
         $failures[] = 'The asset authentication-method script has unbalanced callback closures';
     }
 }
