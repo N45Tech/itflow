@@ -64,6 +64,7 @@ return [
         'upstream_review_script' => 'scripts/n45-upstream-review.sh',
         'diff_check_allowlist' => 'n45/upstream-diff-check.allowlist',
         'security_sensitive_paths' => 'n45/security-sensitive-paths.regex',
+        'release_checklist' => 'docs/n45/release-checklist.md',
         'upstream_marker_base' => '2.6.7',
         'migration_lock' => 'itflow-database-updates',
         // Upstream may eventually reuse version numbers that predate the N45

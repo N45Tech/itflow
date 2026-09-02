@@ -24,8 +24,10 @@ be weakened ad hoc.
 ## Production authorization
 
 Passing tests does not authorize an infra01 change. The release owner must be
-shown the exact immutable commit SHA and completed release checklist, including
-CI, parity/security review, verified off-host backups, restore proof, migration
-and reconciler idempotency, health checks, and canary results. Production work
-starts only after an explicit final **GO** for that exact SHA; any SHA change
-invalidates the approval.
+shown the exact immutable commit SHA and the completed pre-GO phase of
+[the release checklist](release-checklist.md), including exact-SHA CI,
+parity/security review, recovery readiness and the production execution/canary
+plan. Production work starts only after an explicit final **GO** for that exact
+SHA; any SHA change invalidates the approval. Fresh off-host snapshots, restore
+proof, migrations, reconciler idempotency, health checks and production canaries
+are then mandatory maintenance-window gates before traffic is reopened.

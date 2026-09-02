@@ -18,7 +18,7 @@ or rolls back. Row locks inside the transaction then use this global order:
 12. documentation obligations and evidence gates
 13. documents and document versions
 14. staged-file journal rows
-15. automation delivery rows
+15. automation event and delivery rows
 16. custom-action outbox rows
 17. audit rows
 

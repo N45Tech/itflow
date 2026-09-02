@@ -358,7 +358,7 @@ $assertContains("error_log('Portal catalog request validation failed:", $client_
 foreach (['New user', 'Employee termination', 'New device', 'Access change', 'Report an incident', 'Schedule work'] as $starter) {
     $assertContains("'$starter'", $service, "Starter catalog does not include $starter");
 }
-foreach (['access-change', 'scheduled-work'] as $runbook_key) {
+foreach (['new-user', 'termination', 'new-device', 'access-change', 'incident-report', 'scheduled-work'] as $runbook_key) {
     $assertContains("'runbook_key' => '$runbook_key'", $starter_content,
         "Starter content does not provide the compatible $runbook_key runbook");
 }

@@ -28,6 +28,27 @@ foreach (starterContentTicketTemplates() as $template) {
 }
 
 $contracts = [
+    'new-user' => [
+        'name' => 'User Onboarding',
+        'type' => 'standard',
+        'prefix' => 'NUS',
+        'last' => 80,
+        'count' => 8,
+    ],
+    'termination' => [
+        'name' => 'User Offboarding',
+        'type' => 'offboarding',
+        'prefix' => 'TRM',
+        'last' => 90,
+        'count' => 9,
+    ],
+    'new-device' => [
+        'name' => 'Device Deployment',
+        'type' => 'standard',
+        'prefix' => 'DEV',
+        'last' => 90,
+        'count' => 9,
+    ],
     'access-change' => [
         'name' => 'Access Change',
         'type' => 'standard',
@@ -39,6 +60,13 @@ $contracts = [
         'name' => 'Scheduled Work',
         'type' => 'standard',
         'prefix' => 'SCH',
+        'last' => 80,
+        'count' => 8,
+    ],
+    'incident-report' => [
+        'name' => 'Incident Triage and Response',
+        'type' => 'standard',
+        'prefix' => 'INC',
         'last' => 80,
         'count' => 8,
     ],

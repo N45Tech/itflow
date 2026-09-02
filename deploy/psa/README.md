@@ -19,6 +19,12 @@ The first administrator's generated local/vault password is written once to `/ho
 
 The application is image-managed. Deploy updates by checking out the reviewed branch, rebuilding, and recreating the web and cron containers. Do not use ITFlow's in-app Git updater in this deployment.
 
+Create the deployment-ticket record from the
+[exact-SHA release checklist](../../docs/n45/release-checklist.md). Complete its
+pre-GO phase before requesting authorization to change `infra01`, then use its
+maintenance, canary, evidence and reopen phases as stop gates for the approved
+SHA.
+
 For every update, keep database migration and reconciliation inside one maintenance window. Do not run `docker compose up -d --build`: that can start application writers on the new image before its migrations complete. Use this order instead:
 
 1. Require green release CI for the exact reviewed commit and record that commit in the deployment ticket.

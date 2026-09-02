@@ -59,6 +59,8 @@ $assertTrue(intval($manifest['schema_version'] ?? 0) === 2, 'The N45 manifest sc
 $assertTrue(($manifest['maintenance']['upstream_review_script'] ?? '') === 'scripts/n45-upstream-review.sh', 'The manifest does not identify the upstream review tool');
 $assertTrue(($manifest['maintenance']['diff_check_allowlist'] ?? '') === 'n45/upstream-diff-check.allowlist', 'The manifest does not identify the exact whitespace allowlist');
 $assertTrue(($manifest['maintenance']['security_sensitive_paths'] ?? '') === 'n45/security-sensitive-paths.regex', 'The manifest does not identify security-sensitive overlap rules');
+$assertTrue(($manifest['maintenance']['release_checklist'] ?? '') === 'docs/n45/release-checklist.md', 'The manifest does not identify the exact-SHA release checklist');
+$assertTrue(is_file($root . '/' . ($manifest['maintenance']['release_checklist'] ?? '')), 'The exact-SHA release checklist is missing');
 $assertTrue(($manifest['maintenance']['upstream_marker_base'] ?? '') === '2.6.7', 'The N45 namespace does not preserve the upstream marker base');
 $expected_legacy_migrations = [
     'n45-0001-entra-agent-sso' => '2.6.8',
