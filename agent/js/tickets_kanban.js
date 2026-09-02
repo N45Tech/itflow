@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', function () {
             evt.item.classList.add('is-syncing');
             itflowPostForm('ajax.php', {
                 update_kanban_status_position: true,
+                csrf_token: CSRF_TOKEN,
                 positions: columnPositions
             }).then(() => {
                 evt.item.classList.remove('is-syncing');
@@ -89,6 +90,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 movedEl.classList.add('is-syncing');
                 itflowPostForm('ajax.php', {
                     update_kanban_ticket: true,
+                    csrf_token: CSRF_TOKEN,
                     positions: positions
                 }).then(() => {
                     movedEl.classList.remove('is-syncing');
