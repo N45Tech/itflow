@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      monitored_ref:
+        description: Fork branch or exact SHA to review (defaults to the all-goals release branch)
+        required: false
+        type: string
       reviewed_base_sha:
         description: Exact upstream SHA reviewed for security-sensitive overlaps
         required: false
@@ -29,6 +33,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Scheduled workflows are loaded from the default branch, but the
+          # release under review is intentionally isolated until approval.
+          # A repository variable or manual input may pin another exact ref.
+          ref: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (inputs.monitored_ref || vars.N45_MONITORED_REF || 'codex/itflow-all-goals') || github.ref }}
 
       - name: Fetch authoritative ITFlow upstream
         run: git fetch --no-tags https://github.com/itflow-org/itflow.git master:refs/remotes/upstream/master

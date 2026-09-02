@@ -475,6 +475,10 @@ $assertContains('^(guest|cron)/', $security_sensitive_paths, 'Security-sensitive
 $assertContains('^libs/composer\\.(json|lock)$', $security_sensitive_paths, 'Security-sensitive parity review omits the application dependency manifest and lockfile');
 $assertContains('https://github.com/itflow-org/itflow.git', $review_workflow, 'Parity workflow does not fetch authoritative ITFlow upstream');
 $assertContains('for test_file in tests/*_test.php', $review_workflow, 'Parity workflow does not run the full regression suite');
+$assertContains("vars.N45_MONITORED_REF || 'codex/itflow-all-goals'", $review_workflow,
+    'Scheduled/manual parity does not default to the final all-goals release branch');
+$assertContains("github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", $review_workflow,
+    'Parity workflow does not distinguish release monitoring from push/PR validation');
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);
