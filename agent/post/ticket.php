@@ -693,6 +693,10 @@ if (isset($_POST['edit_ticket_priority'])) {
             'impact' => $_POST['impact'] ?? '',
             'urgency' => $_POST['urgency'] ?? '',
         ], $session_user_id, 'agent');
+        $original_priority = escapeSql($state['previous_priority']);
+        $client_id = intval($state['client_id']);
+        $ticket_prefix = escapeSql($state['ticket_prefix']);
+        $ticket_number = intval($state['ticket_number']);
         $priority = escapeSql($state['priority']);
     } catch (Throwable $exception) {
         flashAlert(escapeHtml($exception->getMessage()), 'error');
@@ -1606,49 +1610,34 @@ if (isset($_POST['bulk_edit_ticket_priority'])) {
         redirect();
     }
 
-    // Assign Tech to Selected Tickets
-    if (isset($_POST['ticket_ids'])) {
+    if (isset($_POST['ticket_ids']) && is_array($_POST['ticket_ids'])) {
+        try {
+            $updated_tickets = ticketOperationalBatchUpdatePriority(
+                $_POST['ticket_ids'],
+                $bulk_impact,
+                $bulk_urgency,
+                $session_user_id
+            );
+        } catch (Throwable $exception) {
+            error_log('Bulk operational priority failed: ' . $exception->getMessage());
+            flashAlert(escapeHtml($exception->getMessage()), 'error');
+            redirect();
+        }
 
-        $ticket_count = 0;
-
-        foreach ($_POST['ticket_ids'] as $ticket_id) {
-            $ticket_id = intval($ticket_id);
-
-            $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_number, ticket_prefix, ticket_priority, ticket_subject FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
-            $row = mysqli_fetch_assoc($sql);
-
-            $ticket_prefix = escapeSql($row['ticket_prefix']);
-            $ticket_number = intval($row['ticket_number']);
-            $ticket_subject = escapeSql($row['ticket_subject']);
-            $original_ticket_priority = escapeSql($row['ticket_priority']);
-            $client_id = intval($row['ticket_client_id']);
-
-            // Don't Enforce Client Access if Ticket doesn't have an assigned client
-            if ($client_id) {
-                enforceClientAccess($client_id);
-            }
-
-            // Update ticket & insert reply
-            try {
-                ticketOperationalUpdateTicket($ticket_id, [
-                    'impact' => $bulk_impact,
-                    'urgency' => $bulk_urgency,
-                ], $session_user_id, 'agent');
-            } catch (Throwable $exception) {
-                error_log("Bulk operational priority skipped ticket $ticket_id: " . $exception->getMessage());
-                continue;
-            }
-
+        foreach ($updated_tickets as $updated_ticket) {
+            $ticket_id = intval($updated_ticket['ticket_id']);
+            $client_id = intval($updated_ticket['client_id']);
+            $ticket_prefix = escapeSql($updated_ticket['prefix']);
+            $ticket_number = intval($updated_ticket['number']);
+            $ticket_subject = escapeSql($updated_ticket['subject']);
+            $original_ticket_priority = escapeSql($updated_ticket['original_priority']);
             mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = '$session_name updated the priority from $original_ticket_priority to $priority', ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $ticket_id");
-
             logAudit("Ticket", "Edit", "$session_name updated the priority on ticket $ticket_prefix$ticket_number - $ticket_subject from $original_ticket_priority to $priority", $client_id, $ticket_id);
-
             triggerCustomAction('ticket_update', $ticket_id);
-            $ticket_count++;
-        } // End For Each Ticket ID Loop
+        }
 
+        $ticket_count = count($updated_tickets);
         logAudit("Ticket", " Bulk Edit", "$session_name updated the priority on $ticket_count");
-
         flashAlert("You updated the priority for <strong>$ticket_count</strong> Tickets to <strong>$priority</strong>");
     }
 

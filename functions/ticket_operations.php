@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/authorization_transactions.php';
+
 /*
  * N45 ticket operational discipline.
  *
@@ -168,6 +170,32 @@ function ticketOperationalDbQuery(string $sql, string $message = 'Ticket operati
         throw new RuntimeException($message . ': ' . mysqli_error($mysqli));
     }
     return $result;
+}
+
+/**
+ * Freeze an interactive technician's support permission and complete client
+ * scope before any client, ticket, relationship, or promise row is locked.
+ * Non-human integrations must provide their own transaction-bound principal
+ * authorization and call the mutation with $caller_transaction = true.
+ */
+function ticketOperationalLockMutationActor(int $actor_id, string $actor_type, array $client_ids): void
+{
+    if ($actor_type !== 'agent') {
+        return;
+    }
+    if ($actor_id <= 0) {
+        throw new RuntimeException('An active technician is required for the ticket mutation');
+    }
+    $client_ids = array_values(array_unique(array_filter(
+        array_map('intval', $client_ids),
+        static fn (int $client_id): bool => $client_id > 0
+    )));
+    sort($client_ids, SORT_NUMERIC);
+    authorizationLockSupportAgentsAndPortalUsers([[
+        'user_id' => $actor_id,
+        'minimum_level' => 2,
+        'client_ids' => $client_ids,
+    ]], []);
 }
 
 /**
@@ -390,7 +418,13 @@ function ticketOperationalInput(array $input, ?array $existing = null): array
     ];
 }
 
-function ticketOperationalUpdateTicket(int $ticket_id, array $input, int $actor_id, string $actor_type = 'agent'): array
+function ticketOperationalUpdateTicket(
+    int $ticket_id,
+    array $input,
+    int $actor_id,
+    string $actor_type = 'agent',
+    bool $caller_transaction = false
+): array
 {
     global $mysqli;
     if ($ticket_id < 1) {
@@ -406,14 +440,16 @@ function ticketOperationalUpdateTicket(int $ticket_id, array $input, int $actor_
         if (!$advisory) {
             throw new RuntimeException('Ticket not found');
         }
-        if (!mysqli_begin_transaction($mysqli)) {
+        if (!$caller_transaction && !mysqli_begin_transaction($mysqli)) {
             throw new RuntimeException('Could not begin the ticket operational update');
         }
-        $transaction_open = true;
+        $transaction_open = !$caller_transaction;
         $client_id = intval($advisory['ticket_client_id']);
-        if ($client_id > 0 && function_exists('agreementLockClientForAuditRetention')
-            && !agreementLockClientForAuditRetention($client_id)) {
-            throw new RuntimeException('The ticket client is unavailable');
+        if (!$caller_transaction) {
+            ticketOperationalLockMutationActor($actor_id, $actor_type, [$client_id]);
+        }
+        if ($client_id > 0) {
+            documentationLockClient($client_id);
         }
         $ticket = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT tickets.* $projection FROM tickets
             WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
@@ -464,11 +500,124 @@ function ticketOperationalUpdateTicket(int $ticket_id, array $input, int $actor_
         if (function_exists('applyTicketSla')) {
             applyTicketSla($ticket_id, null, null, true);
         }
-        if (!mysqli_commit($mysqli)) {
+        $result = $normalized + [
+            'previous_priority' => (string) $ticket['ticket_priority'],
+            'client_id' => $client_id,
+            'ticket_prefix' => (string) $ticket['ticket_prefix'],
+            'ticket_number' => intval($ticket['ticket_number']),
+        ];
+        if (!$caller_transaction && !mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket operational update');
         }
         $transaction_open = false;
-        return $normalized;
+        return $result;
+    } catch (Throwable $e) {
+        if ($transaction_open) {
+            mysqli_rollback($mysqli);
+        }
+        throw $e;
+    }
+}
+
+/**
+ * Apply one impact/urgency decision to a deterministic ticket set. The actor,
+ * every positive client, and every ticket are frozen in canonical order so a
+ * concurrent demotion, scope denial, client archive, or ticket transfer makes
+ * the whole batch fail instead of partially committing.
+ */
+function ticketOperationalBatchUpdatePriority(
+    array $ticket_ids,
+    $impact,
+    $urgency,
+    int $actor_id
+): array {
+    global $mysqli;
+
+    $ticket_ids = array_values(array_unique(array_filter(
+        array_map('intval', $ticket_ids),
+        static fn (int $ticket_id): bool => $ticket_id > 0
+    )));
+    sort($ticket_ids, SORT_NUMERIC);
+    if (!$ticket_ids) {
+        return [];
+    }
+
+    // Validate the matrix inputs before opening or locking anything.
+    ticketOperationalPriorityFromImpactUrgency($impact, $urgency);
+    $ticket_id_sql = implode(',', $ticket_ids);
+    $active_scope = ticketOperationalActiveTicketSql('tickets');
+    $advisory_result = ticketOperationalDbQuery("SELECT ticket_id, ticket_client_id
+        FROM tickets WHERE ticket_id IN ($ticket_id_sql)
+        AND tickets.ticket_deleted_at IS NULL $active_scope
+        ORDER BY ticket_id", 'Could not plan the bulk priority update');
+    $advisory_clients = [];
+    while ($row = mysqli_fetch_assoc($advisory_result)) {
+        $advisory_clients[intval($row['ticket_id'])] = intval($row['ticket_client_id']);
+    }
+    if (array_keys($advisory_clients) !== $ticket_ids) {
+        throw new RuntimeException('One or more selected tickets are unavailable');
+    }
+    $client_ids = array_values(array_unique(array_filter(
+        array_values($advisory_clients),
+        static fn (int $client_id): bool => $client_id > 0
+    )));
+    sort($client_ids, SORT_NUMERIC);
+
+    $transaction_open = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the bulk priority update');
+        }
+        $transaction_open = true;
+        ticketOperationalLockMutationActor($actor_id, 'agent', $client_ids);
+        foreach ($client_ids as $client_id) {
+            documentationLockClient($client_id);
+        }
+
+        $projection = ticketOperationalSoftDeleteProjection('tickets');
+        $tickets_result = ticketOperationalDbQuery("SELECT tickets.* $projection
+            FROM tickets WHERE ticket_id IN ($ticket_id_sql)
+            AND tickets.ticket_deleted_at IS NULL $active_scope
+            ORDER BY ticket_id FOR UPDATE", 'Could not lock the bulk priority tickets');
+        $locked = [];
+        while ($ticket = mysqli_fetch_assoc($tickets_result)) {
+            $ticket_id = intval($ticket['ticket_id']);
+            if (ticketOperationalTicketIsImmutable($ticket)) {
+                throw new DomainException("Ticket $ticket_id is no longer active");
+            }
+            $locked[$ticket_id] = $ticket;
+        }
+        if (array_keys($locked) !== $ticket_ids) {
+            throw new RuntimeException('The selected ticket set changed before the bulk update');
+        }
+        foreach ($ticket_ids as $ticket_id) {
+            if (intval($locked[$ticket_id]['ticket_client_id']) !== $advisory_clients[$ticket_id]) {
+                throw new RuntimeException("Ticket $ticket_id changed clients before the bulk update");
+            }
+        }
+
+        $updated = [];
+        foreach ($ticket_ids as $ticket_id) {
+            $ticket = $locked[$ticket_id];
+            $state = ticketOperationalUpdateTicket($ticket_id, [
+                'impact' => $impact,
+                'urgency' => $urgency,
+            ], $actor_id, 'agent', true);
+            $updated[$ticket_id] = [
+                'ticket_id' => $ticket_id,
+                'client_id' => intval($ticket['ticket_client_id']),
+                'prefix' => (string) $ticket['ticket_prefix'],
+                'number' => intval($ticket['ticket_number']),
+                'subject' => (string) $ticket['ticket_subject'],
+                'original_priority' => (string) $ticket['ticket_priority'],
+                'priority' => (string) $state['priority'],
+            ];
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the bulk priority update');
+        }
+        $transaction_open = false;
+        return $updated;
     } catch (Throwable $e) {
         if ($transaction_open) {
             mysqli_rollback($mysqli);
@@ -706,6 +855,9 @@ function ticketOperationalAddRelationship(
             throw new RuntimeException('Could not begin the ticket relationship transaction');
         }
         $transaction_open = !$caller_transaction;
+        if (!$caller_transaction) {
+            ticketOperationalLockMutationActor($actor_id, 'agent', [$advisory_client_id]);
+        }
         if ($advisory_client_id > 0) {
             documentationLockClient($advisory_client_id);
         }
@@ -781,7 +933,12 @@ function ticketOperationalAddRelationship(
     }
 }
 
-function ticketOperationalRemoveRelationship(int $relationship_id, int $ticket_id, int $actor_id): void
+function ticketOperationalRemoveRelationship(
+    int $relationship_id,
+    int $ticket_id,
+    int $actor_id,
+    bool $caller_transaction = false
+): void
 {
     global $mysqli;
     $advisory = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT * FROM ticket_relationships
@@ -795,10 +952,13 @@ function ticketOperationalRemoveRelationship(int $relationship_id, int $ticket_i
     $advisory_client_id = intval($advisory['ticket_relationship_client_id']);
     $transaction_open = false;
     try {
-        if (!mysqli_begin_transaction($mysqli)) {
+        if (!$caller_transaction && !mysqli_begin_transaction($mysqli)) {
             throw new RuntimeException('Could not begin the ticket relationship removal');
         }
-        $transaction_open = true;
+        $transaction_open = !$caller_transaction;
+        if (!$caller_transaction) {
+            ticketOperationalLockMutationActor($actor_id, 'agent', [$advisory_client_id]);
+        }
         if ($advisory_client_id > 0) {
             documentationLockClient($advisory_client_id);
         }
@@ -853,7 +1013,7 @@ function ticketOperationalRemoveRelationship(int $relationship_id, int $ticket_i
                         ? $target_ticket_id : $source_ticket_id,
                 ], $actor_id, 'agent');
         }
-        if (!mysqli_commit($mysqli)) {
+        if (!$caller_transaction && !mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket relationship removal');
         }
         $transaction_open = false;
@@ -978,7 +1138,8 @@ function ticketOperationalCreatePromise(
     $due_at,
     int $actor_id,
     string $source_type = 'agent',
-    int $source_id = 0
+    int $source_id = 0,
+    bool $caller_transaction = false
 ): int {
     global $mysqli;
     $promise_type = ticketOperationalNormalizeKey($promise_type, ticketOperationalPromiseTypes(), 'promise type');
@@ -1007,10 +1168,13 @@ function ticketOperationalCreatePromise(
     $advisory_client_id = intval($advisory['ticket_client_id']);
     $transaction_open = false;
     try {
-        if (!mysqli_begin_transaction($mysqli)) {
+        if (!$caller_transaction && !mysqli_begin_transaction($mysqli)) {
             throw new RuntimeException('Could not begin customer promise creation');
         }
-        $transaction_open = true;
+        $transaction_open = !$caller_transaction;
+        if (!$caller_transaction) {
+            ticketOperationalLockMutationActor($actor_id, $source_type, [$advisory_client_id]);
+        }
         if ($advisory_client_id > 0) {
             documentationLockClient($advisory_client_id);
         }
@@ -1040,7 +1204,7 @@ function ticketOperationalCreatePromise(
             ORDER BY ticket_customer_promise_id DESC LIMIT 1 FOR UPDATE",
             'Could not inspect an idempotent customer promise'));
         if ($existing) {
-            if (!mysqli_commit($mysqli)) {
+            if (!$caller_transaction && !mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the customer promise replay');
             }
             $transaction_open = false;
@@ -1067,7 +1231,7 @@ function ticketOperationalCreatePromise(
             'promise_type' => $promise_type,
             'due_at' => $due_at,
         ], $actor_id, $event_actor_type);
-        if (!mysqli_commit($mysqli)) {
+        if (!$caller_transaction && !mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit customer promise creation');
         }
         $transaction_open = false;
@@ -1140,6 +1304,9 @@ function ticketOperationalFulfillPromises(
     int $source_id = 0
 ): int {
     global $mysqli;
+    if ($actor_type !== 'agent') {
+        throw new DomainException('Non-agent promise fulfillment requires the caller-owned locked helper');
+    }
     $active_scope = ticketOperationalActiveTicketSql('tickets');
     $advisory = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id FROM tickets
         WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL
@@ -1154,6 +1321,7 @@ function ticketOperationalFulfillPromises(
             throw new RuntimeException('Could not begin customer promise fulfillment');
         }
         $transaction_open = true;
+        ticketOperationalLockMutationActor($actor_id, $actor_type, [$client_id]);
         if ($client_id > 0) {
             documentationLockClient($client_id);
         }
@@ -1183,7 +1351,12 @@ function ticketOperationalFulfillPromises(
     }
 }
 
-function ticketOperationalCancelPromise(int $promise_id, int $ticket_id, int $actor_id): void
+function ticketOperationalCancelPromise(
+    int $promise_id,
+    int $ticket_id,
+    int $actor_id,
+    bool $caller_transaction = false
+): void
 {
     global $mysqli;
     $active_scope = ticketOperationalActiveTicketSql('tickets');
@@ -1196,10 +1369,13 @@ function ticketOperationalCancelPromise(int $promise_id, int $ticket_id, int $ac
     $advisory_client_id = intval($advisory['ticket_client_id']);
     $transaction_open = false;
     try {
-        if (!mysqli_begin_transaction($mysqli)) {
+        if (!$caller_transaction && !mysqli_begin_transaction($mysqli)) {
             throw new RuntimeException('Could not begin customer promise cancellation');
         }
-        $transaction_open = true;
+        $transaction_open = !$caller_transaction;
+        if (!$caller_transaction) {
+            ticketOperationalLockMutationActor($actor_id, 'agent', [$advisory_client_id]);
+        }
         if ($advisory_client_id > 0) {
             documentationLockClient($advisory_client_id);
         }
@@ -1239,7 +1415,7 @@ function ticketOperationalCancelPromise(int $promise_id, int $ticket_id, int $ac
             'promise_id' => $promise_id,
             'from_status' => $from_status,
         ], $actor_id, 'agent');
-        if (!mysqli_commit($mysqli)) {
+        if (!$caller_transaction && !mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit customer promise cancellation');
         }
         $transaction_open = false;
