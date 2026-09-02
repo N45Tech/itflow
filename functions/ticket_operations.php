@@ -430,6 +430,11 @@ function ticketOperationalUpdateTicket(
     if ($ticket_id < 1) {
         throw new InvalidArgumentException('Ticket ID is required');
     }
+    if ($caller_transaction) {
+        authorizationRequireActiveTransaction();
+    } elseif ($actor_type !== 'agent') {
+        throw new DomainException('Non-agent operational updates require a caller-owned authorized transaction');
+    }
     $transaction_open = false;
     try {
         $projection = ticketOperationalSoftDeleteProjection('tickets');
@@ -832,6 +837,9 @@ function ticketOperationalAddRelationship(
     if ($source_ticket_id < 1 || $target_ticket_id < 1 || $source_ticket_id === $target_ticket_id) {
         throw new InvalidArgumentException('Two different tickets are required');
     }
+    if ($caller_transaction) {
+        authorizationRequireActiveTransaction();
+    }
     if (in_array($relationship_type, ['duplicate', 'related'], true)
         && $source_ticket_id > $target_ticket_id) {
         [$source_ticket_id, $target_ticket_id] = [$target_ticket_id, $source_ticket_id];
@@ -941,6 +949,9 @@ function ticketOperationalRemoveRelationship(
 ): void
 {
     global $mysqli;
+    if ($caller_transaction) {
+        authorizationRequireActiveTransaction();
+    }
     $advisory = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT * FROM ticket_relationships
         WHERE ticket_relationship_id = $relationship_id
         AND (ticket_relationship_source_ticket_id = $ticket_id
@@ -1154,6 +1165,11 @@ function ticketOperationalCreatePromise(
     if (!in_array($source_type, ['agent', 'api', 'automation', 'email', 'runbook', 'system'], true)) {
         throw new InvalidArgumentException('Invalid customer promise source');
     }
+    if ($caller_transaction) {
+        authorizationRequireActiveTransaction();
+    } elseif ($source_type !== 'agent') {
+        throw new DomainException('Non-agent promise creation requires a caller-owned authorized transaction');
+    }
     $type_sql = mysqli_real_escape_string($mysqli, $promise_type);
     $summary_sql = mysqli_real_escape_string($mysqli, $summary);
     $due_sql = mysqli_real_escape_string($mysqli, $due_at);
@@ -1359,6 +1375,9 @@ function ticketOperationalCancelPromise(
 ): void
 {
     global $mysqli;
+    if ($caller_transaction) {
+        authorizationRequireActiveTransaction();
+    }
     $active_scope = ticketOperationalActiveTicketSql('tickets');
     $advisory = mysqli_fetch_assoc(ticketOperationalDbQuery("SELECT ticket_client_id FROM tickets
         WHERE ticket_id = $ticket_id AND tickets.ticket_deleted_at IS NULL

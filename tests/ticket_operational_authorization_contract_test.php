@@ -68,7 +68,18 @@ foreach ([
     ], ucfirst($label) . ' does not lock actor, active client, and business rows in order');
     $assertContains('!$caller_transaction && !mysqli_commit($mysqli)', $mutation,
         ucfirst($label) . ' cannot participate safely in a caller-owned transaction');
+    $assertContains('authorizationRequireActiveTransaction()', $mutation,
+        ucfirst($label) . ' trusts a caller-owned transaction flag without an active transaction');
 }
+
+$update = $section($operations, 'function ticketOperationalUpdateTicket(',
+    'function ticketOperationalBatchUpdatePriority(', 'ticket operational update');
+$assertContains("\$actor_type !== 'agent'", $update,
+    'A non-agent can open a self-authorized operational-update transaction');
+$promise_create = $section($operations, 'function ticketOperationalCreatePromise(',
+    'function ticketOperationalFulfillPromisesLocked(', 'promise creation');
+$assertContains("\$source_type !== 'agent'", $promise_create,
+    'A non-agent can open a self-authorized promise transaction');
 
 $batch = $section($operations, 'function ticketOperationalBatchUpdatePriority(',
     'function ticketOperationalSetResolution(', 'bulk priority mutation');
