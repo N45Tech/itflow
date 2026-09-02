@@ -47,7 +47,7 @@ $assertOrdered($files, [
 ], 'Embedded image bytes, journal row, and final URL are not built in safe order');
 $assertOrdered($files, [
     'if (is_file($final_path))',
-    "hash_file('sha256', $final_path)",
+    'hash_file(\'sha256\', $final_path)',
     'rename($staged_path, $final_path)',
     "file_staging_status = 'Finalized'",
 ], 'Recovery does not verify and atomically rename before marking a file finalized');
