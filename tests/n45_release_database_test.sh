@@ -76,8 +76,9 @@ run_update() {
 
 assert_current() {
     local database_name=$1
+    local source_mode=${2:-runner}
     export N45_CI_DB_NAME="$database_name"
-    php tests/n45_release_database_assert.php runner
+    php tests/n45_release_database_assert.php "$source_mode"
 }
 
 UPSTREAM_MARKER_BASE=$(php -r '$manifest = require "n45/manifest.php"; echo $manifest["maintenance"]["upstream_marker_base"] ?? "";')
@@ -104,8 +105,12 @@ import_database "$FINAL_DATABASE" db.sql
 FINAL_TABLE_COUNT=$("${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE();")
 [[ "$FINAL_TABLE_COUNT" -gt 0 ]] || fail 'final db.sql imported no tables'
 seed_marker "$FINAL_DATABASE" "$CURRENT_UPSTREAM_MARKER"
+export N45_CI_DB_NAME="$FINAL_DATABASE"
+php tests/fixtures/seed_n45_fresh_install.php
+assert_current "$FINAL_DATABASE" fresh
 run_update "$FINAL_DATABASE" "$TEMP_DIRECTORY/final-update.log"
-assert_current "$FINAL_DATABASE"
+grep -Fq "Database is already at the latest version ($CURRENT_UPSTREAM_MARKER). No updates were applied." "$TEMP_DIRECTORY/final-update.log" || fail 'the fresh-install update was not a durable no-op'
+assert_current "$FINAL_DATABASE" fresh
 php tests/n45_transaction_state_database_assert.php
 
 echo 'Upgrading the clean upstream 2.6.7 schema through the production CLI'

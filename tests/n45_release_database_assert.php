@@ -6,8 +6,8 @@ if (PHP_SAPI !== 'cli') {
 
 $root = dirname(__DIR__);
 $expected_source_mode = $argv[1] ?? 'runner';
-if (!in_array($expected_source_mode, ['runner', 'legacy'], true)) {
-    fwrite(STDERR, "Usage: php tests/n45_release_database_assert.php [runner|legacy]\n");
+if (!in_array($expected_source_mode, ['runner', 'fresh', 'legacy'], true)) {
+    fwrite(STDERR, "Usage: php tests/n45_release_database_assert.php [runner|fresh|legacy]\n");
     exit(2);
 }
 
@@ -97,7 +97,9 @@ try {
     }
     foreach ($definitions as $id => $definition) {
         $expected_source = 'runner';
-        if ($expected_source_mode === 'legacy') {
+        if ($expected_source_mode === 'fresh') {
+            $expected_source = 'fresh-install';
+        } elseif ($expected_source_mode === 'legacy') {
             $legacy_version = $definition['legacy_version'] ?? null;
             if ($id === n45NamespaceFoundationMigrationId()
                 || (is_string($legacy_version) && $legacy_version !== '' && $latest_legacy_version !== null
