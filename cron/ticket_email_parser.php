@@ -117,7 +117,7 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
             throw new RuntimeException('The parsed-email ticket number allocation returned no number');
         }
 
-        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$ticket_prefix_esc', ticket_number = $ticket_number, ticket_source = 'Email', ticket_subject = '$subject', ticket_details = '$message_esc', ticket_priority = 'Low', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = 0, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id", 'Could not create the parsed-email ticket');
+        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$ticket_prefix_esc', ticket_number = $ticket_number, ticket_source = 'Email', ticket_subject = '$subject', ticket_details = '$message_esc', ticket_priority = 'Medium', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = 0, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id", 'Could not create the parsed-email ticket');
         $id = intval(mysqli_insert_id($mysqli));
         if (!$id) {
             throw new RuntimeException('The parsed-email ticket did not receive an ID');
@@ -191,7 +191,7 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
             'ticket_number' => escapeSql($config_ticket_prefix) . $ticket_number,
             'ticket_subject' => $subject,
             'ticket_status' => 'New',
-            'message_html' => $message_esc,
+            'message_html' => $message_esc . getTicketSlaEmailNotice($id, $company_phone),
             'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$id&url_key=$url_key",
             'footer_email' => escapeSql($config_ticket_from_email),
             'footer_phone' => escapeSql($company_phone),
@@ -216,7 +216,7 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
             $client_uri = "&client_id=$client_id";
         }
         $email_subject = "$config_app_name - New Ticket - $client_name: $subject";
-        $email_body = "Hello, <br><br>This is a notification that a new ticket has been raised in ITFlow. <br>Client: $client_name<br>Priority: Low (email parsed)<br>Link: https://$config_base_url/agent/ticket.php?ticket_id=$id$client_uri <br><br>--------------------------------<br><br><b>$subject</b><br>$message";
+        $email_body = "Hello, <br><br>This is a notification that a new ticket has been raised in ITFlow. <br>Client: $client_name<br>Priority: Medium (email parsed)<br>Link: https://$config_base_url/agent/ticket.php?ticket_id=$id$client_uri <br><br>--------------------------------<br><br><b>$subject</b><br>$message";
 
         $data[] = [
             'from' => $config_ticket_from_email,
@@ -748,11 +748,18 @@ foreach ($messages as $message) {
         $subject = escapeSql((string)$message->subject() ?: 'No Subject');
 
         // Skip vacation/out-of-office auto-responders to prevent mail loops (RFC 3834)
-        // NDRs use "auto-generated" and are still handled by the NDR logic below
+        // Some* NDRs use "auto-generated" and are still handled by the NDR logic below
+        // Todo: Combine with the NDR logic so we can update the ticket too
         $auto_submitted = strtolower((string)($message->header('Auto-Submitted')?->getValue() ?? ''));
         $precedence     = strtolower((string)($message->header('Precedence')?->getValue() ?? ''));
         if (str_starts_with($auto_submitted, 'auto-replied') || $precedence === 'auto_reply') {
             logApp("Cron-Email-Parser", "info", "Email parser skipped auto-responder from $from_email ($subject)");
+                appNotify(
+                    "Mail",
+                    "Email parser: Skipped auto-responder message from $from_email. Subject: $subject",
+                    "",
+                    0
+                );
             $processed_count++;
             $message->markSeen();
             $message->move($targetFolderPath);
@@ -984,7 +991,7 @@ foreach ($messages as $message) {
 
                 appNotify(
                     "Ticket",
-                    "Email parser NDR: Message to $failed_recipient bounced. Subject: $original_subject Diagnostics: $status_code / $diagnostic_code - check ITFlow folder manually to see email",
+                    "Email parser: NDR - Message to $failed_recipient bounced. Subject: $original_subject Diagnostics: $status_code / $diagnostic_code - check ITFlow folder manually to see email",
                     "",
                     0
                 );

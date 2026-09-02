@@ -169,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="en" data-bs-theme="light" data-lte-color-mode="off">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -192,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
 
     <!-- Theme style -->
     <link rel="stylesheet" href="../libs/adminlte/css/adminlte.min.css">
-    <link rel="stylesheet" href="/css/itflow_custom.css">
+    <link rel="stylesheet" href="../css/itflow_custom.css">
 
 </head>
 
@@ -231,10 +231,8 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
                         <div class="input-group mb-3">
                             <label class="sr-only" for="new-password">New password</label>
                             <input type="password" class="form-control" id="new-password" placeholder="New password" name="new_password" autocomplete="new-password" required minlength="8">
-                            <div class="input-group-append">
-                                <div class="input-group-text">
-                                    <span class="fas fa-lock"></span>
-                                </div>
+                            <div class="input-group-text">
+                                <span class="fas fa-lock"></span>
                             </div>
                         </div>
 
@@ -242,7 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
                         <input type="hidden" name="email" value="<?= $email ?>">
                         <input type="hidden" name="client" value="<?= $client ?>">
 
-                        <button type="submit" class="btn btn-success btn-block mb-3" name="password_reset_set_password">Reset password</button>
+                        <button type="submit" class="btn btn-success w-100 mb-3" name="password_reset_set_password">Reset password</button>
 
 
                     <?php } else {
@@ -260,14 +258,12 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
                     <div class="input-group mb-3">
                         <label class="sr-only" for="reset-email">Registered client email</label>
                         <input type="email" class="form-control" id="reset-email" placeholder="Registered client email" name="email" autocomplete="email" required autofocus>
-                        <div class="input-group-append">
-                            <div class="input-group-text">
-                                <span class="fas fa-envelope"></span>
-                            </div>
+                        <div class="input-group-text">
+                            <span class="fas fa-envelope"></span>
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-success btn-block mb-3" name="password_reset_email_request">Reset my password</button>
+                    <button type="submit" class="btn btn-success w-100 mb-3" name="password_reset_email_request">Reset my password</button>
 
                 <?php }
                 ?>
@@ -297,7 +293,6 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
 <!-- /.login-box -->
 
 <!-- jQuery -->
-<script src="../libs/jquery/jquery.min.js"></script>
 
 <!-- Bootstrap 4 -->
 <script src="../libs/bootstrap/js/bootstrap.bundle.min.js"></script>

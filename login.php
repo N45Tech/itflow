@@ -573,11 +573,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['login']) || isset($_
                                 <input type='text' inputmode='numeric' pattern='[0-9]*' maxlength='6'
                                        class='form-control' placeholder='Verify your 2FA code'
                                        name='current_code' required autofocus>
-                                <div class='input-group-append'>
                                   <div class='input-group-text'>
                                     <span class='fas fa-key'></span>
                                   </div>
-                                </div>
                             </div>";
 
                         if ($mfa_locked) {
@@ -758,7 +756,7 @@ if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_
 
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="light" data-lte-color-mode="off">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -827,7 +825,7 @@ if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_
                 <?php if ($show_login_form): ?>
                     <!-- STEP 1: Email + Password -->
                     <div class="input-group mb-3">
-                        <label class="sr-only" for="login-email">Email address</label>
+                        <label class="visually-hidden" for="login-email">Email address</label>
                         <input type="email" class="form-control"
                             id="login-email"
                             placeholder="<?php if ($config_login_key_required) { if (!isset($_GET['key']) || $_GET['key'] !== $config_login_key_secret) { echo "Client "; } } echo "Email"; ?>"
@@ -835,24 +833,20 @@ if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_
                             value="<?= htmlspecialchars($email ?? '', ENT_QUOTES) ?>"
                             required autofocus
                         >
-                        <div class="input-group-append">
                             <div class="input-group-text">
                                 <span class="fas fa-envelope"></span>
                             </div>
-                        </div>
                     </div>
 
                     <div class="input-group mb-3">
-                        <label class="sr-only" for="login-password">Password</label>
+                        <label class="visually-hidden" for="login-password">Password</label>
                         <input type="password" class="form-control" id="login-password" placeholder="Password" name="password" autocomplete="current-password" required>
-                        <div class="input-group-append">
                             <div class="input-group-text">
                                 <span class="fas fa-lock"></span>
                             </div>
-                        </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-block mb-3" name="login">Sign in</button>
+                    <button type="submit" class="btn btn-primary w-100 mb-3" name="login">Sign in</button>
                 <?php endif; ?>
 
                 <?php if ($show_role_choice): ?>
@@ -861,10 +855,10 @@ if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_
                            value="<?= htmlspecialchars($_SESSION['pending_dual_login']['token'] ?? '', ENT_QUOTES) ?>">
 
                     <div class="mb-2 text-center">
-                        <button type="submit" class="btn btn-dark btn-block mb-2" name="role_choice" value="agent">
+                        <button type="submit" class="btn btn-dark w-100 mb-2" name="role_choice" value="agent">
                             Continue as technician
                         </button>
-                        <button type="submit" class="btn btn-light btn-block" name="role_choice" value="client">
+                        <button type="submit" class="btn btn-light w-100" name="role_choice" value="client">
                             Continue as client
                         </button>
                     </div>
@@ -877,22 +871,22 @@ if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_
                     <input type="hidden" name="pending_mfa_token"
                            value="<?= htmlspecialchars($_SESSION['pending_mfa_login']['token'] ?? '', ENT_QUOTES) ?>">
 
-                    <div class="form-group mb-3">
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="remember_me" name="remember_me">
-                            <label class="custom-control-label" for="remember_me">Remember Me</label>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="remember_me" name="remember_me">
+                            <label class="form-check-label" for="remember_me">Remember Me</label>
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-dark btn-block mb-3" name="mfa_login">Verify &amp; sign in</button>
+                    <button type="submit" class="btn btn-dark w-100 mb-3" name="mfa_login">Verify &amp; sign in</button>
                 <?php endif; ?>
 
             </form>
 
             <?php if ($show_agent_sso) { ?>
                 <?php if ($show_login_form) { ?><div class="text-center my-3 text-muted">or</div><?php } ?>
-                <a class="btn <?= $is_technician_login ? 'btn-primary' : 'btn-outline-primary' ?> btn-block" href="<?= escapeHtml($agent_sso_url) ?>">
-                    <i class="fab fa-microsoft mr-2"></i><?= $is_technician_login ? 'Try Microsoft sign-in again' : 'Sign in as a technician with Microsoft' ?>
+                <a class="btn <?= $is_technician_login ? 'btn-primary' : 'btn-outline-primary' ?> w-100" href="<?= escapeHtml($agent_sso_url) ?>">
+                    <i class="fab fa-microsoft me-2"></i><?= $is_technician_login ? 'Try Microsoft sign-in again' : 'Sign in as a technician with Microsoft' ?>
                 </a>
             <?php } ?>
 
@@ -903,8 +897,8 @@ if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_
                 <?php } ?>
                 <?php if ($show_client_sso) { ?>
                     <div class="text-center <?= $show_login_form ? 'mt-2' : '' ?>">
-                        <a class="btn <?= $is_customer_login ? 'btn-primary' : 'btn-secondary' ?> btn-block" href="client/login_microsoft.php">
-                            <i class="fab fa-microsoft mr-2"></i><?= $is_customer_login ? 'Try Microsoft sign-in again' : 'Client portal with Microsoft Entra' ?>
+                        <a class="btn <?= $is_customer_login ? 'btn-primary' : 'btn-secondary' ?> w-100" href="client/login_microsoft.php">
+                            <i class="fab fa-microsoft me-2"></i><?= $is_customer_login ? 'Try Microsoft sign-in again' : 'Client portal with Microsoft Entra' ?>
                         </a>
                     </div>
                 <?php } ?>
@@ -920,7 +914,6 @@ if (!$config_whitelabel_enabled) {
 }
 ?>
 
-<script src="libs/jquery/jquery.min.js"></script>
 <script src="libs/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="libs/adminlte/js/adminlte.min.js"></script>
 <script src="js/login_prevent_resubmit.js"></script>

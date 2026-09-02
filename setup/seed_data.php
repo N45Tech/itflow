@@ -78,11 +78,13 @@ function seedDefaultData($mysqli)
     mysqli_query($mysqli,"INSERT INTO calendars SET calendar_name = 'Default', calendar_color = 'blue'");
 
     // Add default ticket statuses
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'New', ticket_status_color = '#dc3545', ticket_status_order = 10"); // Default ID for new tickets is 1
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Open', ticket_status_color = '#007bff', ticket_status_order = 20"); // 2
+    // The first five status IDs have fixed SLA-clock behavior in
+    // getTicketStatusSlaLock(); keep these seed values aligned with it.
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'New', ticket_status_color = '#dc3545', ticket_status_pauses_sla = 0, ticket_status_order = 10"); // Default ID for new tickets is 1
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Open', ticket_status_color = '#007bff', ticket_status_pauses_sla = 0, ticket_status_order = 20"); // 2
     mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Waiting on Client', ticket_status_color = '#6c757d', ticket_status_pauses_sla = 1, ticket_status_order = 50"); // 3
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Resolved', ticket_status_color = '#28a745', ticket_status_order = 70"); // 4 (was auto-close)
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Closed', ticket_status_color = '#343a40', ticket_status_order = 80"); // 5
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Resolved', ticket_status_color = '#28a745', ticket_status_pauses_sla = 1, ticket_status_order = 70"); // 4 (was auto-close)
+    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Closed', ticket_status_color = '#343a40', ticket_status_pauses_sla = 1, ticket_status_order = 80"); // 5
     mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'In Progress', ticket_status_color = '#17a2b8', ticket_status_order = 30"); // 6
     mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Scheduled', ticket_status_color = '#fd7e14', ticket_status_order = 40"); // 7
     mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Waiting on Vendor', ticket_status_color = '#6f42c1', ticket_status_pauses_sla = 1, ticket_status_order = 60"); // 8

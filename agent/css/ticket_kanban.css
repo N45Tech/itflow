@@ -68,6 +68,7 @@
     padding: .75rem;
     border: 1px solid var(--n45-border, #d8dee7);
     border-radius: var(--n45-radius, 10px);
+    border-start: 3px solid #adb5bd;
     cursor: grab;
     user-select: none;
     font-size: 0.85rem;
@@ -91,11 +92,13 @@
 .kanban-card-at-risk {
     background: var(--n45-warning-soft, #fff4d6);
     border-color: var(--n45-warning, #9a6700);
+    border-start-color: var(--n45-warning, #9a6700);
 }
 
 .kanban-card-breached {
     background: var(--n45-danger-soft, #fcebea);
     border-color: var(--n45-danger, #b42318);
+    border-start-color: var(--n45-danger, #b42318);
 }
 
 /* Card top row - number, priority, SLA flag, drag handle */

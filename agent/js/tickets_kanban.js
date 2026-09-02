@@ -1,4 +1,4 @@
-$(document).ready(function () {
+document.addEventListener('DOMContentLoaded', function () {
     function insertAt(container, item, index) {
         const siblings = Array.from(container.children).filter(child => child !== item);
         container.insertBefore(item, siblings[index] || null);
@@ -7,9 +7,10 @@ $(document).ready(function () {
     function showMoveError(message) {
         if (window.toastr) {
             toastr.error(message);
+        } else {
+            console.error(message);
         }
     }
-
     // -------------------------------
     // Drag: Kanban Columns (Statuses)
     // -------------------------------
@@ -24,20 +25,20 @@ $(document).ready(function () {
             }
 
             const columnPositions = Array.from(document.querySelectorAll('#kanban-board .kanban-column')).map((col, index) => ({
-                status_id: $(col).data('status-id'),
+                status_id: col.dataset.statusId,
                 status_kanban: index
             }));
 
-            $(evt.item).addClass('is-syncing');
-            $.post('ajax.php', {
+            evt.item.classList.add('is-syncing');
+            itflowPostForm('ajax.php', {
                 update_kanban_status_position: true,
-                csrf_token: CSRF_TOKEN,
                 positions: columnPositions
-            }).done(() => {
-                $(evt.item).removeClass('is-syncing');
-            }).fail(() => {
+            }).then(() => {
+                evt.item.classList.remove('is-syncing');
+            }).catch((err) => {
+                console.error('Error updating status order:', err);
                 insertAt(evt.from, evt.item, evt.oldIndex);
-                $(evt.item).removeClass('is-syncing');
+                evt.item.classList.remove('is-syncing');
                 showMoveError('The column order could not be saved. Your previous order was restored.');
             });
         }
@@ -66,16 +67,16 @@ $(document).ready(function () {
                     return;
                 }
 
-                const columnId = $(target).data('status-id');
-                const oldColumnId = $(movedEl).data('ticket-status-id');
+                const columnId = target.dataset.statusId;
+                const oldColumnId = movedEl.dataset.ticketStatusId;
 
                 const positions = Array.from(target.querySelectorAll('.task')).map((card, index) => {
-                    const ticketId = $(card).data('ticket-id');
-                    const oldStatus = ticketId === $(movedEl).data('ticket-id')
-                        ? $(movedEl).data('ticket-status-id')
+                    const ticketId = card.dataset.ticketId;
+                    const oldStatus = ticketId === movedEl.dataset.ticketId
+                        ? movedEl.dataset.ticketStatusId
                         : false;
 
-                    $(card).data('ticket-status-id', columnId); // update DOM
+                    card.dataset.ticketStatusId = columnId; // update DOM
 
                     return {
                         ticket_id: ticketId,
@@ -85,16 +86,17 @@ $(document).ready(function () {
                     };
                 });
 
-                $(movedEl).addClass('is-syncing');
-                $.post('ajax.php', {
+                movedEl.classList.add('is-syncing');
+                itflowPostForm('ajax.php', {
                     update_kanban_ticket: true,
-                    csrf_token: CSRF_TOKEN,
                     positions: positions
-                }).done(() => {
-                    $(movedEl).removeClass('is-syncing');
-                }).fail(() => {
+                }).then(() => {
+                    movedEl.classList.remove('is-syncing');
+                }).catch((err) => {
+                    console.error('Error updating ticket positions:', err);
                     insertAt(evt.from, movedEl, evt.oldIndex);
-                    $(movedEl).data('ticket-status-id', oldColumnId).removeClass('is-syncing');
+                    movedEl.dataset.ticketStatusId = oldColumnId;
+                    movedEl.classList.remove('is-syncing');
                     showPlaceholders();
                     showMoveError('The ticket could not be moved. Its previous position was restored.');
                 });
@@ -109,7 +111,9 @@ $(document).ready(function () {
     // 📱 Touch Support: Show drag handle on mobile
     // -------------------------------
     if (isTouchDevice()) {
-        $('.drag-handle-class').css('display', 'inline');
+        document.querySelectorAll('.drag-handle-class').forEach(function (el) {
+            el.style.display = 'inline';
+        });
     }
 
     // -------------------------------

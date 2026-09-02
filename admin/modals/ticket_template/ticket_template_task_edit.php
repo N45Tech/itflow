@@ -46,10 +46,8 @@ ob_start();
 ?>
 
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fa fa-fw fa-tasks mr-2"></i>Editing task</h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title"><i class="fa fa-fw fa-tasks me-2"></i>Editing task</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <form action="post.php" method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
@@ -57,27 +55,25 @@ ob_start();
 
     <div class="modal-body">
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Name <strong class="text-danger">*</strong></label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-tag"></i></span>
-                </div>
                 <input type="text" class="form-control" name="name" placeholder="Name the task" maxlength="255" value="<?= $task_template_name ?>" required autofocus>
             </div>
         </div>
 
-        <div class="form-row">
-            <div class="form-group col-md-6">
+        <div class="row g-2">
+            <div class="mb-3 col-md-6">
                 <label>Stable Step Key <strong class="text-danger">*</strong></label>
                 <input type="text" class="form-control" name="task_key" maxlength="100" value="<?= $task_template_key ?>" required <?= $task_template_key_locked ? 'readonly' : '' ?>>
                 <?php if ($task_template_key_locked) { ?>
                     <small class="form-text text-muted">The stable step key is locked after publication.</small>
                 <?php } ?>
             </div>
-            <div class="form-group col-md-6">
+            <div class="mb-3 col-md-6">
                 <label>Initial State</label>
-                <select class="form-control" name="initial_state">
+                <select class="form-select" name="initial_state">
                     <?php foreach (runbookInitialStates() as $value => $label) { ?>
                         <option value="<?= escapeHtml($value) ?>" <?= $task_template_initial_state === $value ? 'selected' : '' ?>><?= escapeHtml($label) ?></option>
                     <?php } ?>
@@ -85,17 +81,15 @@ ob_start();
             </div>
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Instructions</label>
             <textarea class="form-control" name="instructions" rows="3" maxlength="4000" placeholder="Completion criteria, safe operating notes, and evidence guidance"><?= $task_template_instructions ?></textarea>
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Estimated Completion Time <span class="text-secondary">(Minutes)</span></label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-clock"></i></span>
-                </div>
                 <input type="number" class="form-control" name="completion_estimate" placeholder="Estimated time to complete task in mins" value="<?= $task_template_completion_estimate ?>">
             </div>
         </div>
@@ -210,8 +204,8 @@ ob_start();
     </div>
 
     <div class="modal-footer">
-        <button type="submit" name="edit_ticket_template_task" class="btn btn-primary text-bold"><i class="fa fa-check mr-2"></i>Save</button>
-        <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fa fa-times mr-2"></i>Cancel</button>
+        <button type="submit" name="edit_ticket_template_task" class="btn btn-primary text-bold"><i class="fa fa-check me-2"></i>Save</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
     </div>
 
 </form>
