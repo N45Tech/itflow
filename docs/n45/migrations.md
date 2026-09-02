@@ -44,7 +44,24 @@ The manifest reserves the next four feature IDs, one compatibility repair, the r
 
 When integrating each feature, rename its file into `n45/migrations/`, change its guard to `FROM_N45_DB_UPDATER`, and make its header name the stable ID. Remove checks that read `settings.config_current_database_version` or require the preceding numeric fork marker; stable manifest order is the N45 prerequisite after the namespaces separate. Add the module and ordered migration definition to `n45/manifest.php`; copy the reservation's `legacy_version`, `data_change`, and rollback contract exactly; add complete column, index, and data fingerprints; update the released-file inventory and baseline-schema assertions; then add the migration to the released inventory below. `n45-0011` must retain `legacy_version => '2.7.8'`, not `null`. Remove no reservation: the durable mapping is needed to detect old installations whose upstream marker already contains that former fork number.
 
-The namespace preflight refuses an update if a reserved numeric file still exists under `admin/database_updates/`, if a consumed reservation has the wrong manifest metadata or schema inventory, or if stable IDs are consumed out of order. Once `n45-0011` through `n45-0014` are present, it also requires `n45-0015`. Conversely, `n45-0015` cannot be consumed while any of `n45-0012` through `n45-0014` remains reserved. This deliberately makes an incomplete final merge fail before either migration runner changes the database; the compatibility-repair commit is not a standalone release and its reservation validation is expected to fail until all three intervening feature migrations are integrated.
+Official upstream may later reuse one of these numeric versions. The upstream
+migration may coexist with the N45 legacy mapping only after its SHA-256 is
+reviewed and pinned in `maintenance.upstream_reclaimed_migration_checksums` in
+`n45/manifest.php`. The smoke suite rejects an unreviewed file, a checksum
+change, or a stale pin. The N45 stable ID and legacy marker remain unchanged so
+older fork databases can still be fingerprinted, bridged, reset to the upstream
+base, and then advanced through the official upstream migration stream.
+
+The namespace preflight refuses an update if a reserved numeric file under
+`admin/database_updates/` does not match its reviewed official-upstream
+checksum, if a consumed reservation has the wrong manifest metadata or schema
+inventory, or if stable IDs are consumed out of order. Once `n45-0011` through
+`n45-0014` are present, it also requires `n45-0015`. Conversely, `n45-0015`
+cannot be consumed while any of `n45-0012` through `n45-0014` remains reserved.
+This deliberately makes an incomplete final merge fail before either migration
+runner changes the database; the compatibility-repair commit is not a
+standalone release and its reservation validation is expected to fail until
+all three intervening feature migrations are integrated.
 
 ### Legacy 2.7.8 evidence-index compatibility
 

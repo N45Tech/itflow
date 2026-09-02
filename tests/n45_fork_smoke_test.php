@@ -83,6 +83,11 @@ $expected_integration_reservations = [
     '2.8.1' => 'n45-0014-agreement-entitlements',
 ];
 $integration_reservations = $manifest['maintenance']['integration_migration_reservations'] ?? [];
+$upstream_reclaimed_migration_checksums = $manifest['maintenance']['upstream_reclaimed_migration_checksums'] ?? [];
+$assertTrue(
+    array_diff_key($upstream_reclaimed_migration_checksums, $integration_reservations) === [],
+    'Reviewed upstream migration checksums include a version outside the legacy N45 reservations'
+);
 $assertTrue(
     array_map(static fn (array $reservation): string => (string) ($reservation['id'] ?? ''), $integration_reservations)
         === $expected_integration_reservations,
@@ -156,10 +161,20 @@ foreach (glob($root . '/admin/database_updates/*.php') ?: [] as $upstream_migrat
 }
 foreach ($integration_reservations as $legacy_version => $reservation) {
     $migration_id = (string) ($reservation['id'] ?? '');
-    $assertTrue(
-        !is_file($root . '/admin/database_updates/' . $legacy_version . '.php'),
-        "Reserved N45 migration $legacy_version leaked into the upstream namespace; move it to $migration_id"
-    );
+    $upstream_migration_path = $root . '/admin/database_updates/' . $legacy_version . '.php';
+    if (is_file($upstream_migration_path)) {
+        $expected_upstream_checksum = (string) ($upstream_reclaimed_migration_checksums[$legacy_version] ?? '');
+        $observed_upstream_checksum = hash_file('sha256', $upstream_migration_path);
+        $assertTrue(
+            $expected_upstream_checksum !== '' && hash_equals($expected_upstream_checksum, (string) $observed_upstream_checksum),
+            "Reserved N45 migration version $legacy_version is present in the upstream namespace without a reviewed official-upstream checksum"
+        );
+    } else {
+        $assertTrue(
+            !isset($upstream_reclaimed_migration_checksums[$legacy_version]),
+            "Reviewed upstream migration $legacy_version is missing from the upstream namespace"
+        );
+    }
     if (isset($manifest['migrations'][$migration_id])) {
         $migration = $manifest['migrations'][$migration_id];
         $assertTrue(($migration['legacy_version'] ?? null) === $legacy_version, "$migration_id does not bridge legacy marker $legacy_version");
@@ -255,6 +270,7 @@ $baseline_schema = $read('db.sql');
 $seed_data = $read('setup/seed_data.php');
 $update_page = $read('admin/update.php');
 $update_handler = $read('admin/post/update.php');
+$update_job = $read('cron/app_update.php');
 $update_cli = $read('scripts/update_cli.php');
 $assertContains('function n45MigrationStatus($mysqli): array', $schema_service, 'Read-only N45 pending detection is missing');
 $status_contract = $section($schema_service, 'function n45MigrationStatus($mysqli): array', 'function n45WithMigrationLock(', 'N45 status function');
@@ -273,12 +289,19 @@ $assertContains('`n45_schema_migrations`', $baseline_schema, 'Fresh-install sche
 $assertContains('n45SeedFreshInstallMigrations($mysqli)', $seed_data, 'Fresh installs do not verify and seed the N45 ledger');
 $assertContains('n45MigrationStatus($mysqli)', $update_page, 'Admin update UI does not report N45 pending state');
 $assertContains('bridge_n45_migrations', $update_page, 'Admin update UI omits the explicit legacy marker bridge');
-$assertContains('n45RunMigrations($mysqli)', $update_handler, 'Admin database update does not run the N45 migration stream');
-$assertContains('n45PrepareMigrationNamespace($mysqli)', $update_handler, 'Admin update does not establish the N45 namespace before upstream advances');
+$assertContains('n45MigrationStatus($mysqli)', $update_handler, 'Admin update queue does not fail closed on an unresolved N45 migration state');
+$assertContains("cron_job_name = 'app_update'", $update_handler, 'Admin update handler does not queue the unified updater');
+$assertContains('scripts/update_cli.php', $update_job, 'Queued update job does not delegate to the unified CLI updater');
+$assertContains('exec(escapeshellarg(PHP_BINARY)', $update_job, 'Queued update job does not execute the unified updater in a separate process');
 $assertContains('n45BridgeLegacyMigrations($mysqli)', $update_handler, 'Admin maintenance handler omits the legacy marker bridge');
-$assertContains("'bridge_n45_migrations'", $update_cli, 'CLI does not expose the explicit legacy marker bridge');
+$assertContains("'--bridge_n45_migrations'", $update_cli, 'CLI does not expose the explicit legacy marker bridge');
 $assertContains('n45RunMigrations($mysqli)', $update_cli, 'CLI database update omits the N45 migration stream');
 $assertContains('n45PrepareMigrationNamespace($mysqli)', $update_cli, 'CLI update does not establish the N45 namespace before upstream advances');
+$assertOrdered(
+    $update_cli,
+    ['n45PrepareMigrationNamespace($mysqli)', 'require_once "../admin/database_updates.php"', 'n45RunMigrations($mysqli)'],
+    'Unified updater does not establish the N45 namespace before upstream migrations and finish with the N45 stream'
+);
 $assertTrue(!str_contains($functions, 'n45RunMigrations(') && !str_contains($functions, 'n45BridgeLegacyMigrations('), 'Normal application bootstrap mutates N45 migration state');
 
 $synthetic_runner_ledger = [];

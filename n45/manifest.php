@@ -66,10 +66,17 @@ return [
         'security_sensitive_paths' => 'n45/security-sensitive-paths.regex',
         'upstream_marker_base' => '2.6.7',
         'migration_lock' => 'itflow-database-updates',
+        // Upstream may eventually reuse version numbers that predate the N45
+        // namespace split. Each collision must be reviewed and pinned to the
+        // exact official-upstream migration before it is allowed to coexist
+        // with the durable legacy bridge mapping below.
+        'upstream_reclaimed_migration_checksums' => [
+            '2.7.8' => '23b18afc7ebe1e3d18143e8ceea5785c83517015d9c4467fe44d2f957548ee99',
+        ],
         // These former fork-version files are allocated by feature branches
-        // that integrate after this boundary. The schema service refuses to
-        // let any of them remain in admin/database_updates/ and verifies the
-        // target manifest metadata as each reservation is consumed.
+        // that integrated after this boundary. The durable mapping remains
+        // after upstream reuses a number so an older N45 database can still be
+        // identified and bridged without confusing the two migration streams.
         'integration_migration_reservations' => [
             '2.7.8' => [
                 'id' => 'n45-0011-documentation-readiness',
