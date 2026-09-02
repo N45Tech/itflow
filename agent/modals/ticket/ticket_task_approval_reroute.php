@@ -11,7 +11,7 @@ $approval = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT approval_id, approv
     ticket_assigned_to, ticket_project_id, ticket_created_at
     FROM task_approvals
     INNER JOIN tasks ON task_id = approval_task_id
-    INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+    INNER JOIN tickets ON ticket_id = task_ticket_id
     WHERE approval_id = $approval_id AND approval_status IN ('pending','declined')
     AND task_state NOT IN ('Completed','Skipped') LIMIT 1"));
 

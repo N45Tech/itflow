@@ -62,8 +62,6 @@ $api_contact_delete = $read('api/v1/contacts/delete.php');
 $cron_registry = $read('includes/cron_jobs.php');
 $outbox_cron = $read('cron/portal_request_outbox.php');
 $logging = $read('functions/logging.php');
-$starter_reconciler = $read('deploy/psa/reconcile_portal_requests.php');
-$deployment_docs = $read('deploy/psa/README.md');
 
 $tables = [
     'portal_request_catalog_items',
@@ -304,6 +302,7 @@ $assertContains('$custom_action_idempotency_key', $logging, 'Custom-action handl
 $assertContains('get_included_files()', $logging, 'The durable dispatcher cannot detect an include_once no-op in a shared cron process');
 $assertContains('triggerCustomAction($trigger, $ticket_id, $event_key) === false', $outbox, 'A skipped include_once hook can be acknowledged as delivered');
 
+$assertContains('portalRequestClientHasAuditHistory($client_id)', $client_model_handler, 'Client hard deletion does not preserve portal request audit rows');
 $assertContains('portalRequestContactHasAuditHistory($contact_id, $client_id)', $contact_handler, 'Contact hard deletion/anonymization does not preserve portal request audit rows');
 $client_retention_lock = $section($service, 'function portalRequestLockClientForAuditRetention(', 'function portalRequestLockContactForAuditRetention(', 'client retention lock');
 $contact_retention_lock = $section($service, 'function portalRequestLockContactForAuditRetention(', 'function portalRequestContactHasAuditHistory(', 'contact retention lock');
@@ -312,9 +311,8 @@ $assertOrdered($contact_retention_lock, ['portalRequestLockClientForAuditRetenti
 $contact_context = $section($service, 'function portalRequestContactContext(', 'function portalRequestContactMatchesRule(', 'portal requester lock');
 $assertOrdered($contact_context, ['SELECT client_id FROM clients', 'LIMIT 1 FOR UPDATE', 'SELECT contact_id, contact_client_id'], 'Portal submission does not lock client before contact to serialize with retention');
 $client_delete = $section($client_model_handler, "if (isset(\$_GET['delete_client']))", "if (isExportRequest('export_clients'))", 'client hard deletion');
-$assertOrdered($client_delete, ['enforceAdminPermission()', 'enforceClientAccess($client_id)', 'Permanent client deletion is disabled by retention policy'], 'Client deletion does not fail closed before retained portal request history can be destroyed');
-$assertNotContains('DELETE FROM contacts', $client_delete, 'Disabled client deletion still destroys portal requester identities');
-$assertNotContains('DELETE FROM clients', $client_delete, 'Disabled client deletion still destroys the client audit boundary');
+$assertOrdered($client_delete, ['enforceClientAccess($client_id)', 'portalRequestClientHasAuditHistory($client_id)', 'DELETE FROM contacts', 'DELETE FROM clients'], 'Client scope/audit retention is checked after destructive deletion starts');
+$assertOrdered($client_delete, ['mysqli_begin_transaction($mysqli)', 'portalRequestLockClientForAuditRetention($client_id)', 'portalRequestClientHasAuditHistory($client_id)', 'DELETE FROM clients', 'mysqli_commit($mysqli)'], 'Client hard deletion does not hold its retention lock through a transactional delete');
 $contact_bulk_delete = $section($contact_handler, "if (isset(\$_POST['bulk_delete_contacts']))", "if (isset(\$_GET['anonymize_contact']))", 'bulk contact deletion');
 $assertOrdered($contact_bulk_delete, ['portalRequestContactHasAuditHistory($contact_id, $client_id)', 'DELETE FROM users', 'DELETE FROM contacts'], 'Bulk contact audit retention is checked after destructive deletion starts');
 $assertOrdered($contact_bulk_delete, ['mysqli_begin_transaction($mysqli)', 'portalRequestLockContactForAuditRetention($contact_id, $client_id)', 'portalRequestContactHasAuditHistory($contact_id, $client_id)', 'DELETE FROM contacts', 'mysqli_commit($mysqli)'], 'Bulk contact hard deletion does not hold its retention lock through a transactional delete');
@@ -334,6 +332,7 @@ $contact_delete = $section($contact_handler, "if (isset(\$_GET['delete_contact']
 $assertOrdered($contact_delete, ['portalRequestContactHasAuditHistory($contact_id, $client_id)', 'DELETE FROM users', 'DELETE FROM contacts'], 'Contact audit retention is checked after destructive deletion starts');
 $assertOrdered($contact_delete, ['mysqli_begin_transaction($mysqli)', 'portalRequestLockContactForAuditRetention($contact_id, $client_id)', 'portalRequestContactHasAuditHistory($contact_id, $client_id)', 'DELETE FROM contacts', 'mysqli_commit($mysqli)'], 'Contact hard deletion does not hold its retention lock through a transactional delete');
 $assertOrdered($api_contact_delete, ['mysqli_begin_transaction($mysqli)', 'portalRequestLockContactForAuditRetention($contact_id, $client_id)', 'portalRequestContactHasAuditHistory($contact_id, $client_id)', 'DELETE FROM contacts', 'mysqli_commit($mysqli)'], 'API contact deletion can race portal request submission or bypass audit retention');
+$assertOrdered($api_contact_delete, ['is_null($row[\'contact_archived_at\'])', 'contact_archived_at IS NOT NULL', 'mysqli_commit($mysqli)'], 'API contact deletion does not enforce the upstream archive-before-delete contract inside the transaction');
 $assertContains("escapeSql((string) \$row['contact_name'])", $api_contact_delete, 'API contact deletion interpolates a raw retained contact name into audit SQL');
 $assertContains('portal_request_submission_decided_by_type', $section($service, 'function portalRequestContactHasAuditHistory(', 'function portalRequestValidateResponses(', 'contact audit retention'), 'Contact audit retention ignores request approvers');
 $assertContains('portal_request_submission_event_actor_type', $service, 'Contact audit retention ignores request event actors');
@@ -359,65 +358,22 @@ $assertContains("error_log('Portal catalog request validation failed:", $client_
 foreach (['New user', 'Employee termination', 'New device', 'Access change', 'Report an incident', 'Schedule work'] as $starter) {
     $assertContains("'$starter'", $service, "Starter catalog does not include $starter");
 }
-foreach (['user-onboarding', 'user-offboarding', 'device-deployment', 'access-change',
-    'incident-response', 'scheduled-work'] as $runbook_key) {
+foreach (['new-user', 'termination', 'new-device', 'access-change', 'incident-report', 'scheduled-work'] as $runbook_key) {
     $assertContains("'runbook_key' => '$runbook_key'", $starter_content,
         "Starter content does not provide the compatible $runbook_key runbook");
 }
 $starter_install_at = strpos($service, 'function portalRequestInstallStarters(');
-$starter_install_end = strpos($service, 'function portalRequestStarterDefinitionMap(', $starter_install_at ?: 0);
-if ($starter_install_at === false || $starter_install_end === false) {
+if ($starter_install_at === false) {
     $failures[] = 'Could not isolate the starter request installer';
 } else {
-    $starter_install = substr($service, $starter_install_at, $starter_install_end - $starter_install_at);
+    $starter_install = substr($service, $starter_install_at);
     $assertNotContains('portal_request_catalog_item_ticket_template_id =', $starter_install,
-        'Draft installation bypasses compatibility reconciliation by binding a runbook');
+        'Starter request installation bypasses operator review by binding a runbook');
     $assertNotContains('portal_request_catalog_item_published_version_id =', $starter_install,
-        'Draft installation bypasses compatibility reconciliation by publishing a catalog release');
+        'Starter request installation bypasses operator review by publishing a catalog release');
     $assertNotContains('portalRequestPublish(', $starter_install,
         'Starter request installation invokes catalog publication automatically');
 }
-$starter_reconcile_at = strpos($service, 'function portalRequestReconcileStarters(');
-$starter_reconcile = $starter_reconcile_at === false ? '' : substr($service, $starter_reconcile_at);
-if ($starter_reconcile === '') {
-    $failures[] = 'Could not isolate starter request reconciliation';
-}
-$assertContains('portalRequestStarterRunbookBindings()', $starter_reconcile,
-    'Starter reconciliation does not use the stable request/runbook binding registry');
-$assertContains('portalRequestResolveStarterRunbook($binding)', $starter_reconcile,
-    'Starter reconciliation does not prove the canonical published runbook');
-$assertContains('runbookValidateDefinition($definition)', $service,
-    'Starter reconciliation does not apply full runbook semantic validation');
-$assertContains("(\$task['initial_state'] ?? '') === 'Waiting'", $service,
-    'Starter reconciliation accepts an approval declaration that is not an explicit waiting gate');
-$assertContains('portalRequestStarterDraftContractErrors(', $starter_reconcile,
-    'Starter reconciliation can silently publish a drifted permission, approval, applicability or field contract');
-$assertContains('SAVEPOINT portal_request_starter_item', $starter_reconcile,
-    'One incompatible starter can leave a partial catalog version in the reconciliation transaction');
-$assertContains('ROLLBACK TO SAVEPOINT portal_request_starter_item', $starter_reconcile,
-    'Failed starter publication is not rolled back before fail-closed draft state');
-$assertContains('portal_request_catalog_item_published_version_id = 0', $starter_reconcile,
-    'An incompatible starter remains visible through a stale published pointer');
-$assertContains('portalRequestPublish(', $starter_reconcile,
-    'Compatible canonical starter drafts are not published');
-$assertContains('if ($dry_run)', $starter_reconcile,
-    'Starter reconciliation does not exercise rollback-only dry-run mode');
-$assertNotContains('runbookLatestPublishedVersionId(', $starter_reconcile,
-    'Starter reconciliation guesses a historical runbook version');
-$assertNotContains('ticket_template_id = 1', $starter_reconcile,
-    'Starter reconciliation contains a brittle runbook template ID');
-$assertContains("\$allowed_modes = ['--dry-run', '--apply'];", $starter_reconciler,
-    'The portal request reconciler lacks explicit dry-run/apply modes');
-$assertContains("GET_LOCK('", $starter_reconciler,
-    'Concurrent portal request reconciliation is not serialized');
-$assertContains("RELEASE_LOCK('", $starter_reconciler,
-    'The portal request reconciliation advisory lock is not released');
-$assertContains('reconcile_portal_requests.php --dry-run', $deployment_docs,
-    'Deployment docs omit the starter request preview');
-$assertContains('two active portal users', $deployment_docs,
-    'Deployment docs omit the two-contact Scheduled Work canary prerequisite');
-$assertContains('must fail', $deployment_docs,
-    'Deployment docs omit the pre-close workflow gate canary');
 $assertContains('Select a published runbook', $admin_item,
     'Catalog activation does not require an operator to select a published runbook');
 $assertContains('name="ticket_template_id" required', $admin_item,
@@ -436,20 +392,20 @@ $starter_keys = array_column($starter_definitions, 0);
 if (count($starter_keys) !== count(array_unique($starter_keys))) {
     $failures[] = 'Starter request stable keys are not unique';
 }
-$starter_bindings = portalRequestStarterRunbookBindings();
-if (array_keys($starter_bindings) !== $starter_keys || count($starter_bindings) !== 6) {
-    $failures[] = 'The six starter request keys do not map one-to-one to canonical runbook identities';
+$starter_policies = [];
+foreach ($starter_definitions as $starter_definition) {
+    $starter_policies[$starter_definition[0]] = [
+        'permission' => $starter_definition[5],
+        'approval' => $starter_definition[6],
+    ];
 }
-foreach ($starter_bindings as $request_key => $binding) {
-    if (!preg_match('/^[a-z0-9][a-z0-9-]{0,99}$/', (string) ($binding['runbook_key'] ?? ''))
-        || !in_array($binding['runbook_type'] ?? '', ['standard', 'onboarding', 'offboarding'], true)) {
-        $failures[] = "Starter request $request_key has an invalid stable runbook contract";
+foreach (['new-user', 'termination', 'new-device', 'access-change', 'scheduled-work'] as $planned_key) {
+    if (($starter_policies[$planned_key] ?? null) !== ['permission' => 'manager', 'approval' => 'manager']) {
+        $failures[] = "Planned request $planned_key is not manager-submitted with independent manager approval";
     }
 }
-$scheduled_index = array_search('scheduled-work', $starter_keys, true);
-$scheduled_definition = $scheduled_index === false ? [] : $starter_definitions[$scheduled_index];
-if (($scheduled_definition[6] ?? '') !== 'technical') {
-    $failures[] = 'Scheduled Work does not require a distinct technical contact decision before ticket creation';
+if (($starter_policies['incident-report'] ?? null) !== ['permission' => 'any', 'approval' => 'none']) {
+    $failures[] = 'Incident reporting is not direct for every portal contact';
 }
 if (portalRequestDefinitionHash(['z' => 1, 'a' => ['y' => 2, 'b' => 3]])
     !== portalRequestDefinitionHash(['a' => ['b' => 3, 'y' => 2], 'z' => 1])) {

@@ -269,8 +269,7 @@ if (isset($_GET['close_project'])) {
         // mutations and ticket reopen/close updates serialize on these rows.
         $project_tickets = ticketCreationDbQuery("SELECT ticket_id, ticket_status,
             ticket_client_id FROM tickets
-            WHERE ticket_project_id = $project_id AND ticket_deleted_at IS NULL
-            AND ticket_archived_at IS NULL
+            WHERE ticket_project_id = $project_id AND ticket_archived_at IS NULL
             ORDER BY ticket_id ASC FOR UPDATE", 'Could not lock project tickets for close');
         $open_ticket_count = 0;
         $locked_tickets = [];
@@ -528,8 +527,7 @@ if (isset($_POST['link_closed_ticket_to_project'])) {
     try {
         $row = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT ticket_id, ticket_prefix,
             ticket_number, ticket_subject FROM tickets
-            WHERE ticket_number = $ticket_number AND ticket_client_id = $client_id
-            AND ticket_deleted_at IS NULL LIMIT 1",
+            WHERE ticket_number = $ticket_number AND ticket_client_id = $client_id LIMIT 1",
             'Could not locate the closed ticket for project linking'));
         if (!$row) {
             throw new RuntimeException('The selected ticket is unavailable for this client');

@@ -57,7 +57,7 @@ $sql = mysqli_query(
         u.user_name AS technician,
         SEC_TO_TIME(SUM(TIME_TO_SEC(tr.ticket_reply_time_worked))) AS time_worked
     FROM ticket_replies tr
-    INNER JOIN tickets t ON t.ticket_id = tr.ticket_reply_ticket_id AND t.ticket_deleted_at IS NULL
+    INNER JOIN tickets t ON t.ticket_id = tr.ticket_reply_ticket_id
     INNER JOIN clients c ON c.client_id = t.ticket_client_id
     INNER JOIN users u ON u.user_id = tr.ticket_reply_by
     WHERE tr.ticket_reply_time_worked IS NOT NULL

@@ -16,7 +16,7 @@ if (isset($_GET['month'])) {
     $month = date('m');
 }
 
-$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets WHERE ticket_deleted_at IS NULL ORDER BY ticket_year DESC");
+$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets ORDER BY ticket_year DESC");
 
 $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_archived_at IS NULL ORDER BY client_name ASC");
 
@@ -34,14 +34,14 @@ $sql_users = mysqli_query($mysqli, "
 
     <div class="card card-dark">
         <div class="card-header py-2">
-            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring mr-2"></i>Time Logged By Technician</h3>
+            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring me-2"></i>Time Logged By Technician</h3>
             <div class="card-tools">
-                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print mr-2"></i>Print</button>
+                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print me-2"></i>Print</button>
             </div>
         </div>
         <div class="card-body">
             <form class="mb-3">
-                <select onchange="this.form.submit()" class="form-control" name="year">
+                <select onchange="this.form.submit()" class="form-select" name="year">
                     <?php
                     while ($row = mysqli_fetch_assoc($sql_ticket_years)) {
                         $ticket_year = intval($row['ticket_year']); ?>
@@ -52,7 +52,7 @@ $sql_users = mysqli_query($mysqli, "
 
             <div class="card card-dark mb-3">
                 <div class="card-header">
-                    <h3 class="card-title"><i class="fas fa-fw fa-chart-area mr-2"></i>Yearly (<?= $year ?>)</h3>
+                    <h3 class="card-title"><i class="fas fa-fw fa-chart-area me-2"></i>Yearly (<?= $year ?>)</h3>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive-sm">
@@ -60,9 +60,9 @@ $sql_users = mysqli_query($mysqli, "
                             <thead>
                             <tr>
                                 <th>Technician</th>
-                                <th class="text-right">Tickets assigned</th>
-                                <th class="text-right">Tickets touched</th>
-                                <th class="text-right">Total time worked <i>(H:M:S)</i></th>
+                                <th class="text-end">Tickets assigned</th>
+                                <th class="text-end">Tickets touched</th>
+                                <th class="text-end">Total time worked <i>(H:M:S)</i></th>
                             </tr>
                             </thead>
                             <tbody>
@@ -73,7 +73,7 @@ $sql_users = mysqli_query($mysqli, "
                                 $user_name = escapeHtml($agent_row['user_name']);
 
                                 // Get tickets in period that are still assigned to the technician/agent
-                                $sql_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_assigned_to = $user_id");
+                                $sql_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND ticket_assigned_to = $user_id");
                                 $row = mysqli_fetch_assoc($sql_ticket_count);
                                 $ticket_raised_count = intval($row['ticket_count']);
 
@@ -84,8 +84,6 @@ $sql_users = mysqli_query($mysqli, "
                                         -- Tickets the agent replied to
                                         SELECT ticket_reply_ticket_id AS ticket_id
                                         FROM ticket_replies
-                                        INNER JOIN tickets ON tickets.ticket_id = ticket_reply_ticket_id
-                                            AND tickets.ticket_deleted_at IS NULL
                                         WHERE YEAR(ticket_reply_created_at) = $year AND ticket_reply_by = $user_id
 
                                         UNION
@@ -93,14 +91,14 @@ $sql_users = mysqli_query($mysqli, "
                                         -- Tickets the agent opened
                                         SELECT ticket_id
                                         FROM tickets
-                                        WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_created_by = $user_id
+                                        WHERE YEAR(ticket_created_at) = $year AND ticket_created_by = $user_id
 
                                         UNION
 
                                         -- Tickets the agent closed
                                         SELECT ticket_id
                                         FROM tickets
-                                        WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_closed_by = $user_id
+                                        WHERE YEAR(ticket_created_at) = $year AND ticket_closed_by = $user_id
                                     )
                                     AS tickets_touched
                                 ");
@@ -110,7 +108,7 @@ $sql_users = mysqli_query($mysqli, "
 
 
                                 // Calculate total time tracked towards tickets in the period (for this agent)
-                                $sql_time = mysqli_query($mysqli, "SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(ticket_reply_time_worked))) as total_time FROM ticket_replies INNER JOIN tickets ON tickets.ticket_id = ticket_replies.ticket_reply_ticket_id AND tickets.ticket_deleted_at IS NULL WHERE YEAR(ticket_created_at) = $year AND ticket_reply_by = $user_id AND ticket_reply_time_worked IS NOT NULL");
+                                $sql_time = mysqli_query($mysqli, "SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(ticket_reply_time_worked))) as total_time FROM ticket_replies LEFT JOIN tickets ON tickets.ticket_id = ticket_replies.ticket_reply_ticket_id WHERE YEAR(ticket_created_at) = $year AND ticket_reply_by = $user_id AND ticket_reply_time_worked IS NOT NULL");
                                 $row = mysqli_fetch_assoc($sql_time);
                                 $ticket_total_time_worked = escapeHtml($row['total_time']);
 
@@ -118,9 +116,9 @@ $sql_users = mysqli_query($mysqli, "
 
                                 <tr>
                                     <td><?= $user_name ?></td>
-                                    <td class="text-right"><?= $ticket_raised_count ?></td>
-                                    <td class="text-right"><?= $tickets_touched ?></td>
-                                    <td class="text-right"><?= $ticket_total_time_worked ?></td>
+                                    <td class="text-end"><?= $ticket_raised_count ?></td>
+                                    <td class="text-end"><?= $tickets_touched ?></td>
+                                    <td class="text-end"><?= $ticket_total_time_worked ?></td>
                                 </tr>
 
                                 <?php

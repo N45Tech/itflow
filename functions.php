@@ -12,6 +12,7 @@ DEFINE("MAX_EMAIL_ATTACHMENT_BYTES", 10 * 1024 * 1024);
 // under functions/ - see each file's header comment for scope.
 
 require_once __DIR__ . '/functions/security.php';
+require_once __DIR__ . '/functions/n45_lock_order.php';
 require_once __DIR__ . '/n45/bootstrap.php';
 n45RequireModule('schema');
 n45RequireModule('entra');
@@ -25,15 +26,14 @@ require_once __DIR__ . '/functions/format.php';
 require_once __DIR__ . '/functions/request.php';
 require_once __DIR__ . '/functions/files.php';
 require_once __DIR__ . '/functions/domain.php';
+require_once __DIR__ . '/functions/network.php';
 require_once __DIR__ . '/functions/auth.php';
 require_once __DIR__ . '/functions/logging.php';
 n45RequireModule('mail_templates');
 n45RequireModule('documentation');
 n45RequireModule('runbooks');
-n45RequireModule('ticket_operations');
 n45RequireModule('portal_requests');
 n45RequireModule('agreements');
-n45RequireModule('retention');
 require_once __DIR__ . '/functions/app.php';
 require_once __DIR__ . '/functions/payments.php';
 require_once __DIR__ . '/functions/sla.php';

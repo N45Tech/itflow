@@ -28,29 +28,26 @@ foreach (starterContentTicketTemplates() as $template) {
 }
 
 $contracts = [
-    'user-onboarding' => [
+    'new-user' => [
         'name' => 'User Onboarding',
-        'type' => 'onboarding',
-        'prefix' => 'USR',
-        'last' => 110,
-        'count' => 11,
-        'approval' => true,
+        'type' => 'standard',
+        'prefix' => 'NUS',
+        'last' => 80,
+        'count' => 8,
     ],
-    'user-offboarding' => [
+    'termination' => [
         'name' => 'User Offboarding',
         'type' => 'offboarding',
         'prefix' => 'TRM',
-        'last' => 110,
-        'count' => 11,
-        'approval' => true,
+        'last' => 90,
+        'count' => 9,
     ],
-    'device-deployment' => [
+    'new-device' => [
         'name' => 'Device Deployment',
         'type' => 'standard',
         'prefix' => 'DEV',
-        'last' => 140,
-        'count' => 14,
-        'approval' => true,
+        'last' => 90,
+        'count' => 9,
     ],
     'access-change' => [
         'name' => 'Access Change',
@@ -58,15 +55,6 @@ $contracts = [
         'prefix' => 'ACC',
         'last' => 70,
         'count' => 7,
-        'approval' => true,
-    ],
-    'incident-response' => [
-        'name' => 'Security Incident Response',
-        'type' => 'standard',
-        'prefix' => 'INC',
-        'last' => 100,
-        'count' => 10,
-        'approval' => false,
     ],
     'scheduled-work' => [
         'name' => 'Scheduled Work',
@@ -74,7 +62,13 @@ $contracts = [
         'prefix' => 'SCH',
         'last' => 80,
         'count' => 8,
-        'approval' => true,
+    ],
+    'incident-report' => [
+        'name' => 'Incident Triage and Response',
+        'type' => 'standard',
+        'prefix' => 'INC',
+        'last' => 80,
+        'count' => 8,
     ],
     'managed-care-onboarding' => [
         'name' => 'Managed Care Onboarding',
@@ -82,7 +76,6 @@ $contracts = [
         'prefix' => 'ONB',
         'last' => 430,
         'count' => 43,
-        'approval' => true,
     ],
     'client-offboarding' => [
         'name' => 'Client Offboarding',
@@ -90,7 +83,6 @@ $contracts = [
         'prefix' => 'OFF',
         'last' => 250,
         'count' => 25,
-        'approval' => true,
     ],
 ];
 
@@ -169,14 +161,14 @@ foreach ($contracts as $runbook_key => $contract) {
     $evidence_types = array_values(array_unique(array_column($tasks, 'evidence_type')));
     $assertTrue(count($condition_types) > 1, "$runbook_key lost its conditional workflow metadata");
     $assertTrue(count($evidence_types) > 1, "$runbook_key lost its evidence-type coverage");
-    $approval_tasks = array_filter($tasks, static fn ($task) => $task['approval_scope'] !== '');
-    $waiting_tasks = array_filter($tasks, static fn ($task) => $task['initial_state'] === 'Waiting');
-    if (!empty($contract['approval'])) {
-        $assertTrue(count($waiting_tasks) > 0, "$runbook_key no longer contains a waiting gate");
-        $assertTrue(count($approval_tasks) > 0, "$runbook_key no longer contains an approval gate");
-    } else {
-        $assertSame([], array_values($approval_tasks), "$runbook_key unexpectedly blocks urgent intake on client approval");
-    }
+    $assertTrue(
+        count(array_filter($tasks, static fn ($task) => $task['initial_state'] === 'Waiting')) > 0,
+        "$runbook_key no longer contains a waiting gate"
+    );
+    $assertTrue(
+        count(array_filter($tasks, static fn ($task) => $task['approval_scope'] !== '')) > 0,
+        "$runbook_key no longer contains an approval gate"
+    );
 
     if ($runbook_key === 'access-change') {
         $tasks_by_key = array_column($tasks, null, 'key');

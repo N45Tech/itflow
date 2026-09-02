@@ -30,22 +30,18 @@ enforceContactCan('contacts');
         <form action="post.php" method="post">
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-            <div class="form-group">
+            <div class="mb-3">
                 <label for="contactName">Name <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
-                    </div>
                     <input type="text" class="form-control" id="contactName" name="contact_name" placeholder="Full name" required maxlength="200">
                 </div>
             </div>
 
-            <div class="form-group">
+            <div class="mb-3">
                 <label for="contactEmail">Email <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-envelope"></i></span>
-                    </div>
                     <input type="email" class="form-control" id="contactEmail" name="contact_email" placeholder="name@company.com" required maxlength="200">
                 </div>
             </div>
@@ -84,13 +80,11 @@ enforceContactCan('contacts');
                 </div>
             </fieldset>
 
-            <div class="form-group">
+            <div class="mb-3">
                 <label for="contactAuthMethod">Portal authentication</label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-user-circle"></i></span>
-                    </div>
-                    <select class="form-control select2 authMethod" id="contactAuthMethod" name="contact_auth_method">
+                    <select class="form-select select2 authMethod" id="contactAuthMethod" name="contact_auth_method">
                         <option value="">- No portal access -</option>
                         <option value="local">Local (Email and password)</option>
                         <?php if (!empty($config_azure_client_id)) { ?>

@@ -33,6 +33,9 @@ if (isset($_POST['edit_ticket_status'])) {
     $order = intval($_POST['order']);
     $status = intval($_POST['status']);
 
+    // Built-in statuses have fixed SLA behaviour. The modal renders it read-only, and a
+    // read-only field submits nothing - so the value is decided here rather than taken
+    // from the POST, which also means a hand-made request cannot change it.
     $pauses_sla = getTicketStatusSlaLock($ticket_status_id);
     if (is_null($pauses_sla)) {
         $pauses_sla = intval($_POST['pauses_sla'] ?? 0);
@@ -41,9 +44,7 @@ if (isset($_POST['edit_ticket_status'])) {
     mysqli_query($mysqli, "UPDATE ticket_statuses SET ticket_status_name = '$name', ticket_status_color = '$color', ticket_status_order = $order, ticket_status_active = $status, ticket_status_pauses_sla = $pauses_sla WHERE ticket_status_id = $ticket_status_id");
 
     // Tickets already sitting in this status need their clock reconciled
-    $sql_status_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets
-        WHERE ticket_status = $ticket_status_id AND ticket_closed_at IS NULL
-        AND ticket_archived_at IS NULL AND ticket_deleted_at IS NULL");
+    $sql_status_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_status = $ticket_status_id AND ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
     while ($status_ticket_row = mysqli_fetch_assoc($sql_status_tickets)) {
         syncTicketSlaClock($status_ticket_row['ticket_id']);
     }

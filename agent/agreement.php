@@ -70,15 +70,11 @@ $entitlements = mysqli_query($mysqli, "SELECT * FROM agreement_entitlements
 $sla_rules = mysqli_query($mysqli, "SELECT agreement_sla_rules.* FROM agreement_sla_rules
     WHERE agreement_sla_rule_version_id = $version_id
     ORDER BY agreement_sla_rule_order, agreement_sla_rule_id");
-$version_events = mysqli_query($mysqli, "SELECT agreement_version_events.*, user_name
-    FROM agreement_version_events
-    LEFT JOIN users ON user_id = agreement_version_event_actor_id
-    WHERE agreement_version_event_contract_id = $agreement_id
-    AND agreement_version_event_version_id = $version_id
-    ORDER BY agreement_version_event_id");
 $slas = mysqli_query($mysqli, "SELECT sla_id, sla_name FROM slas
     WHERE sla_archived_at IS NULL ORDER BY sla_name");
-$reviews = mysqli_query($mysqli, "SELECT * FROM service_reviews
+$reviews = mysqli_query($mysqli, "SELECT service_review_id, service_review_period_start,
+    service_review_period_end, service_review_status, service_review_generated_at,
+    service_review_snapshot_hash FROM service_reviews
     WHERE service_review_contract_id = $agreement_id
     AND service_review_client_id = $client_id
     ORDER BY service_review_period_end DESC, service_review_id DESC");
@@ -337,30 +333,6 @@ $default_period_start = agreementShiftCalendarMonths(
     </div>
 <?php } ?>
 
-<div class="card card-outline card-secondary">
-    <div class="card-header"><h3 class="card-title"><i class="fas fa-fw fa-fingerprint mr-2"></i>Version evidence</h3></div>
-    <div class="card-body p-0">
-        <table class="table table-sm mb-0">
-            <thead><tr><th>Event</th><th>Technician</th><th>Time</th><th>Reason</th><th>Definition</th></tr></thead>
-            <tbody>
-            <?php $version_event_count = 0; while ($event = mysqli_fetch_assoc($version_events)) { $version_event_count++; ?>
-                <tr>
-                    <td><?= escapeHtml($event['agreement_version_event_action']) ?></td>
-                    <td><?= escapeHtml($event['user_name'] ?: (intval($event['agreement_version_event_actor_id']) ? 'User ' . intval($event['agreement_version_event_actor_id']) : 'System')) ?></td>
-                    <td><?= escapeHtml($event['agreement_version_event_created_at']) ?></td>
-                    <td><?= escapeHtml($event['agreement_version_event_reason'] ?? '') ?></td>
-                    <td>
-                        <?php if (!empty($event['agreement_version_event_definition_hash'])) { ?>
-                            <code title="<?= escapeHtml($event['agreement_version_event_definition_hash']) ?>"><?= escapeHtml(substr($event['agreement_version_event_definition_hash'], 0, 12)) ?>&hellip;</code>
-                        <?php } else { ?><span class="text-muted">Draft event</span><?php } ?>
-                    </td>
-                </tr>
-            <?php } if (!$version_event_count) { ?><tr><td colspan="5" class="text-muted">No version lifecycle events have been recorded yet.</td></tr><?php } ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-
 <div class="card card-dark">
     <div class="card-header"><h3 class="card-title"><i class="fas fa-fw fa-chart-line mr-2"></i>Service Reviews</h3></div>
     <div class="card-body">
@@ -368,28 +340,10 @@ $default_period_start = agreementShiftCalendarMonths(
             <table class="table table-sm table-striped">
                 <thead><tr><th>Period</th><th>Status</th><th>Generated</th><th>Snapshot</th><th></th></tr></thead>
                 <tbody>
-                <?php $review_count = 0; while ($review = mysqli_fetch_assoc($reviews)) {
-                    $review_count++;
-                    $review_integrity = true;
-                    try {
-                        $verified_snapshot = agreementValidateServiceReviewSnapshot($review);
-                        agreementValidateServiceReviewAgreementEvidence($review, $verified_snapshot);
-                        agreementValidateServiceReviewApproval(
-                            $review,
-                            agreementServiceReviewEvents(
-                                intval($review['service_review_id']),
-                                $client_id
-                            )
-                        );
-                    } catch (Throwable $e) {
-                        $review_integrity = false;
-                        error_log('Agreement review integrity failure for review '
-                            . intval($review['service_review_id']) . ': ' . $e->getMessage());
-                    }
-                    ?>
+                <?php $review_count = 0; while ($review = mysqli_fetch_assoc($reviews)) { $review_count++; ?>
                     <tr>
                         <td><?= escapeHtml($review['service_review_period_start']) ?> through <?= escapeHtml($review['service_review_period_end']) ?></td>
-                        <td><?php if ($review_integrity) { ?><span class="badge badge-<?= $review['service_review_status'] === 'Published' ? 'success' : 'warning' ?>"><?= escapeHtml($review['service_review_status']) ?></span><?php } else { ?><span class="badge badge-danger">Integrity failure</span><?php } ?></td>
+                        <td><span class="badge badge-<?= $review['service_review_status'] === 'Published' ? 'success' : 'warning' ?>"><?= escapeHtml($review['service_review_status']) ?></span></td>
                         <td><?= escapeHtml($review['service_review_generated_at']) ?></td>
                         <td><code title="<?= escapeHtml($review['service_review_snapshot_hash']) ?>"><?= escapeHtml(substr($review['service_review_snapshot_hash'], 0, 12)) ?>&hellip;</code></td>
                         <td class="text-right"><a class="btn btn-sm btn-secondary" href="service_review.php?review_id=<?= intval($review['service_review_id']) ?>">Open</a></td>

@@ -7,7 +7,7 @@ enforceUserPermission('module_support', 2);
 $task_id = intval($_GET['id']);
 $task = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT task_name, task_state,
     task_waiting_reason, task_condition_result, ticket_client_id
-    FROM tasks INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+    FROM tasks LEFT JOIN tickets ON ticket_id = task_ticket_id
     WHERE task_id = $task_id AND task_runbook_version_task_id > 0 LIMIT 1"));
 
 if (!$task) {

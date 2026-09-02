@@ -56,7 +56,6 @@ $select_sql =
             COALESCE(u.user_name, c.contact_name) AS ticket_reply_by_name
      FROM ticket_replies tr
      INNER JOIN tickets t ON t.ticket_id = tr.ticket_reply_ticket_id
-        AND t.ticket_deleted_at IS NULL
      LEFT JOIN users u ON tr.ticket_reply_type != 'Client' AND u.user_id = tr.ticket_reply_by
      LEFT JOIN contacts c ON tr.ticket_reply_type = 'Client' AND c.contact_id = tr.ticket_reply_by";
 
@@ -67,7 +66,6 @@ if (isset($_GET['ticket_reply_id'])) {
         $mysqli,
         "$select_sql
          WHERE tr.ticket_reply_id = '$id'
-           AND t.ticket_deleted_at IS NULL
            AND 1=1 " . apiClientScopeSql('t.ticket_client_id') . "$archived_sql$type_sql
          LIMIT 1"
     );
@@ -79,7 +77,6 @@ if (isset($_GET['ticket_reply_id'])) {
         $mysqli,
         "$select_sql
          WHERE tr.ticket_reply_ticket_id = '$ticket_id'
-           AND t.ticket_deleted_at IS NULL
            AND 1=1 " . apiClientScopeSql('t.ticket_client_id') . "$archived_sql$type_sql
          ORDER BY tr.ticket_reply_id ASC
          LIMIT $limit OFFSET $offset"
@@ -90,7 +87,7 @@ if (isset($_GET['ticket_reply_id'])) {
     $sql = mysqli_query(
         $mysqli,
         "$select_sql
-         WHERE t.ticket_deleted_at IS NULL " . apiClientScopeSql('t.ticket_client_id') . "$archived_sql$type_sql
+         WHERE 1=1 " . apiClientScopeSql('t.ticket_client_id') . "$archived_sql$type_sql
          ORDER BY tr.ticket_reply_id ASC
          LIMIT $limit OFFSET $offset"
     );

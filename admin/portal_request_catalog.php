@@ -54,10 +54,9 @@ $items = mysqli_query($mysqli, "SELECT i.*,
                     <form action="post.php" method="post">
                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                         <button class="btn btn-outline-secondary" name="install_portal_request_starters">
-                            <i class="fas fa-sync-alt mr-1"></i>Reconcile six starter requests
+                            <i class="fas fa-magic mr-1"></i>Install six starter drafts
                         </button>
                     </form>
-                    <p class="small text-muted mt-2 mb-0">Publishes only against an active, hash-valid canonical runbook. Missing or incompatible prerequisites leave the request safely unavailable as a draft.</p>
                 </div>
             </div>
         <?php } ?>

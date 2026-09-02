@@ -6,50 +6,6 @@
 
 defined('FROM_POST_HANDLER') || die("Direct file access is not allowed");
 
-// A soft-deleted ticket is read-only outside the administrator retention
-// workflow. Cover canonical, bulk, merge-target, reply, and legacy GET shapes
-// so a forged agent request cannot mutate a hidden ticket through a side path.
-$retention_mutation_ticket_ids = [];
-foreach (['ticket_id', 'merge_into_ticket_id'] as $retention_ticket_key) {
-    if (isset($_POST[$retention_ticket_key])) {
-        $retention_mutation_ticket_ids[] = intval($_POST[$retention_ticket_key]);
-    }
-    if (isset($_GET[$retention_ticket_key])) {
-        $retention_mutation_ticket_ids[] = intval($_GET[$retention_ticket_key]);
-    }
-}
-foreach (['resolve_ticket', 'close_ticket', 'reopen_ticket', 'cancel_ticket_schedule', 'delete_ticket'] as $retention_ticket_key) {
-    if (isset($_GET[$retention_ticket_key])) {
-        $retention_mutation_ticket_ids[] = intval($_GET[$retention_ticket_key]);
-    }
-}
-foreach ((array) ($_POST['ticket_ids'] ?? []) as $retention_ticket_id) {
-    $retention_mutation_ticket_ids[] = intval($retention_ticket_id);
-}
-$retention_reply_id = intval($_POST['ticket_reply_id'] ?? $_GET['archive_ticket_reply'] ?? 0);
-if ($retention_reply_id > 0) {
-    $retention_reply_row = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_reply_ticket_id
-        FROM ticket_replies WHERE ticket_reply_id = $retention_reply_id LIMIT 1",
-        'Could not resolve the retained reply ticket'));
-    $retention_mutation_ticket_ids[] = intval($retention_reply_row['ticket_reply_ticket_id'] ?? 0);
-}
-$retention_watcher_id = intval($_GET['delete_ticket_watcher'] ?? 0);
-if ($retention_watcher_id > 0) {
-    $retention_watcher_row = mysqli_fetch_assoc(retentionDbQuery("SELECT watcher_ticket_id
-        FROM ticket_watchers WHERE watcher_id = $retention_watcher_id LIMIT 1",
-        'Could not resolve the retained watcher ticket'));
-    $retention_mutation_ticket_ids[] = intval($retention_watcher_row['watcher_ticket_id'] ?? 0);
-}
-$retention_mutation_ticket_ids = array_values(array_unique(array_filter($retention_mutation_ticket_ids)));
-if ($retention_mutation_ticket_ids) {
-    $retention_mutation_ticket_id_sql = implode(',', $retention_mutation_ticket_ids);
-    if (retentionCount("SELECT COUNT(*) FROM tickets WHERE ticket_id IN ($retention_mutation_ticket_id_sql)
-        AND ticket_deleted_at IS NOT NULL", 'Could not inspect retained ticket mutations') > 0) {
-        flashAlert('Deleted tickets are immutable outside Administration > Retention.', 'error');
-        redirect('/admin/retention.php');
-    }
-}
-
 if (isset($_POST['add_ticket'])) {
 
     validateCSRFToken();
@@ -65,30 +21,12 @@ if (isset($_POST['add_ticket'])) {
     }
     $contact_id = intval($_POST['contact_id'] ?? 0);
     $category_id = intval($_POST['category_id'] ?? 0);
+    $priority = escapeSql($_POST['priority'] ?? 'Low');
     $vendor_ticket_number = escapeSql($_POST['vendor_ticket_number'] ?? '');
     $vendor_id = intval($_POST['vendor_id'] ?? 0);
     $asset_id = intval($_POST['asset_id'] ?? 0);
     $location_id = intval($_POST['location_id'] ?? 0);
     $project_id = intval($_POST['project_id'] ?? 0);
-    try {
-        $operational = ticketOperationalInput([
-            'work_type' => $_POST['work_type'] ?? ($project_id ? 'project_task' : 'request'),
-            'impact' => $_POST['impact'] ?? 'medium',
-            'urgency' => $_POST['urgency'] ?? 'medium',
-            'next_action' => $_POST['next_action'] ?? 'Review and triage this ticket.',
-            'next_action_due_at' => $_POST['next_action_due_at'] ?? null,
-            'waiting_on' => $_POST['waiting_on'] ?? 'none',
-            'waiting_on_detail' => $_POST['waiting_on_detail'] ?? '',
-        ]);
-    } catch (InvalidArgumentException $exception) {
-        flashAlert(escapeHtml($exception->getMessage()), 'error');
-        redirect();
-    }
-    $priority = escapeSql($operational['priority']);
-    $work_type_sql = escapeSql($operational['work_type']);
-    $impact_sql = escapeSql($operational['impact']);
-    $urgency_sql = escapeSql($operational['urgency']);
-    $next_action_sql = escapeSql($operational['next_action']);
     $use_primary_contact = intval($_POST['use_primary_contact'] ?? 0);
     $ticket_template_id = intval($_POST['ticket_template_id'] ?? 0);
     $pinned_runbook_version_id = 0;
@@ -283,7 +221,7 @@ if (isset($_POST['add_ticket'])) {
             throw new RuntimeException('The ticket number allocation returned no number');
         }
 
-        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Agent', ticket_category = $category_id, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_work_type = '$work_type_sql', ticket_impact = '$impact_sql', ticket_urgency = '$urgency_sql', ticket_next_action = '$next_action_sql', ticket_waiting_on = 'none', ticket_operational_updated_by = $session_user_id, ticket_operational_updated_at = NOW(), ticket_billable = '$billable', ticket_status = '$ticket_status', ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_location_id = $location_id, ticket_asset_id = $asset_id, ticket_created_by = $session_user_id, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_due_at = $due, ticket_client_id = $client_id, ticket_invoice_id = 0, ticket_project_id = $project_id, ticket_configuration_change = $configuration_change, ticket_documentation_impact = '$documentation_impact_sql', ticket_documentation_assessed_by = $session_user_id, ticket_documentation_assessed_at = NOW()", 'Could not create the ticket');
+        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Agent', ticket_category = $category_id, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_billable = '$billable', ticket_status = '$ticket_status', ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_location_id = $location_id, ticket_asset_id = $asset_id, ticket_created_by = $session_user_id, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_due_at = $due, ticket_client_id = $client_id, ticket_invoice_id = 0, ticket_project_id = $project_id, ticket_configuration_change = $configuration_change, ticket_documentation_impact = '$documentation_impact_sql', ticket_documentation_assessed_by = $session_user_id, ticket_documentation_assessed_at = NOW()", 'Could not create the ticket');
 
         $ticket_id = intval(mysqli_insert_id($mysqli));
         if (!$ticket_id) {
@@ -350,7 +288,7 @@ if (isset($_POST['add_ticket'])) {
         // Get contact/ticket details
         $sql = mysqli_query($mysqli, "SELECT contact_name, contact_email, ticket_prefix, ticket_number, ticket_category, ticket_subject, ticket_details, ticket_priority, ticket_status, ticket_created_by, ticket_assigned_to, ticket_client_id FROM tickets
               LEFT JOIN contacts ON ticket_contact_id = contact_id
-              WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+              WHERE ticket_id = $ticket_id");
         $row = mysqli_fetch_assoc($sql);
 
         $contact_name = escapeSql($row['contact_name']);
@@ -381,7 +319,7 @@ if (isset($_POST['add_ticket'])) {
             'ticket_number' => $ticket_prefix . $ticket_number,
             'ticket_subject' => $ticket_subject,
             'ticket_status' => 'Open',
-            'message_html' => $ticket_details,
+            'message_html' => $ticket_details . getTicketSlaEmailNotice($ticket_id, $company_phone),
             'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
             'footer_email' => $config_ticket_from_email,
             'footer_phone' => $company_phone,
@@ -405,9 +343,7 @@ if (isset($_POST['add_ticket'])) {
         }
 
         // Also Email all the watchers
-        $sql_watchers = mysqli_query($mysqli, "SELECT tw.watcher_email FROM ticket_watchers tw
-            INNER JOIN tickets t ON t.ticket_id = tw.watcher_ticket_id AND t.ticket_deleted_at IS NULL
-            WHERE tw.watcher_ticket_id = $ticket_id");
+        $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
         while ($row = mysqli_fetch_assoc($sql_watchers)) {
             $watcher_email = escapeSql($row['watcher_email']);
             $watcher_email_context = $ticket_email_context;
@@ -463,6 +399,7 @@ if (isset($_POST['edit_ticket'])) {
     $category_id = intval($_POST['category_id']);
     $ticket_subject = escapeSql($_POST['subject']);
     $billable = intval($_POST['billable'] ?? 0);
+    $ticket_priority = escapeSql($_POST['priority']);
     $details = mysqli_real_escape_string($mysqli, $_POST['details']);
     $vendor_ticket_number = escapeSql($_POST['vendor_ticket_number']);
     $vendor_id = intval($_POST['vendor_id']);
@@ -483,7 +420,7 @@ if (isset($_POST['edit_ticket'])) {
     }
 
     $ticket_row = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT ticket_client_id,
-        ticket_project_id FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1",
+        ticket_project_id FROM tickets WHERE ticket_id = $ticket_id LIMIT 1",
         'Could not load the ticket for editing'));
     if (!$ticket_row) {
         flashAlert('The ticket is unavailable', 'error');
@@ -550,16 +487,13 @@ if (isset($_POST['edit_ticket'])) {
      * record the same changes when they come through here instead
      */
     $original_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_priority,
-        ticket_assigned_to, ticket_category FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"));
+        ticket_assigned_to, ticket_category FROM tickets WHERE ticket_id = $ticket_id"));
     $original_priority = escapeSql($original_row['ticket_priority']);
-    // Impact and urgency own priority. The general edit form must not provide
-    // a second, conflicting priority write path.
-    $ticket_priority = $original_priority;
     $original_assigned_to = intval($original_row['ticket_assigned_to']);
     $request_key_reset = intval($original_row['ticket_category']) !== $category_id
         ? ", ticket_request_type_key = '*'" : '';
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_category = $category_id, ticket_subject = '$ticket_subject', ticket_priority = '$ticket_priority', ticket_billable = $billable, ticket_details = '$details', ticket_due_at = $due, ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_contact_id = $contact_id, ticket_assigned_to = $assigned_to, ticket_vendor_id = $vendor_id, ticket_location_id = $location_id, ticket_asset_id = $asset_id $request_key_reset WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_category = $category_id, ticket_subject = '$ticket_subject', ticket_priority = '$ticket_priority', ticket_billable = $billable, ticket_details = '$details', ticket_due_at = $due, ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_contact_id = $contact_id, ticket_assigned_to = $assigned_to, ticket_vendor_id = $vendor_id, ticket_location_id = $location_id, ticket_asset_id = $asset_id $request_key_reset WHERE ticket_id = $ticket_id");
 
     if ($original_priority !== $ticket_priority) {
         logTicketHistory($ticket_id, "$session_name changed priority from $original_priority to $ticket_priority");
@@ -592,13 +526,8 @@ if (isset($_POST['edit_ticket'])) {
         LEFT JOIN contacts ON ticket_contact_id = contact_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
         WHERE ticket_id = $ticket_id
-        AND ticket_deleted_at IS NULL
         AND ticket_closed_at IS NULL");
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
 
     $contact_name = escapeSql($row['contact_name']);
     $contact_email = escapeSql($row['contact_email']);
@@ -630,7 +559,7 @@ if (isset($_POST['edit_ticket'])) {
             'ticket_number' => $ticket_prefix . $ticket_number,
             'ticket_subject' => $ticket_subject,
             'ticket_status' => $ticket_status,
-            'message_html' => $ticket_details,
+            'message_html' => $ticket_details . getTicketSlaEmailNotice($ticket_id, $company_phone),
             'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
             'footer_email' => $config_ticket_from_email,
             'footer_phone' => $company_phone,
@@ -668,13 +597,14 @@ if (isset($_POST['edit_ticket_priority'])) {
     enforceUserPermission('module_support', 2);
 
     $ticket_id = intval($_POST['ticket_id']);
+    $priority = escapeSql($_POST['priority']);
 
     // Get ticket details before updating
     $sql = mysqli_query($mysqli, "SELECT
         ticket_prefix, ticket_number, ticket_priority, ticket_status_name, ticket_client_id
         FROM tickets
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
+        WHERE ticket_id = $ticket_id"
     );
     $row = mysqli_fetch_assoc($sql);
     $ticket_prefix = escapeSql($row['ticket_prefix']);
@@ -688,20 +618,8 @@ if (isset($_POST['edit_ticket_priority'])) {
         enforceClientAccess($client_id);
     }
 
-    try {
-        $state = ticketOperationalUpdateTicket($ticket_id, [
-            'impact' => $_POST['impact'] ?? '',
-            'urgency' => $_POST['urgency'] ?? '',
-        ], $session_user_id, 'agent');
-        $original_priority = escapeSql($state['previous_priority']);
-        $client_id = intval($state['client_id']);
-        $ticket_prefix = escapeSql($state['ticket_prefix']);
-        $ticket_number = intval($state['ticket_number']);
-        $priority = escapeSql($state['priority']);
-    } catch (Throwable $exception) {
-        flashAlert(escapeHtml($exception->getMessage()), 'error');
-        redirect();
-    }
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_priority = '$priority' WHERE ticket_id = $ticket_id");
+    applyTicketSla($ticket_id);
 
     // Update Ticket History
     mysqli_query($mysqli, "INSERT INTO ticket_history SET ticket_history_status = '$ticket_status', ticket_history_description = '$session_name changed priority from $original_priority to $priority', ticket_history_ticket_id = $ticket_id");
@@ -730,7 +648,7 @@ if (isset($_POST['edit_ticket_sla'])) {
         ticket_prefix, ticket_number, ticket_sla_id, ticket_status_name, ticket_client_id
         FROM tickets
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
+        WHERE ticket_id = $ticket_id"
     );
     $row = mysqli_fetch_assoc($sql);
     $ticket_prefix = escapeSql($row['ticket_prefix']);
@@ -802,7 +720,7 @@ if (isset($_POST['edit_ticket_contact'])) {
         FROM tickets
         LEFT JOIN contacts ON ticket_contact_id = contact_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
+        WHERE ticket_id = $ticket_id"
     );
     $row = mysqli_fetch_assoc($sql);
 
@@ -830,7 +748,7 @@ if (isset($_POST['edit_ticket_contact'])) {
     }
 
     // Update the contact
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_contact_id = $contact_id WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_contact_id = $contact_id WHERE ticket_id = $ticket_id");
     applyTicketSla($ticket_id);
 
     // Get New contact details
@@ -865,7 +783,7 @@ if (isset($_POST['edit_ticket_contact'])) {
             'ticket_number' => $ticket_prefix . $ticket_number,
             'ticket_subject' => $ticket_subject,
             'ticket_status' => $ticket_status,
-            'message_html' => $ticket_details,
+            'message_html' => $ticket_details . getTicketSlaEmailNotice($ticket_id, $company_phone),
             'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
             'footer_email' => $config_ticket_from_email,
             'footer_phone' => $company_phone,
@@ -905,7 +823,7 @@ if (isset($_POST['edit_ticket_project'])) {
     $project_id = intval($_POST['project']);
 
     $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
     if (!$ticket) {
         flashAlert('Ticket not found', 'error');
         redirect();
@@ -952,13 +870,8 @@ if (isset($_POST['add_ticket_watcher'])) {
     LEFT JOIN contacts ON ticket_contact_id = contact_id
     LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
     WHERE ticket_id = $ticket_id
-    AND ticket_deleted_at IS NULL
     AND ticket_closed_at IS NULL");
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
 
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
@@ -990,14 +903,7 @@ if (isset($_POST['add_ticket_watcher'])) {
 
             $watcher_email = escapeSql($watcher_email);
 
-            $watcher_inserted = mysqli_query($mysqli, "INSERT INTO ticket_watchers
-                (watcher_email, watcher_ticket_id)
-                SELECT '$watcher_email', ticket_id FROM tickets
-                WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
-                AND ticket_closed_at IS NULL LIMIT 1");
-            if (!$watcher_inserted || mysqli_affected_rows($mysqli) !== 1) {
-                continue;
-            }
+            mysqli_query($mysqli, "INSERT INTO ticket_watchers SET watcher_email = '$watcher_email', watcher_ticket_id = $ticket_id");
 
             // Notify watcher
             if ($notify && (!empty($config_smtp_provider))) {
@@ -1051,7 +957,7 @@ if (isset($_GET['delete_ticket_watcher'])) {
 
     // Get ticket / watcher details for logging
     $sql = mysqli_query($mysqli, "SELECT watcher_email, ticket_prefix, ticket_number, ticket_status_name, ticket_client_id, ticket_id FROM ticket_watchers
-        INNER JOIN tickets ON watcher_ticket_id = ticket_id AND ticket_deleted_at IS NULL
+        LEFT JOIN tickets ON watcher_ticket_id = ticket_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
         WHERE watcher_id = $watcher_id"
     );
@@ -1073,12 +979,10 @@ if (isset($_GET['delete_ticket_watcher'])) {
         enforceClientAccess();
     }
 
-    mysqli_query($mysqli, "DELETE ticket_watchers FROM ticket_watchers
-        INNER JOIN tickets ON ticket_id = watcher_ticket_id AND ticket_deleted_at IS NULL
-        WHERE watcher_id = $watcher_id");
+    mysqli_query($mysqli, "DELETE FROM ticket_watchers WHERE watcher_id = $watcher_id");
 
     // History
-    logTicketHistory($ticket_id, "$session_name removed ticket $watcher_email as a watcher");
+    mysqli_query($mysqli, "INSERT INTO ticket_history SET ticket_history_status = '$ticket_status_name', ticket_history_description = '$session_name removed ticket $watcher_email as a watcher', ticket_history_ticket_id = $ticket_id");
 
     logAudit("Ticket", "Edit", "$session_name removed $watcher_email as a watcher for ticket $ticket_prefix$ticket_number", $client_id, $ticket_id);
 
@@ -1099,7 +1003,7 @@ if (isset($_GET['delete_ticket_additional_asset'])) {
 
     // Get ticket / asset details for logging
     $sql = mysqli_query($mysqli, "SELECT asset_name, ticket_prefix, ticket_number, ticket_status_name, ticket_client_id FROM assets
-        JOIN tickets ON ticket_id = $ticket_id AND ticket_deleted_at IS NULL
+        JOIN tickets ON ticket_id = $ticket_id
         JOIN ticket_assets ON ticket_assets.ticket_id = tickets.ticket_id
             AND ticket_assets.asset_id = assets.asset_id
         JOIN ticket_statuses ON ticket_status = ticket_status_id
@@ -1122,14 +1026,11 @@ if (isset($_GET['delete_ticket_additional_asset'])) {
         enforceClientAccess($client_id);
     }
 
-    mysqli_query($mysqli, "DELETE ticket_assets FROM ticket_assets
-        INNER JOIN tickets ON tickets.ticket_id = ticket_assets.ticket_id
-            AND tickets.ticket_deleted_at IS NULL
-        WHERE ticket_assets.ticket_id = $ticket_id AND ticket_assets.asset_id = $asset_id");
+    mysqli_query($mysqli, "DELETE FROM ticket_assets WHERE ticket_id = $ticket_id AND asset_id = $asset_id");
     applyTicketSla($ticket_id);
 
     // History
-    logTicketHistory($ticket_id, "$session_name removed additional asset $asset_name");
+    mysqli_query($mysqli, "INSERT INTO ticket_history SET ticket_history_status = '$ticket_status_name', ticket_history_description = '$session_name removed additional asset $asset_name', ticket_history_ticket_id = $ticket_id");
 
     logAudit("Ticket", "Edit", "$session_name removed asset $asset_name from ticket $ticket_prefix$ticket_number", $client_id, $ticket_id);
 
@@ -1148,13 +1049,7 @@ if (isset($_POST['edit_ticket_asset'])) {
     $ticket_id = intval($_POST['ticket_id']);
     $asset_id = intval($_POST['asset']);
 
-    $ticket_access = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
-    if (!$ticket_access) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
-    $client_id = intval($ticket_access['ticket_client_id']);
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
 
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
     if ($client_id) {
@@ -1181,26 +1076,18 @@ if (isset($_POST['edit_ticket_asset'])) {
         $ticket_asset_ids[] = $additional_asset_id;
     }
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_asset_id = $asset_id WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_asset_id = $asset_id WHERE ticket_id = $ticket_id");
 
     // Add Additional Assets
     if ($ticket_asset_ids) {
-        mysqli_query($mysqli, "DELETE ticket_assets FROM ticket_assets
-            INNER JOIN tickets ON tickets.ticket_id = ticket_assets.ticket_id
-                AND tickets.ticket_deleted_at IS NULL
-            WHERE ticket_assets.ticket_id = $ticket_id");
+        mysqli_query($mysqli, "DELETE FROM ticket_assets WHERE ticket_id = $ticket_id");
         foreach ($ticket_asset_ids as $additional_asset_id) {
-            mysqli_query($mysqli, "INSERT INTO ticket_assets (ticket_id, asset_id)
-                SELECT ticket_id, $additional_asset_id FROM tickets
-                WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
+            mysqli_query($mysqli, "INSERT INTO ticket_assets SET ticket_id = $ticket_id, asset_id = $additional_asset_id");
         }
     } else {
         // If no additional assets are provided, delete them all
         // This handles cases where the assets input might be cleared or not set at all.
-        mysqli_query($mysqli, "DELETE ticket_assets FROM ticket_assets
-            INNER JOIN tickets ON tickets.ticket_id = ticket_assets.ticket_id
-                AND tickets.ticket_deleted_at IS NULL
-            WHERE ticket_assets.ticket_id = $ticket_id");
+        mysqli_query($mysqli, "DELETE FROM ticket_assets WHERE ticket_id = $ticket_id");
     }
     applyTicketSla($ticket_id);
 
@@ -1208,13 +1095,9 @@ if (isset($_POST['edit_ticket_asset'])) {
     $sql = mysqli_query($mysqli, "SELECT asset_name, ticket_prefix, ticket_number, ticket_status_name, ticket_client_id FROM assets
         LEFT JOIN tickets ON ticket_asset_id = asset_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
+        WHERE ticket_id = $ticket_id"
     );
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
 
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
@@ -1239,32 +1122,22 @@ if (isset($_POST['edit_ticket_vendor'])) {
     $ticket_id = intval($_POST['ticket_id']);
     $vendor_id = intval($_POST['vendor']);
 
-    $ticket_access = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
-    if (!$ticket_access) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
-    $client_id = intval($ticket_access['ticket_client_id']);
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
 
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
     if ($client_id) {
         enforceClientAccess();
     }
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_vendor_id = $vendor_id WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_vendor_id = $vendor_id WHERE ticket_id = $ticket_id");
 
     // Get ticket / vendor details for logging
     $sql = mysqli_query($mysqli, "SELECT vendor_name, ticket_prefix, ticket_number, ticket_status_name, ticket_client_id FROM vendors
         LEFT JOIN tickets ON ticket_vendor_id = $vendor_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
+        WHERE ticket_id = $ticket_id"
     );
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
 
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
@@ -1310,7 +1183,7 @@ if (isset($_POST['assign_ticket'])) {
     }
 
     // Get & verify ticket details
-    $ticket_details_sql = mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number, ticket_subject, ticket_client_id, client_name FROM tickets LEFT JOIN clients ON ticket_client_id = client_id WHERE ticket_id = '$ticket_id' AND ticket_deleted_at IS NULL AND ticket_status != 5");
+    $ticket_details_sql = mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number, ticket_subject, ticket_client_id, client_name FROM tickets LEFT JOIN clients ON ticket_client_id = client_id WHERE ticket_id = '$ticket_id' AND ticket_status != 5");
     $ticket_details = mysqli_fetch_assoc($ticket_details_sql);
 
     $ticket_prefix = escapeSql($ticket_details['ticket_prefix']);
@@ -1355,7 +1228,6 @@ if (isset($_POST['assign_ticket'])) {
         if ($assignment_changed) {
             ticketCreationDbQuery("UPDATE tickets SET ticket_assigned_to = $assigned_to,
                 ticket_status = $ticket_status WHERE ticket_id = $ticket_id
-                AND ticket_deleted_at IS NULL
                 AND ticket_assigned_to = " . intval($locked_ticket['ticket_assigned_to']) . "
                 AND ticket_status = $locked_status AND ticket_closed_at IS NULL",
                 'Could not assign the ticket');
@@ -1429,19 +1301,195 @@ if (isset($_POST['assign_ticket'])) {
 if (isset($_GET['delete_ticket'])) {
 
     validateCSRFToken();
-    enforceAdminPermission();
+
+    enforceUserPermission('module_support', 3);
+
     $ticket_id = intval($_GET['delete_ticket']);
-    // Legacy GET deletion is intentionally non-mutating. The retention center
-    // requires an explicit reason and records a recoverable lifecycle event.
-    redirect("/admin/retention.php?record_type=ticket&record_id=$ticket_id");
+
+    // Get Ticket and Client ID for logging and alert message
+    $sql = mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number, ticket_subject, ticket_status, ticket_closed_at, ticket_client_id FROM tickets WHERE ticket_id = $ticket_id");
+    $row = mysqli_fetch_assoc($sql);
+    $ticket_prefix = escapeSql($row['ticket_prefix']);
+    $ticket_number = escapeSql($row['ticket_number']);
+    $ticket_subject = escapeSql($row['ticket_subject']);
+    $ticket_status = escapeSql($row['ticket_status']);
+    $ticket_closed_at = escapeSql($row['ticket_closed_at']);
+    $client_id = intval($row['ticket_client_id']);
+
+    // Don't Enforce Client Access if Ticket doesn't have an assigned client
+    if ($client_id) {
+        enforceClientAccess();
+    }
+
+    if (empty($ticket_closed_at)) {
+        $transaction_started = false;
+        try {
+            if (!mysqli_begin_transaction($mysqli)) {
+                throw new RuntimeException('Could not start the ticket deletion transaction');
+            }
+            $transaction_started = true;
+            $locked_delete_ticket = documentationLockClientTicket($ticket_id, $client_id);
+            if (!$locked_delete_ticket || intval($locked_delete_ticket['ticket_client_id']) !== $client_id
+                || !empty($locked_delete_ticket['ticket_closed_at'])) {
+                throw new RuntimeException('The ticket client changed before deletion');
+            }
+            $runbook_execution_count = intval(mysqli_fetch_row(documentationLifecycleDbQuery(
+                "SELECT COUNT(*) FROM runbook_executions WHERE runbook_execution_ticket_id = $ticket_id",
+                'Could not inspect the ticket workflow history'
+            ))[0] ?? 0);
+            if ($runbook_execution_count > 0) {
+                throw new DomainException('The ticket has immutable runbook execution history');
+            }
+            if (documentationTicketHasAuditRecords($ticket_id)) {
+                throw new DomainException('The ticket has documentation audit history');
+            }
+            if (documentationEvidenceReferenceInUse('ticket', $ticket_id, $client_id)) {
+                throw new DomainException('The ticket is retained in the Evidence Locker');
+            }
+            if (agreementTicketHasAuditHistory($ticket_id, $client_id)) {
+                throw new DomainException('The ticket has immutable agreement or SLA decision history');
+            }
+            automationDeleteTicketOperations($ticket_id);
+            automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id",
+                'Could not delete the ticket replies');
+            automationDbQuery("DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id",
+                'Could not delete the ticket views');
+            automationDbQuery("DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id",
+                'Could not delete the ticket watchers');
+            automationDbQuery("DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id",
+                'Could not delete the ticket attachments');
+            automationDbQuery("DELETE FROM tickets WHERE ticket_id = $ticket_id",
+                'Could not delete the ticket');
+            if (mysqli_affected_rows($mysqli) !== 1) {
+                throw new RuntimeException('The ticket changed before deletion');
+            }
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the ticket deletion transaction');
+            }
+            $transaction_started = false;
+        } catch (Throwable $e) {
+            if ($transaction_started) {
+                mysqli_rollback($mysqli);
+            }
+            error_log("Ticket $ticket_id could not be deleted: " . $e->getMessage());
+            flashAlert($e instanceof DomainException
+                ? 'Tickets with immutable workflow, documentation, agreement, or SLA history cannot be permanently deleted. Close the ticket to preserve its audit trail.'
+                : 'The ticket and its Operations record could not be deleted.', 'error');
+            redirect();
+        }
+
+        // Database deletion committed before its non-transactional filesystem cleanup.
+        removeDirectory("../uploads/tickets/$ticket_id");
+
+        // No Need to delete ticket assets as this is cascadely deleted via the database.
+
+        logAudit("Ticket", "Delete", "$session_name deleted $ticket_prefix$ticket_number along with all replies", $client_id);
+
+        flashAlert("Ticket <strong>$ticket_prefix$ticket_number</strong> along with all replies deleted", 'error');
+
+        triggerCustomAction('ticket_delete', $ticket_id);
+
+        redirect("tickets.php");
+    }
+
 }
 
 if (isset($_POST['bulk_delete_tickets'])) {
 
     validateCSRFToken();
-    enforceAdminPermission();
-    flashAlert('Bulk ticket deletion is disabled. Move one ticket at a time through Administration > Retention so each record has an owner reason and restore window.', 'info');
-    redirect('/admin/retention.php');
+
+    enforceUserPermission('module_support', 3);
+
+    if (isset($_POST['ticket_ids'])) {
+
+        $requested_count = count($_POST['ticket_ids']);
+        $deleted_count = 0;
+        $skipped_count = 0;
+
+        // Cycle through array and delete each recurring scheduled ticket
+        foreach ($_POST['ticket_ids'] as $ticket_id) {
+
+            $ticket_id = intval($ticket_id);
+
+            $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+
+            // Don't Enforce Client Access if Ticket doesn't have an assigned client
+            if ($client_id) {
+                enforceClientAccess($client_id);
+            }
+
+            $transaction_started = false;
+            try {
+                if (!mysqli_begin_transaction($mysqli)) {
+                    throw new RuntimeException('Could not start the bulk ticket deletion transaction');
+                }
+                $transaction_started = true;
+                $locked_delete_ticket = documentationLockClientTicket($ticket_id, $client_id);
+                if (!$locked_delete_ticket || intval($locked_delete_ticket['ticket_client_id']) !== $client_id) {
+                    throw new RuntimeException('The ticket client changed before bulk deletion');
+                }
+                $runbook_execution_count = intval(mysqli_fetch_row(documentationLifecycleDbQuery(
+                    "SELECT COUNT(*) FROM runbook_executions WHERE runbook_execution_ticket_id = $ticket_id",
+                    'Could not inspect the bulk ticket workflow history'
+                ))[0] ?? 0);
+                if ($runbook_execution_count > 0) {
+                    throw new DomainException('The ticket has immutable runbook execution history');
+                }
+                if (documentationTicketHasAuditRecords($ticket_id)) {
+                    throw new DomainException('The ticket has documentation audit history');
+                }
+                if (documentationEvidenceReferenceInUse('ticket', $ticket_id, $client_id)) {
+                    throw new DomainException('The ticket is retained in the Evidence Locker');
+                }
+                if (agreementTicketHasAuditHistory($ticket_id, $client_id)) {
+                    throw new DomainException('The ticket has immutable agreement or SLA decision history');
+                }
+                automationDeleteTicketOperations($ticket_id);
+                automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id",
+                    'Could not delete the ticket replies');
+                automationDbQuery("DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id",
+                    'Could not delete the ticket views');
+                automationDbQuery("DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id",
+                    'Could not delete the ticket watchers');
+                automationDbQuery("DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id",
+                    'Could not delete the ticket attachments');
+                automationDbQuery("DELETE FROM tickets WHERE ticket_id = $ticket_id",
+                    'Could not delete the ticket');
+                if (mysqli_affected_rows($mysqli) !== 1) {
+                    throw new RuntimeException('The bulk ticket changed before deletion');
+                }
+                if (!mysqli_commit($mysqli)) {
+                    throw new RuntimeException('Could not commit the bulk ticket deletion transaction');
+                }
+                $transaction_started = false;
+            } catch (Throwable $e) {
+                if ($transaction_started) {
+                    mysqli_rollback($mysqli);
+                }
+                error_log("Ticket $ticket_id could not be deleted during bulk deletion: " . $e->getMessage());
+                if ($e instanceof DomainException) {
+                    $skipped_count++;
+                    continue;
+                }
+                throw $e;
+            }
+
+            // Database deletion committed before its non-transactional filesystem cleanup.
+            removeDirectory("../uploads/tickets/$ticket_id");
+
+            // No Need to delete ticket assets as this is cascadely deleted via the database.
+
+            logAudit("Ticket", "Delete", "$session_name deleted ticket", 0, $ticket_id);
+            $deleted_count++;
+
+        }
+
+        logAudit("Ticket", "Bulk Delete", "$session_name deleted $deleted_count of $requested_count requested ticket(s); $skipped_count ticket(s) with immutable workflow, documentation, agreement, or SLA history retained");
+
+        flashAlert("Deleted <strong>$deleted_count</strong> ticket(s). Retained <strong>$skipped_count</strong> ticket(s) to preserve immutable workflow, documentation, agreement, or SLA evidence.", $skipped_count ? 'info' : 'error');
+    }
+
+    redirect();
 
 }
 
@@ -1464,7 +1512,7 @@ if (isset($_POST['bulk_assign_ticket'])) {
         foreach ($_POST['ticket_ids'] as $ticket_id) {
             $ticket_id = intval($ticket_id);
 
-            $sql = mysqli_query($mysqli, "SELECT * FROM tickets LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+            $sql = mysqli_query($mysqli, "SELECT * FROM tickets LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id WHERE ticket_id = $ticket_id");
             $row = mysqli_fetch_assoc($sql);
 
             $ticket_prefix = escapeSql($row['ticket_prefix']);
@@ -1517,7 +1565,6 @@ if (isset($_POST['bulk_assign_ticket'])) {
                 if ($assignment_changed) {
                     ticketCreationDbQuery("UPDATE tickets SET ticket_assigned_to = $assign_to,
                         ticket_status = $ticket_status WHERE ticket_id = $ticket_id
-                        AND ticket_deleted_at IS NULL
                         AND ticket_assigned_to = " . intval($locked_ticket['ticket_assigned_to']) . "
                         AND ticket_status = $locked_status AND ticket_closed_at IS NULL",
                         'Could not assign a bulk ticket');
@@ -1601,43 +1648,44 @@ if (isset($_POST['bulk_edit_ticket_priority'])) {
     enforceUserPermission('module_support', 2);
 
     // POST variables
-    $bulk_impact = $_POST['bulk_impact'] ?? '';
-    $bulk_urgency = $_POST['bulk_urgency'] ?? '';
-    try {
-        $priority = escapeSql(ticketOperationalPriorityFromImpactUrgency($bulk_impact, $bulk_urgency));
-    } catch (InvalidArgumentException $exception) {
-        flashAlert(escapeHtml($exception->getMessage()), 'error');
-        redirect();
-    }
+    $priority = escapeSql($_POST['bulk_priority']);
 
-    if (isset($_POST['ticket_ids']) && is_array($_POST['ticket_ids'])) {
-        try {
-            $updated_tickets = ticketOperationalBatchUpdatePriority(
-                $_POST['ticket_ids'],
-                $bulk_impact,
-                $bulk_urgency,
-                $session_user_id
-            );
-        } catch (Throwable $exception) {
-            error_log('Bulk operational priority failed: ' . $exception->getMessage());
-            flashAlert(escapeHtml($exception->getMessage()), 'error');
-            redirect();
-        }
+    // Assign Tech to Selected Tickets
+    if (isset($_POST['ticket_ids'])) {
 
-        foreach ($updated_tickets as $updated_ticket) {
-            $ticket_id = intval($updated_ticket['ticket_id']);
-            $client_id = intval($updated_ticket['client_id']);
-            $ticket_prefix = escapeSql($updated_ticket['prefix']);
-            $ticket_number = intval($updated_ticket['number']);
-            $ticket_subject = escapeSql($updated_ticket['subject']);
-            $original_ticket_priority = escapeSql($updated_ticket['original_priority']);
+        $ticket_count = 0;
+
+        foreach ($_POST['ticket_ids'] as $ticket_id) {
+            $ticket_id = intval($ticket_id);
+
+            $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_number, ticket_prefix, ticket_priority, ticket_subject FROM tickets WHERE ticket_id = $ticket_id");
+            $row = mysqli_fetch_assoc($sql);
+
+            $ticket_prefix = escapeSql($row['ticket_prefix']);
+            $ticket_number = intval($row['ticket_number']);
+            $ticket_subject = escapeSql($row['ticket_subject']);
+            $original_ticket_priority = escapeSql($row['ticket_priority']);
+            $client_id = intval($row['ticket_client_id']);
+
+            // Don't Enforce Client Access if Ticket doesn't have an assigned client
+            if ($client_id) {
+                enforceClientAccess($client_id);
+            }
+
+            // Update ticket & insert reply
+            mysqli_query($mysqli, "UPDATE tickets SET ticket_priority = '$priority' WHERE ticket_id = $ticket_id");
+            applyTicketSla($ticket_id);
+
             mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = '$session_name updated the priority from $original_ticket_priority to $priority', ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $ticket_id");
-            logAudit("Ticket", "Edit", "$session_name updated the priority on ticket $ticket_prefix$ticket_number - $ticket_subject from $original_ticket_priority to $priority", $client_id, $ticket_id);
-            triggerCustomAction('ticket_update', $ticket_id);
-        }
 
-        $ticket_count = count($updated_tickets);
+            logAudit("Ticket", "Edit", "$session_name updated the priority on ticket $ticket_prefix$ticket_number - $ticket_subject from $original_ticket_priority to $priority", $client_id, $ticket_id);
+
+            triggerCustomAction('ticket_update', $ticket_id);
+            $ticket_count++;
+        } // End For Each Ticket ID Loop
+
         logAudit("Ticket", " Bulk Edit", "$session_name updated the priority on $ticket_count");
+
         flashAlert("You updated the priority for <strong>$ticket_count</strong> Tickets to <strong>$priority</strong>");
     }
 
@@ -1673,7 +1721,7 @@ if (isset($_POST['bulk_edit_ticket_category'])) {
         foreach ($_POST['ticket_ids'] as $ticket_id) {
             $ticket_id = intval($ticket_id);
 
-            $sql = mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number, ticket_subject, category_name, ticket_client_id FROM tickets LEFT JOIN categories ON ticket_category = category_id WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+            $sql = mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number, ticket_subject, category_name, ticket_client_id FROM tickets LEFT JOIN categories ON ticket_category = category_id WHERE ticket_id = $ticket_id");
             $row = mysqli_fetch_assoc($sql);
 
             $ticket_prefix = escapeSql($row['ticket_prefix']);
@@ -1689,7 +1737,7 @@ if (isset($_POST['bulk_edit_ticket_category'])) {
 
             // Update ticket
             mysqli_query($mysqli, "UPDATE tickets SET ticket_category = '$category_id',
-                ticket_request_type_key = '*' WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+                ticket_request_type_key = '*' WHERE ticket_id = $ticket_id");
             applyTicketSla($ticket_id);
             $ticket_count++;
 
@@ -1719,7 +1767,7 @@ if (isset($_POST['bulk_merge_tickets'])) {
 
     // NEW PARENT ticket details
     // Get merge into ticket id (as it may differ from the number)
-    $sql = mysqli_query($mysqli, "SELECT ticket_id, ticket_number, ticket_client_id FROM tickets WHERE ticket_id = $merge_into_ticket_id AND ticket_deleted_at IS NULL");
+    $sql = mysqli_query($mysqli, "SELECT ticket_id, ticket_number, ticket_client_id FROM tickets WHERE ticket_id = $merge_into_ticket_id");
     if (mysqli_num_rows($sql) == 0) {
         flashAlert("Cannot merge into that ticket.", 'error');
         redirect();
@@ -1744,7 +1792,7 @@ if (isset($_POST['bulk_merge_tickets'])) {
             if ($ticket_id !== $merge_into_ticket_id) {
 
                 $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_details, ticket_first_response_at, ticket_number, ticket_prefix,
-                    ticket_priority, ticket_subject FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+                    ticket_priority, ticket_subject FROM tickets WHERE ticket_id = $ticket_id");
                 $row = mysqli_fetch_assoc($sql);
 
                 $ticket_prefix = escapeSql($row['ticket_prefix']);
@@ -1776,15 +1824,6 @@ if (isset($_POST['bulk_merge_tickets'])) {
                     if (intval($locked_ticket['ticket_client_id']) !== $merge_into_client_id) {
                         throw new RuntimeException('The merge source client changed');
                     }
-                    ticketOperationalAddRelationship($ticket_id, $merge_into_ticket_id, 'duplicate', $session_user_id, true);
-                    ticketOperationalSetResolution(
-                        $ticket_id,
-                        'duplicate',
-                        "Bulk merged into $ticket_prefix$merge_into_ticket_number.",
-                        trim((string) ($_POST['merge_comment'] ?? '')) ?: "Root-cause work continues on $ticket_prefix$merge_into_ticket_number.",
-                        $session_user_id,
-                        'agent'
-                    );
                     [$can_merge] = runbookTicketCanResolve($ticket_id);
                     if (!$can_merge) {
                         throw new RuntimeException('The merge source workflow gate is not satisfied');
@@ -1796,14 +1835,12 @@ if (isset($_POST['bulk_merge_tickets'])) {
                     ticketCreationDbQuery("UPDATE tickets SET ticket_status = 5,
                         ticket_resolved_at = COALESCE(ticket_resolved_at, NOW()),
                         ticket_closed_at = NOW(), ticket_closed_by = $session_user_id
-                        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
-                        AND ticket_closed_at IS NULL",
+                        WHERE ticket_id = $ticket_id AND ticket_closed_at IS NULL",
                         'Could not close the bulk merge source');
                     if (mysqli_affected_rows($mysqli) !== 1) {
                         throw new RuntimeException('The bulk merge source changed before commit');
                     }
                     documentationRecordChangePassport($ticket_id, 5, $session_user_id, true);
-                    ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
                     syncTicketSlaClock($ticket_id);
                     setTicketResolutionSlaMet($ticket_id);
                     ticketCreationDbQuery("INSERT INTO ticket_replies SET ticket_reply = 'Ticket $ticket_prefix$ticket_number was bulk merged into this ticket with comment: $merge_comment.<br><br><b>$ticket_subject</b><br>$ticket_details', ticket_reply_time_worked = '00:00:00', ticket_reply_type = 'Internal', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $merge_into_ticket_id", 'Could not record the bulk merge target note');
@@ -1831,7 +1868,7 @@ if (isset($_POST['bulk_merge_tickets'])) {
             }
         } // End For Each Ticket ID Loop
 
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_updated_at = NOW() WHERE ticket_id = $merge_into_ticket_id AND ticket_deleted_at IS NULL");
+        mysqli_query($mysqli, "UPDATE tickets SET ticket_updated_at = NOW() WHERE ticket_id = $merge_into_ticket_id");
 
         flashAlert("<strong>$ticket_count</strong> tickets merged into <strong>$ticket_prefix$merge_into_ticket_number</strong>");
         if ($skipped_count) {
@@ -1872,7 +1909,7 @@ if (isset($_POST['bulk_resolve_tickets'])) {
 
             $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_first_response_at,
                 ticket_number, ticket_prefix, ticket_priority, ticket_subject, ticket_url_key
-                FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+                FROM tickets WHERE ticket_id = $ticket_id");
             $row = mysqli_fetch_assoc($sql);
             if (!$row) {
                 $skipped_count++;
@@ -1898,14 +1935,6 @@ if (isset($_POST['bulk_resolve_tickets'])) {
                 $transaction_started = true;
                 documentationLockClientTicket($ticket_id, $client_id);
                 runbookLockOpenTicket($ticket_id);
-                ticketOperationalSetResolution(
-                    $ticket_id,
-                    $_POST['bulk_resolution_code'] ?? '',
-                    $_POST['bulk_resolution_summary'] ?? '',
-                    $_POST['bulk_root_cause'] ?? '',
-                    $session_user_id,
-                    'agent'
-                );
                 [$can_resolve] = runbookTicketCanResolve($ticket_id);
                 if (!$can_resolve) {
                     throw new RuntimeException('The ticket resolution gate is not satisfied');
@@ -1915,13 +1944,11 @@ if (isset($_POST['bulk_resolve_tickets'])) {
                 }
                 ticketCreationDbQuery("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
                     WHERE ticket_id = $ticket_id AND ticket_status NOT IN (4, 5)
-                    AND ticket_deleted_at IS NULL
                     AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL", 'Could not resolve a bulk ticket');
                 if (mysqli_affected_rows($mysqli) !== 1) {
                     throw new RuntimeException('The bulk ticket was no longer open at commit');
                 }
                 documentationRecordChangePassport($ticket_id, 4, $session_user_id, true);
-                ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
                 syncTicketSlaClock($ticket_id);
                 setTicketResolutionSlaMet($ticket_id);
                 ticketCreationDbQuery("INSERT INTO ticket_replies SET ticket_reply = '$details',
@@ -1955,7 +1982,7 @@ if (isset($_POST['bulk_resolve_tickets'])) {
                     // Get Contact details
                     $ticket_sql = mysqli_query($mysqli, "SELECT contact_name, contact_email FROM tickets
                         LEFT JOIN contacts ON ticket_contact_id = contact_id
-                        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
+                        WHERE ticket_id = $ticket_id
                     ");
                     $row = mysqli_fetch_assoc($ticket_sql);
 
@@ -2003,9 +2030,7 @@ if (isset($_POST['bulk_resolve_tickets'])) {
                     }
 
                     // Also Email all the watchers
-                    $sql_watchers = mysqli_query($mysqli, "SELECT tw.watcher_email FROM ticket_watchers tw
-                        INNER JOIN tickets t ON t.ticket_id = tw.watcher_ticket_id AND t.ticket_deleted_at IS NULL
-                        WHERE tw.watcher_ticket_id = $ticket_id");
+                    $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
                     while ($row = mysqli_fetch_assoc($sql_watchers)) {
                         $watcher_email = escapeSql($row['watcher_email']);
                         $watcher_email_context = $ticket_email_context;
@@ -2067,7 +2092,7 @@ if (isset($_POST['bulk_ticket_reply'])) {
             $ticket_id = intval($ticket_id);
 
             $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_project_id, ticket_status, ticket_first_response_at, ticket_number, ticket_prefix, ticket_priority,
-                ticket_subject, ticket_url_key FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+                ticket_subject, ticket_url_key FROM tickets WHERE ticket_id = $ticket_id");
             $row = mysqli_fetch_assoc($sql);
             if (!$row) {
                 continue;
@@ -2138,7 +2163,7 @@ if (isset($_POST['bulk_ticket_reply'])) {
                     }
                     $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
                     $locked_project_id = intval(mysqli_fetch_row(ticketCreationDbQuery("SELECT ticket_project_id
-                        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL", 'Could not verify the bulk reply project'))[0] ?? 0);
+                        FROM tickets WHERE ticket_id = $ticket_id", 'Could not verify the bulk reply project'))[0] ?? 0);
                     if ($locked_project_id !== $ticket_project_id) {
                         throw new RuntimeException('The ticket project changed during the bulk reply');
                     }
@@ -2164,7 +2189,6 @@ if (isset($_POST['bulk_ticket_reply'])) {
                     if ($effective_ticket_status === 4) {
                         ticketCreationDbQuery("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
                             WHERE ticket_id = $ticket_id AND ticket_status = $original_ticket_status
-                            AND ticket_deleted_at IS NULL
                             AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL",
                             'Could not resolve the ticket from a bulk reply');
                     } elseif ($effective_ticket_status === 5) {
@@ -2172,13 +2196,11 @@ if (isset($_POST['bulk_ticket_reply'])) {
                             ticket_resolved_at = COALESCE(ticket_resolved_at, NOW()),
                             ticket_closed_at = NOW(), ticket_closed_by = $session_user_id
                             WHERE ticket_id = $ticket_id AND ticket_status = $original_ticket_status
-                            AND ticket_deleted_at IS NULL
                             AND ticket_closed_at IS NULL", 'Could not close the ticket from a bulk reply');
                     } else {
                         $clear_resolution = $original_ticket_status === 4 ? ', ticket_resolved_at = NULL' : '';
                         ticketCreationDbQuery("UPDATE tickets SET ticket_status = $effective_ticket_status
                             $clear_resolution WHERE ticket_id = $ticket_id
-                            AND ticket_deleted_at IS NULL
                             AND ticket_status = $original_ticket_status AND ticket_closed_at IS NULL",
                             'Could not update ticket status from a bulk reply');
                     }
@@ -2193,27 +2215,12 @@ if (isset($_POST['bulk_ticket_reply'])) {
                             true
                         );
                     }
-                    if ($effective_ticket_status === 4) {
-                        ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
-                    } elseif ($original_ticket_status === 4 && $effective_ticket_status !== 5) {
-                        ticketOperationalOnReopened($ticket_id, $session_user_id, 'agent');
-                    }
                     syncTicketSlaClock($ticket_id);
                     if (in_array($effective_ticket_status, [4, 5], true)) {
                         setTicketResolutionSlaMet($ticket_id);
                     } elseif ($original_ticket_status === 4) {
                         resetTicketResolutionSla($ticket_id);
                     }
-                }
-
-                if ($ticket_reply_type === 'Public') {
-                    ticketOperationalFulfillPromisesLocked(
-                        $ticket_id,
-                        'customer_update',
-                        $session_user_id,
-                        'agent',
-                        $ticket_reply_id
-                    );
                 }
 
                 if (!mysqli_commit($mysqli)) {
@@ -2263,7 +2270,7 @@ if (isset($_POST['bulk_ticket_reply'])) {
                 "SELECT contact_name, contact_email, ticket_created_by, ticket_assigned_to
                 FROM tickets
                 LEFT JOIN contacts ON ticket_contact_id = contact_id
-                WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
+                WHERE ticket_id = $ticket_id"
             );
 
             $row = mysqli_fetch_assoc($sql);
@@ -2314,9 +2321,7 @@ if (isset($_POST['bulk_ticket_reply'])) {
                 }
 
                 // Also Email all the watchers
-                $sql_watchers = mysqli_query($mysqli, "SELECT tw.watcher_email FROM ticket_watchers tw
-                    INNER JOIN tickets t ON t.ticket_id = tw.watcher_ticket_id AND t.ticket_deleted_at IS NULL
-                    WHERE tw.watcher_ticket_id = $ticket_id");
+                $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
                 while ($row = mysqli_fetch_assoc($sql_watchers)) {
                     $watcher_email = escapeSql($row['watcher_email']);
                     $watcher_email_context = $ticket_email_context;
@@ -2684,7 +2689,7 @@ if (isset($_POST['add_ticket_reply'])) {
     
     // Read the ticket as it stands before the reply changes anything
     $original_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id,
-        ticket_project_id, ticket_status FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"));
+        ticket_project_id, ticket_status FROM tickets WHERE ticket_id = $ticket_id"));
     if (!$original_row) {
         flashAlert('The ticket is unavailable', 'error');
         redirect();
@@ -2716,9 +2721,10 @@ if (isset($_POST['add_ticket_reply'])) {
     // Defaults
     $send_email = 0;
     $ticket_reply_id = 0;
-    if ($_POST['public_reply_type'] == 1 ){
+    $public_reply_type = intval($_POST['public_reply_type'] ?? 0);
+    if ($public_reply_type == 1) {
         $ticket_reply_type = 'Public';
-    } elseif ($_POST['public_reply_type'] == 2 ) {
+    } elseif ($public_reply_type == 2) {
         $ticket_reply_type = 'Public';
         $send_email = 1;
     } else {
@@ -2768,7 +2774,7 @@ if (isset($_POST['add_ticket_reply'])) {
             }
             $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
             $locked_project_id = intval(mysqli_fetch_row(ticketCreationDbQuery("SELECT ticket_project_id
-                FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL", 'Could not verify the reply project'))[0] ?? 0);
+                FROM tickets WHERE ticket_id = $ticket_id", 'Could not verify the reply project'))[0] ?? 0);
             if ($locked_project_id !== $ticket_project_id) {
                 throw new RuntimeException('The ticket project changed during the reply');
             }
@@ -2784,7 +2790,6 @@ if (isset($_POST['add_ticket_reply'])) {
                 ticketCreationDbQuery("UPDATE tickets SET ticket_status = 4,
                     ticket_resolved_at = NOW(), ticket_updated_at = NOW()
                     WHERE ticket_id = $ticket_id AND ticket_status = $original_ticket_status
-                    AND ticket_deleted_at IS NULL
                     AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL",
                     'Could not resolve the ticket from the reply');
             } elseif ($ticket_status === 5) {
@@ -2792,7 +2797,6 @@ if (isset($_POST['add_ticket_reply'])) {
                     ticket_resolved_at = COALESCE(ticket_resolved_at, NOW()),
                     ticket_closed_at = NOW(), ticket_closed_by = $session_user_id,
                     ticket_updated_at = NOW() WHERE ticket_id = $ticket_id
-                    AND ticket_deleted_at IS NULL
                     AND ticket_status = $original_ticket_status AND ticket_closed_at IS NULL",
                     'Could not close the ticket from the reply');
             } else {
@@ -2800,7 +2804,6 @@ if (isset($_POST['add_ticket_reply'])) {
                 ticketCreationDbQuery("UPDATE tickets SET ticket_status = $ticket_status,
                     ticket_updated_at = NOW() $clear_resolution
                     WHERE ticket_id = $ticket_id AND ticket_status = $original_ticket_status
-                    AND ticket_deleted_at IS NULL
                     AND ticket_closed_at IS NULL", 'Could not update the ticket status from the reply');
             }
             if (mysqli_affected_rows($mysqli) !== 1) {
@@ -2808,11 +2811,6 @@ if (isset($_POST['add_ticket_reply'])) {
             }
             if (in_array($ticket_status, [4, 5], true)) {
                 documentationRecordChangePassport($ticket_id, $ticket_status, $session_user_id, true);
-            }
-            if ($ticket_status === 4) {
-                ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
-            } elseif ($original_ticket_status === 4) {
-                ticketOperationalOnReopened($ticket_id, $session_user_id, 'agent');
             }
             syncTicketSlaClock($ticket_id);
             if (in_array($ticket_status, [4, 5], true)) {
@@ -2822,7 +2820,7 @@ if (isset($_POST['add_ticket_reply'])) {
             }
         } else {
             ticketCreationDbQuery("UPDATE tickets SET ticket_updated_at = NOW()
-                WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL", 'Could not touch the ticket for the reply');
+                WHERE ticket_id = $ticket_id", 'Could not touch the ticket for the reply');
         }
 
         if (!empty($ticket_reply)) {
@@ -2833,7 +2831,6 @@ if (isset($_POST['add_ticket_reply'])) {
             $ticket_reply_id = intval(mysqli_insert_id($mysqli));
             if ($ticket_reply_type === 'Public') {
                 setTicketFirstResponse($ticket_id);
-                ticketOperationalFulfillPromisesLocked($ticket_id, 'customer_update', $session_user_id, 'agent', $ticket_reply_id);
             }
         }
 
@@ -2874,7 +2871,7 @@ if (isset($_POST['add_ticket_reply'])) {
         FROM tickets
         LEFT JOIN contacts ON ticket_contact_id = contact_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
+        WHERE ticket_id = $ticket_id
         ");
 
         $row = mysqli_fetch_assoc($ticket_sql);
@@ -2949,9 +2946,7 @@ if (isset($_POST['add_ticket_reply'])) {
             }
 
             // Also Email all the watchers
-            $sql_watchers = mysqli_query($mysqli, "SELECT tw.watcher_email FROM ticket_watchers tw
-                INNER JOIN tickets t ON t.ticket_id = tw.watcher_ticket_id AND t.ticket_deleted_at IS NULL
-                WHERE tw.watcher_ticket_id = $ticket_id");
+            $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
             while ($row = mysqli_fetch_assoc($sql_watchers)) {
                 $watcher_email = escapeSql($row['watcher_email']);
                 $watcher_email_context = $ticket_email_context;
@@ -3037,9 +3032,103 @@ if (isset($_POST['add_ticket_reply'])) {
 if (isset($_GET['delete_ticket_attachment'])) {
 
     validateCSRFToken();
-    enforceAdminPermission();
+
+    enforceUserPermission('module_support', 3);
+
     $attachment_id = intval($_GET['delete_ticket_attachment']);
-    redirect("/admin/retention.php?record_type=attachment&record_id=$attachment_id");
+
+    $sql = mysqli_query($mysqli, "SELECT ticket_attachment_name, ticket_attachment_reference_name, ticket_attachment_ticket_id FROM ticket_attachments WHERE ticket_attachment_id = $attachment_id LIMIT 1");
+
+    if (mysqli_num_rows($sql) !== 1) {
+        flashAlert("Attachment not found", 'error');
+        redirect();
+    }
+
+    $row = mysqli_fetch_assoc($sql);
+    $attachment_name = $row['ticket_attachment_name'];
+    $ticket_id = intval($row['ticket_attachment_ticket_id']);
+
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+
+    // Don't Enforce Client Access if Ticket doesn't have an assigned client
+    if ($client_id) {
+        enforceClientAccess();
+    }
+
+    if (!mysqli_begin_transaction($mysqli)) {
+        flashAlert('The attachment could not be locked for deletion.', 'error');
+        redirect();
+    }
+
+    $delete_failure_message = 'The attachment changed before it could be deleted. Refresh and try again.';
+    try {
+        // Keep the workflow-wide ticket -> child-row lock order. The initial
+        // reads above are advisory; authorization and identity are revalidated
+        // from rows held for the duration of this transaction.
+        $locked_ticket = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_id, ticket_client_id
+            FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not lock the attachment ticket'));
+        if (!$locked_ticket) {
+            throw new RuntimeException('The attachment ticket no longer exists');
+        }
+        runbookRequireLockedTicketClient($locked_ticket, $client_id);
+
+        $locked_attachment = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_attachment_name,
+            ticket_attachment_reference_name, ticket_attachment_ticket_id
+            FROM ticket_attachments WHERE ticket_attachment_id = $attachment_id
+            LIMIT 1 FOR UPDATE", 'Could not lock the ticket attachment'));
+        if (!$locked_attachment || intval($locked_attachment['ticket_attachment_ticket_id']) !== $ticket_id) {
+            throw new RuntimeException('The ticket attachment no longer exists');
+        }
+        $attachment_name = $locked_attachment['ticket_attachment_name'];
+        $attachment_reference_name = $locked_attachment['ticket_attachment_reference_name'];
+
+        $evidence_reference = mysqli_fetch_assoc(runbookDbQuery("SELECT task_evidence_id
+            FROM task_evidence WHERE task_evidence_attachment_id = $attachment_id
+            LIMIT 1 FOR UPDATE", 'Could not lock attachment evidence references'));
+        if ($evidence_reference) {
+            $delete_failure_message = 'This attachment is retained as runbook evidence and cannot be deleted.';
+            throw new RuntimeException('The attachment is retained as runbook evidence');
+        }
+
+        runbookDbQuery("DELETE FROM ticket_attachments
+            WHERE ticket_attachment_id = $attachment_id
+            AND ticket_attachment_ticket_id = $ticket_id", 'Could not delete ticket attachment metadata');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The attachment changed before deletion');
+        }
+
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit ticket attachment deletion');
+        }
+    } catch (Throwable $exception) {
+        mysqli_rollback($mysqli);
+        error_log("Ticket $ticket_id attachment $attachment_id deletion failed safely: " . $exception->getMessage());
+        flashAlert($delete_failure_message, 'error');
+        redirect();
+    }
+
+    // Metadata is durably gone before the filesystem is changed. Resolve the
+    // path and retain the download endpoint's confinement guard.
+    $uploads_base = realpath(__DIR__ . "/../../uploads/tickets");
+    $file_path = realpath(__DIR__ . "/../../uploads/tickets/$ticket_id/$attachment_reference_name");
+    $uploads_prefix = $uploads_base === false
+        ? '' : rtrim($uploads_base, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+
+    if ($file_path !== false && $uploads_prefix !== '' && strpos($file_path, $uploads_prefix) === 0) {
+        if (!unlink($file_path)) {
+            error_log("Ticket $ticket_id attachment $attachment_id metadata was deleted but file cleanup failed: $file_path");
+        }
+    } elseif ($file_path !== false) {
+        error_log("Ticket $ticket_id attachment $attachment_id metadata was deleted but file cleanup was refused outside uploads/tickets: $file_path");
+    }
+
+    $attachment_name = escapeSql($attachment_name);
+
+    logAudit("Ticket", "Delete", "$session_name deleted ticket attachment $attachment_name", $client_id, $ticket_id);
+
+    flashAlert("Attachment <strong>$attachment_name</strong> deleted", 'error');
+
+    redirect();
 
 }
 
@@ -3055,16 +3144,12 @@ if (isset($_POST['edit_ticket_reply'])) {
     $ticket_reply_time_worked = escapeSql($_POST['time']);
 
     $sql = mysqli_query($mysqli, "SELECT ticket_client_id FROM ticket_replies
-        INNER JOIN tickets ON ticket_id = ticket_reply_ticket_id AND ticket_deleted_at IS NULL
+        LEFT JOIN tickets ON ticket_id = ticket_reply_ticket_id
         WHERE ticket_reply_id = $ticket_reply_id
         LIMIT 1"
     );
 
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket reply is unavailable.', 'error');
-        redirect();
-    }
     $client_id = intval($row['ticket_client_id']);
 
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
@@ -3072,12 +3157,7 @@ if (isset($_POST['edit_ticket_reply'])) {
         enforceClientAccess();
     }
 
-    mysqli_query($mysqli, "UPDATE ticket_replies tr
-        INNER JOIN tickets t ON t.ticket_id = tr.ticket_reply_ticket_id
-            AND t.ticket_deleted_at IS NULL
-        SET tr.ticket_reply = '$ticket_reply', tr.ticket_reply_type = '$ticket_reply_type',
-            tr.ticket_reply_time_worked = '$ticket_reply_time_worked'
-        WHERE tr.ticket_reply_id = $ticket_reply_id AND tr.ticket_reply_type != 'Client'") or die(mysqli_error($mysqli));
+    mysqli_query($mysqli, "UPDATE ticket_replies SET ticket_reply = '$ticket_reply', ticket_reply_type = '$ticket_reply_type', ticket_reply_time_worked = '$ticket_reply_time_worked' WHERE ticket_reply_id = $ticket_reply_id AND ticket_reply_type != 'Client'") or die(mysqli_error($mysqli));
 
     logAudit("Ticket", "Reply", "$session_name edited ticket_reply", $client_id, $ticket_reply_id);
 
@@ -3097,16 +3177,12 @@ if (isset($_POST['redact_ticket_reply'])) {
     $ticket_reply = mysqli_real_escape_string($mysqli, $_POST['ticket_reply']);
 
     $sql = mysqli_query($mysqli, "SELECT ticket_client_id FROM ticket_replies
-        INNER JOIN tickets ON ticket_id = ticket_reply_ticket_id AND ticket_deleted_at IS NULL
+        LEFT JOIN tickets ON ticket_id = ticket_reply_ticket_id
         WHERE ticket_reply_id = $ticket_reply_id
         LIMIT 1"
     );
 
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket reply is unavailable.', 'error');
-        redirect();
-    }
     $client_id = intval($row['ticket_client_id']);
 
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
@@ -3114,11 +3190,7 @@ if (isset($_POST['redact_ticket_reply'])) {
         enforceClientAccess();
     }
 
-    mysqli_query($mysqli, "UPDATE ticket_replies tr
-        INNER JOIN tickets t ON t.ticket_id = tr.ticket_reply_ticket_id
-            AND t.ticket_deleted_at IS NULL
-        SET tr.ticket_reply = '$ticket_reply'
-        WHERE tr.ticket_reply_id = $ticket_reply_id");
+    mysqli_query($mysqli, "UPDATE ticket_replies SET ticket_reply = '$ticket_reply' WHERE ticket_reply_id = $ticket_reply_id");
 
     logAudit("Ticket", "Reply", "$session_name redacted ticket_reply", $client_id, $ticket_reply_id);
 
@@ -3136,27 +3208,15 @@ if (isset($_GET['archive_ticket_reply'])) {
 
     $ticket_reply_id = intval($_GET['archive_ticket_reply']);
 
-    $reply = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_client_id
-        FROM ticket_replies
-        INNER JOIN tickets ON ticket_id = ticket_reply_ticket_id AND ticket_deleted_at IS NULL
-        WHERE ticket_reply_id = $ticket_reply_id LIMIT 1"));
-    if (!$reply) {
-        flashAlert('The ticket reply is unavailable.', 'error');
-        redirect();
-    }
-    $ticket_id = intval($reply['ticket_id']);
-    $client_id = intval($reply['ticket_client_id']);
+    $ticket_id = intval(getFieldById('ticket_replies', $ticket_reply_id, 'ticket_reply_ticket_id'));
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
 
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
     if ($client_id) {
         enforceClientAccess();
     }
 
-    mysqli_query($mysqli, "UPDATE ticket_replies tr
-        INNER JOIN tickets t ON t.ticket_id = tr.ticket_reply_ticket_id
-            AND t.ticket_deleted_at IS NULL
-        SET tr.ticket_reply_archived_at = NOW()
-        WHERE tr.ticket_reply_id = $ticket_reply_id");
+    mysqli_query($mysqli, "UPDATE ticket_replies SET ticket_reply_archived_at = NOW() WHERE ticket_reply_id = $ticket_reply_id");
 
     logAudit("Ticket Reply", "Archive", "$session_name archived ticket_reply", $client_id, $ticket_reply_id);
 
@@ -3181,7 +3241,7 @@ if (isset($_POST['merge_ticket'])) {
     // Get current ticket details
     $sql = mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number, ticket_subject,
         ticket_details, ticket_first_response_at, ticket_client_id
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+        FROM tickets WHERE ticket_id = $ticket_id");
     if (mysqli_num_rows($sql) == 0) {
         flashAlert("No ticket with that ID found.", 'error');
         redirect();
@@ -3197,7 +3257,7 @@ if (isset($_POST['merge_ticket'])) {
 
     // NEW PARENT ticket details
     // Get merge into ticket id (as it may differ from the number)
-    $sql = mysqli_query($mysqli, "SELECT ticket_id, ticket_number, ticket_client_id FROM tickets WHERE ticket_id = $merge_into_ticket_id AND ticket_deleted_at IS NULL");
+    $sql = mysqli_query($mysqli, "SELECT ticket_id, ticket_number, ticket_client_id FROM tickets WHERE ticket_id = $merge_into_ticket_id");
     if (mysqli_num_rows($sql) == 0) {
         flashAlert("Cannot merge into that ticket.", 'error');
         redirect();
@@ -3235,15 +3295,6 @@ if (isset($_POST['merge_ticket'])) {
         if (intval($locked_ticket['ticket_client_id']) !== $client_id) {
             throw new RuntimeException('The merge source client changed');
         }
-        ticketOperationalAddRelationship($ticket_id, $merge_into_ticket_id, 'duplicate', $session_user_id, true);
-        ticketOperationalSetResolution(
-            $ticket_id,
-            'duplicate',
-            "Merged into $ticket_prefix$merge_into_ticket_number.",
-            trim((string) ($_POST['merge_comment'] ?? '')) ?: "Root-cause work continues on $ticket_prefix$merge_into_ticket_number.",
-            $session_user_id,
-            'agent'
-        );
         [$can_merge, $merge_error] = runbookTicketCanResolve($ticket_id);
         if (!$can_merge) {
             $merge_error_message = 'Ticket cannot be merged while its runbook is gated: ' . $merge_error;
@@ -3261,19 +3312,17 @@ if (isset($_POST['merge_ticket'])) {
         ticketCreationDbQuery("UPDATE tickets SET ticket_status = 5,
             ticket_resolved_at = COALESCE(ticket_resolved_at, NOW()),
             ticket_closed_at = NOW(), ticket_closed_by = $session_user_id
-            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
-            AND ticket_closed_at IS NULL",
+            WHERE ticket_id = $ticket_id AND ticket_closed_at IS NULL",
             'Could not close the merge source');
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The merge source changed before commit');
         }
         documentationRecordChangePassport($ticket_id, 5, $session_user_id, true);
-        ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
         syncTicketSlaClock($ticket_id);
         setTicketResolutionSlaMet($ticket_id);
         ticketCreationDbQuery("INSERT INTO ticket_replies SET ticket_reply = 'Ticket $ticket_prefix$ticket_number was merged into this ticket with comment: $merge_comment.<br><br><b>$ticket_subject</b><br>$ticket_details', ticket_reply_time_worked = '00:00:00', ticket_reply_type = '$ticket_reply_type', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $merge_into_ticket_id", 'Could not record the merge target note');
         ticketCreationDbQuery("UPDATE tickets SET ticket_updated_at = NOW()
-            WHERE ticket_id = $merge_into_ticket_id AND ticket_deleted_at IS NULL", 'Could not touch the merge target');
+            WHERE ticket_id = $merge_into_ticket_id", 'Could not touch the merge target');
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket merge');
         }
@@ -3310,7 +3359,7 @@ if (isset($_POST['change_client_ticket'])) {
     $contact_id = intval($_POST['new_contact_id']);
 
     $ticket = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT ticket_client_id, ticket_prefix,
-        ticket_number FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not load the ticket client'));
+        ticket_number FROM tickets WHERE ticket_id = $ticket_id LIMIT 1", 'Could not load the ticket client'));
     if (!$ticket) {
         flashAlert('The ticket is unavailable', 'error');
         redirect();
@@ -3346,7 +3395,7 @@ if (isset($_POST['change_client_ticket'])) {
 
         $locked_ticket = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT ticket_id,
             ticket_client_id, ticket_prefix, ticket_number FROM tickets
-            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE",
+            WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE",
             'Could not lock the ticket client context'));
         if (!$locked_ticket || intval($locked_ticket['ticket_client_id']) !== $source_client_id) {
             throw new RuntimeException('The ticket client changed before the transfer lock was acquired');
@@ -3369,10 +3418,6 @@ if (isset($_POST['change_client_ticket'])) {
         }
 
         if ($source_client_id !== $client_id) {
-            if (ticketOperationalTicketHasImmutableHistory($ticket_id)) {
-                $client_change_error = 'Tickets with operational, relationship, customer-promise, or email-ingress history cannot be transferred because those records belong to the original client';
-                throw new RuntimeException('The locked ticket has client-bound operational artifacts');
-            }
             [$documentation_transfer_allowed, $documentation_transfer_error] = documentationTicketCanTransfer($ticket_id, $client_id);
             if (!$documentation_transfer_allowed) {
                 $client_change_error = $documentation_transfer_error;
@@ -3404,8 +3449,7 @@ if (isset($_POST['change_client_ticket'])) {
             : ', ticket_vendor_id = 0, ticket_location_id = 0, ticket_asset_id = 0, ticket_project_id = 0';
         ticketCreationDbQuery("UPDATE tickets SET ticket_client_id = $client_id,
             ticket_contact_id = $contact_id $clear_old_relationships
-            WHERE ticket_id = $ticket_id AND ticket_client_id = $source_client_id
-            AND ticket_deleted_at IS NULL LIMIT 1", 'Could not update the ticket client');
+            WHERE ticket_id = $ticket_id AND ticket_client_id = $source_client_id LIMIT 1", 'Could not update the ticket client');
         if ($source_client_id !== $client_id && mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket client changed before it could be updated');
         }
@@ -3438,27 +3482,16 @@ if (isset($_POST['change_client_ticket'])) {
 
 }
 
-if (isset($_POST['resolve_ticket']) && !isset($_GET['resolve_ticket'])) {
-    $_GET['resolve_ticket'] = intval($_POST['ticket_id'] ?? 0);
-}
-
 if (isset($_GET['resolve_ticket'])) {
 
     validateCSRFToken();
 
     enforceUserPermission('module_support', 2);
 
-    $ticket_id = intval($_POST['ticket_id'] ?? $_GET['resolve_ticket'] ?? 0);
+    $ticket_id = intval($_GET['resolve_ticket']);
 
-    $active_ticket_scope = ticketOperationalActiveTicketSql('tickets');
-    $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_first_response_at,
-        ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id
-        AND tickets.ticket_deleted_at IS NULL $active_ticket_scope LIMIT 1");
+    $sql = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_first_response_at, ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id");
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('Ticket not found', 'error');
-        redirect();
-    }
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
     $ticket_first_response_at = escapeSql($row['ticket_first_response_at']);
@@ -3466,7 +3499,7 @@ if (isset($_GET['resolve_ticket'])) {
 
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
     if ($client_id) {
-        enforceClientAccess($client_id);
+        enforceClientAccess();
     }
 
     $transaction_started = false;
@@ -3481,14 +3514,6 @@ if (isset($_GET['resolve_ticket'])) {
         // the gate cannot pass concurrently with a new/reopened task.
         documentationLockClientTicket($ticket_id, $client_id);
         $locked_ticket = runbookLockOpenTicket($ticket_id);
-        ticketOperationalSetResolution(
-            $ticket_id,
-            $_POST['resolution_code'] ?? '',
-            $_POST['resolution_summary'] ?? '',
-            $_POST['root_cause'] ?? '',
-            $session_user_id,
-            'agent'
-        );
         [$can_resolve, $resolve_error] = runbookTicketCanResolve($ticket_id);
         if (!$can_resolve) {
             $resolution_error_message = $resolve_error;
@@ -3501,13 +3526,11 @@ if (isset($_GET['resolve_ticket'])) {
 
         ticketCreationDbQuery("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
             WHERE ticket_id = $ticket_id AND ticket_status NOT IN (4, 5)
-            AND ticket_deleted_at IS NULL
             AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL", 'Could not resolve the ticket');
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket was no longer open when resolution was committed');
         }
         documentationRecordChangePassport($ticket_id, 4, $session_user_id, true);
-        ticketOperationalOnResolved($ticket_id, $session_user_id, 'agent');
         syncTicketSlaClock($ticket_id);
         setTicketResolutionSlaMet($ticket_id);
 
@@ -3518,9 +3541,6 @@ if (isset($_GET['resolve_ticket'])) {
     } catch (Throwable $exception) {
         if ($transaction_started) {
             mysqli_rollback($mysqli);
-        }
-        if ($exception instanceof InvalidArgumentException || $exception instanceof DomainException) {
-            $resolution_error_message = $exception->getMessage();
         }
         error_log("Ticket $ticket_id resolution failed safely: " . $exception->getMessage());
         flashAlert(escapeHtml($resolution_error_message), 'error');
@@ -3540,13 +3560,9 @@ if (isset($_GET['resolve_ticket'])) {
         $ticket_sql = mysqli_query($mysqli, "SELECT contact_name, contact_email, ticket_prefix, ticket_number, ticket_subject, ticket_status_name, ticket_assigned_to, ticket_url_key FROM tickets
             LEFT JOIN contacts ON ticket_contact_id = contact_id
             LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
+            WHERE ticket_id = $ticket_id
         ");
         $row = mysqli_fetch_assoc($ticket_sql);
-        if (!$row) {
-            flashAlert('Ticket resolved; notification skipped because the ticket is no longer available.', 'error');
-            redirect();
-        }
 
         $contact_name = escapeSql($row['contact_name']);
         $contact_email = escapeSql($row['contact_email']);
@@ -3597,9 +3613,7 @@ if (isset($_GET['resolve_ticket'])) {
         }
 
         // Also Email all the watchers
-        $sql_watchers = mysqli_query($mysqli, "SELECT tw.watcher_email FROM ticket_watchers tw
-            INNER JOIN tickets t ON t.ticket_id = tw.watcher_ticket_id AND t.ticket_deleted_at IS NULL
-            WHERE tw.watcher_ticket_id = $ticket_id");
+        $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
         while ($row = mysqli_fetch_assoc($sql_watchers)) {
             $watcher_email = escapeSql($row['watcher_email']);
             $watcher_email_context = $ticket_email_context;
@@ -3632,13 +3646,7 @@ if (isset($_GET['close_ticket'])) {
     enforceUserPermission('module_support', 2);
 
     $ticket_id = intval($_GET['close_ticket']);
-    $ticket_access = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
-    if (!$ticket_access) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
-    $client_id = intval($ticket_access['ticket_client_id']);
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
 
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
     if ($client_id) {
@@ -3669,7 +3677,6 @@ if (isset($_GET['close_ticket'])) {
 
         ticketCreationDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW(),
             ticket_closed_by = $session_user_id WHERE ticket_id = $ticket_id
-            AND ticket_deleted_at IS NULL
             AND ticket_status = 4 AND ticket_closed_at IS NULL", 'Could not close the ticket');
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket was no longer resolved when close was committed');
@@ -3708,13 +3715,9 @@ if (isset($_GET['close_ticket'])) {
         // Get details
         $ticket_sql = mysqli_query($mysqli, "SELECT contact_name, contact_email, ticket_prefix, ticket_number, ticket_subject, ticket_url_key FROM tickets
             LEFT JOIN contacts ON ticket_contact_id = contact_id
-            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
+            WHERE ticket_id = $ticket_id
         ");
         $row = mysqli_fetch_assoc($ticket_sql);
-        if (!$row) {
-            flashAlert('Ticket closed; notification skipped because the ticket is no longer available.', 'error');
-            redirect();
-        }
 
         $contact_name = escapeSql($row['contact_name']);
         $contact_email = escapeSql($row['contact_email']);
@@ -3757,9 +3760,7 @@ if (isset($_GET['close_ticket'])) {
         }
 
         // Also Email all the watchers
-        $sql_watchers = mysqli_query($mysqli, "SELECT tw.watcher_email FROM ticket_watchers tw
-            INNER JOIN tickets t ON t.ticket_id = tw.watcher_ticket_id AND t.ticket_deleted_at IS NULL
-            WHERE tw.watcher_ticket_id = $ticket_id");
+        $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
         $body .= "<br><br>----------------------------------------<br>YOU ARE A COLLABORATOR ON THIS TICKET";
         while ($row = mysqli_fetch_assoc($sql_watchers)) {
             $watcher_email = escapeSql($row['watcher_email']);
@@ -3793,7 +3794,7 @@ if (isset($_GET['reopen_ticket'])) {
     $ticket_id = intval($_GET['reopen_ticket']);
 
     $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id, ticket_project_id
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
     if (!$ticket) {
         flashAlert('Ticket not found', 'error');
         redirect();
@@ -3825,21 +3826,19 @@ if (isset($_GET['reopen_ticket'])) {
         }
         $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
         $locked_project_id = intval(mysqli_fetch_row(ticketCreationDbQuery("SELECT ticket_project_id
-            FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL", 'Could not verify the ticket project'))[0] ?? 0);
+            FROM tickets WHERE ticket_id = $ticket_id", 'Could not verify the ticket project'))[0] ?? 0);
         if ($locked_project_id !== $project_id || intval($locked_ticket['ticket_status']) !== 4) {
             throw new RuntimeException('The ticket or its project changed before reopen');
         }
 
         ticketCreationDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
-            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
-            AND ticket_status = 4 AND ticket_closed_at IS NULL",
+            WHERE ticket_id = $ticket_id AND ticket_status = 4 AND ticket_closed_at IS NULL",
             'Could not reopen the ticket');
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket was no longer resolved at reopen commit');
         }
         syncTicketSlaClock($ticket_id);
         resetTicketResolutionSla($ticket_id);
-        ticketOperationalOnReopened($ticket_id, $session_user_id, 'agent');
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket reopen');
         }
@@ -3887,14 +3886,10 @@ if (isset($_POST['add_invoice_from_ticket'])) {
         LEFT JOIN contacts ON ticket_contact_id = contact_id
         LEFT JOIN assets ON ticket_asset_id = asset_id
         LEFT JOIN locations ON ticket_location_id = location_id
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
+        WHERE ticket_id = $ticket_id"
     );
 
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
     $client_id = intval($row['client_id']);
     $client_net_terms = intval($row['client_net_terms']);
     if ($client_net_terms == 0) {
@@ -3980,13 +3975,9 @@ if (isset($_POST['add_invoice_from_ticket'])) {
     mysqli_query($mysqli, "INSERT INTO history SET history_status = 'Draft', history_description = 'Invoice created from Ticket $ticket_prefix$ticket_number', history_invoice_id = $invoice_id");
 
     // Add internal note to ticket, and link to invoice in database
-    mysqli_query($mysqli, "INSERT INTO ticket_replies
-        (ticket_reply, ticket_reply_type, ticket_reply_time_worked, ticket_reply_by, ticket_reply_ticket_id)
-        SELECT 'Created invoice <a href=\"invoice.php?invoice_id=$invoice_id\">$config_invoice_prefix$invoice_number</a> for this ticket.',
-            'Internal', '00:00:00', $session_user_id, ticket_id
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
+    mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = 'Created invoice <a href=\"invoice.php?invoice_id=$invoice_id\">$config_invoice_prefix$invoice_number</a> for this ticket.', ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $ticket_id");
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_invoice_id = $invoice_id WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_invoice_id = $invoice_id WHERE ticket_id = $ticket_id");
 
     logAudit("Invoice", "Create", "$session_name created invoice $invoice_prefix$invoice_number from Ticket $ticket_prefix$ticket_number", $client_id, $invoice_id);
 
@@ -4026,13 +4017,9 @@ if (isset($_POST['add_quote_from_ticket'])) {
     // Ticket info
     $sql = mysqli_query(
         $mysqli,
-        "SELECT ticket_prefix, ticket_number, ticket_client_id FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"
+        "SELECT ticket_prefix, ticket_number, ticket_client_id FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"
     );
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
     $client_id = intval($row['ticket_client_id']);
@@ -4061,12 +4048,8 @@ if (isset($_POST['add_quote_from_ticket'])) {
     mysqli_query($mysqli, "INSERT INTO quote_items SET item_name = '$item_name', item_description = '$item_description', item_quantity = $qty, item_price = $price, item_subtotal = $subtotal, item_tax = $tax_amount, item_total = $total, item_order = 1, item_tax_id = $tax_id, item_quote_id = $quote_id");
 
     // Add internal note to ticket, and link to invoice in database
-    mysqli_query($mysqli, "INSERT INTO ticket_replies
-        (ticket_reply, ticket_reply_type, ticket_reply_time_worked, ticket_reply_by, ticket_reply_ticket_id)
-        SELECT 'Created quote <a href=\"quote.php?quote_id=$quote_id\">$config_quote_prefix$quote_number</a> for this ticket.',
-            'Internal', '00:00:00', $session_user_id, ticket_id
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_quote_id = $quote_id WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
+    mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = 'Created quote <a href=\"quote.php?quote_id=$quote_id\">$config_quote_prefix$quote_number</a> for this ticket.', ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $ticket_id");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_quote_id = $quote_id WHERE ticket_id = $ticket_id LIMIT 1");
 
     // Logging + redirects
     mysqli_query($mysqli,"INSERT INTO history SET history_status = 'Draft', history_description = 'Quote created from Ticket $ticket_prefix$ticket_number!', history_quote_id = $quote_id");
@@ -4186,6 +4169,7 @@ if (isExportRequest('export_tickets')) {
             $ticket_sla_query = 'AND ticket_sla_id > 0 AND COALESCE(ticket_status_pauses_sla, 0) = 0 AND (ticket_response_sla_alert_stage = 1 OR ticket_resolution_sla_alert_stage = 1)';
             $filter_summary['SLA'] = 'SLA at risk';
         } elseif ($sla_filter == 'paused') {
+            // Mirrors agent/tickets.php - finished tickets have a verdict, not a pause
             $ticket_sla_query = 'AND ticket_sla_id > 0 AND ticket_status_pauses_sla = 1 AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL';
             $filter_summary['SLA'] = 'SLA paused';
         } elseif ($sla_filter == 'met') {
@@ -4238,8 +4222,7 @@ if (isExportRequest('export_tickets')) {
         LEFT JOIN vendors ON ticket_vendor_id = vendor_id
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
         LEFT JOIN categories ON ticket_category = category_id
-        WHERE ticket_deleted_at IS NULL
-        AND $ticket_status_snippet
+        WHERE $ticket_status_snippet
         $ticket_assigned_query
         $category_query
         AND DATE(ticket_created_at) BETWEEN '$dtf' AND '$dtt'
@@ -4292,12 +4275,8 @@ if (isset($_POST['edit_ticket_billable_status'])) {
     }
 
     // Get ticket details for logging
-    $sql = mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number, ticket_client_id FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+    $sql = mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number, ticket_client_id FROM tickets WHERE ticket_id = $ticket_id");
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
     $client_id = intval($row['ticket_client_id']);
@@ -4307,7 +4286,7 @@ if (isset($_POST['edit_ticket_billable_status'])) {
         enforceClientAccess();
     }
 
-    mysqli_query($mysqli,"UPDATE tickets SET ticket_billable = $billable_status WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+    mysqli_query($mysqli,"UPDATE tickets SET ticket_billable = $billable_status WHERE ticket_id = $ticket_id");
 
     logAudit("Ticket", "Edit", "$session_name marked ticket $ticket_prefix$ticket_number as $billable_wording Billable", $client_id, $ticket_id);
 
@@ -4330,13 +4309,7 @@ if (isset($_POST['edit_ticket_schedule'])) {
     $full_ticket_url = "https://$config_base_url/client/ticket.php?id=$ticket_id";
     $ticket_link_html = "<a href=\"$full_ticket_url\">$ticket_link</a>";
 
-    $ticket_access = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
-    if (!$ticket_access) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
-    $client_id = intval($ticket_access['ticket_client_id']);
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
     if ($client_id) {
         enforceClientAccess();
@@ -4344,14 +4317,14 @@ if (isset($_POST['edit_ticket_schedule'])) {
 
     mysqli_query($mysqli,"UPDATE tickets
         SET ticket_schedule = '$schedule', ticket_onsite = $onsite
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL"
+        WHERE ticket_id = $ticket_id"
     );
 
     // Check for other conflicting scheduled items based on 2 hr window
     //TODO make this configurable
     $start = date('Y-m-d H:i:s', strtotime($schedule) - 7200);
     $end = date('Y-m-d H:i:s', strtotime($schedule) + 7200);
-    $sql = mysqli_query($mysqli, "SELECT ticket_id, ticket_schedule, ticket_subject FROM tickets WHERE ticket_deleted_at IS NULL AND ticket_schedule BETWEEN '$start' AND '$end' AND ticket_id != $ticket_id");
+    $sql = mysqli_query($mysqli, "SELECT ticket_id, ticket_schedule, ticket_subject FROM tickets WHERE ticket_schedule BETWEEN '$start' AND '$end' AND ticket_id != $ticket_id");
     if (mysqli_num_rows($sql) > 0) {
         $conflicting_tickets = [];
         while ($row = mysqli_fetch_assoc($sql)) {
@@ -4363,14 +4336,10 @@ if (isset($_POST['edit_ticket_schedule'])) {
         LEFT JOIN contacts ON ticket_contact_id = contact_id
         LEFT JOIN locations on contact_location_id = location_id
         LEFT JOIN users ON ticket_assigned_to = user_id
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
+        WHERE ticket_id = $ticket_id
     ");
 
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
 
     $client_name = escapeSql($row['client_name']);
     $ticket_details = escapeSql($row['ticket_details']);
@@ -4446,9 +4415,7 @@ if (isset($_POST['edit_ticket_schedule'])) {
         ];
 
         // Notify the watchers of the scheduled work
-        $sql_watchers = mysqli_query($mysqli, "SELECT tw.watcher_email FROM ticket_watchers tw
-            INNER JOIN tickets t ON t.ticket_id = tw.watcher_ticket_id AND t.ticket_deleted_at IS NULL
-            WHERE tw.watcher_ticket_id = $ticket_id");
+        $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
 
         while ($row = mysqli_fetch_assoc($sql_watchers)) {
             $watcher_email = escapeSql($row['watcher_email']);
@@ -4490,10 +4457,7 @@ if (isset($_POST['edit_ticket_schedule'])) {
 
     // Update ticket reply
     $ticket_reply_note = "Ticket scheduled for $email_datetime " . (boolval($onsite) ? '(onsite).' : '(remote).');
-    mysqli_query($mysqli, "INSERT INTO ticket_replies
-        (ticket_reply, ticket_reply_type, ticket_reply_time_worked, ticket_reply_by, ticket_reply_ticket_id)
-        SELECT '$ticket_reply_note', 'Internal', '00:00:00', $session_user_id, ticket_id
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
+    mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = '$ticket_reply_note', ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $ticket_id");
 
     logAudit("Ticket", "Edit", "$session_name edited ticket schedule", $client_id, $ticket_id);
 
@@ -4518,12 +4482,8 @@ if (isset($_GET['cancel_ticket_schedule'])) {
 
     $ticket_id = intval($_GET['cancel_ticket_schedule']);
 
-    $sql = mysqli_query($mysqli, "SELECT * FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+    $sql = mysqli_query($mysqli, "SELECT * FROM tickets WHERE ticket_id = $ticket_id");
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
 
     $client_id = intval($row['ticket_client_id']);
     $ticket_prefix = escapeSql($row['ticket_prefix']);
@@ -4542,7 +4502,7 @@ if (isset($_GET['cancel_ticket_schedule'])) {
         $client_uri = '';
     }
 
-    mysqli_query($mysqli, "UPDATE tickets SET ticket_schedule = NULL WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL");
+    mysqli_query($mysqli, "UPDATE tickets SET ticket_schedule = NULL WHERE ticket_id = $ticket_id");
 
     // Sanitize Config Vars
     $config_ticket_from_email = escapeSql($config_ticket_from_email);
@@ -4557,13 +4517,9 @@ if (isset($_GET['cancel_ticket_schedule'])) {
         LEFT JOIN contacts ON ticket_contact_id = contact_id
         LEFT JOIN locations on contact_location_id = location_id
         LEFT JOIN users ON ticket_assigned_to = user_id
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL
+        WHERE ticket_id = $ticket_id
     ");
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
 
     $client_id = intval($row['ticket_client_id']);
     $client_name = escapeSql($row['client_name']);
@@ -4625,9 +4581,7 @@ if (isset($_GET['cancel_ticket_schedule'])) {
         ];
 
         // Notify the watchers of the cancellation
-        $sql_watchers = mysqli_query($mysqli, "SELECT tw.watcher_email FROM ticket_watchers tw
-            INNER JOIN tickets t ON t.ticket_id = tw.watcher_ticket_id AND t.ticket_deleted_at IS NULL
-            WHERE tw.watcher_ticket_id = $ticket_id");
+        $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
         while ($row = mysqli_fetch_assoc($sql_watchers)) {
             $watcher_email = escapeSql($row['watcher_email']);
             $data[] = [
@@ -4668,10 +4622,7 @@ if (isset($_GET['cancel_ticket_schedule'])) {
 
     // Update ticket reply
     $ticket_reply_note = "Ticket schedule cancelled.";
-    mysqli_query($mysqli, "INSERT INTO ticket_replies
-        (ticket_reply, ticket_reply_type, ticket_reply_time_worked, ticket_reply_by, ticket_reply_ticket_id)
-        SELECT '$ticket_reply_note', 'Internal', '00:00:00', $session_user_id, ticket_id
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1");
+    mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = '$ticket_reply_note', ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00', ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $ticket_id");
 
     logAudit("Ticket", "Edit", "$session_name cancelled ticket schedule", $client_id, $ticket_id);
 

@@ -1,7 +1,6 @@
 <?php
 
 require_once __DIR__ . '/documentation_lifecycle.php';
-require_once __DIR__ . '/authorization_transactions.php';
 
 /*
  * Versioned runbook authoring and execution.
@@ -84,29 +83,15 @@ function runbookLockTicketForTransition($ticket_id, $allow_resolved = false) {
         throw new RuntimeException('A ticket is required for this workflow mutation');
     }
 
-    $prelock = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1",
-        'Could not locate the workflow ticket client'));
-    if (!$prelock) {
-        throw new RuntimeException('The workflow ticket no longer exists');
-    }
-    $client_id = intval($prelock['ticket_client_id']);
-    documentationLockClient($client_id);
     $ticket = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_id, ticket_client_id,
         ticket_contact_id, ticket_project_id, ticket_assigned_to, ticket_status,
         ticket_created_at, ticket_prefix, ticket_number, ticket_subject,
         ticket_configuration_change, ticket_documentation_impact,
         ticket_documentation_assessed_by, ticket_documentation_assessed_at,
-        ticket_resolved_at, ticket_closed_at, ticket_deleted_at
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the workflow ticket'));
+        ticket_resolved_at, ticket_closed_at
+        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not lock the workflow ticket'));
     if (!$ticket) {
         throw new RuntimeException('The workflow ticket no longer exists');
-    }
-    if (intval($ticket['ticket_client_id']) !== $client_id) {
-        throw new RuntimeException('The workflow ticket changed client scope; refresh and try again');
-    }
-    if (!empty($ticket['ticket_deleted_at'])) {
-        throw new RuntimeException('Deleted tickets cannot be changed outside the retention workflow');
     }
     if (intval($ticket['ticket_status']) === 5 || !empty($ticket['ticket_closed_at'])) {
         throw new RuntimeException('Closed tickets cannot be changed');
@@ -130,7 +115,7 @@ function runbookLockOpenTicket($ticket_id) {
 function runbookLockTicketForReopen($ticket_id) {
     $ticket_id = intval($ticket_id);
     $prelock_ticket = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_project_id
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not locate the ticket project'));
+        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1", 'Could not locate the ticket project'));
     if (!$prelock_ticket) {
         throw new RuntimeException('The workflow ticket no longer exists');
     }
@@ -303,347 +288,6 @@ function runbookApprovalTokenMatches($stored_token, $presented_token) {
 
 function runbookApprovalTokenExpiry($hours = 168) {
     return date('Y-m-d H:i:s', time() + (max(1, intval($hours)) * 3600));
-}
-
-function runbookCloseoutEvidenceQualifies($evidence, $required_type) {
-    $evidence = is_array($evidence) ? $evidence : [];
-    $type = (string) ($evidence['task_evidence_type'] ?? $evidence['type'] ?? '');
-    $has_value = intval($evidence['task_evidence_has_value'] ?? $evidence['has_value'] ?? 0) === 1;
-    $has_attachment = intval(
-        $evidence['task_evidence_attachment_present'] ?? $evidence['has_attachment'] ?? 0
-    ) === 1;
-    return match ((string) $required_type) {
-        'note' => $type === 'note' && $has_value,
-        'url' => $type === 'url' && $has_value,
-        'file' => $type === 'file' && $has_attachment,
-        'any' => ($type === 'note' && $has_value)
-            || ($type === 'url' && $has_value)
-            || ($type === 'file' && $has_attachment),
-        'none', '' => true,
-        default => false,
-    };
-}
-
-function runbookCloseoutApprovalRouteValid($scope, $type, $required_user_id = 0) {
-    $scope = (string) ($scope ?? '');
-    $type = (string) ($type ?? '');
-    $required_user_id = max(0, intval($required_user_id));
-    if ($scope === 'internal') {
-        return ($type === 'any' && $required_user_id === 0)
-            || ($type === 'specific' && $required_user_id > 0);
-    }
-    if ($scope === 'client') {
-        return in_array($type, ['any', 'technical', 'billing'], true)
-            && $required_user_id === 0;
-    }
-    return false;
-}
-
-/**
- * Reconstruct an approval projection from its append-only event chain.
- */
-function runbookCloseoutApprovalHistoryConsistent($approval, $events, $task_state) {
-    $approval = is_array($approval) ? $approval : [];
-    $events = is_array($events) ? $events : [];
-    if (!$events) {
-        return false;
-    }
-    $actions = ['baseline', 'created', 're_requested', 'rerouted', 'approved', 'declined', 'waived'];
-    $statuses = ['', 'pending', 'approved', 'declined', 'waived'];
-    $actor_types = ['agent', 'contact', 'guest', 'system'];
-    $expected_status = [
-        'created' => 'pending',
-        're_requested' => 'pending',
-        'rerouted' => 'pending',
-        'approved' => 'approved',
-        'declined' => 'declined',
-        'waived' => 'waived',
-    ];
-    $previous = null;
-    foreach ($events as $index => $event) {
-        if (!is_array($event)) {
-            return false;
-        }
-        $action = (string) ($event['task_approval_event_action'] ?? $event['action'] ?? '');
-        $from_status = (string) ($event['task_approval_event_from_status'] ?? $event['from_status'] ?? '');
-        $to_status = (string) ($event['task_approval_event_to_status'] ?? $event['to_status'] ?? '');
-        $from_scope = (string) ($event['task_approval_event_from_scope'] ?? $event['from_scope'] ?? '');
-        $to_scope = (string) ($event['task_approval_event_to_scope'] ?? $event['to_scope'] ?? '');
-        $from_type = (string) ($event['task_approval_event_from_type'] ?? $event['from_type'] ?? '');
-        $to_type = (string) ($event['task_approval_event_to_type'] ?? $event['to_type'] ?? '');
-        $from_user = max(0, intval(
-            $event['task_approval_event_from_required_user_id'] ?? $event['from_required_user_id'] ?? 0
-        ));
-        $to_user = max(0, intval(
-            $event['task_approval_event_to_required_user_id'] ?? $event['to_required_user_id'] ?? 0
-        ));
-        $actor_type = (string) (
-            $event['task_approval_event_actor_type'] ?? $event['actor_type'] ?? ''
-        );
-        if (!in_array($action, $actions, true)
-            || !in_array($from_status, $statuses, true)
-            || !in_array($to_status, $statuses, true)
-            || !in_array($actor_type, $actor_types, true)
-            || $to_status === ''
-            || !runbookCloseoutApprovalRouteValid($to_scope, $to_type, $to_user)
-            || ($from_status === '' && ($from_scope !== '' || $from_type !== '' || $from_user !== 0))
-            || ($from_status !== ''
-                && !runbookCloseoutApprovalRouteValid($from_scope, $from_type, $from_user))) {
-            return false;
-        }
-        if (($index === 0 && !in_array($action, ['baseline', 'created'], true))
-            || ($index > 0 && in_array($action, ['baseline', 'created'], true))
-            || (isset($expected_status[$action]) && $to_status !== $expected_status[$action])) {
-            return false;
-        }
-        if ($previous !== null && [
-            $from_status, $from_scope, $from_type, $from_user,
-        ] !== [
-            $previous['status'], $previous['scope'], $previous['type'], $previous['required_user_id'],
-        ]) {
-            return false;
-        }
-        $previous = [
-            'status' => $to_status,
-            'scope' => $to_scope,
-            'type' => $to_type,
-            'required_user_id' => $to_user,
-            'action' => $action,
-        ];
-    }
-    if ($previous['scope'] !== (string) ($approval['approval_scope'] ?? '')
-        || $previous['type'] !== (string) ($approval['approval_type'] ?? '')
-        || $previous['required_user_id'] !== intval($approval['approval_route_user_key'] ?? 0)) {
-        return false;
-    }
-    $projection_status = (string) ($approval['approval_status'] ?? '');
-    if ($previous['action'] === 'waived') {
-        return $task_state === 'Skipped'
-            && $previous['status'] === 'waived'
-            && in_array($projection_status, ['pending', 'declined'], true);
-    }
-    return $previous['status'] === $projection_status;
-}
-
-/**
- * Validate the complete, append-only state path rather than checking only the
- * final row. This makes a client closeout prove how a task reached its terminal
- * state and rejects gaps and reordered history. A completed task may have been
- * explicitly reopened before the execution reached its final closeout.
- */
-function runbookCloseoutStateHistoryConsistent($events, $task_state) {
-    $events = is_array($events) ? $events : [];
-    if (!$events) {
-        return false;
-    }
-    $states = ['Ready', 'Blocked', 'Waiting', 'Completed', 'Skipped'];
-    $actors = ['agent', 'system', 'client', 'guest'];
-    $previous = null;
-    foreach ($events as $index => $event) {
-        if (!is_array($event)) {
-            return false;
-        }
-        $from = (string) ($event['task_state_event_from_state'] ?? $event['from_state'] ?? '');
-        $to = (string) ($event['task_state_event_to_state'] ?? $event['to_state'] ?? '');
-        $actor = (string) ($event['task_state_event_actor_type'] ?? $event['actor_type'] ?? 'system');
-        if (!in_array($to, $states, true)
-            || ($from !== '' && !in_array($from, $states, true))
-            || !in_array($actor, $actors, true)
-            || ($index === 0 && $from !== '')
-            || ($index > 0 && $from !== $previous)) {
-            return false;
-        }
-        $previous = $to;
-    }
-    return $previous === (string) $task_state;
-}
-
-/**
- * Side-effect-free closeout verifier used by the authenticated export and by
- * deterministic onboarding/offboarding acceptance fixtures.
- */
-function runbookCloseoutIntegrityErrors($fixture) {
-    $fixture = is_array($fixture) ? $fixture : [];
-    $execution = is_array($fixture['execution'] ?? null) ? $fixture['execution'] : [];
-    $tasks = is_array($fixture['tasks'] ?? null) ? $fixture['tasks'] : [];
-    $evidence_by_key = is_array($fixture['evidence_by_key'] ?? null)
-        ? $fixture['evidence_by_key'] : [];
-    $approvals_by_key = is_array($fixture['approvals_by_key'] ?? null)
-        ? $fixture['approvals_by_key'] : [];
-    $approval_events_by_projection = is_array($fixture['approval_events_by_projection'] ?? null)
-        ? $fixture['approval_events_by_projection'] : [];
-    $state_events_by_key = is_array($fixture['state_events_by_key'] ?? null)
-        ? $fixture['state_events_by_key'] : [];
-    $errors = [];
-    $add = static function ($code, $task_key = '') use (&$errors): void {
-        $error = ['code' => (string) $code];
-        if ((string) $task_key !== '') {
-            $error['task_key'] = (string) $task_key;
-        }
-        $errors[] = $error;
-    };
-
-    $execution_status = (string) (
-        $execution['runbook_execution_status'] ?? $execution['status'] ?? ''
-    );
-    $completed_at = (string) (
-        $execution['runbook_execution_completed_at'] ?? $execution['completed_at'] ?? ''
-    );
-    if ($execution_status !== 'Completed' || $completed_at === '') {
-        $add('execution_not_completed');
-    }
-    $snapshot = $execution['runbook_execution_snapshot'] ?? $execution['snapshot'] ?? null;
-    if (is_string($snapshot)) {
-        $snapshot = json_decode($snapshot, true);
-    }
-    $published_definition = $execution['published_definition'] ?? null;
-    if (!is_array($snapshot) || !is_array($published_definition)) {
-        $add('definition_snapshot_invalid');
-        return $errors;
-    }
-    $computed_hash = runbookDefinitionHash($snapshot);
-    $stored_hash = (string) (
-        $execution['runbook_execution_snapshot_hash'] ?? $execution['snapshot_hash'] ?? ''
-    );
-    $published_hash = (string) (
-        $execution['runbook_version_definition_hash'] ?? $execution['published_hash'] ?? ''
-    );
-    if ($stored_hash === '' || !hash_equals($stored_hash, $computed_hash)) {
-        $add('execution_snapshot_hash_mismatch');
-    }
-    if ($published_hash === '' || !hash_equals($published_hash, $computed_hash)
-        || !hash_equals($computed_hash, runbookDefinitionHash($published_definition))) {
-        $add('published_definition_hash_mismatch');
-    }
-    if (runbookValidateDefinition($snapshot)) {
-        $add('execution_definition_invalid');
-    }
-
-    $definition = runbookCanonicalDefinition($snapshot);
-    $definition_tasks = array_column($definition['tasks'], null, 'key');
-    $source_count = intval($fixture['source_task_count'] ?? count($definition_tasks));
-    if ($source_count < 1 || $source_count !== count($definition_tasks)
-        || count($tasks) !== count($definition_tasks)) {
-        $add('task_mapping_count_mismatch');
-    }
-    $runtime_tasks = [];
-    foreach ($tasks as $task) {
-        if (!is_array($task)) {
-            $add('runtime_task_invalid');
-            continue;
-        }
-        $task_key = (string) ($task['runbook_version_task_key'] ?? $task['task_key'] ?? '');
-        if ($task_key === '' || isset($runtime_tasks[$task_key])) {
-            $add($task_key === '' ? 'runtime_task_key_missing' : 'runtime_task_key_duplicate', $task_key);
-            continue;
-        }
-        $runtime_tasks[$task_key] = $task;
-    }
-    if (array_keys($definition_tasks) !== array_keys($runtime_tasks)) {
-        $definition_keys = array_keys($definition_tasks);
-        $runtime_keys = array_keys($runtime_tasks);
-        sort($definition_keys, SORT_STRING);
-        sort($runtime_keys, SORT_STRING);
-        if ($definition_keys !== $runtime_keys) {
-            $add('task_mapping_keys_mismatch');
-        }
-    }
-
-    foreach ($definition_tasks as $task_key => $definition_task) {
-        $task = $runtime_tasks[$task_key] ?? null;
-        if (!$task) {
-            continue;
-        }
-        $task_state = (string) ($task['task_state'] ?? '');
-        if (!in_array($task_state, ['Completed', 'Skipped'], true)
-            || trim((string) ($task['task_completed_at'] ?? '')) === '') {
-            $add('task_not_terminal', $task_key);
-        }
-        if (!runbookCloseoutStateHistoryConsistent(
-            $state_events_by_key[$task_key] ?? [],
-            $task_state
-        )) {
-            $add('task_state_history_inconsistent', $task_key);
-        }
-
-        $task_approvals = is_array($approvals_by_key[$task_key] ?? null)
-            ? $approvals_by_key[$task_key] : [];
-        foreach ($task_approvals as $approval) {
-            if (!is_array($approval)) {
-                $add('approval_projection_invalid', $task_key);
-                continue;
-            }
-            $projection_key = intval(
-                $approval['approval_projection_key'] ?? $approval['approval_id'] ?? 0
-            );
-            $history = $approval_events_by_projection[$projection_key] ?? [];
-            foreach ((array) $history as $event) {
-                $event_task_key = (string) ($event['runbook_version_task_key'] ?? $task_key);
-                if ($event_task_key !== $task_key) {
-                    $add('approval_history_task_scope_mismatch', $task_key);
-                    break;
-                }
-            }
-            $first_approval_event = is_array($history[0] ?? null) ? $history[0] : [];
-            if ((string) ($first_approval_event['task_approval_event_action'] ?? '') === 'created'
-                && ((string) ($first_approval_event['task_approval_event_to_scope'] ?? '')
-                        !== (string) ($definition_task['approval_scope'] ?? '')
-                    || (string) ($first_approval_event['task_approval_event_to_type'] ?? '')
-                        !== (string) ($definition_task['approval_type'] ?? '')
-                    || ((string) ($definition_task['approval_type'] ?? '') === 'specific'
-                        && intval($first_approval_event['task_approval_event_to_required_user_id'] ?? 0)
-                            !== intval($definition_task['approval_user_id'] ?? 0)))) {
-                $add('approval_route_definition_mismatch', $task_key);
-            }
-            if (!runbookCloseoutApprovalHistoryConsistent($approval, $history, $task_state)) {
-                $add('approval_history_inconsistent', $task_key);
-            }
-        }
-
-        if ($task_state !== 'Completed') {
-            continue;
-        }
-        $required_evidence = (string) ($definition_task['evidence_type'] ?? 'none');
-        if ($required_evidence !== 'none' && $required_evidence !== '') {
-            $satisfied = false;
-            foreach ((array) ($evidence_by_key[$task_key] ?? []) as $evidence) {
-                if (runbookCloseoutEvidenceQualifies($evidence, $required_evidence)) {
-                    $satisfied = true;
-                    break;
-                }
-            }
-            if (!$satisfied) {
-                $add('required_evidence_missing', $task_key);
-            }
-        }
-
-        $approval_required = trim((string) ($definition_task['approval_scope'] ?? '')) !== '';
-        if (($approval_required && count($task_approvals) !== 1)
-            || (!$approval_required && count($task_approvals) !== 0)) {
-            $add('approval_projection_count_mismatch', $task_key);
-            continue;
-        }
-        foreach ($task_approvals as $approval) {
-            $actor_type = (string) ($approval['approval_decision_actor_type'] ?? '');
-            $requester_id = max(0, intval($approval['approval_created_by'] ?? 0));
-            $decision_actor_id = max(0, intval($approval['approval_decision_actor_id'] ?? 0));
-            if ((string) ($approval['approval_status'] ?? '') !== 'approved'
-                || intval($approval['approval_has_decision_actor'] ?? 0) !== 1
-                || trim((string) ($approval['approval_decided_at'] ?? '')) === '') {
-                $add('approval_decision_incomplete', $task_key);
-            }
-            if ($actor_type === 'agent' && $requester_id > 0
-                && $decision_actor_id > 0 && $requester_id === $decision_actor_id) {
-                $add('approval_self_decision', $task_key);
-            }
-        }
-    }
-
-    usort($errors, static fn ($left, $right) => strcmp(
-        json_encode($left, JSON_UNESCAPED_SLASHES),
-        json_encode($right, JSON_UNESCAPED_SLASHES)
-    ));
-    return $errors;
 }
 
 function runbookDraftDefinition($ticket_template_id) {
@@ -1664,7 +1308,7 @@ function instantiateRunbookForTicket($ticket_id, $ticket_template_id, $context =
     $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_client_id,
         ticket_contact_id, ticket_assigned_to, ticket_project_id, ticket_created_at,
         ticket_prefix, ticket_number, ticket_subject
-        FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
     if (!$ticket) {
         if ($caller_transaction) {
             throw new RuntimeException('The runbook ticket could not be loaded');
@@ -2129,16 +1773,6 @@ function ticketLifecycleCanResolve($ticket_id, $include_documentation_detail = f
             $generic_error = 'Required documentation must be assessed or updated before this ticket can be resolved.';
             $detail = trim((string) ($documentation_result[1] ?? ''));
             return [false, $include_documentation_detail && $detail !== '' ? $detail : $generic_error];
-        }
-    }
-
-    if (function_exists('ticketOperationalCanResolve')) {
-        [$operational_allowed, $operational_error] = ticketOperationalCanResolve(
-            intval($ticket_id),
-            boolval($include_documentation_detail)
-        );
-        if (!$operational_allowed) {
-            return [false, $operational_error];
         }
     }
 

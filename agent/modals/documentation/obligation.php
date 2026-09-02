@@ -66,7 +66,6 @@ $sql_verification_tickets = mysqli_query($mysqli, "SELECT ticket.ticket_id,
     ticket.ticket_prefix, ticket.ticket_number, ticket.ticket_subject
     FROM ticket_documentation_obligations link
     INNER JOIN tickets ticket ON ticket.ticket_id = link.ticket_documentation_obligation_ticket_id
-        AND ticket.ticket_deleted_at IS NULL
     WHERE link.ticket_documentation_obligation_obligation_id = $obligation_id
     AND link.ticket_documentation_obligation_client_id = $client_id
     AND ticket.ticket_client_id = $client_id
@@ -83,8 +82,7 @@ $documents = mysqli_query($mysqli, "SELECT document_id, document_name FROM docum
     WHERE document_client_id = $client_id AND document_archived_at IS NULL
     ORDER BY document_name");
 $evidence_files = mysqli_query($mysqli, "SELECT file_id, file_name FROM files
-    WHERE file_client_id = $client_id AND file_archived_at IS NULL
-    AND file_deleted_at IS NULL ORDER BY file_name");
+    WHERE file_client_id = $client_id AND file_archived_at IS NULL ORDER BY file_name");
 $events = mysqli_query($mysqli, "SELECT e.*, u.user_name
     FROM documentation_obligation_events e
     LEFT JOIN users u ON u.user_id = e.documentation_obligation_event_actor_id

@@ -94,6 +94,30 @@ function automationRequirePermission(string $module, int $level, string $message
     }
 }
 
+function automationUserCanAccessClient(int $client_id): bool
+{
+    global $session_is_admin, $client_access_array, $client_deny_array;
+    if (function_exists('apiUserCanAccessClient')) {
+        return apiUserCanAccessClient($client_id);
+    }
+    if (!empty($session_is_admin)) {
+        return true;
+    }
+    if (in_array($client_id, (array) ($client_deny_array ?? []), true)) {
+        return false;
+    }
+    $allowed = (array) ($client_access_array ?? []);
+    return empty($allowed) || in_array($client_id, $allowed, true);
+}
+
+function automationClientScopeSql(string $column): string
+{
+    if (function_exists('apiClientScopeSql')) {
+        return apiClientScopeSql($column);
+    }
+    return function_exists('clientScopeSql') ? clientScopeSql($column) : '';
+}
+
 function automationMapping(string $source, string $entity_type, string $external_id): ?array
 {
     global $mysqli;
@@ -110,7 +134,7 @@ function automationMapping(string $source, string $entity_type, string $external
 function automationClientRow(int $client_id): ?array
 {
     global $mysqli;
-    if ($client_id < 1 || (function_exists('apiUserCanAccessClient') && !apiUserCanAccessClient($client_id))) {
+    if ($client_id < 1 || !automationUserCanAccessClient($client_id)) {
         return null;
     }
     $sql = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
@@ -126,7 +150,7 @@ function automationFindClientByName(string $name): array
         return [];
     }
     $matches = [];
-    $scope = function_exists('apiClientScopeSql') ? apiClientScopeSql('client_id') : '';
+    $scope = automationClientScopeSql('client_id');
     $sql = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
         WHERE client_archived_at IS NULL $scope ORDER BY client_id");
     while ($sql && $row = mysqli_fetch_assoc($sql)) {
@@ -176,7 +200,7 @@ function automationCreateClient(array $client): array
         client_abbreviation = '$abbr_sql', client_notes = '$notes_sql', client_accessed_at = NOW()",
         'Could not create the client');
     $client_id = mysqli_insert_id($mysqli);
-    logAudit('Automation', 'Create', "Created client $name via automation", $client_id);
+    automationEventQueueAudit('Create', "Created client $name via automation", $client_id);
     return ['client_id' => $client_id, 'client_name' => $name];
 }
 
@@ -245,7 +269,7 @@ function automationCreateLocation(array $location, int $client_id): array
         location_primary = 0, location_client_id = $client_id",
         'Could not create the location');
     $location_id = mysqli_insert_id($mysqli);
-    logAudit('Automation', 'Create', "Created location $name via automation", $client_id, $location_id);
+    automationEventQueueAudit('Create', "Created location $name via automation", $client_id, $location_id);
     return ['location_id' => $location_id, 'location_name' => $name];
 }
 
@@ -323,7 +347,7 @@ function automationCreateAsset(array $asset, int $client_id, int $location_id): 
             interface_primary = 1, interface_asset_id = $asset_id",
             'Could not create the asset interface');
     }
-    logAudit('Automation', 'Create', "Created asset $name via automation", $client_id, $asset_id);
+    automationEventQueueAudit('Create', "Created asset $name via automation", $client_id, $asset_id);
     return ['asset_id' => $asset_id, 'asset_name' => $name];
 }
 
@@ -395,16 +419,16 @@ function automationCreateDomain(array $domain, int $client_id): array
         domain_description = '$description_sql', domain_notes = '$notes_sql', domain_client_id = $client_id",
         'Could not create the domain');
     $domain_id = mysqli_insert_id($mysqli);
-    logAudit('Automation', 'Create', "Created domain $name via automation", $client_id, $domain_id);
+    automationEventQueueAudit('Create', "Created domain $name via automation", $client_id, $domain_id);
     return ['domain_id' => $domain_id, 'domain_name' => $name];
 }
 
 function automationSaveMapping(string $source, string $entity_type, string $external_id,
     string $external_name, int $client_id, int $location_id, int $asset_id, int $domain_id,
-    string $strategy, array $metadata = []): void
+    string $strategy, array $metadata = []): array
 {
     $has_binding = $client_id > 0 || $location_id > 0 || $asset_id > 0 || $domain_id > 0;
-    integrationIdentityUpsertMapping([
+    return integrationIdentityUpsertMapping([
         'source' => $source,
         'entity_type' => $entity_type,
         'external_id' => $external_id,
@@ -446,6 +470,13 @@ function automationDeleteTicketOperations(int $ticket_id): int
     }
 
     foreach ($incident_keys as [$source, $incident_key]) {
+        automationDbQuery("DELETE automation_event_dispatch_outbox
+            FROM automation_event_dispatch_outbox
+            INNER JOIN automation_events
+                ON automation_event_id = automation_dispatch_event_id
+            WHERE automation_event_source = '$source'
+            AND automation_event_incident_key = '$incident_key'",
+            'Could not delete the Operations action outbox associated with the ticket');
         automationDbQuery("DELETE FROM automation_events
             WHERE automation_event_source = '$source'
             AND automation_event_incident_key = '$incident_key'",
@@ -453,6 +484,11 @@ function automationDeleteTicketOperations(int $ticket_id): int
     }
 
     // Also remove any standalone event rows left by an interrupted incident write.
+    automationDbQuery("DELETE automation_event_dispatch_outbox
+        FROM automation_event_dispatch_outbox
+        INNER JOIN automation_events ON automation_event_id = automation_dispatch_event_id
+        WHERE automation_event_ticket_id = $ticket_id",
+        'Could not delete the Operations action outbox associated with the ticket');
     automationDbQuery("DELETE FROM automation_events
         WHERE automation_event_ticket_id = $ticket_id",
         'Could not delete the Operations events associated with the ticket');
@@ -654,7 +690,7 @@ function automationResolveIdentityUnlocked(array $input): array
         throw new AutomationConflictException('The requested domain could not be matched or created');
     }
 
-    automationSaveMapping($source, $entity_type, $external_id, $external_name,
+    $saved_mapping = automationSaveMapping($source, $entity_type, $external_id, $external_name,
         $client_id, $location_id, $asset_id, $domain_id, $strategy ?: 'unresolved',
         is_array($input['metadata'] ?? null) ? $input['metadata'] : []);
     if ($client_external_id !== '' && ($client_entity_type !== $entity_type || $client_external_id !== $external_id)) {
@@ -666,11 +702,24 @@ function automationResolveIdentityUnlocked(array $input): array
             (string) ($location['name'] ?? ''), $client_id, $location_id, 0, 0, 'location_external_id');
     }
 
+    $mapping_state = (string) ($saved_mapping['automation_mapping_state'] ?? 'unresolved');
+    $mapping_deleted = !empty($saved_mapping['automation_mapping_deleted_at']);
+    if ($entity_type === 'device'
+        && ($mapping_deleted || !in_array($mapping_state, ['automatic', 'confirmed'], true))) {
+        // A durable mapping can retain its historical asset binding while it is
+        // quarantined. Do not let that binding contribute endpoint state or an
+        // incident asset until a deterministic refresh or technician decision
+        // restores a trusted state.
+        $asset_id = 0;
+        $asset_row = null;
+    }
+
     return [
         'source' => $source,
         'entity_type' => $entity_type,
         'external_id' => $external_id,
         'strategy' => $strategy ?: 'unresolved',
+        'mapping_state' => $mapping_state,
         'client_id' => $client_id,
         'client_name' => (string) ($client_row['client_name'] ?? ''),
         'location_id' => $location_id,
@@ -682,6 +731,92 @@ function automationResolveIdentityUnlocked(array $input): array
     ];
 }
 
+function automationIdentityLockNames(array &$input): array
+{
+    $source = automationSource($input['source'] ?? '');
+    $entity_type = automationEntityType($input['entity_type'] ?? 'resource');
+    $external_id = automationLimitText($input['external_id'] ?? '', 255);
+    if ($external_id === '') {
+        throw new InvalidArgumentException('external_id is required for durable mapping');
+    }
+
+    $client = is_array($input['client'] ?? null) ? $input['client'] : [];
+    if (trim((string) ($client['name'] ?? '')) !== '') {
+        $client['name'] = automationCanonicalClientName($client['name']);
+        $input['client'] = $client;
+    }
+    $location = is_array($input['location'] ?? null) ? $input['location'] : [];
+    $asset = is_array($input['asset'] ?? null) ? $input['asset'] : [];
+    $domain = is_array($input['domain'] ?? null) ? $input['domain'] : [];
+
+    // These names intentionally match integrationIdentityAcquireLock(). That
+    // function may re-enter the lock while saving a mapping, but can never wait
+    // for a new advisory lock after the database transaction has begun.
+    $locks = ['itflow_identity_' . sha1("$source\0$entity_type\0$external_id")];
+    foreach ([
+        [$client, 'client'],
+        [$location, 'location'],
+        [$asset, 'device'],
+        [$domain, 'domain'],
+    ] as [$entity, $default_type]) {
+        $nested_external_id = automationLimitText($entity['external_id'] ?? '', 255);
+        if ($nested_external_id === '') {
+            continue;
+        }
+        $nested_type = automationEntityType($entity['entity_type'] ?? $default_type);
+        $locks[] = 'itflow_identity_' . sha1("$source\0$nested_type\0$nested_external_id");
+    }
+    foreach ([
+        'client' => automationNormalizeName($client['name'] ?? ''),
+        'location_name' => automationNormalizeName($location['name'] ?? ''),
+        'location_address' => automationNormalizeName($location['address'] ?? ''),
+        'asset_name' => automationNormalizeName($asset['name'] ?? ''),
+        'asset_serial' => automationNormalizeName($asset['serial'] ?? ''),
+        'asset_uri' => automationValidHttpUrl($asset['uri'] ?? ''),
+        'domain' => automationDomainName($domain['name'] ?? ''),
+    ] as $kind => $value) {
+        if ($value !== '') {
+            $locks[] = 'itflow_identity_candidate_' . sha1("$kind\0$value");
+        }
+    }
+
+    $locks = array_values(array_unique($locks));
+    sort($locks, SORT_STRING);
+    return $locks;
+}
+
+function automationAcquireNamedLocks(array $lock_names): array
+{
+    global $mysqli;
+
+    $lock_names = array_values(array_unique(array_filter(array_map(
+        static fn ($name): string => substr((string) $name, 0, 64),
+        $lock_names
+    ))));
+    sort($lock_names, SORT_STRING);
+    $acquired = [];
+    foreach ($lock_names as $lock_name) {
+        $lock_name_sql = automationDbEscape($lock_name);
+        $lock_row = mysqli_fetch_row(automationDbQuery("SELECT GET_LOCK('$lock_name_sql', 10)",
+            'Could not obtain an automation advisory lock'));
+        if (intval($lock_row[0] ?? 0) !== 1) {
+            automationReleaseNamedLocks($acquired);
+            throw new RuntimeException('Could not obtain an automation advisory lock');
+        }
+        $acquired[] = $lock_name;
+    }
+    return $acquired;
+}
+
+function automationReleaseNamedLocks(array $lock_names): void
+{
+    global $mysqli;
+    foreach (array_reverse($lock_names) as $lock_name) {
+        $lock_name_sql = automationDbEscape($lock_name);
+        mysqli_query($mysqli, "SELECT RELEASE_LOCK('$lock_name_sql')");
+    }
+}
+
 function automationResolveIdentity(array $input): array
 {
     global $mysqli;
@@ -690,56 +825,23 @@ function automationResolveIdentity(array $input): array
         throw new RuntimeException('Automation identity resolution is disabled by deployment feature flag');
     }
 
-    $source = automationSource($input['source'] ?? '');
-    $entity_type = automationEntityType($input['entity_type'] ?? 'resource');
-    $external_id = automationLimitText($input['external_id'] ?? '', 255);
-    if ($external_id === '') {
-        throw new InvalidArgumentException('external_id is required for durable mapping');
-    }
-    $client = is_array($input['client'] ?? null) ? $input['client'] : [];
-    if (trim((string) ($client['name'] ?? '')) !== '') {
-        $client['name'] = automationCanonicalClientName($client['name']);
-        $input['client'] = $client;
-    }
-    $domain = is_array($input['domain'] ?? null) ? $input['domain'] : [];
-    $identity_locks = [sha1('mapping:' . $source . ':' . $entity_type . ':' . $external_id)];
-    $client_name = automationNormalizeName($client['name'] ?? '');
-    if ($client_name !== '') {
-        $identity_locks[] = sha1('client:' . $client_name);
-    }
-    $domain_name = automationDomainName($domain['name'] ?? '');
-    if ($domain_name !== '') {
-        $identity_locks[] = sha1('domain:' . $domain_name);
-    }
-    $identity_locks = array_values(array_unique($identity_locks));
-    sort($identity_locks, SORT_STRING);
-    $acquired_locks = [];
-    foreach ($identity_locks as $identity_lock) {
-        $lock_name = automationDbEscape('itflow_identity_' . $identity_lock);
-        $lock_row = mysqli_fetch_row(automationDbQuery("SELECT GET_LOCK('$lock_name', 10)",
-            'Could not obtain an external identity lock'));
-        if (intval($lock_row[0] ?? 0) !== 1) {
-            foreach (array_reverse($acquired_locks) as $acquired_lock) {
-                mysqli_query($mysqli, "SELECT RELEASE_LOCK('$acquired_lock')");
-            }
-            throw new RuntimeException('Could not obtain an external identity lock');
-        }
-        $acquired_locks[] = $lock_name;
-    }
+    $acquired_locks = automationAcquireNamedLocks(automationIdentityLockNames($input));
     try {
-        mysqli_begin_transaction($mysqli);
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the automation identity transaction');
+        }
         try {
             $resolved = automationResolveIdentityUnlocked($input);
-            mysqli_commit($mysqli);
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the automation identity transaction');
+            }
             return $resolved;
         } catch (Throwable $e) {
             mysqli_rollback($mysqli);
             throw $e;
         }
     } finally {
-        foreach (array_reverse($acquired_locks) as $acquired_lock) {
-            mysqli_query($mysqli, "SELECT RELEASE_LOCK('$acquired_lock')");
-        }
+        automationReleaseNamedLocks($acquired_locks);
     }
 }
 
@@ -769,14 +871,36 @@ function automationEventDetails(array $event, array $resolved): string
     return $details;
 }
 
-function automationCreateIncidentTicket(array $event, array $resolved): array
+function automationCreateIncidentTicket(array $event, array $resolved,
+    bool $caller_transaction = false, ?array $locked_settings = null,
+    ?N45LockOrder $lock_order = null): array
 {
     global $mysqli, $api_key_name;
-    $settings = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT config_module_enable_ticketing,
-        config_ticket_default_billable, config_ticket_prefix FROM settings WHERE company_id = 1"));
-    if (empty($settings['config_module_enable_ticketing'])) {
-        throw new RuntimeException('Ticketing is disabled in ITFlow');
+    $owns_transaction = !$caller_transaction;
+    if ($owns_transaction && !mysqli_begin_transaction($mysqli)) {
+        throw new RuntimeException('Could not begin the automation incident ticket transaction');
     }
+    $lock_order = $lock_order ?? new N45LockOrder('automation incident ticket creation');
+
+    try {
+        $client_id = intval($resolved['client_id'] ?? 0);
+        if ($owns_transaction && $client_id > 0) {
+            $lock_order->observe('client', $client_id);
+            if (!agreementLockClientForAuditRetention($client_id)) {
+                throw new RuntimeException('The automation incident client no longer exists');
+            }
+        }
+        $settings = $locked_settings;
+        if (!$settings) {
+            $lock_order->observe('settings', 1);
+            $settings = mysqli_fetch_assoc(automationDbQuery("SELECT config_module_enable_ticketing,
+                config_ticket_default_billable, config_ticket_prefix FROM settings
+                WHERE company_id = 1 LIMIT 1 FOR UPDATE", 'Could not lock ticket settings'));
+        }
+        if (empty($settings['config_module_enable_ticketing'])) {
+            throw new RuntimeException('Ticketing is disabled in ITFlow');
+        }
+
     $subject = automationLimitText($event['title'] ?? 'Automation event', 500);
     $severity = strtolower(automationLimitText($event['severity'] ?? 'low', 20));
     $priority = match ($severity) {
@@ -784,7 +908,6 @@ function automationCreateIncidentTicket(array $event, array $resolved): array
         'warning', 'medium' => 'Medium',
         default => 'Low',
     };
-    $client_id = intval($resolved['client_id'] ?? 0);
     $location_id = intval($resolved['location_id'] ?? 0);
     $asset_id = intval($resolved['asset_id'] ?? 0);
     $assigned_to = intval($event['assigned_to'] ?? 0);
@@ -798,20 +921,10 @@ function automationCreateIncidentTicket(array $event, array $resolved): array
     $subject_sql = automationDbEscape($subject);
     $details_sql = automationDbEscape(automationEventDetails($event, $resolved));
     $priority_sql = automationDbEscape($priority);
-    [$impact, $urgency] = ticketOperationalLegacyDimensionsForPriority($priority);
-    $impact_sql = automationDbEscape($impact);
-    $urgency_sql = automationDbEscape($urgency);
     $prefix = automationLimitText($settings['config_ticket_prefix'] ?? 'TCK-', 200);
     $prefix_sql = automationDbEscape($prefix);
     $billable = intval($settings['config_ticket_default_billable'] ?? 0);
 
-    if (!mysqli_begin_transaction($mysqli)) {
-        throw new RuntimeException('Could not begin the automation incident ticket transaction');
-    }
-    try {
-        if ($client_id > 0 && !agreementLockClientForAuditRetention($client_id)) {
-            throw new RuntimeException('The automation incident client no longer exists');
-        }
         automationDbQuery("UPDATE settings SET
             config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
             config_ticket_next_number = config_ticket_next_number + 1 WHERE company_id = 1",
@@ -826,11 +939,7 @@ function automationCreateIncidentTicket(array $event, array $resolved): array
         $url_key = automationDbEscape(randomString(32));
         automationDbQuery("INSERT INTO tickets SET ticket_prefix = '$prefix_sql',
             ticket_number = $ticket_number, ticket_source = 'Automation', ticket_subject = '$subject_sql',
-            ticket_details = '$details_sql', ticket_priority = '$priority_sql',
-            ticket_work_type = 'incident', ticket_impact = '$impact_sql', ticket_urgency = '$urgency_sql',
-            ticket_next_action = 'Investigate the automation event and confirm service health.',
-            ticket_waiting_on = 'none', ticket_operational_updated_by = 0,
-            ticket_operational_updated_at = NOW(), ticket_status = 1,
+            ticket_details = '$details_sql', ticket_priority = '$priority_sql', ticket_status = 1,
             ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = 0,
             ticket_assigned_to = $assigned_to, ticket_client_id = $client_id,
             ticket_contact_id = $contact_id, ticket_location_id = $location_id, ticket_asset_id = $asset_id,
@@ -841,85 +950,129 @@ function automationCreateIncidentTicket(array $event, array $resolved): array
         if ($ticket_id < 1) {
             throw new RuntimeException('The automation incident ticket did not receive an ID');
         }
+        $lock_order->observe('ticket', $ticket_id);
         applyTicketSla($ticket_id, null, null, true);
-        if (!mysqli_commit($mysqli)) {
+        $key_name = automationLimitText($api_key_name ?? 'automation', 200);
+        if (!logTicketHistory($ticket_id, automationDbEscape("Created from an automation event via $key_name."))) {
+            throw new RuntimeException('Could not append automation ticket history');
+        }
+        automationEventQueueAudit('Create',
+            "Created ticket $prefix$ticket_number from an automation event", $client_id, $ticket_id);
+        if ($owns_transaction && !mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the automation incident ticket');
         }
     } catch (Throwable $e) {
-        mysqli_rollback($mysqli);
+        if ($owns_transaction) {
+            mysqli_rollback($mysqli);
+        }
         throw $e;
     }
-    $key_name = automationLimitText($api_key_name ?? 'automation', 200);
-    logTicketHistory($ticket_id, automationDbEscape("Created from an automation event via $key_name."));
-    logAudit('Automation', 'Create', "Created ticket $prefix$ticket_number from an automation event", $client_id, $ticket_id);
-    appNotify('Automation Event', "$subject opened ticket $prefix$ticket_number", "ticket.php?ticket_id=$ticket_id", $client_id, $ticket_id);
-    return ['ticket_id' => $ticket_id, 'ticket_number' => $prefix . $ticket_number];
+    $notification = [
+        'type' => 'Automation Event',
+        'details' => "$subject opened ticket $prefix$ticket_number",
+        'action' => "ticket.php?ticket_id=$ticket_id",
+        'client_id' => $client_id,
+        'entity_id' => $ticket_id,
+    ];
+    if ($owns_transaction) {
+        appNotify($notification['type'], $notification['details'], $notification['action'],
+            $notification['client_id'], $notification['entity_id']);
+    }
+    return [
+        'ticket_id' => $ticket_id,
+        'ticket_number' => $prefix . $ticket_number,
+        'post_commit_notification' => $notification,
+    ];
 }
 
-function automationAddIncidentReply(int $ticket_id, int $client_id, string $reply, bool $resolve): void
+function automationAddIncidentReply(int $ticket_id, int $client_id, string $reply, bool $resolve,
+    bool $caller_transaction = false, ?N45LockOrder $lock_order = null): array
 {
     global $mysqli, $session_user_id;
     if ($ticket_id < 1) {
-        return;
+        return ['resolved' => false, 'blocked' => false, 'post_commit_action' => null];
     }
-    $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_status FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
-        AND ticket_deleted_at IS NULL LIMIT 1"));
-    if (!$ticket) {
-        throw new AutomationConflictException('The mapped automation ticket is unavailable');
+    $owns_transaction = !$caller_transaction;
+    if ($owns_transaction && !mysqli_begin_transaction($mysqli)) {
+        throw new RuntimeException('Could not begin the automation resolution transaction');
     }
-    $reply_sql = automationDbEscape($reply);
-    $user_id = intval($session_user_id ?? 0);
-    automationDbQuery("INSERT INTO ticket_replies SET ticket_reply = '$reply_sql',
-        ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00',
-        ticket_reply_by = $user_id, ticket_reply_ticket_id = $ticket_id",
-        'Could not add the automation incident update');
-    if ($resolve && intval($ticket['ticket_status']) !== 4) {
-        if (!mysqli_begin_transaction($mysqli)) {
-            throw new RuntimeException('Could not begin the automation resolution transaction');
+    $lock_order = $lock_order ?? new N45LockOrder('automation incident reply');
+    $resolved = false;
+    $blocked = false;
+    try {
+        if ($owns_transaction && $client_id > 0) {
+            $lock_order->observe('client', $client_id);
+            $locked_client = agreementLockClientForAuditRetention($client_id);
+            if (!$locked_client || $locked_client['client_archived_at'] !== null) {
+                throw new AutomationConflictException('The mapped automation client is unavailable');
+            }
         }
-        try {
+        $lock_order->observe('ticket', $ticket_id);
+        $ticket = mysqli_fetch_assoc(automationDbQuery("SELECT ticket_id, ticket_status FROM tickets
+            WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id LIMIT 1 FOR UPDATE",
+            'Could not lock the mapped automation ticket'));
+        if (!$ticket) {
+            throw new AutomationConflictException('The mapped automation ticket is unavailable');
+        }
+        $reply_sql = automationDbEscape($reply);
+        $user_id = intval($session_user_id ?? 0);
+        automationDbQuery("INSERT INTO ticket_replies SET ticket_reply = '$reply_sql',
+            ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00',
+            ticket_reply_by = $user_id, ticket_reply_ticket_id = $ticket_id",
+            'Could not add the automation incident update');
+
+        if ($resolve && intval($ticket['ticket_status']) !== 4) {
             documentationLockClientTicket($ticket_id, $client_id);
             $locked_ticket = runbookLockOpenTicket($ticket_id);
-            ticketOperationalPrepareAutomaticResolution(
-                $ticket_id,
-                'monitor_recovered',
-                'The automation source reported recovery; service health was restored.',
-                0,
-                'automation'
-            );
             [$can_resolve] = runbookTicketCanResolve($ticket_id);
             if (!$can_resolve) {
-                mysqli_rollback($mysqli);
-                logTicketHistory($ticket_id, automationDbEscape('Recovery received; automatic resolution was blocked by unfinished runbook work.'));
-                return;
+                $blocked = true;
+                if (!logTicketHistory($ticket_id, automationDbEscape(
+                    'Recovery received; automatic resolution was blocked by unfinished runbook work.'))) {
+                    throw new RuntimeException('Could not append blocked automation resolution history');
+                }
+            } else {
+                $locked_status = intval($locked_ticket['ticket_status']);
+                $resolved_at_predicate = empty($locked_ticket['ticket_resolved_at'])
+                    ? 'ticket_resolved_at IS NULL'
+                    : "ticket_resolved_at = '" . automationDbEscape($locked_ticket['ticket_resolved_at']) . "'";
+                automationDbQuery("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
+                    WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                    AND ticket_status = $locked_status AND $resolved_at_predicate
+                    AND ticket_closed_at IS NULL LIMIT 1", 'Could not resolve the automation incident ticket');
+                if (mysqli_affected_rows($mysqli) !== 1) {
+                    throw new RuntimeException('The automation incident ticket changed before it could be resolved');
+                }
+                documentationRecordChangePassport($ticket_id, 4, 0, true);
+                setTicketResolutionSlaMet($ticket_id, true);
+                if (!logTicketHistory($ticket_id,
+                    automationDbEscape('Resolved automatically after a recovery event.'))) {
+                    throw new RuntimeException('Could not append automation resolution history');
+                }
+                $resolved = true;
             }
-
-            $locked_status = intval($locked_ticket['ticket_status']);
-            $resolved_at_predicate = empty($locked_ticket['ticket_resolved_at'])
-                ? 'ticket_resolved_at IS NULL'
-                : "ticket_resolved_at = '" . automationDbEscape($locked_ticket['ticket_resolved_at']) . "'";
-            automationDbQuery("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
-                WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
-                AND ticket_deleted_at IS NULL
-                AND ticket_status = $locked_status AND $resolved_at_predicate
-                AND ticket_closed_at IS NULL LIMIT 1", 'Could not resolve the automation incident ticket');
-            if (mysqli_affected_rows($mysqli) !== 1) {
-                throw new RuntimeException('The automation incident ticket changed before it could be resolved');
-            }
-            documentationRecordChangePassport($ticket_id, 4, 0, true);
-            ticketOperationalOnResolved($ticket_id, 0, 'automation');
-            if (!mysqli_commit($mysqli)) {
-                throw new RuntimeException('Could not commit the automation incident resolution');
-            }
-        } catch (Throwable $e) {
-            mysqli_rollback($mysqli);
-            throw $e;
+        } elseif (!logTicketHistory($ticket_id, automationDbEscape('Automation event update recorded.'))) {
+            throw new RuntimeException('Could not append automation update history');
         }
-
-        setTicketResolutionSlaMet($ticket_id);
-        syncTicketSlaClock($ticket_id);
-        logTicketHistory($ticket_id, automationDbEscape('Resolved automatically after a recovery event.'));
-        triggerCustomAction('ticket_resolve', $ticket_id);
+        automationEventQueueAudit('Update', "Updated automation incident ticket $ticket_id", $client_id, $ticket_id);
+        if ($owns_transaction && $resolved) {
+            throw new LogicException(
+                'Automation resolution requires a caller-owned transaction for durable action dispatch'
+            );
+        }
+        if ($owns_transaction && !mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the automation incident update');
+        }
+    } catch (Throwable $e) {
+        if ($owns_transaction) {
+            mysqli_rollback($mysqli);
+        }
+        throw $e;
     }
+
+    $post_commit_action = $resolved ? ['trigger' => 'ticket_resolve', 'entity_id' => $ticket_id] : null;
+    // The caller persists this action in the automation event outbox before
+    // committing its surrounding transaction. Never invoke tenant-owned code
+    // here: a process crash after commit would otherwise lose the action.
+    return ['resolved' => $resolved, 'blocked' => $blocked, 'post_commit_action' => $post_commit_action];
 }

@@ -10,7 +10,7 @@ if (isset($_GET['year'])) {
     $year = date('Y');
 }
 
-$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets WHERE ticket_deleted_at IS NULL ORDER BY ticket_year DESC");
+$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets ORDER BY ticket_year DESC");
 
 $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients ORDER BY client_name ASC");
 
@@ -21,14 +21,14 @@ $rows = 0;
 
     <div class="card card-dark">
         <div class="card-header py-2">
-            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring mr-2"></i>Unbilled Tickets By Client</h3>
+            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring me-2"></i>Unbilled Tickets By Client</h3>
             <div class="card-tools">
-                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print mr-2"></i>Print</button>
+                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print me-2"></i>Print</button>
             </div>
         </div>
         <div class="card-body">
             <form class="mb-3">
-                <select onchange="this.form.submit()" class="form-control" name="year">
+                <select onchange="this.form.submit()" class="form-select" name="year">
                     <?php
                     while ($row = mysqli_fetch_assoc($sql_ticket_years)) {
                         $ticket_year = intval($row['ticket_year']); ?>
@@ -42,9 +42,9 @@ $rows = 0;
                     <thead>
                     <tr>
                         <th>Client</th>
-                        <th class="text-right">Tickets Raised</th>
-                        <th class="text-right">Billable Tickets</th>
-                        <th class="text-right">Unbilled Tickets</th>
+                        <th class="text-end">Tickets Raised</th>
+                        <th class="text-end">Billable Tickets</th>
+                        <th class="text-end">Unbilled Tickets</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -61,8 +61,7 @@ $rows = 0;
                             FROM
                                 tickets
                             WHERE
-                                ticket_deleted_at IS NULL
-                            AND YEAR(ticket_created_at) = $year
+                                YEAR(ticket_created_at) = $year
                             AND
                                 ticket_client_id = $client_id"
                         );
@@ -77,8 +76,7 @@ $rows = 0;
                             FROM
                                 tickets
                             WHERE
-                                ticket_deleted_at IS NULL
-                            AND YEAR(ticket_created_at) = $year
+                                YEAR(ticket_created_at) = $year
                             AND
                                 ticket_client_id = $client_id
                             AND
@@ -97,8 +95,7 @@ $rows = 0;
                             FROM
                                 tickets
                             WHERE
-                                ticket_deleted_at IS NULL
-                            AND YEAR(ticket_created_at) = $year
+                                YEAR(ticket_created_at) = $year
                             AND
                                 ticket_client_id = $client_id
                             AND
@@ -119,9 +116,9 @@ $rows = 0;
                                 <td>
                                     <a href="../../agent/tickets.php?client_id=<?= $client_id ?>&billable=1&unbilled"><?= $client_name ?></a>
                                 </td>
-                                <td class="text-right"><?= $ticket_raised_count ?></td>
-                                <td class="text-right"><?= $ticket_closed_count ?></td>
-                                <td class="text-right"><?= $ticket_unbilled_count ?></td>
+                                <td class="text-end"><?= $ticket_raised_count ?></td>
+                                <td class="text-end"><?= $ticket_closed_count ?></td>
+                                <td class="text-end"><?= $ticket_unbilled_count ?></td>
                             </tr>
                             <?php
                         }

@@ -6,13 +6,6 @@
 
 defined('FROM_POST_HANDLER') || die("Direct file access is not allowed");
 
-$task_active_ticket_client = static function ($ticket_id) use ($mysqli) {
-    $ticket_id = intval($ticket_id);
-    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
-    return $row ? intval($row['ticket_client_id']) : null;
-};
-
 if (isset($_POST['add_task'])) {
 
     validateCSRFToken();
@@ -22,11 +15,8 @@ if (isset($_POST['add_task'])) {
     $ticket_id = intval($_POST['ticket_id']);
     $task_name = escapeSql($_POST['name']);
 
-    $client_id = $task_active_ticket_client($ticket_id);
-    if ($client_id === null) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
+    // Get Client ID from tickets using the ticket_id
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
     enforceClientAccess();
 
     if (!mysqli_begin_transaction($mysqli)) {
@@ -69,7 +59,7 @@ if (isset($_POST['edit_ticket_task'])) {
     $existing_task = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT task_name, task_order,
         task_completion_estimate, task_runbook_version_task_id, task_state,
         task_assigned_to, task_due_at, ticket_client_id
-        FROM tasks INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        FROM tasks LEFT JOIN tickets ON ticket_id = task_ticket_id
         WHERE task_id = $task_id LIMIT 1"));
     if (!$existing_task) {
         flashAlert('Task not found', 'error');
@@ -158,7 +148,7 @@ if (isset($_GET['delete_task'])) {
 
     // Get Client ID, task name from tasks and tickets using the task_id
     $sql = mysqli_query($mysqli, "SELECT task_name, task_runbook_version_task_id, ticket_client_id
-        FROM tasks INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL WHERE task_id = $task_id");
+        FROM tasks LEFT JOIN tickets ON ticket_id = task_ticket_id WHERE task_id = $task_id");
     $row = mysqli_fetch_assoc($sql);
     $client_id = intval($row['ticket_client_id']);
     enforceClientAccess();
@@ -208,7 +198,7 @@ if (isset($_GET['complete_task'])) {
 
     // Get Client ID
     $sql = mysqli_query($mysqli, "SELECT task_name, task_state, task_completed_at, ticket_client_id, ticket_id
-        FROM tasks INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL WHERE task_id = $task_id");
+        FROM tasks LEFT JOIN tickets ON ticket_id = task_ticket_id WHERE task_id = $task_id");
     $row = mysqli_fetch_assoc($sql);
     if (!$row) {
         flashAlert('Task not found', 'error');
@@ -276,7 +266,7 @@ if (isset($_GET['undo_complete_task'])) {
     $task_id = intval($_GET['undo_complete_task']);
 
     // Get Client ID
-    $sql = mysqli_query($mysqli, "SELECT task_name, ticket_client_id, ticket_id FROM tasks INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL WHERE task_id = $task_id");
+    $sql = mysqli_query($mysqli, "SELECT task_name, ticket_client_id, ticket_id FROM tasks LEFT JOIN tickets ON ticket_id = task_ticket_id WHERE task_id = $task_id");
     $row = mysqli_fetch_assoc($sql);
     $client_id = intval($row['ticket_client_id']);
     enforceClientAccess();
@@ -327,7 +317,7 @@ if (isset($_POST['set_task_waiting'])) {
     $task_id = intval($_POST['task_id']);
     $reason = trim($_POST['waiting_reason'] ?? '');
     $task = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT task_name, task_state, task_ticket_id, ticket_client_id
-        FROM tasks INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        FROM tasks LEFT JOIN tickets ON ticket_id = task_ticket_id
         WHERE task_id = $task_id AND task_runbook_version_task_id > 0 LIMIT 1"));
     $client_id = intval($task['ticket_client_id'] ?? 0);
     if ($client_id) {
@@ -383,7 +373,7 @@ if (isset($_POST['resume_task'])) {
         runbook_version_task_condition_value, runbook_version_task_owner_type,
         runbook_version_task_owner_user_id
         FROM tasks
-        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        INNER JOIN tickets ON ticket_id = task_ticket_id
         INNER JOIN runbook_version_tasks ON runbook_version_task_id = task_runbook_version_task_id
         WHERE task_id = $task_id AND task_runbook_version_task_id > 0 LIMIT 1"));
     if (!$task || $task['task_state'] !== 'Waiting') {
@@ -495,7 +485,7 @@ if (isset($_POST['skip_runbook_task'])) {
     $task_id = intval($_POST['task_id']);
     $reason = trim($_POST['skip_reason'] ?? '');
     $task = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT task_name, task_state, task_ticket_id, ticket_client_id
-        FROM tasks INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        FROM tasks LEFT JOIN tickets ON ticket_id = task_ticket_id
         WHERE task_id = $task_id AND task_runbook_version_task_id > 0 LIMIT 1"));
     $client_id = intval($task['ticket_client_id'] ?? 0);
     if ($client_id) {
@@ -596,7 +586,7 @@ if (isset($_POST['add_task_evidence'])) {
 
     $task_id = intval($_POST['task_id']);
     $task = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT task_name, task_ticket_id, ticket_client_id
-        FROM tasks INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        FROM tasks LEFT JOIN tickets ON ticket_id = task_ticket_id
         WHERE task_id = $task_id LIMIT 1"));
     $ticket_id = intval($task['task_ticket_id'] ?? 0);
     $client_id = intval($task['ticket_client_id'] ?? 0);
@@ -683,7 +673,7 @@ if (isset($_POST['delete_task_evidence'])) {
     $evidence = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT task_evidence_task_id,
         task_completed_at, task_runbook_version_task_id, ticket_client_id
         FROM task_evidence INNER JOIN tasks ON task_id = task_evidence_task_id
-        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        INNER JOIN tickets ON ticket_id = task_ticket_id
         WHERE task_evidence_id = $evidence_id LIMIT 1"));
     $client_id = intval($evidence['ticket_client_id'] ?? 0);
     if ($client_id) {
@@ -750,7 +740,7 @@ if (isset($_POST['add_ticket_task_approver'])) {
             ticket_id, ticket_client_id, ticket_contact_id, ticket_number,
             ticket_prefix, ticket_subject, ticket_assigned_to, ticket_project_id,
             ticket_created_at FROM tasks
-        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        INNER JOIN tickets ON ticket_id = task_ticket_id
         WHERE task_id = $task_id LIMIT 1
         ")
     );
@@ -895,7 +885,7 @@ if (isset($_POST['decide_ticket_task_approval'])) {
         approval_required_user_id, approval_type, task_name, task_ticket_id, ticket_client_id
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
-        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        INNER JOIN tickets ON ticket_id = task_ticket_id
         WHERE approval_id = $approval_id AND approval_task_id = $task_id
         AND approval_scope = 'internal' AND approval_status = 'pending'
         AND task_state NOT IN ('Completed','Skipped') LIMIT 1"));
@@ -999,7 +989,7 @@ if (isset($_POST['retry_ticket_task_approval'])) {
         ticket_number, ticket_subject, ticket_assigned_to, ticket_project_id, ticket_created_at
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
-        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        INNER JOIN tickets ON ticket_id = task_ticket_id
         WHERE approval_id = $approval_id AND approval_status IN ('pending','declined')
         AND task_state NOT IN ('Completed','Skipped') LIMIT 1"));
     if (!$approval) {
@@ -1046,7 +1036,7 @@ if (isset($_POST['retry_ticket_task_approval'])) {
             ticket_assigned_to, ticket_project_id, ticket_created_at
             FROM task_approvals
             INNER JOIN tasks ON task_id = approval_task_id
-            INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+            INNER JOIN tickets ON ticket_id = task_ticket_id
             WHERE approval_id = $approval_id LIMIT 1 FOR UPDATE", 'Could not lock the approval for re-request'));
         if (!$locked_approval
             || intval($locked_approval['ticket_id']) !== intval($locked_ticket['ticket_id'])
@@ -1158,7 +1148,7 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
         ticket_assigned_to, ticket_project_id, ticket_created_at
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
-        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        INNER JOIN tickets ON ticket_id = task_ticket_id
         WHERE approval_id = $approval_id AND approval_status IN ('pending','declined')
         AND task_state NOT IN ('Completed','Skipped') LIMIT 1"));
     if (!$approval) {
@@ -1211,7 +1201,7 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
             ticket_subject, ticket_assigned_to, ticket_project_id, ticket_created_at
             FROM task_approvals
             INNER JOIN tasks ON task_id = approval_task_id
-            INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+            INNER JOIN tickets ON ticket_id = task_ticket_id
             WHERE approval_id = $approval_id LIMIT 1 FOR UPDATE", 'Could not lock the approval for rerouting'));
         if (!$locked_approval
             || intval($locked_approval['ticket_id']) !== intval($locked_ticket['ticket_id'])
@@ -1326,7 +1316,7 @@ if (isset($_POST['delete_ticket_task_approver'])) {
         task_completed_at, task_runbook_version_task_id, task_ticket_id, ticket_client_id
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
-        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        INNER JOIN tickets ON ticket_id = task_ticket_id
         WHERE approval_id = $approval_id LIMIT 1"));
     if (!$approval) {
         flashAlert('Approval request not found', 'error');
@@ -1384,11 +1374,8 @@ if (isset($_GET['complete_all_tasks'])) {
 
     $ticket_id = intval($_GET['complete_all_tasks']);
 
-    $client_id = $task_active_ticket_client($ticket_id);
-    if ($client_id === null) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
+    // Get Client ID
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
     enforceClientAccess();
 
     $completed_count = 0;
@@ -1448,11 +1435,8 @@ if (isset($_GET['undo_complete_all_tasks'])) {
 
     $ticket_id = intval($_GET['undo_complete_all_tasks']);
 
-    $client_id = $task_active_ticket_client($ticket_id);
-    if ($client_id === null) {
-        flashAlert('The ticket is unavailable.', 'error');
-        redirect();
-    }
+    // Get Client ID
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
     enforceClientAccess();
 
     if (!mysqli_begin_transaction($mysqli)) {

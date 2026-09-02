@@ -22,7 +22,7 @@ $portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-lte-print="plain">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -36,6 +36,14 @@ $portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_
 
     <link rel="stylesheet" href="/libs/fontawesome-free/css/all.min.css">
     <link rel="stylesheet" href="/libs/adminlte/css/adminlte.min.css">
+    <link rel="stylesheet" href="/libs/adminlte/css/adminlte-colors-v3.min.css">
+    <link rel="stylesheet" href="/libs/sweetalert2/css/sweetalert2.min.css">
+    <?php if (!empty($portal_load_phone_inputs)) { ?>
+        <link rel="stylesheet" href="/libs/intl-tel-input/css/intlTelInput.min.css">
+    <?php } ?>
+    <?php if (!empty($portal_load_datatables)) { ?>
+        <link rel="stylesheet" href="/libs/DataTables/datatables.min.css">
+    <?php } ?>
     <link rel="stylesheet" href="/css/itflow_custom.css">
 </head>
 
@@ -170,9 +178,9 @@ $portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_
                     $_SESSION['alert_type'] = 'info';
                 }
                 ?>
-                <div class="alert alert-<?= escapeHtml($_SESSION['alert_type']) ?>" id="alert" role="status">
-                    <?= escapeHtml($_SESSION['alert_message']) ?>
-                    <button class="close" data-dismiss="alert" aria-label="Dismiss notification">&times;</button>
+                <div class="alert alert-<?= alertStyleClass($_SESSION['alert_type']) ?> alert-dismissible" id="alert" role="status">
+                    <?= alertMessageHtml($_SESSION['alert_message']) ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss notification"></button>
                 </div>
                 <?php
                 unset($_SESSION['alert_type']);

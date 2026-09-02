@@ -26,8 +26,11 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
     </header>
 
     <div class="n45-table-scroll" tabindex="0" role="region" aria-label="Client contacts">
+        <?php if (mysqli_num_rows($contacts_sql) == 0) { ?>
+            <?= portalEmptyState('There are no contacts on this account yet.') ?>
+        <?php } else { ?>
             <table class="table">
-                <thead class="thead-dark">
+                <thead class="table-dark">
                 <tr>
                     <th>Name</th>
                     <th>Email</th>
@@ -71,6 +74,7 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
 
                 </tbody>
             </table>
+        <?php } ?>
     </div>
 
 <?php

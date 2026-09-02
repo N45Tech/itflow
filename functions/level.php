@@ -1802,8 +1802,7 @@ function levelRecordOperationalAlert(array $alert, string $state, array $result,
             $location_id = intval($asset['asset_location_id'] ?? 0);
         } elseif ($ticket_id > 0) {
             $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_asset_id, ticket_client_id,
-                ticket_location_id FROM tickets WHERE ticket_id = $ticket_id
-                AND ticket_deleted_at IS NULL LIMIT 1"));
+                ticket_location_id FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
             $asset_id = intval($ticket['ticket_asset_id'] ?? 0);
             $client_id = intval($ticket['ticket_client_id'] ?? 0);
             $location_id = intval($ticket['ticket_location_id'] ?? 0);
@@ -2062,9 +2061,6 @@ function levelHandleAlertActive(array $alert, ?string $event_time = null,
         $subject_sql = levelDbEscape($subject);
         $details_sql = levelDbEscape($details);
         $priority_sql = levelDbEscape($priority);
-        [$impact, $urgency] = ticketOperationalLegacyDimensionsForPriority($priority);
-        $impact_sql = levelDbEscape($impact);
-        $urgency_sql = levelDbEscape($urgency);
         $prefix_sql = levelDbEscape(levelLimitText($settings['ticket_prefix'], 200));
         $assigned_to = intval($settings['alert_assigned_to']);
         $billable = intval($settings['ticket_default_billable']);
@@ -2097,13 +2093,6 @@ function levelHandleAlertActive(array $alert, ?string $event_time = null,
                 ticket_subject = '$subject_sql',
                 ticket_details = '$details_sql',
                 ticket_priority = '$priority_sql',
-                ticket_work_type = 'incident',
-                ticket_impact = '$impact_sql',
-                ticket_urgency = '$urgency_sql',
-                ticket_next_action = 'Investigate the Level.io alert and confirm service health.',
-                ticket_waiting_on = 'none',
-                ticket_operational_updated_by = 0,
-                ticket_operational_updated_at = NOW(),
                 ticket_status = 1,
                 ticket_billable = $billable,
                 ticket_url_key = '$url_key',

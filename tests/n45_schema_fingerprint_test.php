@@ -46,31 +46,20 @@ $required_migration_prefix = [
     'n45-0013-portal-request-catalog.php',
     'n45-0014-agreement-entitlements.php',
     'n45-0015-documentation-evidence-reference-index.php',
-    'n45-0016-ticket-operational-discipline.php',
-    'n45-0018-retention-controls.php',
+    'n45-0016-release-safety-hardening.php',
+    'n45-0017-automation-action-outbox.php',
 ];
 $disk_migration_files = array_map('basename', glob($root . '/n45/migrations/*.php') ?: []);
 sort($disk_migration_files);
 $assertTrue(array_slice($disk_migration_files, 0, count($required_migration_prefix)) === $required_migration_prefix, 'The established migration inventory is incomplete on disk');
 $assertTrue(in_array('n45-0013-portal-request-catalog.php', $disk_migration_files, true), 'The released portal request migration is missing on disk');
 $released_migration_files = $disk_migration_files;
-$has_reserved_0017 = count(array_filter(
-    $released_migration_files,
-    static fn (string $file): bool => str_starts_with($file, 'n45-0017-')
-)) === 1;
 
 foreach ($released_migration_files as $position => $migration_file) {
     $matches = [];
     $assertTrue(preg_match('/^n45-(\d{4})-[a-z0-9-]+\.php$/', $migration_file, $matches) === 1, "$migration_file is not a stable migration filename");
     if ($matches) {
-        // Goal 10 owns 0018; the reserved 0017 slot is supplied by the Goal 9
-        // Field Mode integration. Until that sibling snapshot is composed,
-        // this is the only permitted gap in the recovered partial stream.
-        $expected_position = $position;
-        if (!$has_reserved_0017 && $position >= 17) {
-            $expected_position++;
-        }
-        $assertTrue(intval($matches[1]) === $expected_position, "$migration_file leaves an unexpected gap in the ordered migration stream");
+        $assertTrue(intval($matches[1]) === $position, "$migration_file leaves a gap in the ordered migration stream");
     }
 }
 
@@ -88,52 +77,13 @@ $post_integration_reservations = n45PostIntegrationMigrationReservations();
 $assertTrue(
     array_keys($post_integration_reservations) === [
         'n45-0015-documentation-evidence-reference-index',
-        'n45-0016-ticket-operational-discipline',
-        'n45-0018-retention-controls',
+        'n45-0016-release-safety-hardening',
+        'n45-0017-automation-action-outbox',
     ],
-    'The post-integration migration reservations are missing or out of order'
+    'The post-integration migration reservations are missing'
 );
 $repair_index = $post_integration_reservations['n45-0015-documentation-evidence-reference-index']['altered_indexes']['documentation_evidence_locker']['documentation_evidence_reference'] ?? [];
 $assertTrue(($repair_index['unique'] ?? null) === false, 'The compatibility repair would restore the obsolete unique evidence index');
-$ticket_operations_id = 'n45-0016-ticket-operational-discipline';
-$ticket_operations_definition = $definitions[$ticket_operations_id] ?? [];
-$ticket_operations_reservation = $post_integration_reservations[$ticket_operations_id] ?? [];
-$assertTrue(
-    n45MigrationReservationDefinitionMatches($ticket_operations_definition, '', $ticket_operations_reservation),
-    'The ticket operational migration does not match its reserved exhaustive schema contract'
-);
-$ticket_operations_fingerprint = $ticket_operations_definition['fingerprint'] ?? [];
-$assertTrue(($ticket_operations_fingerprint['tables'] ?? []) === [
-    'ticket_operational_events', 'ticket_relationships', 'ticket_customer_promises',
-    'ticket_customer_promise_events', 'ticket_email_ingress',
-], 'The ticket operational fingerprint omits a created table');
-$assertTrue(array_keys($ticket_operations_fingerprint['columns']['ticket_email_ingress'] ?? []) === [
-    'ticket_email_ingress_id', 'ticket_email_ingress_message_hash',
-    'ticket_email_ingress_claim_token', 'ticket_email_ingress_sender_hash',
-    'ticket_email_ingress_domain_hash', 'ticket_email_ingress_subject_hash',
-    'ticket_email_ingress_status', 'ticket_email_ingress_attempts',
-    'ticket_email_ingress_ticket_id', 'ticket_email_ingress_reply_id',
-    'ticket_email_ingress_client_id', 'ticket_email_ingress_reason_code',
-    'ticket_email_ingress_received_at', 'ticket_email_ingress_processing_at',
-    'ticket_email_ingress_completed_at',
-], 'The ticket ingress fingerprint is not exhaustive');
-$assertTrue(array_keys($ticket_operations_fingerprint['indexes']['ticket_email_ingress'] ?? []) === [
-    'PRIMARY', 'ticket_email_ingress_message', 'ticket_email_ingress_status',
-    'ticket_email_ingress_sender_window', 'ticket_email_ingress_domain_window',
-    'ticket_email_ingress_client_window', 'ticket_email_ingress_ticket',
-], 'The ticket ingress index fingerprint is not exhaustive');
-$assertTrue(count($ticket_operations_fingerprint['failure_queries'] ?? []) >= 12,
-    'The ticket operational release contract does not validate all data domains');
-$ticket_operations_failure_contract = implode("\n", $ticket_operations_fingerprint['failure_queries'] ?? []);
-foreach ([
-    'ticket_operational_events_bu_immutable',
-    'ticket_operational_events_bd_immutable',
-    'ticket_customer_promise_events_bu_immutable',
-    'ticket_customer_promise_events_bd_immutable',
-] as $trigger_name) {
-    $assertTrue(str_contains($ticket_operations_failure_contract, $trigger_name),
-        "The ticket operational release contract does not detect $trigger_name drift");
-}
 $assertTrue(
     $reservations['2.7.9']['created_tables'] === [
         'asset_endpoint_states',
@@ -246,9 +196,11 @@ $assertThrows(
 $skipped_reservation = $definitions;
 unset(
     $skipped_reservation['n45-0014-agreement-entitlements'],
-    $skipped_reservation['n45-0015-documentation-evidence-reference-index']
+    $skipped_reservation['n45-0015-documentation-evidence-reference-index'],
+    $skipped_reservation['n45-0016-release-safety-hardening'],
+    $skipped_reservation['n45-0017-automation-action-outbox']
 );
-$skipped_reservation['n45-0016-future-feature'] = ['legacy_version' => null];
+$skipped_reservation['n45-0018-future-feature'] = ['legacy_version' => null];
 $assertThrows(
     static function () use ($skipped_reservation): void {
         n45AssertMigrationNamespaceReservations($skipped_reservation);
@@ -573,6 +525,40 @@ $assertTrue($portal_request_index_count === 29, 'The portal request migration do
 $assertTrue(($portal_request_fingerprint['failure_queries'] ?? []) === [
     "SELECT COUNT(*) FROM portal_request_submissions WHERE portal_request_submission_request_hash IS NULL OR BINARY portal_request_submission_request_hash NOT REGEXP '^[0-9a-f]{64}$'",
 ], 'The portal request migration does not verify its restart-repair fingerprint backfill');
+
+$automation_outbox_fingerprint = $definitions['n45-0017-automation-action-outbox']['fingerprint'] ?? [];
+$assertTrue(
+    ($automation_outbox_fingerprint['tables'] ?? []) === ['automation_event_dispatch_outbox'],
+    'The automation custom-action outbox table inventory is incomplete'
+);
+$automation_outbox_columns = $baselineColumns('automation_event_dispatch_outbox');
+$automation_outbox_indexes = $baselineIndexes('automation_event_dispatch_outbox');
+$assertTrue(
+    array_keys($automation_outbox_fingerprint['columns']['automation_event_dispatch_outbox'] ?? [])
+        === array_keys($automation_outbox_columns),
+    'The automation custom-action outbox column fingerprint is incomplete'
+);
+$assertTrue(
+    array_keys($automation_outbox_fingerprint['indexes']['automation_event_dispatch_outbox'] ?? [])
+        === array_keys($automation_outbox_indexes),
+    'The automation custom-action outbox index fingerprint is incomplete'
+);
+foreach (($automation_outbox_fingerprint['columns']['automation_event_dispatch_outbox'] ?? []) as $column => $contract) {
+    $comparison = n45CompareColumnFingerprint(
+        'db.sql', 'automation_event_dispatch_outbox', $column, $contract,
+        $automation_outbox_columns[$column] ?? null
+    );
+    $assertTrue($comparison === [], 'The automation outbox column contract does not match db.sql for '
+        . $column . ': ' . implode('; ', $comparison));
+}
+foreach (($automation_outbox_fingerprint['indexes']['automation_event_dispatch_outbox'] ?? []) as $index => $contract) {
+    $comparison = n45CompareIndexFingerprint(
+        'db.sql', 'automation_event_dispatch_outbox', $index, $contract,
+        $automation_outbox_indexes[$index] ?? null
+    );
+    $assertTrue($comparison === [], 'The automation outbox index contract does not match db.sql for '
+        . $index . ': ' . implode('; ', $comparison));
+}
 
 $expected_agreement_tables = [
     'agreement_versions',

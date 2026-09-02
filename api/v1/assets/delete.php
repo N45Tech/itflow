@@ -21,10 +21,8 @@ if (!empty($asset_id)) {
     if ($delete_sql && !empty($asset_name)) {
         $delete_count = mysqli_affected_rows($mysqli);
 
-        // Do not remove child records when the scoped asset delete failed.
-        if ($delete_count === 1) {
-            mysqli_query($mysqli,"DELETE FROM asset_interfaces WHERE interface_asset_id = $asset_id");
-        }
+        // Delete Interfaces
+        mysqli_query($mysqli,"DELETE FROM asset_interfaces WHERE interface_asset_id = $asset_id");
 
         // Logging
         logAudit("Asset", "Delete", "$asset_name via API ($api_key_name)", $client_id);
@@ -33,3 +31,4 @@ if (!empty($asset_id)) {
 
 // Output
 require_once '../delete_output.php';
+

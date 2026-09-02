@@ -42,22 +42,12 @@ if (isset($_POST['add_ticket'])) {
     //Generate a unique URL key for clients to access
     $url_key = randomString(32);
 
-    try {
-        $operational = ticketOperationalInput([
-            'work_type' => $_POST['work_type'] ?? 'request',
-            'impact' => $_POST['impact'] ?? 'medium',
-            'urgency' => $_POST['urgency'] ?? 'medium',
-            'next_action' => 'Review and triage this portal request.',
-            'waiting_on' => 'none',
-        ]);
-    } catch (InvalidArgumentException $exception) {
-        flashAlert(escapeHtml($exception->getMessage()), 'error');
-        redirect();
+    // Ensure priority matches the shared impact definitions.
+    if (!array_key_exists($_POST['priority'] ?? '', ticketPriorityDefinitions())) {
+        $priority = "Medium";
+    } else {
+        $priority = escapeSql($_POST['priority']);
     }
-    $priority = escapeSql($operational['priority']);
-    $work_type_sql = escapeSql($operational['work_type']);
-    $impact_sql = escapeSql($operational['impact']);
-    $urgency_sql = escapeSql($operational['urgency']);
 
     $ticket_transaction_started = false;
     try {
@@ -81,7 +71,7 @@ if (isset($_POST['add_ticket'])) {
             throw new RuntimeException('The client portal ticket number allocation returned no number');
         }
 
-        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Portal', ticket_category = $category, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_work_type = '$work_type_sql', ticket_impact = '$impact_sql', ticket_urgency = '$urgency_sql', ticket_next_action = 'Review and triage this portal request.', ticket_waiting_on = 'none', ticket_operational_updated_by = 0, ticket_operational_updated_at = NOW(), ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = $session_user_id, ticket_contact_id = $session_contact_id, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $session_client_id", 'Could not create the client portal ticket');
+        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Portal', ticket_category = $category, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = $session_user_id, ticket_contact_id = $session_contact_id, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $session_client_id", 'Could not create the client portal ticket');
         $ticket_id = intval(mysqli_insert_id($mysqli));
         if (!$ticket_id) {
             throw new RuntimeException('The client portal ticket did not receive an ID');
@@ -105,6 +95,7 @@ if (isset($_POST['add_ticket'])) {
     if ($config_ticket_new_ticket_notification_email) {
 
         $client_name = escapeSql($session_client_name);
+
         $email_subject = "ITFlow - New Ticket - $client_name: $subject";
         $email_body = "Hello, <br><br>This is a notification that a new ticket has been raised in ITFlow. <br>Client: $client_name<br>Priority: $priority<br>Link: https://$config_base_url/agent/ticket.php?ticket_id=$ticket_id&client_id=$session_client_id <br><br><b>$subject</b><br>$details";
 
@@ -164,13 +155,11 @@ if (isset($_POST['add_ticket_comment'])) {
                     : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
                 runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
                     WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
-                    AND ticket_deleted_at IS NULL
                     AND ticket_status = $original_ticket_status AND $resolved_predicate
                     AND ticket_closed_at IS NULL LIMIT 1", 'Could not reopen the ticket for the client reply');
                 if (mysqli_affected_rows($mysqli) !== 1) {
                     throw new RuntimeException('The ticket state changed before the reply was saved');
                 }
-                ticketOperationalOnReopened($ticket_id, $session_contact_id, 'contact');
             }
             runbookDbQuery("INSERT INTO ticket_replies SET ticket_reply = '$comment',
                 ticket_reply_type = 'Client', ticket_reply_by = $session_contact_id,
@@ -194,7 +183,7 @@ if (isset($_POST['add_ticket_comment'])) {
 
 
         // Get ticket details &  Notify the assigned tech (if any)
-        $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT client_name, ticket_assigned_to, ticket_number, ticket_subject FROM tickets LEFT JOIN clients ON ticket_client_id = client_id WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+        $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT client_name, ticket_assigned_to, ticket_number, ticket_subject FROM tickets LEFT JOIN clients ON ticket_client_id = client_id WHERE ticket_id = $ticket_id LIMIT 1"));
 
         $ticket_number = intval($ticket_details['ticket_number']);
         $ticket_assigned_to = intval($ticket_details['ticket_assigned_to']);
@@ -241,6 +230,108 @@ if (isset($_POST['add_ticket_comment'])) {
     }
 }
 
+
+
+if (isset($_POST['set_contact_phone'])) {
+
+    validateCSRFToken();
+
+    /*
+     * SCOPING: as with the PIN above, the row updated is the logged-in
+     * contact's own, from the session. No contact_id parameter exists on this
+     * handler, so there is nothing to point at somebody else's record with.
+     *
+     * Sanitising exactly as agent/post/contact_model.php does - digits only for
+     * every phone field - so a number typed in the portal is stored in the same
+     * shape as one typed by an agent and formatPhoneNumber() renders both the
+     * same way. Anything else would make the portal the odd one out.
+     */
+    $phone_country_code = preg_replace("/[^0-9]/", '', $_POST['phone_country_code'] ?? '');
+    $phone = preg_replace("/[^0-9]/", '', $_POST['phone'] ?? '');
+    $extension = preg_replace("/[^0-9]/", '', $_POST['extension'] ?? '');
+    $mobile_country_code = preg_replace("/[^0-9]/", '', $_POST['mobile_country_code'] ?? '');
+    $mobile = preg_replace("/[^0-9]/", '', $_POST['mobile'] ?? '');
+
+    // Columns are varchar(200), country codes varchar(10)
+    $phone_country_code = substr($phone_country_code, 0, 10);
+    $mobile_country_code = substr($mobile_country_code, 0, 10);
+    $phone = substr($phone, 0, 200);
+    $extension = substr($extension, 0, 200);
+    $mobile = substr($mobile, 0, 200);
+
+    // A country code on its own is not a number - drop it rather than store a
+    // dangling code the formatter would try to render
+    if (empty($phone)) {
+        $phone_country_code = '';
+        $extension = '';
+    }
+    if (empty($mobile)) {
+        $mobile_country_code = '';
+    }
+
+    mysqli_query($mysqli, "UPDATE contacts SET
+        contact_phone_country_code = '$phone_country_code',
+        contact_phone = '$phone',
+        contact_extension = '$extension',
+        contact_mobile_country_code = '$mobile_country_code',
+        contact_mobile = '$mobile'
+        WHERE contact_id = $session_contact_id AND contact_client_id = $session_client_id");
+
+    logAudit("Contact", "Edit", "Client contact $session_contact_name updated their phone numbers in the client portal", $session_client_id, $session_contact_id);
+
+    flashAlert("Phone numbers updated");
+
+    redirect('profile.php');
+
+}
+
+if (isset($_POST['set_contact_pin'])) {
+
+    validateCSRFToken();
+
+    /*
+     * SCOPING: the row updated is the logged-in contact's own, taken from the
+     * session. There is no contact_id parameter on this handler by design, so
+     * there is nothing for a contact to point at somebody else's record with.
+     *
+     * No capability gate: the PIN belongs to the contact, not to a portal
+     * section, so every signed-in contact manages their own - same as the
+     * password change above.
+     */
+    // The PIN is what we read back to verify a caller, so changing it is
+    // re-authenticated for password logins. SSO contacts are exempt: they have
+    // no local password to check, and the identity provider already did this.
+    if (!portalReauthenticate($_POST['current_password'] ?? '')) {
+        flashAlert("That password was not right - your PIN has not been changed", 'error');
+        redirect('profile.php');
+    }
+
+    // contact_pin is varchar(255) - trim to fit rather than let an over-long
+    // value error out under strict mode.
+    //
+    // escapeSql() runs strip_tags() before escaping, so the length has to be
+    // re-checked AFTER it: a PIN of "<1234>" passed a check on the raw input,
+    // came out of strip_tags() as an empty string, and the UPDATE below then
+    // silently WIPED the contact's PIN while flashing "Phone PIN updated".
+    $pin = escapeSql(substr(trim($_POST['pin'] ?? ''), 0, 255));
+
+    if (strlen($pin) < 4) {
+        flashAlert("Your PIN needs to be at least 4 characters, and cannot contain < or >", 'error');
+        redirect('profile.php');
+    }
+
+    mysqli_query($mysqli, "UPDATE contacts SET contact_pin = '$pin' WHERE contact_id = $session_contact_id AND contact_client_id = $session_client_id");
+
+    // The PIN itself never goes in the log - it is a verification secret, and
+    // an audit trail an agent can read would defeat the point of having one
+    logAudit("Contact", "Edit", "Client contact $session_contact_name set their phone PIN in the client portal", $session_client_id, $session_contact_id);
+
+    flashAlert("Phone PIN updated");
+
+    redirect('profile.php');
+
+}
+
 if (isset($_GET['approve_ticket_task'])) {
 
     flashAlert('Approval decisions must be submitted from the protected ticket form.', 'warning');
@@ -263,7 +354,7 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
         approval_type, task_name, task_ticket_id, ticket_client_id
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
-        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        INNER JOIN tickets ON ticket_id = task_ticket_id
         WHERE approval_id = $approval_id AND approval_task_id = $task_id
         AND approval_status = 'pending' AND approval_scope = 'client'
         AND task_state NOT IN ('Completed','Skipped')
@@ -387,11 +478,11 @@ if (isset($_POST['add_ticket_feedback'])) {
     if (verifyContactTicketAccess($ticket_id, "Closed")) {
 
         // Add feedback
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_feedback = '$feedback' WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id AND ticket_deleted_at IS NULL LIMIT 1");
+        mysqli_query($mysqli, "UPDATE tickets SET ticket_feedback = '$feedback' WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id LIMIT 1");
 
         // Notify on bad feedback
         if ($feedback == "Bad") {
-            $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+            $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
             $ticket_number = intval($ticket_details['ticket_number']);
             appNotify("Feedback", "$session_contact_name rated ticket $config_ticket_prefix$ticket_number as bad (ID: $ticket_id)", "/agent/ticket.php?ticket_id=$ticket_id&client_id=$session_client_id", $session_client_id, $ticket_id);
         }
@@ -425,28 +516,18 @@ if (isset($_GET['resolve_ticket'])) {
             if (intval($locked_ticket['ticket_client_id']) !== intval($session_client_id)) {
                 throw new RuntimeException('The ticket is outside your client scope');
             }
-            ticketOperationalSetResolution(
-                $ticket_id,
-                'customer_confirmed',
-                'Customer marked the ticket resolved from the client portal.',
-                '',
-                $session_contact_id,
-                'contact'
-            );
             [$can_resolve, $resolve_error] = runbookTicketCanResolve($ticket_id);
             if (!$can_resolve) {
                 throw new RuntimeException($resolve_error);
             }
             runbookDbQuery("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW()
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
-                AND ticket_deleted_at IS NULL
                 AND ticket_status NOT IN (4, 5) AND ticket_resolved_at IS NULL
                 AND ticket_closed_at IS NULL LIMIT 1", 'Could not resolve the ticket');
             if (mysqli_affected_rows($mysqli) !== 1) {
                 throw new RuntimeException('The ticket is no longer open');
             }
             documentationRecordChangePassport($ticket_id, 4, 0, true);
-            ticketOperationalOnResolved($ticket_id, $session_contact_id, 'contact');
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the ticket resolution');
             }
@@ -457,7 +538,7 @@ if (isset($_GET['resolve_ticket'])) {
             redirect("ticket.php?id=" . $ticket_id);
         }
 
-        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
         $ticket_prefix = escapeSql($row['ticket_prefix'] ?? '');
         $ticket_number = intval($row['ticket_number'] ?? 0);
         setTicketResolutionSlaMet($ticket_id);
@@ -488,7 +569,7 @@ if (isset($_GET['reopen_ticket'])) {
     $ticket_id = intval($_GET['reopen_ticket']);
 
     // Get ticket details for logging
-    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
 
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
@@ -509,13 +590,11 @@ if (isset($_GET['reopen_ticket'])) {
             }
             runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
-                AND ticket_deleted_at IS NULL
                 AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
                 AND ticket_closed_at IS NULL LIMIT 1", 'Could not reopen the ticket');
             if (mysqli_affected_rows($mysqli) !== 1) {
                 throw new RuntimeException('The ticket is no longer resolved');
             }
-            ticketOperationalOnReopened($ticket_id, $session_contact_id, 'contact');
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the ticket reopen');
             }
@@ -572,7 +651,6 @@ if (isset($_GET['close_ticket'])) {
             }
             runbookDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW()
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
-                AND ticket_deleted_at IS NULL
                 AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
                 AND ticket_closed_at IS NULL LIMIT 1", 'Could not close the ticket');
             if (mysqli_affected_rows($mysqli) !== 1) {
@@ -589,7 +667,7 @@ if (isset($_GET['close_ticket'])) {
             redirect("ticket.php?id=" . $ticket_id);
         }
 
-        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+        $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_number, ticket_prefix FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
         $ticket_prefix = escapeSql($row['ticket_prefix'] ?? '');
         $ticket_number = intval($row['ticket_number'] ?? 0);
         syncTicketSlaClock($ticket_id);
@@ -611,6 +689,172 @@ if (isset($_GET['close_ticket'])) {
     }
 }
 
+
+if (isset($_GET['export_statement_pdf'])) {
+
+    validateCSRFToken();
+
+    enforceContactCan('accounting');
+
+    /*
+     * SCOPING: the client is taken from the session, never from the request.
+     * There is no client_id parameter on this handler by design - a contact
+     * cannot ask for another company's statement because there is nothing to
+     * ask with. enforceContactCan('accounting') above limits it to primary and
+     * billing contacts, matching client/statement.php and client/invoices.php.
+     */
+    $client_id = $session_client_id;
+
+    $sql = mysqli_query($mysqli, "SELECT client_currency_code, client_name FROM clients WHERE client_id = $client_id LIMIT 1");
+    $row = mysqli_fetch_assoc($sql);
+    $client_name = escapeHtml($row['client_name']);
+
+    // Match client/statement.php, the guest invoice view and the emailed
+    // statement - all four render in the client's own currency
+    $statement_currency_code = escapeHtml($row['client_currency_code']);
+    if (empty($statement_currency_code)) {
+        $statement_currency_code = $session_company_currency;
+    }
+
+    $sql = mysqli_query($mysqli, "SELECT company_address, company_city, company_country, company_logo, company_name,
+        company_phone, company_phone_country_code, company_state, company_website, company_zip
+        FROM companies WHERE company_id = 1");
+    $row = mysqli_fetch_assoc($sql);
+
+    $company_name = escapeHtml($row['company_name']);
+    $company_country = escapeHtml($row['company_country']);
+    $company_address = escapeHtml($row['company_address']);
+    $company_city = escapeHtml($row['company_city']);
+    $company_state = escapeHtml($row['company_state']);
+    $company_zip = escapeHtml($row['company_zip']);
+    $company_phone = escapeHtml(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
+    $company_website = escapeHtml($row['company_website']);
+    $company_logo = escapeHtml($row['company_logo']);
+
+    // Same statement query as client/statement.php - payments summed in a
+    // derived table so a twice-paid invoice is not counted twice, and the
+    // balance test drops anything fully paid
+    $statement_sql = mysqli_query(
+        $mysqli,
+        "SELECT invoice_amount, invoice_date, invoice_due, invoice_id, invoice_number, invoice_prefix,
+            invoice_scope, IFNULL(amount_paid, 0) AS amount_paid
+        FROM invoices
+        LEFT JOIN (
+            SELECT payment_invoice_id, SUM(payment_amount) AS amount_paid FROM payments
+            WHERE payment_archived_at IS NULL
+            GROUP BY payment_invoice_id
+        ) AS invoice_payments ON payment_invoice_id = invoice_id
+        WHERE invoice_client_id = $client_id
+        AND invoice_status NOT IN ('Draft', 'Cancelled', 'Non-Billable')
+        AND invoice_amount - IFNULL(invoice_payments.amount_paid, 0) > 0
+        ORDER BY invoice_date ASC, invoice_number ASC"
+    );
+
+    if (mysqli_num_rows($statement_sql) == 0) {
+        flashAlert("There is nothing outstanding to put on a statement", 'error');
+        redirect("statement.php");
+    }
+
+    require_once("../libs/TCPDF/tcpdf.php");
+
+    // Start TCPDF
+    $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+    $pdf->SetMargins(10, 10, 10);
+    $pdf->setPrintHeader(false);
+    $pdf->setPrintFooter(false);
+    $pdf->AddPage();
+    $pdf->SetFont('helvetica', '', 10);
+
+    // Logo + title
+    $html = '<table width="100%" cellspacing="0" cellpadding="3">
+    <tr>
+        <td width="40%">';
+    if (!empty($company_logo) && file_exists("../uploads/settings/$company_logo")) {
+        $html .= '<img src="/uploads/settings/' . $company_logo . '" width="120">';
+    }
+    $html .= '</td>
+        <td width="60%" align="right">
+            <span style="font-size:18pt; font-weight:bold;">Account Statement</span><br>
+            <span style="font-size:11pt;">As of ' . date("Y-m-d") . '</span>
+        </td>
+    </tr>
+    </table><br>';
+
+    $html .= '<table width="100%" cellspacing="0" cellpadding="2">
+    <tr>
+        <td width="50%" style="font-size:14pt; font-weight:bold;">' . $company_name . '</td>
+        <td width="50%" align="right" style="font-size:14pt; font-weight:bold;">' . $client_name . '</td>
+    </tr>
+    <tr>
+        <td style="font-size:10pt; line-height:1.4;">' . nl2br(formatAddress($company_address, $company_city, $company_state, $company_zip, $company_country) . "\n$company_phone\n$company_website") . '</td>
+        <td></td>
+    </tr>
+    </table><br>';
+
+    // Statement lines
+    $html .= '<table border="0" cellpadding="4" cellspacing="0" width="100%">
+    <tr style="background-color:#343a40; color:#ffffff; font-weight:bold;">
+        <td width="14%">Invoice</td>
+        <td width="30%">Scope</td>
+        <td width="13%">Date</td>
+        <td width="13%">Due</td>
+        <td width="10%" align="right">Amount</td>
+        <td width="10%" align="right">Paid</td>
+        <td width="10%" align="right">Balance</td>
+    </tr>';
+
+    $statement_total = 0;
+    $statement_row_shade = false;
+
+    while ($row = mysqli_fetch_assoc($statement_sql)) {
+        $invoice_prefix = escapeHtml($row['invoice_prefix']);
+        $invoice_number = intval($row['invoice_number']);
+        $invoice_scope = escapeHtml($row['invoice_scope']);
+        $invoice_date = escapeHtml($row['invoice_date']);
+        $invoice_due = escapeHtml($row['invoice_due']);
+        $invoice_amount = floatval($row['invoice_amount']);
+        $amount_paid = floatval($row['amount_paid']);
+        $invoice_balance = $invoice_amount - $amount_paid;
+
+        $statement_total = $statement_total + $invoice_balance;
+
+        // Same one-day grace as client/statement.php and client/invoices.php
+        if (strtotime($invoice_due) + 86400 < time()) {
+            $due_style = ' style="color:#dc3545;"';
+        } else {
+            $due_style = '';
+        }
+
+        $row_background = $statement_row_shade ? ' bgcolor="#f2f2f2"' : '';
+        $statement_row_shade = !$statement_row_shade;
+
+        $html .= '<tr' . $row_background . '>
+        <td style="font-size:9pt;">' . $invoice_prefix . $invoice_number . '</td>
+        <td style="font-size:9pt;">' . $invoice_scope . '</td>
+        <td style="font-size:9pt;">' . $invoice_date . '</td>
+        <td style="font-size:9pt;"' . $due_style . '>' . $invoice_due . '</td>
+        <td style="font-size:9pt;" align="right">' . numfmt_format_currency($currency_format, $invoice_amount, $statement_currency_code) . '</td>
+        <td style="font-size:9pt;" align="right">' . numfmt_format_currency($currency_format, $amount_paid, $statement_currency_code) . '</td>
+        <td style="font-size:9pt;" align="right">' . numfmt_format_currency($currency_format, $invoice_balance, $statement_currency_code) . '</td>
+        </tr>';
+    }
+
+    $html .= '<tr>
+        <td colspan="6" align="right" style="font-weight:bold;">Total Balance Due</td>
+        <td align="right" style="font-weight:bold;">' . numfmt_format_currency($currency_format, $statement_total, $statement_currency_code) . '</td>
+    </tr>
+    </table>';
+
+    $pdf->writeHTML($html, true, false, true, false, '');
+
+    $filename = toAlphanumeric($client_name) . "-Account_Statement-" . date("Y-m-d");
+
+    $pdf->Output("$filename.pdf", 'D');
+
+    exit();
+
+}
+
 if (isset($_GET['logout'])) {
 
     setcookie("PHPSESSID", '', time() - 3600, "/");
@@ -627,15 +871,12 @@ if (isset($_POST['edit_profile'])) {
 
     validateCSRFToken();
 
-    $new_password = (string) ($_POST['new_password'] ?? '');
+    $new_password = $_POST['new_password'];
 
-    if (!portalReauthenticate($_POST['current_password'] ?? '')) {
-        flashAlert('That password was not right - your password has not been changed', 'error');
-        redirect('profile.php');
-    }
-
-    if (strlen($new_password) < 8) {
-        flashAlert('Your new password must be at least eight characters', 'error');
+    // Without this a hijacked session could set a new password without knowing
+    // the old one, locking the real contact out of their own portal.
+    if (!empty($new_password) && !portalReauthenticate($_POST['current_password'] ?? '')) {
+        flashAlert("That password was not right - your password has not been changed", 'error');
         redirect('profile.php');
     }
 
@@ -1434,32 +1675,53 @@ if (isset($_POST['client_add_document'])) {
     $document_description = escapeSql($_POST['document_description']);
     $document_content_raw = escapeSql($document_name . " " . strip_tags($_POST['document_content']));
 
-    // Create document
-    mysqli_query($mysqli, "INSERT INTO documents SET
-        document_name = '$document_name',
-        document_description = '$document_description',
-        document_content = '',
-        document_content_raw = '$document_content_raw',
-        document_client_visible = 1,
-        document_client_id = $session_client_id,
-        document_created_by = $session_contact_id");
-
-    $document_id = mysqli_insert_id($mysqli);
-
-    $processed_content = mysqli_escape_string(
-        $mysqli,
-        saveBase64Images(
-            $_POST['document_content'],
-            $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
-            "uploads/documents/",
-            $document_id
-        )
-    );
-
-    // Document update content
-    mysqli_query($mysqli,"UPDATE documents SET document_content = '$processed_content' WHERE document_id = $document_id");
-
-    logAudit("Document", "Create", "Client contact $session_contact_name created document $document_name", $session_client_id, $document_id);
+    $staging_batch = fileStagingBatchToken();
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the portal document transaction');
+        }
+        if (!documentationLockClient($session_client_id)) {
+            throw new RuntimeException('The portal document client is unavailable');
+        }
+        if (!mysqli_query($mysqli, "INSERT INTO documents SET
+            document_name = '$document_name',
+            document_description = '$document_description',
+            document_content = '',
+            document_content_raw = '$document_content_raw',
+            document_client_visible = 1,
+            document_client_id = $session_client_id,
+            document_created_by = $session_contact_id")) {
+            throw new RuntimeException('Could not create the portal document');
+        }
+        $document_id = intval(mysqli_insert_id($mysqli));
+        $processed_content = mysqli_escape_string(
+            $mysqli,
+            saveBase64Images(
+                $_POST['document_content'],
+                $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
+                "uploads/documents/",
+                $document_id,
+                $staging_batch,
+                'document'
+            )
+        );
+        if (!mysqli_query($mysqli,"UPDATE documents SET document_content = '$processed_content' WHERE document_id = $document_id")) {
+            throw new RuntimeException('Could not save portal document content');
+        }
+        if (!logAudit("Document", "Create", "Client contact $session_contact_name created document $document_name", $session_client_id, $document_id)) {
+            throw new RuntimeException('Could not audit portal document creation');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit portal document creation');
+        }
+    } catch (Throwable $error) {
+        mysqli_rollback($mysqli);
+        fileStagingDiscardBatch($staging_batch);
+        logApp('Document', 'error', $error->getMessage());
+        flashAlert('The document could not be created.', 'error');
+        redirect('documents.php');
+    }
+    fileStagingFinalizeCommittedBatch($staging_batch, "Portal document $document_id creation");
 
     flashAlert("Document <strong>$document_name</strong> created successfully");
 

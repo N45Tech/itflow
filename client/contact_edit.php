@@ -64,22 +64,18 @@ if ($row) {
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
             <input type="hidden" name="contact_id" value="<?= $contact_id ?>">
 
-            <div class="form-group">
+            <div class="mb-3">
                 <label for="contactName">Name <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
-                    </div>
                     <input type="text" class="form-control" id="contactName" name="contact_name" value="<?= escapeHtml($contact_name) ?>" required maxlength="200">
                 </div>
             </div>
 
-            <div class="form-group">
+            <div class="mb-3">
                 <label for="contactEmail">Email <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-envelope"></i></span>
-                    </div>
                     <input type="email" class="form-control" id="contactEmail" name="contact_email" value="<?= escapeHtml($contact_email) ?>" required maxlength="200">
                 </div>
             </div>
@@ -118,13 +114,11 @@ if ($row) {
                 </div>
             </fieldset>
 
-            <div class="form-group">
+            <div class="mb-3">
                 <label for="contactAuthMethod">Portal authentication</label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-user-circle"></i></span>
-                    </div>
-                    <select class="form-control select2 authMethod" id="contactAuthMethod" name="contact_auth_method">
+                    <select class="form-select select2 authMethod" id="contactAuthMethod" name="contact_auth_method">
                         <option value="">- No portal access -</option>
                         <option value="local" <?php if ($contact_auth_method == "local") { echo "selected"; } ?>>Local (Email and password)</option>
                         <?php if (!empty($config_azure_client_id)) { ?>
@@ -136,7 +130,7 @@ if ($row) {
 
             <div class="n45-form-actions">
                 <?php if ($contact_primary || $contact_id == $_SESSION['contact_id']) { ?>
-                    <span class="text-muted"><i class="fas fa-lock mr-2" aria-hidden="true"></i>This protected contact cannot be changed here.</span>
+                    <span class="text-muted"><i class="fas fa-lock me-2" aria-hidden="true"></i>This protected contact cannot be changed here.</span>
                 <?php } else { ?>
                     <button class="btn btn-primary" name="edit_contact"><i class="fas fa-check" aria-hidden="true"></i>Save changes</button>
                 <?php } ?>

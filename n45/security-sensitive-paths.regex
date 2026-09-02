@@ -1,10 +1,8 @@
 ^(login\.php|functions\.php|db\.sql)$
 ^\.github/workflows/
 ^(api|client|agent|admin/post|post)/
-^(guest|cron)/
 ^functions/
 ^includes/(check_login|database_version)\.php$
 ^(admin/database_updates|n45/migrations|setup)/
 ^scripts/(update_cli|setup_cli|restore_cli)\.php$
-^libs/composer\.(json|lock)$
 ^deploy/

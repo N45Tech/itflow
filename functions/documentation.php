@@ -40,22 +40,6 @@ function documentationPromiseReasonCodes() {
     return ['client-input', 'evidence-follow-up', 'technical-validation', 'documentation-refresh'];
 }
 
-function documentationAssertDistinctDecisionActor($requested_by, $actor_id, $decision_type) {
-    $requested_by = max(0, intval($requested_by));
-    $actor_id = max(0, intval($actor_id));
-    $decision_type = strtolower(trim((string) $decision_type));
-    if ($actor_id < 1) {
-        throw new InvalidArgumentException('A documentation decision actor is required');
-    }
-    if ($requested_by > 0 && $requested_by === $actor_id) {
-        $message = $decision_type === 'waiver'
-            ? 'Waiver requesters cannot decide their own request'
-            : 'Exception requesters cannot approve or decide their own request';
-        throw new RuntimeException($message);
-    }
-    return true;
-}
-
 function documentationBaseStatuses() {
     return ['Missing', 'Draft', 'Current', 'Due Soon', 'Stale', 'Not Applicable'];
 }
@@ -1812,21 +1796,14 @@ function documentationEvaluateClient($client_id, $actor_id = 0, $caller_transact
 function documentationEvaluateDueClients($limit = 100) {
     $limit = max(1, min(1000, intval($limit)));
     $client_ids = [];
-    // MariaDB 11.4 rejects an aggregate alias inside an IS NULL expression in
-    // the same SELECT. Project it first so the scheduler orders plain columns.
-    $rows = documentationDbQuery("SELECT candidate.client_id, candidate.last_evaluation
-        FROM (
-            SELECT client.client_id,
-                MAX(obligation.documentation_obligation_evaluated_at) AS last_evaluation
-            FROM clients client
-            LEFT JOIN client_documentation_obligations obligation
-                ON obligation.documentation_obligation_client_id = client.client_id
-            WHERE client.client_archived_at IS NULL AND client.client_lead = 0
-            GROUP BY client.client_id
-        ) candidate
-        ORDER BY candidate.last_evaluation IS NULL DESC,
-            candidate.last_evaluation ASC,
-            candidate.client_id ASC
+    $rows = documentationDbQuery("SELECT client.client_id,
+        MAX(obligation.documentation_obligation_evaluated_at) AS last_evaluation
+        FROM clients client
+        LEFT JOIN client_documentation_obligations obligation
+            ON obligation.documentation_obligation_client_id = client.client_id
+        WHERE client.client_archived_at IS NULL AND client.client_lead = 0
+        GROUP BY client.client_id
+        ORDER BY last_evaluation IS NULL DESC, last_evaluation ASC, client.client_id ASC
         LIMIT $limit", 'Could not select clients for documentation evaluation');
     while ($row = mysqli_fetch_assoc($rows)) {
         $client_ids[] = intval($row['client_id']);
@@ -2213,11 +2190,9 @@ function documentationValidateEvidenceReference($client_id, $document_id, $evide
             AND version.document_version_document_id = $document_id
             AND document.document_client_id = $client_id AND document.document_archived_at IS NULL LIMIT 1$lock_sql",
         'file' => "SELECT file_id AS documentation_evidence_entity_id FROM files WHERE file_id = $reference_id
-            AND file_client_id = $client_id AND file_archived_at IS NULL
-            AND file_deleted_at IS NULL LIMIT 1$lock_sql",
+            AND file_client_id = $client_id AND file_archived_at IS NULL LIMIT 1$lock_sql",
         'ticket' => "SELECT ticket_id AS documentation_evidence_entity_id FROM tickets WHERE ticket_id = $reference_id
-            AND ticket_client_id = $client_id AND ticket_archived_at IS NULL
-            AND ticket_deleted_at IS NULL LIMIT 1$lock_sql",
+            AND ticket_client_id = $client_id AND ticket_archived_at IS NULL LIMIT 1$lock_sql",
         'automation' => "SELECT automation_mapping_id AS documentation_evidence_entity_id
             FROM automation_entity_mappings
             WHERE automation_mapping_id = $reference_id AND automation_mapping_client_id = $client_id
@@ -2578,11 +2553,9 @@ function documentationDecideObligationException(
             !== intval($obligation['documentation_obligation_requirement_version_id'])) {
             throw new RuntimeException('The documentation exception belongs to a superseded requirement version');
         }
-        documentationAssertDistinctDecisionActor(
-            $exception['documentation_obligation_exception_requested_by'],
-            $actor_id,
-            'exception'
-        );
+        if (intval($exception['documentation_obligation_exception_requested_by']) === $actor_id) {
+            throw new RuntimeException('Exception requesters cannot approve or decide their own request');
+        }
         if ($obligation['documentation_requirement_version_exception_approval_policy'] === 'administrator'
             && !documentationAgentIsAdministrator($actor_id)) {
             throw new RuntimeException('This documentation exception requires an administrator decision');
@@ -2661,7 +2634,7 @@ function documentationLockTicket($ticket_id) {
     $ticket = mysqli_fetch_assoc(documentationDbQuery("SELECT ticket_id, ticket_client_id,
         ticket_configuration_change, ticket_documentation_impact, ticket_status,
         ticket_resolved_at, ticket_closed_at FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the documentation ticket'));
+        WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not lock the documentation ticket'));
     if (!$ticket) {
         throw new RuntimeException('The documentation ticket no longer exists');
     }
@@ -2672,7 +2645,7 @@ function documentationLockClientTicket($ticket_id, $expected_client_id = 0) {
     $ticket_id = intval($ticket_id);
     $expected_client_id = max(0, intval($expected_client_id));
     $prelock = mysqli_fetch_assoc(documentationDbQuery("SELECT ticket_client_id FROM tickets
-        WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not locate the documentation ticket client'));
+        WHERE ticket_id = $ticket_id LIMIT 1", 'Could not locate the documentation ticket client'));
     if (!$prelock) {
         throw new RuntimeException('The documentation ticket no longer exists');
     }
@@ -2763,7 +2736,6 @@ function documentationLinkTicketObligation(
                 ticket_documentation_assessed_by = $actor_id,
                 ticket_documentation_assessed_at = NOW()
                 WHERE ticket_id = $ticket_id
-                AND ticket_deleted_at IS NULL
                 AND ticket_documentation_impact = '$observed_impact_sql'", 'Could not mark the ticket documentation impact as linked');
             if (mysqli_affected_rows($mysqli) !== 1) {
                 throw new RuntimeException('The ticket documentation assessment changed; refresh and try again');
@@ -3070,11 +3042,9 @@ function documentationDecideTicketWaiver(
         if (intval($expected_revision) !== $revision) {
             throw new RuntimeException('The ticket documentation waiver changed; refresh and try again');
         }
-        documentationAssertDistinctDecisionActor(
-            $waiver['ticket_documentation_waiver_requested_by'],
-            $actor_id,
-            'waiver'
-        );
+        if (intval($waiver['ticket_documentation_waiver_requested_by']) === $actor_id) {
+            throw new RuntimeException('Waiver requesters cannot decide their own request');
+        }
         if ($waiver['documentation_requirement_version_exception_approval_policy'] === 'administrator'
             && !documentationAgentIsAdministrator($actor_id)) {
             throw new RuntimeException('This ticket documentation waiver requires an administrator decision');

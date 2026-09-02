@@ -41,8 +41,7 @@ $ticket_sql = mysqli_query($mysqli,
     "SELECT * FROM tickets
             LEFT JOIN users on ticket_assigned_to = user_id
             LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-            WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
-            AND ticket_deleted_at IS NULL"
+            WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'"
 );
 
 if (mysqli_num_rows($ticket_sql) !== 1) {
@@ -177,11 +176,11 @@ if ($ticket_row) {
         <div class="card card-outline <?php if ($ticket_reply_type == 'Client') { echo "card-warning"; } else { echo "card-info"; } ?> mb-3">
             <div class="card-header">
                 <h3 class="card-title">
-                    <div class="media">
+                    <div class="d-flex">
                         <?php
                         if (!empty($user_avatar)) {
                             ?>
-                            <img src="<?= $avatar_link ?>" alt="User Avatar" class="img-size-50 mr-3 img-circle">
+                            <img src="<?= $avatar_link ?>" alt="User Avatar" class="img-size-50 me-3 rounded-circle">
                             <?php
                         } else {
                             ?>
@@ -193,7 +192,7 @@ if ($ticket_row) {
                         }
                         ?>
 
-                        <div class="media-body">
+                        <div class="flex-grow-1">
                             <?= $ticket_reply_by_display ?>
                             <br>
                             <small class="text-muted"><?= $ticket_reply_created_at ?> <?php if (!empty($ticket_reply_updated_at)) { echo "(edited: $ticket_reply_updated_at)"; } ?></small>
@@ -220,7 +219,7 @@ if ($ticket_row) {
     } ?>
 
 <div class="card-footer">
-    <?= "<i class='fas fa-phone fa-fw mr-2'></i>$company_phone | <i class='fas fa-globe fa-fw mr-2 ml-2'></i>$company_website" ?>
+    <?= "<i class='fas fa-phone fa-fw me-2'></i>$company_phone | <i class='fas fa-globe fa-fw me-2 ms-2'></i>$company_website" ?>
 </div>
 
 <?php

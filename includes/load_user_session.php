@@ -6,8 +6,7 @@ $session_user_id = intval($_SESSION['user_id']);
 
 $sql = mysqli_query(
     $mysqli,
-    "SELECT role_id AS active_role_id, role_type, role_is_admin, role_name, role_archived_at,
-        user_archived_at, user_avatar, user_config_force_mfa,
+    "SELECT role_is_admin, role_name, user_archived_at, user_avatar, user_config_force_mfa,
         user_config_records_per_page, user_config_theme_dark, user_email, user_name, user_role_id,
         user_status, user_token, user_type FROM users
      LEFT JOIN user_settings ON users.user_id = user_settings.user_id
@@ -16,12 +15,6 @@ $sql = mysqli_query(
 );
 
 $row = mysqli_fetch_assoc($sql);
-
-if (!$row) {
-    session_unset();
-    session_destroy();
-    redirect("/login.php");
-}
 
 $session_name = escapeSql($row['user_name']);
 $session_email = $row['user_email'];
@@ -53,16 +46,6 @@ if ($session_user_status !== 1) {
 
 // Check User is archived
 if ($session_user_archived_at !== null) {
-    session_unset();
-    session_destroy();
-    redirect("/login.php");
-}
-
-// Internal access is role-backed. A missing, foreign-type, or archived role
-// invalidates the session instead of silently producing a non-admin account
-// whose downstream permission checks can disagree.
-if ($session_user_role < 1 || intval($row['active_role_id'] ?? 0) !== $session_user_role
-    || intval($row['role_type'] ?? 0) !== 1 || $row['role_archived_at'] !== null) {
     session_unset();
     session_destroy();
     redirect("/login.php");

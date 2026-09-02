@@ -19,6 +19,12 @@ The first administrator's generated local/vault password is written once to `/ho
 
 The application is image-managed. Deploy updates by checking out the reviewed branch, rebuilding, and recreating the web and cron containers. Do not use ITFlow's in-app Git updater in this deployment.
 
+Create the deployment-ticket record from the
+[exact-SHA release checklist](../../docs/n45/release-checklist.md). Complete its
+pre-GO phase before requesting authorization to change `infra01`, then use its
+maintenance, canary, evidence and reopen phases as stop gates for the approved
+SHA.
+
 For every update, keep database migration and reconciliation inside one maintenance window. Do not run `docker compose up -d --build`: that can start application writers on the new image before its migrations complete. Use this order instead:
 
 1. Require green release CI for the exact reviewed commit and record that commit in the deployment ticket.
@@ -39,66 +45,12 @@ Two deployment kill switches can quiesce optional integration traffic without ch
 
 Agreement-entitlement activation, SLA precedence, service-review scheduling, compatibility adapters, and rollback expectations are documented in [AGREEMENT_ENTITLEMENTS.md](AGREEMENT_ENTITLEMENTS.md).
 
-The N45 Internal agreement canary is intentionally not a global seed. After
-recording the exact internal client ID and an authorized support-write actor ID,
-run its rollback-only reconciliation, apply once, then apply again to prove the
-unchanged second pass. The command refuses real-client names and competing
-published agreements; see the linked agreement guide for evidence requirements.
-
-```bash
-sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_internal_agreement.php --dry-run --client-id=ID --actor-id=ID
-sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_internal_agreement.php --apply --client-id=ID --actor-id=ID
-sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_internal_agreement.php --apply --client-id=ID --actor-id=ID
-```
-
 After deploying this revision and completing the database update, reconcile the canonical templates from the web container. Always run the dry run first and review its counts; it performs the full transaction, including validation, publication and project-stage pinning, then rolls it back. This is the explicit upgrade path for existing templates: apply unarchives matching templates, replaces their editable metadata and draft tasks with the canonical definitions, and replaces the matching project composition, while retaining immutable published history. Reconciliation fails closed if a same-name template already has published history under a different stable key; that identity requires an explicit fork or mapping rather than an in-place rewrite. The apply command is idempotent: unchanged Managed Care Onboarding and Client Offboarding definitions reuse their published runbook versions, and project composition is pinned to those immutable versions.
 
 ```bash
 sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_templates.php --dry-run
 sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_templates.php --apply
 ```
-
-After canonical template reconciliation, reconcile the six portal request
-families. This second reconciler resolves only stable request and runbook keys;
-it never assumes database IDs or chooses a version by recency. It verifies the
-active template, authoritative published pointer, immutable definition hash,
-runbook type, task ownership/evidence metadata and required approval gate before
-binding and publishing. An identical catalog definition reuses its existing
-version. A missing, ambiguous, archived, drifted or corrupt prerequisite clears
-the starter's live pointer and leaves its editable draft/history intact; exit
-status `3` is a deployment stop condition.
-
-```bash
-sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_portal_requests.php --dry-run
-sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_portal_requests.php --apply
-sudo docker compose --env-file /opt/n45/psa/.env run --rm --no-deps web php deploy/psa/reconcile_portal_requests.php --dry-run
-```
-
-The first dry run must report six publishable/reusable items and zero drafts.
-After apply, the second dry run must report six reused releases, zero new
-versions and zero drafts. Before a live canary, the service owner must identify
-one disposable client with two active portal users: a manager requester and a
-different technical contact with client ticket visibility. Confirm outbound
-approval mail only if guest-link delivery is part of the canary; a portal-
-eligible technical contact is sufficient for the in-app approval route.
-
-For the Scheduled Work canary, submit one request as the manager, verify that no
-ticket exists while approval is pending, and approve it as the distinct
-technical contact. Record the submission ID, its two audit events, the one
-linked ticket, the execution's exact catalog/runbook version IDs and the
-technical task-approval event. A repeated form POST and repeated approval must
-not create another ticket. Attempt resolution before all dependency, approval
-and evidence gates pass; it must fail. After completing the runbook, download
-the closeout and verify the export audit row, generic actor labels, redacted
-evidence references and absence of secrets/URLs/filenames before closing the
-ticket. These are production-only canary steps; do not synthesize or reuse a
-real client request to satisfy them.
-
-CI also runs `php tests/portal_request_scheduled_work_acceptance_test.php`, a
-database-free two-contact scenario covering tenant rejection, exact submission
-replay, one-ticket handoff, pinned catalog/runbook releases, technical task
-approval, close gating, closeout redaction and export auditing. It is a local
-regression harness and does not replace the production-only canary above.
 
 Reconcile the versioned N45 documentation-requirement catalog and project the
 resulting client obligations. Inspect the rollback-only pass before applying:

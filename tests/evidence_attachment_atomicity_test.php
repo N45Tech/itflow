@@ -113,64 +113,33 @@ $assertNotContains(
 );
 
 $ticket_post = $read('agent/post/ticket.php');
-$retention = $read('functions/retention.php');
 $attachment_delete = $section(
     $ticket_post,
     "if (isset(\$_GET['delete_ticket_attachment']))",
     "if (isset(\$_POST['edit_ticket_reply']))",
     'ticket attachment deletion handler'
 );
-$assertOrdered($attachment_delete, [
-    'enforceAdminPermission()',
-    '/admin/retention.php?record_type=attachment',
-], 'Legacy attachment deletion does not route through the administrator retention workflow');
-$assertNotContains('DELETE FROM ticket_attachments', $attachment_delete,
-    'Legacy attachment handler still removes metadata directly');
-
-$retained_attachment_delete = $section(
-    $retention,
-    'function retentionSoftDeleteAttachment(',
-    'function retentionDeletionForUpdate(',
-    'recoverable attachment deletion'
-);
 $assertOrdered(
-    $retained_attachment_delete,
+    $attachment_delete,
     [
-        'retentionRequireAdministratorActor($actor_id)',
         'mysqli_begin_transaction($mysqli)',
-        'documentationLockClient($client_id)',
-        'FROM tickets WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id',
+        'FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE',
+        'runbookRequireLockedTicketClient($locked_ticket, $client_id)',
+        'FROM ticket_attachments WHERE ticket_attachment_id = $attachment_id',
         "LIMIT 1 FOR UPDATE",
-        'FROM ticket_attachments',
+        'FROM task_evidence WHERE task_evidence_attachment_id = $attachment_id',
         'LIMIT 1 FOR UPDATE',
-        'FROM task_evidence',
-        'WHERE task_evidence_attachment_id = $attachment_id',
-        'LIMIT 1 FOR UPDATE',
-        'ticket_customer_signature_attachment_id = $attachment_id',
-        'retentionPrepareQuarantinePlan(',
-        'UPDATE ticket_attachments SET',
+        'DELETE FROM ticket_attachments',
         'mysqli_affected_rows($mysqli) !== 1',
-        "retentionWriteDeletionLedger('attachment'",
-        "retentionAppendEvent('attachment'",
         'mysqli_commit($mysqli)',
-        "retentionFinalizePendingQuarantine(",
+        'realpath(__DIR__ . "/../../uploads/tickets")',
+        'unlink($file_path)',
+        'metadata was deleted but file cleanup failed',
     ],
-    'Attachment deletion does not lock, quarantine, soft-delete, audit, and commit atomically'
+    'Attachment deletion does not lock, revalidate, delete metadata, commit, and then clean the file in the required order'
 );
-$assertContains('mysqli_rollback($mysqli)', $retained_attachment_delete,
-    'Attachment soft deletion cannot roll back on a race or query failure');
-$assertNotContains('retentionMovePreparedQuarantine(', $retained_attachment_delete,
-    'Attachment bytes move before the soft-delete plan commits');
-$quarantine = $section($retention, 'function retentionPrepareQuarantinePlan(',
-    'function retentionRollbackQuarantine(', 'quarantine confinement');
-$assertOrdered($quarantine, [
-    'retentionPathIsWithin($source, $uploads)',
-    'retentionAssertNoSymlinkComponents($source, $uploads)',
-    'realpath($source)',
-    'function retentionMovePreparedQuarantine(',
-    'retentionPathIsWithin($source, $uploads)',
-    '$move_file($source, $target)',
-], 'Quarantine move is not confined to the uploads root');
+$assertContains('mysqli_rollback($mysqli)', $attachment_delete, 'Attachment metadata deletion cannot roll back on a race or query failure');
+$assertContains('$uploads_prefix', $attachment_delete, 'Post-commit attachment cleanup lost its safe path confinement guard');
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);

@@ -88,12 +88,13 @@ DROP TABLE IF EXISTS `api_keys`;
 CREATE TABLE `api_keys` (
   `api_key_id` int(11) NOT NULL AUTO_INCREMENT,
   `api_key_name` varchar(255) NOT NULL,
-  `api_key_secret` varchar(255) NOT NULL,
+  `api_key_secret` varbinary(255) NOT NULL,
   `api_key_decrypt_hash` varchar(200) NOT NULL,
   `api_key_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `api_key_expire` date NOT NULL,
   `api_key_user_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`api_key_id`)
+  PRIMARY KEY (`api_key_id`),
+  UNIQUE KEY `api_key_secret_unique` (`api_key_secret`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -454,7 +455,8 @@ CREATE TABLE `assets` (
   `asset_location_id` int(11) NOT NULL DEFAULT 0,
   `asset_contact_id` int(11) NOT NULL DEFAULT 0,
   `asset_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`asset_id`)
+  PRIMARY KEY (`asset_id`),
+  KEY `asset_client_id` (`asset_client_id`,`asset_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -561,7 +563,6 @@ CREATE TABLE `automation_entity_snapshots` (
   `automation_snapshot_asset_id` int(11) NOT NULL DEFAULT 0,
   `automation_snapshot_payload_hash` char(64) NOT NULL,
   `automation_snapshot_payload` longtext NOT NULL,
-  `automation_snapshot_payload_redacted_at` datetime DEFAULT NULL,
   `automation_snapshot_observed_at` datetime NOT NULL,
   `automation_snapshot_first_seen_at` datetime NOT NULL DEFAULT current_timestamp(),
   `automation_snapshot_last_seen_at` datetime NOT NULL DEFAULT current_timestamp(),
@@ -569,8 +570,7 @@ CREATE TABLE `automation_entity_snapshots` (
   UNIQUE KEY `automation_snapshot_source_entity_hash` (`automation_snapshot_source`,`automation_snapshot_entity_type`,`automation_snapshot_external_id`,`automation_snapshot_client_id`,`automation_snapshot_asset_id`,`automation_snapshot_payload_hash`),
   KEY `automation_snapshot_entity_observed` (`automation_snapshot_source`,`automation_snapshot_entity_type`,`automation_snapshot_external_id`,`automation_snapshot_observed_at`),
   KEY `automation_snapshot_client` (`automation_snapshot_client_id`),
-  KEY `automation_snapshot_asset` (`automation_snapshot_asset_id`),
-  KEY `automation_snapshot_payload_retention` (`automation_snapshot_payload_redacted_at`,`automation_snapshot_last_seen_at`)
+  KEY `automation_snapshot_asset` (`automation_snapshot_asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -593,7 +593,11 @@ CREATE TABLE `automation_events` (
   `automation_event_delivery_count` int(11) NOT NULL DEFAULT 1,
   `automation_event_process_attempts` int(11) NOT NULL DEFAULT 1,
   `automation_event_max_attempts` int(11) NOT NULL DEFAULT 5,
+  `automation_event_api_key_id` int(11) NOT NULL DEFAULT 0,
+  `automation_event_api_user_id` int(11) NOT NULL DEFAULT 0,
+  `automation_event_authorized_client_id` int(11) NOT NULL DEFAULT 0,
   `automation_event_processing_at` datetime DEFAULT NULL,
+  `automation_event_lease_token` char(64) DEFAULT NULL,
   `automation_event_next_attempt_at` datetime DEFAULT NULL,
   `automation_event_last_error` text DEFAULT NULL,
   `automation_event_suppressed_reason` varchar(80) DEFAULT NULL,
@@ -601,7 +605,6 @@ CREATE TABLE `automation_events` (
   `automation_event_ticket_id` int(11) NOT NULL DEFAULT 0,
   `automation_event_payload_hash` char(64) NOT NULL,
   `automation_event_payload` longtext DEFAULT NULL,
-  `automation_event_payload_redacted_at` datetime DEFAULT NULL,
   `automation_event_occurred_at` datetime DEFAULT NULL,
   `automation_event_received_at` datetime NOT NULL DEFAULT current_timestamp(),
   `automation_event_last_received_at` datetime NOT NULL DEFAULT current_timestamp(),
@@ -613,8 +616,37 @@ CREATE TABLE `automation_events` (
   KEY `automation_event_incident` (`automation_event_source`,`automation_event_incident_key`),
   KEY `automation_event_fingerprint` (`automation_event_source`,`automation_event_incident_key`,`automation_event_fingerprint`),
   KEY `automation_event_queue` (`automation_event_status`,`automation_event_next_attempt_at`,`automation_event_received_at`),
-  KEY `automation_event_ticket` (`automation_event_ticket_id`),
-  KEY `automation_event_payload_retention` (`automation_event_payload_redacted_at`,`automation_event_last_received_at`)
+  KEY `automation_event_lease` (`automation_event_status`,`automation_event_processing_at`,`automation_event_lease_token`),
+  KEY `automation_event_ticket` (`automation_event_ticket_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `automation_event_dispatch_outbox`
+--
+
+DROP TABLE IF EXISTS `automation_event_dispatch_outbox`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `automation_event_dispatch_outbox` (
+  `automation_dispatch_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `automation_dispatch_event_key` char(64) NOT NULL,
+  `automation_dispatch_event_id` bigint(20) NOT NULL,
+  `automation_dispatch_entity_id` int(11) NOT NULL,
+  `automation_dispatch_trigger` varchar(40) NOT NULL,
+  `automation_dispatch_status` varchar(20) NOT NULL DEFAULT 'Pending',
+  `automation_dispatch_attempts` int(11) NOT NULL DEFAULT 0,
+  `automation_dispatch_available_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_dispatch_processing_at` datetime DEFAULT NULL,
+  `automation_dispatch_lease_token` char(64) DEFAULT NULL,
+  `automation_dispatch_delivered_at` datetime DEFAULT NULL,
+  `automation_dispatch_last_error` varchar(1000) DEFAULT NULL,
+  `automation_dispatch_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `automation_dispatch_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`automation_dispatch_id`),
+  UNIQUE KEY `automation_dispatch_event_key` (`automation_dispatch_event_key`),
+  UNIQUE KEY `automation_dispatch_event_trigger` (`automation_dispatch_event_id`,`automation_dispatch_trigger`),
+  KEY `automation_dispatch_status_available` (`automation_dispatch_status`,`automation_dispatch_available_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -755,6 +787,23 @@ CREATE TABLE `budget` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `business_holidays`
+--
+
+DROP TABLE IF EXISTS `business_holidays`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `business_holidays` (
+  `holiday_id` int(11) NOT NULL AUTO_INCREMENT,
+  `holiday_date` date NOT NULL,
+  `holiday_name` varchar(200) NOT NULL,
+  `holiday_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`holiday_id`),
+  UNIQUE KEY `holiday_date` (`holiday_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `calendar_event_attendees`
 --
 
@@ -801,6 +850,7 @@ CREATE TABLE `calendar_events` (
   `event_calendar_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`event_id`),
   KEY `event_calendar_id` (`event_calendar_id`),
+  KEY `event_client_id` (`event_client_id`),
   CONSTRAINT `calendar_events_ibfk_1` FOREIGN KEY (`event_calendar_id`) REFERENCES `calendars` (`calendar_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -825,6 +875,26 @@ CREATE TABLE `calendars` (
   `calendar_archived_at` datetime DEFAULT NULL,
   PRIMARY KEY (`calendar_id`),
   UNIQUE KEY `calendar_feed_key` (`calendar_feed_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `canned_responses`
+--
+
+DROP TABLE IF EXISTS `canned_responses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `canned_responses` (
+  `canned_response_id` int(11) NOT NULL AUTO_INCREMENT,
+  `canned_response_name` varchar(200) NOT NULL,
+  `canned_response_body` longtext DEFAULT NULL,
+  `canned_response_category_id` int(11) NOT NULL DEFAULT 0,
+  `canned_response_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `canned_response_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  `canned_response_archived_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`canned_response_id`),
+  KEY `canned_response_category_id` (`canned_response_category_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -894,7 +964,8 @@ CREATE TABLE `certificates` (
   `certificate_accessed_at` datetime DEFAULT NULL,
   `certificate_domain_id` int(11) NOT NULL DEFAULT 0,
   `certificate_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`certificate_id`)
+  PRIMARY KEY (`certificate_id`),
+  KEY `certificate_client_id` (`certificate_client_id`,`certificate_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1182,7 +1253,8 @@ CREATE TABLE `contacts` (
   `contact_user_id` int(11) NOT NULL DEFAULT 0,
   `contact_department` varchar(200) DEFAULT NULL,
   `contact_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`contact_id`)
+  PRIMARY KEY (`contact_id`),
+  KEY `contact_client_id` (`contact_client_id`,`contact_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1523,7 +1595,8 @@ CREATE TABLE `credentials` (
   `credential_contact_id` int(11) NOT NULL DEFAULT 0,
   `credential_asset_id` int(11) NOT NULL DEFAULT 0,
   `credential_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`credential_id`)
+  PRIMARY KEY (`credential_id`),
+  KEY `credential_client_id` (`credential_client_id`,`credential_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2041,6 +2114,7 @@ CREATE TABLE `documents` (
   `document_updated_by` int(11) NOT NULL DEFAULT 0,
   `document_client_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`document_id`),
+  KEY `document_client_id` (`document_client_id`,`document_archived_at`),
   FULLTEXT KEY `document_content_raw` (`document_content_raw`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -2093,7 +2167,8 @@ CREATE TABLE `domains` (
   `domain_dnshost` int(11) NOT NULL DEFAULT 0,
   `domain_mailhost` int(11) NOT NULL DEFAULT 0,
   `domain_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`domain_id`)
+  PRIMARY KEY (`domain_id`),
+  KEY `domain_client_id` (`domain_client_id`,`domain_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2121,7 +2196,8 @@ CREATE TABLE `email_queue` (
   `email_failed_at` datetime DEFAULT NULL,
   `email_attempts` tinyint(1) NOT NULL DEFAULT 0,
   `email_sent_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`email_id`)
+  PRIMARY KEY (`email_id`),
+  KEY `email_status` (`email_status`,`email_queued_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2171,17 +2247,39 @@ CREATE TABLE `files` (
   `file_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `file_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `file_archived_at` datetime DEFAULT NULL,
-  `file_deleted_at` datetime DEFAULT NULL,
-  `file_deleted_by` int(11) NOT NULL DEFAULT 0,
-  `file_delete_reason` varchar(500) DEFAULT NULL,
-  `file_restore_until` datetime DEFAULT NULL,
-  `file_purge_eligible_at` datetime DEFAULT NULL,
   `file_accessed_at` datetime DEFAULT NULL,
   `file_created_by` int(11) NOT NULL DEFAULT 0,
   `file_folder_id` int(11) NOT NULL DEFAULT 0,
   `file_client_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`file_id`),
-  KEY `file_retention_queue` (`file_deleted_at`,`file_purge_eligible_at`)
+  KEY `file_client_id` (`file_client_id`,`file_archived_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `file_staging_operations`
+--
+
+DROP TABLE IF EXISTS `file_staging_operations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `file_staging_operations` (
+  `file_staging_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `file_staging_batch_token` char(64) NOT NULL,
+  `file_staging_owner_type` varchar(40) NOT NULL,
+  `file_staging_owner_id` bigint(20) NOT NULL DEFAULT 0,
+  `file_staging_staged_path` varchar(1024) NOT NULL,
+  `file_staging_final_path` varchar(1024) NOT NULL,
+  `file_staging_sha256` char(64) NOT NULL,
+  `file_staging_size` bigint(20) unsigned NOT NULL DEFAULT 0,
+  `file_staging_status` varchar(20) NOT NULL DEFAULT 'Pending',
+  `file_staging_attempts` int(11) NOT NULL DEFAULT 0,
+  `file_staging_last_error` text DEFAULT NULL,
+  `file_staging_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `file_staging_finalized_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`file_staging_id`),
+  KEY `file_staging_batch` (`file_staging_batch_token`,`file_staging_status`,`file_staging_id`),
+  KEY `file_staging_recovery` (`file_staging_status`,`file_staging_created_at`,`file_staging_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2212,12 +2310,14 @@ DROP TABLE IF EXISTS `history`;
 CREATE TABLE `history` (
   `history_id` int(11) NOT NULL AUTO_INCREMENT,
   `history_status` varchar(200) NOT NULL,
-  `history_description` varchar(200) NOT NULL,
+  `history_description` text NOT NULL,
   `history_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `history_invoice_id` int(11) NOT NULL DEFAULT 0,
   `history_recurring_invoice_id` int(11) NOT NULL DEFAULT 0,
   `history_quote_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`history_id`)
+  PRIMARY KEY (`history_id`),
+  KEY `history_invoice_id` (`history_invoice_id`),
+  KEY `history_quote_id` (`history_quote_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2244,7 +2344,8 @@ CREATE TABLE `invoice_items` (
   `item_tax_id` int(11) NOT NULL DEFAULT 0,
   `item_product_id` int(11) NOT NULL DEFAULT 0,
   `item_invoice_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`item_id`)
+  PRIMARY KEY (`item_id`),
+  KEY `item_invoice_id` (`item_invoice_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2275,7 +2376,8 @@ CREATE TABLE `invoices` (
   `invoice_category_id` int(11) NOT NULL,
   `invoice_recurring_invoice_id` int(11) NOT NULL DEFAULT 0,
   `invoice_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`invoice_id`)
+  PRIMARY KEY (`invoice_id`),
+  KEY `invoice_client_id` (`invoice_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2328,7 +2430,8 @@ CREATE TABLE `locations` (
   `location_accessed_at` datetime DEFAULT NULL,
   `location_contact_id` int(11) NOT NULL DEFAULT 0,
   `location_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`location_id`)
+  PRIMARY KEY (`location_id`),
+  KEY `location_client_id` (`location_client_id`,`location_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2351,7 +2454,8 @@ CREATE TABLE `logs` (
   `log_user_id` int(11) NOT NULL DEFAULT 0,
   `log_entity_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`log_id`),
-  KEY `log_created_at` (`log_created_at`)
+  KEY `log_created_at` (`log_created_at`),
+  KEY `log_user_id` (`log_user_id`,`log_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2388,6 +2492,27 @@ CREATE TABLE `n45_schema_migrations` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `network_ips`
+--
+
+DROP TABLE IF EXISTS `network_ips`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `network_ips` (
+  `ip_id` int(11) NOT NULL AUTO_INCREMENT,
+  `ip_address` varchar(45) NOT NULL,
+  `ip_hostname` varchar(200) DEFAULT NULL,
+  `ip_description` varchar(200) DEFAULT NULL,
+  `ip_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `ip_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  `ip_network_id` int(11) NOT NULL,
+  PRIMARY KEY (`ip_id`),
+  UNIQUE KEY `ip_network_address` (`ip_network_id`,`ip_address`),
+  CONSTRAINT `network_ips_ibfk_1` FOREIGN KEY (`ip_network_id`) REFERENCES `networks` (`network_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `networks`
 --
 
@@ -2413,7 +2538,8 @@ CREATE TABLE `networks` (
   `network_accessed_at` datetime DEFAULT NULL,
   `network_location_id` int(11) NOT NULL DEFAULT 0,
   `network_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`network_id`)
+  PRIMARY KEY (`network_id`),
+  KEY `network_client_id` (`network_client_id`,`network_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2435,7 +2561,8 @@ CREATE TABLE `notifications` (
   `notification_client_id` int(11) NOT NULL DEFAULT 0,
   `notification_user_id` int(11) NOT NULL DEFAULT 0,
   `notification_entity_id` int(11) DEFAULT 0,
-  PRIMARY KEY (`notification_id`)
+  PRIMARY KEY (`notification_id`),
+  KEY `notification_user_id` (`notification_user_id`,`notification_dismissed_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2499,7 +2626,8 @@ CREATE TABLE `payments` (
   `payment_archived_at` datetime DEFAULT NULL,
   `payment_account_id` int(11) NOT NULL,
   `payment_invoice_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`payment_id`)
+  PRIMARY KEY (`payment_id`),
+  KEY `payment_invoice_id` (`payment_invoice_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2816,7 +2944,8 @@ CREATE TABLE `projects` (
   `project_completed_at` datetime DEFAULT NULL,
   `project_archived_at` datetime DEFAULT NULL,
   `project_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`project_id`)
+  PRIMARY KEY (`project_id`),
+  KEY `project_client_id` (`project_client_id`,`project_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2860,7 +2989,8 @@ CREATE TABLE `quote_items` (
   `item_tax_id` int(11) NOT NULL DEFAULT 0,
   `item_product_id` int(11) NOT NULL DEFAULT 0,
   `item_quote_id` int(11) NOT NULL,
-  PRIMARY KEY (`item_id`)
+  PRIMARY KEY (`item_id`),
+  KEY `item_quote_id` (`item_quote_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2889,7 +3019,8 @@ CREATE TABLE `quotes` (
   `quote_archived_at` datetime DEFAULT NULL,
   `quote_category_id` int(11) NOT NULL,
   `quote_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`quote_id`)
+  PRIMARY KEY (`quote_id`),
+  KEY `quote_client_id` (`quote_client_id`,`quote_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2940,7 +3071,8 @@ CREATE TABLE `racks` (
   `rack_archived_at` datetime DEFAULT NULL,
   `rack_location_id` int(11) DEFAULT NULL,
   `rack_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`rack_id`)
+  PRIMARY KEY (`rack_id`),
+  KEY `rack_client_id` (`rack_client_id`,`rack_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2961,151 +3093,10 @@ CREATE TABLE `records` (
   `record_updated_at` datetime NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE current_timestamp(),
   `record_archived_at` datetime DEFAULT NULL,
   `record_domain_id` int(11) NOT NULL,
-  PRIMARY KEY (`record_id`)
+  PRIMARY KEY (`record_id`),
+  KEY `record_domain_id` (`record_domain_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Recoverable deletion, retention locks, and immutable purge previews
---
-
-DROP TABLE IF EXISTS `retention_policies`;
-CREATE TABLE `retention_policies` (
-  `retention_policy_key` varchar(40) NOT NULL,
-  `retention_policy_label` varchar(100) NOT NULL,
-  `retention_policy_retention_days` int(11) NOT NULL,
-  `retention_policy_restore_window_days` int(11) NOT NULL DEFAULT 0,
-  `retention_policy_purge_mode` varchar(20) NOT NULL DEFAULT 'disabled',
-  `retention_policy_owner_note` varchar(500) NOT NULL DEFAULT '',
-  `retention_policy_updated_by` int(11) NOT NULL DEFAULT 0,
-  `retention_policy_created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `retention_policy_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
-  PRIMARY KEY (`retention_policy_key`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-DROP TABLE IF EXISTS `retention_holds`;
-CREATE TABLE `retention_holds` (
-  `retention_hold_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `retention_hold_client_id` int(11) NOT NULL DEFAULT 0,
-  `retention_hold_record_type` varchar(40) NOT NULL DEFAULT '*',
-  `retention_hold_record_id` bigint(20) NOT NULL DEFAULT 0,
-  `retention_hold_reason` varchar(500) NOT NULL,
-  `retention_hold_placed_by` int(11) NOT NULL DEFAULT 0,
-  `retention_hold_placed_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `retention_hold_released_by` int(11) NOT NULL DEFAULT 0,
-  `retention_hold_release_reason` varchar(500) DEFAULT NULL,
-  `retention_hold_released_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`retention_hold_id`),
-  KEY `retention_hold_active_record` (`retention_hold_record_type`,`retention_hold_record_id`,`retention_hold_released_at`),
-  KEY `retention_hold_active_client` (`retention_hold_client_id`,`retention_hold_released_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-DROP TABLE IF EXISTS `retention_deletions`;
-CREATE TABLE `retention_deletions` (
-  `retention_deletion_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `retention_deletion_record_type` varchar(40) NOT NULL,
-  `retention_deletion_record_id` bigint(20) NOT NULL,
-  `retention_deletion_client_id` int(11) NOT NULL DEFAULT 0,
-  `retention_deletion_generation` int(11) NOT NULL DEFAULT 1,
-  `retention_deletion_label` varchar(500) NOT NULL,
-  `retention_deletion_deleted_by` int(11) NOT NULL,
-  `retention_deletion_reason` varchar(500) NOT NULL,
-  `retention_deletion_deleted_at` datetime NOT NULL,
-  `retention_deletion_restore_until` datetime DEFAULT NULL,
-  `retention_deletion_purge_eligible_at` datetime NOT NULL,
-  `retention_deletion_restored_by` int(11) NOT NULL DEFAULT 0,
-  `retention_deletion_restored_at` datetime DEFAULT NULL,
-  `retention_deletion_purged_by` int(11) NOT NULL DEFAULT 0,
-  `retention_deletion_purged_at` datetime DEFAULT NULL,
-  `retention_deletion_quarantine_path` varchar(1000) DEFAULT NULL,
-  `retention_deletion_quarantine_status` varchar(20) NOT NULL DEFAULT 'none',
-  `retention_deletion_quarantine_manifest` longtext DEFAULT NULL,
-  `retention_deletion_quarantine_manifest_hash` char(64) DEFAULT NULL,
-  `retention_deletion_quarantine_prepared_at` datetime DEFAULT NULL,
-  `retention_deletion_quarantine_claim_token` char(64) DEFAULT NULL,
-  `retention_deletion_quarantine_attempted_at` datetime DEFAULT NULL,
-  `retention_deletion_quarantine_completed_at` datetime DEFAULT NULL,
-  `retention_deletion_restore_pending_by` int(11) NOT NULL DEFAULT 0,
-  `retention_deletion_restore_pending_reason` varchar(500) DEFAULT NULL,
-  `retention_deletion_restore_prepared_at` datetime DEFAULT NULL,
-  `retention_deletion_last_error` varchar(1000) DEFAULT NULL,
-  PRIMARY KEY (`retention_deletion_id`),
-  UNIQUE KEY `retention_deletion_record` (`retention_deletion_record_type`,`retention_deletion_record_id`),
-  KEY `retention_deletion_active` (`retention_deletion_restored_at`,`retention_deletion_purged_at`,`retention_deletion_purge_eligible_at`),
-  KEY `retention_deletion_client` (`retention_deletion_client_id`,`retention_deletion_deleted_at`),
-  KEY `retention_deletion_quarantine_queue` (`retention_deletion_quarantine_status`,`retention_deletion_quarantine_attempted_at`,`retention_deletion_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-DROP TABLE IF EXISTS `retention_events`;
-CREATE TABLE `retention_events` (
-  `retention_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `retention_event_record_type` varchar(40) NOT NULL,
-  `retention_event_record_id` bigint(20) NOT NULL DEFAULT 0,
-  `retention_event_client_id` int(11) NOT NULL DEFAULT 0,
-  `retention_event_generation` int(11) NOT NULL DEFAULT 0,
-  `retention_event_action` varchar(40) NOT NULL,
-  `retention_event_actor_type` varchar(20) NOT NULL DEFAULT 'system',
-  `retention_event_actor_id` int(11) NOT NULL DEFAULT 0,
-  `retention_event_reason` varchar(500) DEFAULT NULL,
-  `retention_event_metadata` longtext DEFAULT NULL,
-  `retention_event_metadata_hash` char(64) NOT NULL,
-  `retention_event_batch_id` bigint(20) NOT NULL DEFAULT 0,
-  `retention_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`retention_event_id`),
-  KEY `retention_event_record` (`retention_event_record_type`,`retention_event_record_id`,`retention_event_id`),
-  KEY `retention_event_client` (`retention_event_client_id`,`retention_event_created_at`),
-  KEY `retention_event_batch` (`retention_event_batch_id`,`retention_event_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-CREATE TRIGGER `retention_events_no_update` BEFORE UPDATE ON `retention_events` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'retention_events is append-only';
-CREATE TRIGGER `retention_events_no_delete` BEFORE DELETE ON `retention_events` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'retention_events is append-only';
-
-DROP TABLE IF EXISTS `retention_purge_batches`;
-CREATE TABLE `retention_purge_batches` (
-  `retention_purge_batch_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `retention_purge_batch_idempotency_key` varchar(191) NOT NULL,
-  `retention_purge_batch_mode` varchar(20) NOT NULL DEFAULT 'preview',
-  `retention_purge_batch_status` varchar(20) NOT NULL DEFAULT 'Previewed',
-  `retention_purge_batch_requested_by` int(11) NOT NULL DEFAULT 0,
-  `retention_purge_batch_requested_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `retention_purge_batch_approved_by` int(11) NOT NULL DEFAULT 0,
-  `retention_purge_batch_approved_at` datetime DEFAULT NULL,
-  `retention_purge_batch_run_token` char(64) DEFAULT NULL,
-  `retention_purge_batch_lease_until` datetime DEFAULT NULL,
-  `retention_purge_batch_resume_count` int(11) NOT NULL DEFAULT 0,
-  `retention_purge_batch_candidate_count` int(11) NOT NULL DEFAULT 0,
-  `retention_purge_batch_eligible_count` int(11) NOT NULL DEFAULT 0,
-  `retention_purge_batch_purged_count` int(11) NOT NULL DEFAULT 0,
-  `retention_purge_batch_blocked_count` int(11) NOT NULL DEFAULT 0,
-  `retention_purge_batch_failed_count` int(11) NOT NULL DEFAULT 0,
-  `retention_purge_batch_completed_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`retention_purge_batch_id`),
-  UNIQUE KEY `retention_purge_batch_idempotency` (`retention_purge_batch_idempotency_key`),
-  KEY `retention_purge_batch_status` (`retention_purge_batch_status`,`retention_purge_batch_requested_at`),
-  KEY `retention_purge_batch_lease` (`retention_purge_batch_status`,`retention_purge_batch_lease_until`,`retention_purge_batch_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-DROP TABLE IF EXISTS `retention_purge_items`;
-CREATE TABLE `retention_purge_items` (
-  `retention_purge_item_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `retention_purge_item_batch_id` bigint(20) NOT NULL,
-  `retention_purge_item_record_type` varchar(40) NOT NULL,
-  `retention_purge_item_record_id` bigint(20) NOT NULL,
-  `retention_purge_item_client_id` int(11) NOT NULL DEFAULT 0,
-  `retention_purge_item_generation` int(11) NOT NULL,
-  `retention_purge_item_policy_key` varchar(40) NOT NULL,
-  `retention_purge_item_outcome` varchar(20) NOT NULL,
-  `retention_purge_item_reason` varchar(1000) NOT NULL,
-  `retention_purge_item_dependency_summary` longtext NOT NULL,
-  `retention_purge_item_dependency_hash` char(64) NOT NULL,
-  `retention_purge_item_claim_token` char(64) DEFAULT NULL,
-  `retention_purge_item_claimed_at` datetime DEFAULT NULL,
-  `retention_purge_item_processed_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`retention_purge_item_id`),
-  UNIQUE KEY `retention_purge_item_record` (`retention_purge_item_batch_id`,`retention_purge_item_record_type`,`retention_purge_item_record_id`,`retention_purge_item_generation`),
-  KEY `retention_purge_item_queue` (`retention_purge_item_batch_id`,`retention_purge_item_outcome`,`retention_purge_item_id`),
-  KEY `retention_purge_item_claim` (`retention_purge_item_batch_id`,`retention_purge_item_outcome`,`retention_purge_item_claimed_at`,`retention_purge_item_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Table structure for table `recurring_expenses`
@@ -3191,7 +3182,8 @@ CREATE TABLE `recurring_invoices` (
   `recurring_invoice_archived_at` datetime DEFAULT NULL,
   `recurring_invoice_category_id` int(11) NOT NULL,
   `recurring_invoice_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`recurring_invoice_id`)
+  PRIMARY KEY (`recurring_invoice_id`),
+  KEY `recurring_invoice_client_id` (`recurring_invoice_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3280,7 +3272,8 @@ CREATE TABLE `recurring_tickets` (
   `recurring_ticket_contact_id` int(11) NOT NULL DEFAULT 0,
   `recurring_ticket_asset_id` int(11) NOT NULL DEFAULT 0,
   `recurring_ticket_ticket_template_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`recurring_ticket_id`)
+  PRIMARY KEY (`recurring_ticket_id`),
+  KEY `recurring_ticket_client_id` (`recurring_ticket_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3321,7 +3314,8 @@ CREATE TABLE `revenues` (
   `revenue_category_id` int(11) NOT NULL DEFAULT 0,
   `revenue_account_id` int(11) NOT NULL,
   `revenue_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`revenue_id`)
+  PRIMARY KEY (`revenue_id`),
+  KEY `revenue_client_id` (`revenue_client_id`,`revenue_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3562,7 +3556,8 @@ CREATE TABLE `services` (
   `service_accessed_at` datetime DEFAULT NULL,
   `service_review_due` date DEFAULT NULL,
   `service_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`service_id`)
+  PRIMARY KEY (`service_id`),
+  KEY `service_client_id` (`service_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3676,6 +3671,11 @@ CREATE TABLE `settings` (
   `config_backup_retention_days` int(11) NOT NULL DEFAULT 30,
   `config_backup_retention_count` int(11) NOT NULL DEFAULT 5,
   `config_backup_cron_type` varchar(20) NOT NULL DEFAULT 'full',
+  `config_update_queued_at` datetime DEFAULT NULL,
+  `config_internal_client_id` int(11) NOT NULL DEFAULT 0,
+  `config_update_latest_commit` varchar(40) DEFAULT NULL,
+  `config_update_pending_commits` text DEFAULT NULL,
+  `config_update_checked_at` datetime DEFAULT NULL,
   PRIMARY KEY (`company_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -3787,7 +3787,8 @@ CREATE TABLE `software` (
   `software_accessed_at` datetime DEFAULT NULL,
   `software_vendor_id` int(11) DEFAULT 0,
   `software_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`software_id`)
+  PRIMARY KEY (`software_id`),
+  KEY `software_client_id` (`software_client_id`,`software_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -4163,6 +4164,7 @@ CREATE TABLE `tasks` (
   `task_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `task_ticket_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`task_id`),
+  KEY `task_ticket_id` (`task_ticket_id`),
   KEY `task_runbook_state` (`task_ticket_id`,`task_state`,`task_due_at`),
   KEY `task_assigned_to` (`task_assigned_to`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -4215,16 +4217,10 @@ CREATE TABLE `ticket_attachments` (
   `ticket_attachment_name` varchar(255) NOT NULL,
   `ticket_attachment_reference_name` varchar(255) NOT NULL,
   `ticket_attachment_created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `ticket_attachment_deleted_at` datetime DEFAULT NULL,
-  `ticket_attachment_deleted_by` int(11) NOT NULL DEFAULT 0,
-  `ticket_attachment_delete_reason` varchar(500) DEFAULT NULL,
-  `ticket_attachment_restore_until` datetime DEFAULT NULL,
-  `ticket_attachment_purge_eligible_at` datetime DEFAULT NULL,
   `ticket_attachment_ticket_id` int(11) NOT NULL,
   `ticket_attachment_reply_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`ticket_attachment_id`),
-  KEY `ticket_attachment_reply_id` (`ticket_attachment_reply_id`),
-  KEY `ticket_attachment_retention_queue` (`ticket_attachment_deleted_at`,`ticket_attachment_purge_eligible_at`)
+  KEY `ticket_attachment_reply_id` (`ticket_attachment_reply_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -4241,7 +4237,8 @@ CREATE TABLE `ticket_history` (
   `ticket_history_description` varchar(255) NOT NULL,
   `ticket_history_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `ticket_history_ticket_id` int(11) NOT NULL,
-  PRIMARY KEY (`ticket_history_id`)
+  PRIMARY KEY (`ticket_history_id`),
+  KEY `ticket_history_ticket_id` (`ticket_history_ticket_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -4402,160 +4399,8 @@ CREATE TABLE `ticket_watchers` (
   `watcher_name` varchar(255) DEFAULT NULL,
   `watcher_email` varchar(255) NOT NULL,
   `watcher_ticket_id` int(11) NOT NULL,
-  PRIMARY KEY (`watcher_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `ticket_operational_events`
---
-
-DROP TABLE IF EXISTS `ticket_operational_events`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `ticket_operational_events` (
-  `ticket_operational_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `ticket_operational_event_ticket_id` int(11) NOT NULL,
-  `ticket_operational_event_client_id` int(11) NOT NULL DEFAULT 0,
-  `ticket_operational_event_action` varchar(40) NOT NULL,
-  `ticket_operational_event_actor_type` varchar(20) NOT NULL DEFAULT 'system',
-  `ticket_operational_event_actor_id` int(11) NOT NULL DEFAULT 0,
-  `ticket_operational_event_payload` longtext NOT NULL,
-  `ticket_operational_event_payload_hash` char(64) NOT NULL,
-  `ticket_operational_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`ticket_operational_event_id`),
-  KEY `ticket_operational_event_ticket` (`ticket_operational_event_ticket_id`,`ticket_operational_event_id`),
-  KEY `ticket_operational_event_client` (`ticket_operational_event_client_id`,`ticket_operational_event_created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `ticket_relationships`
---
-
-DROP TABLE IF EXISTS `ticket_relationships`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `ticket_relationships` (
-  `ticket_relationship_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `ticket_relationship_client_id` int(11) NOT NULL DEFAULT 0,
-  `ticket_relationship_type` varchar(20) NOT NULL,
-  `ticket_relationship_source_ticket_id` int(11) NOT NULL,
-  `ticket_relationship_target_ticket_id` int(11) NOT NULL,
-  `ticket_relationship_created_by` int(11) NOT NULL DEFAULT 0,
-  `ticket_relationship_created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`ticket_relationship_id`),
-  UNIQUE KEY `ticket_relationship_pair` (`ticket_relationship_type`,`ticket_relationship_source_ticket_id`,`ticket_relationship_target_ticket_id`),
-  KEY `ticket_relationship_source` (`ticket_relationship_source_ticket_id`,`ticket_relationship_type`),
-  KEY `ticket_relationship_target` (`ticket_relationship_target_ticket_id`,`ticket_relationship_type`),
-  KEY `ticket_relationship_client` (`ticket_relationship_client_id`,`ticket_relationship_created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `ticket_customer_promises`
---
-
-DROP TABLE IF EXISTS `ticket_customer_promises`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `ticket_customer_promises` (
-  `ticket_customer_promise_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `ticket_customer_promise_ticket_id` int(11) NOT NULL,
-  `ticket_customer_promise_client_id` int(11) NOT NULL DEFAULT 0,
-  `ticket_customer_promise_type` varchar(30) NOT NULL DEFAULT 'customer_update',
-  `ticket_customer_promise_summary` varchar(500) NOT NULL,
-  `ticket_customer_promise_due_at` datetime NOT NULL,
-  `ticket_customer_promise_status` varchar(20) NOT NULL DEFAULT 'Open',
-  `ticket_customer_promise_promised_by` int(11) NOT NULL DEFAULT 0,
-  `ticket_customer_promise_promised_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `ticket_customer_promise_source_type` varchar(20) NOT NULL DEFAULT 'agent',
-  `ticket_customer_promise_source_id` bigint(20) NOT NULL DEFAULT 0,
-  `ticket_customer_promise_fulfilled_by` int(11) NOT NULL DEFAULT 0,
-  `ticket_customer_promise_fulfilled_at` datetime DEFAULT NULL,
-  `ticket_customer_promise_breached_at` datetime DEFAULT NULL,
-  `ticket_customer_promise_cancelled_by` int(11) NOT NULL DEFAULT 0,
-  `ticket_customer_promise_cancelled_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`ticket_customer_promise_id`),
-  KEY `ticket_customer_promise_queue` (`ticket_customer_promise_status`,`ticket_customer_promise_due_at`),
-  KEY `ticket_customer_promise_ticket` (`ticket_customer_promise_ticket_id`,`ticket_customer_promise_status`,`ticket_customer_promise_due_at`),
-  KEY `ticket_customer_promise_client` (`ticket_customer_promise_client_id`,`ticket_customer_promise_due_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `ticket_customer_promise_events`
---
-
-DROP TABLE IF EXISTS `ticket_customer_promise_events`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `ticket_customer_promise_events` (
-  `ticket_customer_promise_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `ticket_customer_promise_event_promise_id` bigint(20) NOT NULL,
-  `ticket_customer_promise_event_ticket_id` int(11) NOT NULL,
-  `ticket_customer_promise_event_client_id` int(11) NOT NULL DEFAULT 0,
-  `ticket_customer_promise_event_action` varchar(30) NOT NULL,
-  `ticket_customer_promise_event_from_status` varchar(20) DEFAULT NULL,
-  `ticket_customer_promise_event_to_status` varchar(20) NOT NULL,
-  `ticket_customer_promise_event_actor_type` varchar(20) NOT NULL DEFAULT 'system',
-  `ticket_customer_promise_event_actor_id` int(11) NOT NULL DEFAULT 0,
-  `ticket_customer_promise_event_source_type` varchar(20) DEFAULT NULL,
-  `ticket_customer_promise_event_source_id` bigint(20) NOT NULL DEFAULT 0,
-  `ticket_customer_promise_event_context_hash` char(64) NOT NULL,
-  `ticket_customer_promise_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`ticket_customer_promise_event_id`),
-  KEY `ticket_customer_promise_event_promise` (`ticket_customer_promise_event_promise_id`,`ticket_customer_promise_event_id`),
-  KEY `ticket_customer_promise_event_ticket` (`ticket_customer_promise_event_ticket_id`,`ticket_customer_promise_event_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
-CREATE TRIGGER `ticket_operational_events_bu_immutable`
-  BEFORE UPDATE ON `ticket_operational_events` FOR EACH ROW
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ticket operational events are append-only';
-
-CREATE TRIGGER `ticket_operational_events_bd_immutable`
-  BEFORE DELETE ON `ticket_operational_events` FOR EACH ROW
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ticket operational events are append-only';
-
-CREATE TRIGGER `ticket_customer_promise_events_bu_immutable`
-  BEFORE UPDATE ON `ticket_customer_promise_events` FOR EACH ROW
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ticket customer promise events are append-only';
-
-CREATE TRIGGER `ticket_customer_promise_events_bd_immutable`
-  BEFORE DELETE ON `ticket_customer_promise_events` FOR EACH ROW
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ticket customer promise events are append-only';
-
---
--- Table structure for table `ticket_email_ingress`
---
-
-DROP TABLE IF EXISTS `ticket_email_ingress`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `ticket_email_ingress` (
-  `ticket_email_ingress_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `ticket_email_ingress_message_hash` char(64) NOT NULL,
-  `ticket_email_ingress_claim_token` char(64) NOT NULL,
-  `ticket_email_ingress_sender_hash` char(64) NOT NULL,
-  `ticket_email_ingress_domain_hash` char(64) NOT NULL,
-  `ticket_email_ingress_subject_hash` char(64) NOT NULL,
-  `ticket_email_ingress_status` varchar(20) NOT NULL DEFAULT 'Processing',
-  `ticket_email_ingress_attempts` int(11) NOT NULL DEFAULT 1,
-  `ticket_email_ingress_ticket_id` int(11) NOT NULL DEFAULT 0,
-  `ticket_email_ingress_reply_id` int(11) NOT NULL DEFAULT 0,
-  `ticket_email_ingress_client_id` int(11) NOT NULL DEFAULT 0,
-  `ticket_email_ingress_reason_code` varchar(60) DEFAULT NULL,
-  `ticket_email_ingress_received_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `ticket_email_ingress_processing_at` datetime DEFAULT NULL,
-  `ticket_email_ingress_completed_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`ticket_email_ingress_id`),
-  UNIQUE KEY `ticket_email_ingress_message` (`ticket_email_ingress_message_hash`),
-  KEY `ticket_email_ingress_status` (`ticket_email_ingress_status`,`ticket_email_ingress_processing_at`),
-  KEY `ticket_email_ingress_sender_window` (`ticket_email_ingress_sender_hash`,`ticket_email_ingress_received_at`),
-  KEY `ticket_email_ingress_domain_window` (`ticket_email_ingress_domain_hash`,`ticket_email_ingress_received_at`),
-  KEY `ticket_email_ingress_client_window` (`ticket_email_ingress_client_id`,`ticket_email_ingress_received_at`),
-  KEY `ticket_email_ingress_ticket` (`ticket_email_ingress_ticket_id`,`ticket_email_ingress_id`)
+  PRIMARY KEY (`watcher_id`),
+  KEY `watcher_ticket_id` (`watcher_ticket_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -4573,18 +4418,6 @@ CREATE TABLE `tickets` (
   `ticket_source` varchar(255) DEFAULT NULL COMMENT 'Where the Ticket Came from\r\nEmail, Client Portal, In-App, Project Template',
   `ticket_category` varchar(200) DEFAULT NULL,
   `ticket_request_type_key` varchar(100) NOT NULL DEFAULT '*',
-  `ticket_work_type` varchar(20) NOT NULL DEFAULT 'request',
-  `ticket_impact` varchar(20) NOT NULL DEFAULT 'low',
-  `ticket_urgency` varchar(20) NOT NULL DEFAULT 'low',
-  `ticket_next_action` varchar(500) NOT NULL DEFAULT 'Review and triage this ticket.',
-  `ticket_next_action_due_at` datetime DEFAULT NULL,
-  `ticket_waiting_on` varchar(20) NOT NULL DEFAULT 'none',
-  `ticket_waiting_on_detail` varchar(255) DEFAULT NULL,
-  `ticket_resolution_code` varchar(30) DEFAULT NULL,
-  `ticket_resolution_summary` text DEFAULT NULL,
-  `ticket_root_cause` text DEFAULT NULL,
-  `ticket_operational_updated_by` int(11) NOT NULL DEFAULT 0,
-  `ticket_operational_updated_at` datetime DEFAULT NULL,
   `ticket_subject` varchar(500) NOT NULL,
   `ticket_details` longtext NOT NULL,
   `ticket_priority` varchar(200) DEFAULT NULL,
@@ -4612,11 +4445,6 @@ CREATE TABLE `tickets` (
   `ticket_due_at` datetime DEFAULT NULL,
   `ticket_resolved_at` datetime DEFAULT NULL,
   `ticket_archived_at` datetime DEFAULT NULL,
-  `ticket_deleted_at` datetime DEFAULT NULL,
-  `ticket_deleted_by` int(11) NOT NULL DEFAULT 0,
-  `ticket_delete_reason` varchar(500) DEFAULT NULL,
-  `ticket_restore_until` datetime DEFAULT NULL,
-  `ticket_purge_eligible_at` datetime DEFAULT NULL,
   `ticket_first_response_at` datetime DEFAULT NULL,
   `ticket_response_due_at` datetime DEFAULT NULL,
   `ticket_response_due_at_utc` datetime DEFAULT NULL,
@@ -4645,10 +4473,7 @@ CREATE TABLE `tickets` (
   KEY `ticket_resolution_due_at` (`ticket_resolution_due_at`),
   KEY `ticket_response_due_at_utc` (`ticket_response_due_at_utc`),
   KEY `ticket_resolution_due_at_utc` (`ticket_resolution_due_at_utc`),
-  KEY `ticket_work_type_status` (`ticket_work_type`,`ticket_status`),
-  KEY `ticket_waiting_queue` (`ticket_waiting_on`,`ticket_next_action_due_at`),
-  KEY `ticket_operational_priority` (`ticket_impact`,`ticket_urgency`),
-  KEY `ticket_retention_queue` (`ticket_deleted_at`,`ticket_purge_eligible_at`)
+  KEY `ticket_client_id` (`ticket_client_id`,`ticket_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -4803,7 +4628,8 @@ CREATE TABLE `transfers` (
   `transfer_archived_at` datetime DEFAULT NULL,
   `transfer_expense_id` int(11) NOT NULL,
   `transfer_revenue_id` int(11) NOT NULL,
-  PRIMARY KEY (`transfer_id`)
+  PRIMARY KEY (`transfer_id`),
+  KEY `transfer_revenue_id` (`transfer_revenue_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -4829,7 +4655,8 @@ CREATE TABLE `trips` (
   `trip_archived_at` datetime DEFAULT NULL,
   `trip_user_id` int(11) NOT NULL DEFAULT 0,
   `trip_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`trip_id`)
+  PRIMARY KEY (`trip_id`),
+  KEY `trip_client_id` (`trip_client_id`,`trip_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -5044,7 +4871,8 @@ CREATE TABLE `vendors` (
   `vendor_accessed_at` datetime DEFAULT NULL,
   `vendor_client_id` int(11) NOT NULL DEFAULT 0,
   `vendor_template_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`vendor_id`)
+  PRIMARY KEY (`vendor_id`),
+  KEY `vendor_client_id` (`vendor_client_id`,`vendor_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -5057,4 +4885,4 @@ CREATE TABLE `vendors` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-08-09 13:29:14
+-- Dump completed on 2026-08-28 16:40:00

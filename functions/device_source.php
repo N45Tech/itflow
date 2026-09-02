@@ -123,6 +123,83 @@ function deviceSourceSnapshotFacts(string $source, string $external_id, array $f
 }
 
 /**
+ * Enabling create_asset is a scoped post-burn-in decision, not permission to
+ * guess. Existing deterministic matches remain usable; only a genuinely new
+ * asset must pass this gate.
+ */
+function deviceSourceAssertAutoCreateSafety(string $source, string $scope_id,
+    int $client_id, int $location_id, string $external_id, string $external_name,
+    string $source_status, array $asset): void
+{
+    global $mysqli;
+
+    $identity = integrationIdentityFindMapping($source, 'device', $external_id);
+    if ($identity && intval($identity['automation_mapping_asset_id'] ?? 0) > 0) {
+        if (intval($identity['automation_mapping_client_id'] ?? 0) === $client_id
+            && empty($identity['automation_mapping_deleted_at'])
+            && in_array((string) ($identity['automation_mapping_external_parent_id'] ?? ''),
+                ['', $scope_id], true)
+            && in_array((string) ($identity['automation_mapping_state'] ?? ''),
+                ['automatic', 'confirmed', 'stale'], true)) {
+            return;
+        }
+        throw new AutomationConflictException('The existing source identity requires technician review');
+    }
+    $matches = automationFindAsset($asset, $client_id, $location_id);
+    if ($matches) {
+        // The resolver will bind one exact match or reject an ambiguity. This
+        // gate is only for the path that would INSERT a brand-new asset.
+        return;
+    }
+
+    $scope = integrationIdentityFindMapping($source, 'sync_scope', $scope_id);
+    if (!$scope
+        || intval($scope['automation_mapping_client_id'] ?? 0) !== $client_id
+        || !empty($scope['automation_mapping_deleted_at'])
+        || (string) ($scope['automation_mapping_state'] ?? '') !== 'automatic'
+        || empty($scope['automation_mapping_last_success_at'])
+        || trim((string) ($scope['automation_mapping_last_error'] ?? '')) !== '') {
+        throw new AutomationConflictException(
+            'Automatic asset creation requires a clean completed burn-in cycle for this exact source scope and client'
+        );
+    }
+    $scope_metadata = deviceSourceScopeMetadata($scope);
+    if (empty($scope_metadata['last_completed_cycle_id'])
+        || empty($scope_metadata['last_completed_cycle_started_at'])) {
+        throw new AutomationConflictException('Automatic asset creation requires durable burn-in evidence');
+    }
+    if ($source_status !== 'active'
+        || intval($asset['id'] ?? 0) > 0
+        || automationNormalizeName($asset['name'] ?? '') === ''
+        || automationNormalizeName($asset['name'] ?? '') !== automationNormalizeName($external_name)) {
+        throw new AutomationConflictException('A new source asset requires one stable, matching device name');
+    }
+    if ($location_id > 0 && !automationLocationRow($location_id, $client_id)) {
+        throw new AutomationConflictException('The automatic-creation location is outside the mapped client');
+    }
+    if ($identity && (intval($identity['automation_mapping_client_id'] ?? 0) !== $client_id
+        || !in_array((string) ($identity['automation_mapping_external_parent_id'] ?? ''), ['', $scope_id], true)
+        || in_array((string) ($identity['automation_mapping_state'] ?? ''),
+            ['conflicting', 'ignored', 'retired'], true))) {
+        throw new AutomationConflictException('The existing source identity requires technician review');
+    }
+
+    $source_sql = integrationIdentityDbEscape($source);
+    $external_sql = integrationIdentityDbEscape($external_id);
+    $foreign_sql = mysqli_query($mysqli, "SELECT COUNT(*) FROM asset_endpoint_states
+        WHERE endpoint_state_source = '$source_sql'
+        AND endpoint_state_external_id = '$external_sql'
+        AND endpoint_state_client_id <> $client_id");
+    if (!$foreign_sql) {
+        throw new RuntimeException('Could not verify source-device tenant uniqueness');
+    }
+    $foreign = mysqli_fetch_row($foreign_sql);
+    if (intval($foreign[0] ?? 0) > 0) {
+        throw new AutomationConflictException('The source device is already present under another client');
+    }
+}
+
+/**
  * Resolve a source identity, preserve a redacted normalized snapshot, and publish
  * canonical endpoint posture. An unresolved identity remains visible for review
  * without blocking the rest of a tenant/site full sync.
@@ -155,105 +232,134 @@ function deviceSourcePublish(array $input): array
     $metadata = deviceSourceMappingMetadata($input, $cycle_id, $scope_id);
     $snapshot_facts = deviceSourceSnapshotFacts($source, $external_id, $facts, $interfaces);
 
-    // The resolver owns its identity locks and transaction. If the subsequent
-    // endpoint transaction fails, the durable mapping is safe to replay.
-    $resolved = automationResolveIdentity([
-        'source' => $source,
-        'entity_type' => 'device',
-        'external_id' => $external_id,
-        'external_name' => $external_name,
-        'client' => ['id' => $client_id],
-        'location' => $location_id > 0 ? ['id' => $location_id] : [],
-        'asset' => $asset,
-        'options' => [
-            'create_client' => false,
-            'create_location' => false,
-            'create_asset' => $create_asset,
-        ],
-        'metadata' => $metadata,
-    ]);
-    $resolved_client_id = intval($resolved['client_id'] ?? 0);
-    $asset_id = intval($resolved['asset_id'] ?? 0);
-    if ($resolved_client_id !== $client_id) {
-        throw new RuntimeException('The source identity resolved to a different client');
+    $scope_lock_held = false;
+    if ($create_asset) {
+        if (!integrationIdentityAcquireLock($source, 'sync_scope', $scope_id)) {
+            throw new RuntimeException('Could not obtain the automatic-creation source-scope lock');
+        }
+        $scope_lock_held = true;
     }
-
-    mysqli_begin_transaction($mysqli);
     try {
-        $identity_state = $asset_id > 0 ? 'automatic' : 'unresolved';
-        $last_error = $asset_id > 0 ? '' : 'The source device is not mapped to an ITFlow asset.';
-        $mapping = integrationIdentityUpsertMapping([
+        if ($create_asset) {
+            deviceSourceAssertAutoCreateSafety(
+                $source, $scope_id, $client_id, $location_id,
+                $external_id, $external_name, $status, $asset
+            );
+        }
+
+        // The resolver owns its identity locks and transaction. If the subsequent
+        // endpoint transaction fails, the durable mapping is safe to replay.
+        $resolved = automationResolveIdentity([
             'source' => $source,
             'entity_type' => 'device',
             'external_id' => $external_id,
-            'external_parent_id' => $scope_id,
             'external_name' => $external_name,
-            'client_id' => $client_id,
-            'location_id' => $location_id,
-            'asset_id' => $asset_id,
-            'state' => $status === 'retired' ? 'retired' : $identity_state,
-            'strategy' => (string) ($resolved['strategy'] ?? 'unresolved'),
-            'confidence' => $asset_id > 0 ? 100 : 0,
-            'last_seen_at' => $snapshot_facts['last_seen_at'] ?? $observed_at,
-            'last_error' => $last_error,
+            'client' => ['id' => $client_id],
+            'location' => $location_id > 0 ? ['id' => $location_id] : [],
+            'asset' => $asset,
+            'options' => [
+                'create_client' => false,
+                'create_location' => false,
+                'create_asset' => $create_asset,
+            ],
             'metadata' => $metadata,
         ]);
-        if (intval($mapping['automation_mapping_client_id'] ?? 0) !== $client_id
-            || intval($mapping['automation_mapping_asset_id'] ?? 0) !== $asset_id) {
-            throw new RuntimeException('The source identity binding changed during publication');
+        $resolved_client_id = intval($resolved['client_id'] ?? 0);
+        $asset_id = intval($resolved['asset_id'] ?? 0);
+        if ($resolved_client_id !== $client_id) {
+            throw new RuntimeException('The source identity resolved to a different client');
         }
 
-        $snapshot = integrationIdentityRecordSnapshot([
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the device-source publication transaction');
+        }
+        try {
+            $identity_state = $asset_id > 0 ? 'automatic' : 'unresolved';
+            $last_error = $asset_id > 0 ? '' : 'The source device is not mapped to an ITFlow asset.';
+            $mapping = integrationIdentityUpsertMapping([
+                'source' => $source,
+                'entity_type' => 'device',
+                'external_id' => $external_id,
+                'external_parent_id' => $scope_id,
+                'external_name' => $external_name,
+                'client_id' => $client_id,
+                'location_id' => $location_id,
+                'asset_id' => $asset_id,
+                'state' => $status === 'retired' ? 'retired' : $identity_state,
+                'strategy' => (string) ($resolved['strategy'] ?? 'unresolved'),
+                'confidence' => $asset_id > 0 ? 100 : 0,
+                'last_seen_at' => $snapshot_facts['last_seen_at'] ?? $observed_at,
+                'last_error' => $last_error,
+                'metadata' => $metadata,
+            ]);
+            $mapping_state = (string) ($mapping['automation_mapping_state'] ?? 'unresolved');
+            $mapping_trusted = empty($mapping['automation_mapping_deleted_at'])
+                && in_array($mapping_state, ['automatic', 'confirmed'], true);
+            $mapped_asset_id = intval($mapping['automation_mapping_asset_id'] ?? 0);
+            if (intval($mapping['automation_mapping_client_id'] ?? 0) !== $client_id
+                || ($asset_id > 0 && (!$mapping_trusted || $mapped_asset_id !== $asset_id))
+                || ($asset_id === 0 && $mapping_trusted && $mapped_asset_id > 0)) {
+                throw new RuntimeException('The source identity binding changed during publication');
+            }
+
+            $snapshot = integrationIdentityRecordSnapshot([
+                'source' => $source,
+                'entity_type' => 'device',
+                'external_id' => $external_id,
+                'client_id' => $client_id,
+                'asset_id' => $asset_id,
+                'observed_at' => $observed_at,
+                'facts' => $snapshot_facts,
+            ]);
+
+            $delivery = null;
+            if ($status === 'retired') {
+                integrationIdentityRetireMapping(
+                    $source,
+                    'device',
+                    $external_id,
+                    ucfirst($source) . ' reported the device as retired.'
+                );
+            } elseif ($asset_id > 0) {
+                $delivery = endpointReconcileAssetSourceUnlocked([
+                    'asset_id' => $asset_id,
+                    'client_id' => $client_id,
+                    'source' => $source,
+                    'external_id' => $external_id,
+                    'status' => $status,
+                    'observed_at' => $observed_at,
+                    'facts' => $facts,
+                    'network_interfaces' => $interfaces,
+                ]);
+            }
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit device-source publication');
+            }
+        } catch (Throwable $e) {
+            mysqli_rollback($mysqli);
+            throw $e;
+        }
+
+        return [
+            'action' => 'publish',
             'source' => $source,
-            'entity_type' => 'device',
-            'external_id' => $external_id,
+            'scope_id' => $scope_id,
+            'cycle_id' => $cycle_id,
+            'cycle_started_at' => $cycle_started_at,
             'client_id' => $client_id,
             'asset_id' => $asset_id,
-            'observed_at' => $observed_at,
-            'facts' => $snapshot_facts,
-        ]);
-
-        $delivery = null;
-        if ($status === 'retired') {
-            integrationIdentityRetireMapping(
-                $source,
-                'device',
-                $external_id,
-                ucfirst($source) . ' reported the device as retired.'
-            );
-        } elseif ($asset_id > 0) {
-            $delivery = endpointReconcileAssetSourceUnlocked([
-                'asset_id' => $asset_id,
-                'client_id' => $client_id,
-                'source' => $source,
-                'external_id' => $external_id,
-                'status' => $status,
-                'observed_at' => $observed_at,
-                'facts' => $facts,
-                'network_interfaces' => $interfaces,
-            ]);
+            'external_id' => $external_id,
+            'status' => $status,
+            'mapped' => $asset_id > 0,
+            'snapshot_changed' => !empty($snapshot['changed']),
+            'state_changed' => !empty($delivery['state']['changed']),
+            'stale_delivery' => !empty($delivery['state']['stale']) || !empty($delivery['network']['stale']),
+        ];
+    } finally {
+        if ($scope_lock_held) {
+            integrationIdentityReleaseLock($source, 'sync_scope', $scope_id);
         }
-        mysqli_commit($mysqli);
-    } catch (Throwable $e) {
-        mysqli_rollback($mysqli);
-        throw $e;
     }
-
-    return [
-        'action' => 'publish',
-        'source' => $source,
-        'scope_id' => $scope_id,
-        'cycle_id' => $cycle_id,
-        'cycle_started_at' => $cycle_started_at,
-        'client_id' => $client_id,
-        'asset_id' => $asset_id,
-        'external_id' => $external_id,
-        'status' => $status,
-        'mapped' => $asset_id > 0,
-        'snapshot_changed' => !empty($snapshot['changed']),
-        'state_changed' => !empty($delivery['state']['changed']),
-        'stale_delivery' => !empty($delivery['state']['stale']) || !empty($delivery['network']['stale']),
-    ];
 }
 
 function deviceSourceScopeMetadata(?array $mapping): array

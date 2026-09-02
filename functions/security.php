@@ -14,23 +14,30 @@ function randomString(int $length = 16): string {
     );
 }
 
-// Generate a pronounceable password with enough entropy for a real account.
-// The caller cannot lower either floor: this endpoint is used while creating
-// users and credentials, where a convenient but guessable value is unsafe.
+// Generate a pronounceable password - readable enough to dictate down the phone, while
+// still carrying real entropy. Every syllable is one of 90 consonant-vowel pairs, so the
+// default three words of three syllables plus the two-digit suffix is roughly 65 bits.
+// The floors are deliberate: this feeds real user and contact logins, so a caller asking
+// for one short word must not walk away with a guessable password.
 function generateReadablePassword(int $word_count = 3, int $syllables_per_word = 3): string {
+
     $consonants = 'bcdfghjklmnprstvwz';
     $vowels = 'aeiou';
 
     $word_count = max(2, $word_count);
     $syllables_per_word = max(2, $syllables_per_word);
+
     $words = [];
 
     for ($word_index = 0; $word_index < $word_count; $word_index++) {
+
         $word = '';
+
         for ($syllable_index = 0; $syllable_index < $syllables_per_word; $syllable_index++) {
             $word .= $consonants[random_int(0, strlen($consonants) - 1)];
             $word .= $vowels[random_int(0, strlen($vowels) - 1)];
         }
+
         $words[] = ucfirst($word);
     }
 

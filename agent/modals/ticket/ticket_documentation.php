@@ -9,7 +9,7 @@ $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_cli
     ticket_configuration_change, ticket_documentation_impact,
     ticket_documentation_assessed_by, ticket_documentation_assessed_at,
     ticket_resolved_at, ticket_closed_at
-    FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL " . clientScopeSql('ticket_client_id') . " LIMIT 1"));
+    FROM tickets WHERE ticket_id = $ticket_id " . clientScopeSql('ticket_client_id') . " LIMIT 1"));
 if (!$ticket) {
     exit('<div class="modal-body"><div class="alert alert-danger mb-0">The ticket is unavailable.</div></div>');
 }

@@ -297,17 +297,50 @@ function n45MigrationReservationDefinitionMatches(array $definition, string $leg
 
 function n45AssertMigrationNamespaceReservations(array $definitions): void
 {
-    $seen_unconsumed = false;
-    $first_unconsumed_id = null;
-    foreach (n45MigrationNamespaceReservations() as $legacy_version => $reservation) {
-        $id = $reservation['id'];
+    $namespace_reservations = n45MigrationNamespaceReservations();
+    $legacy_migrations = [];
+    foreach ($definitions as $id => $definition) {
+        $legacy_version = $definition['legacy_version'] ?? null;
+        if (is_string($legacy_version) && $legacy_version !== '') {
+            $legacy_migrations[$legacy_version] = $id;
+        }
+    }
+    $reclaimed_upstream_checksums = n45ForkManifest()['maintenance']['upstream_reclaimed_migration_checksums'] ?? [];
+    if (!is_array($reclaimed_upstream_checksums)
+        || array_diff_key($reclaimed_upstream_checksums, $legacy_migrations)) {
+        throw new RuntimeException('The reviewed upstream migration checksum inventory is invalid');
+    }
+    foreach ($reclaimed_upstream_checksums as $legacy_version => $checksum) {
+        if (!is_string($legacy_version)
+            || preg_match('/^\d+(?:\.\d+)+$/', $legacy_version) !== 1
+            || !is_string($checksum)
+            || preg_match('/^[a-f0-9]{64}$/', $checksum) !== 1) {
+            throw new RuntimeException('The reviewed upstream migration checksum inventory contains invalid metadata');
+        }
+    }
+    foreach ($legacy_migrations as $legacy_version => $id) {
         $upstream_file = dirname(__DIR__) . '/admin/database_updates/' . $legacy_version . '.php';
         if (is_file($upstream_file)) {
+            $expected_checksum = $reclaimed_upstream_checksums[$legacy_version] ?? null;
+            $observed_checksum = hash_file('sha256', $upstream_file);
+            if (!is_string($expected_checksum)
+                || !is_string($observed_checksum)
+                || !hash_equals($expected_checksum, $observed_checksum)) {
+                throw new RuntimeException(
+                    "Legacy N45 migration version $legacy_version conflicts with an unreviewed upstream migration file"
+                );
+            }
+        } elseif (isset($reclaimed_upstream_checksums[$legacy_version])) {
             throw new RuntimeException(
-                "Reserved N45 migration $legacy_version must be moved to n45/migrations/$id.php before database update"
+                "Reviewed upstream migration $legacy_version is missing from admin/database_updates"
             );
         }
+    }
 
+    $seen_unconsumed = false;
+    $first_unconsumed_id = null;
+    foreach ($namespace_reservations as $legacy_version => $reservation) {
+        $id = $reservation['id'];
         if (!isset($definitions[$id])) {
             $seen_unconsumed = true;
             $first_unconsumed_id ??= $id;
@@ -967,6 +1000,22 @@ function n45ReadDatabaseMarker($mysqli): string
     return $marker;
 }
 
+function n45LatestUpstreamDatabaseVersion(): string
+{
+    $latest = '0.0.0';
+    foreach (glob(dirname(__DIR__) . '/admin/database_updates/*.php') ?: [] as $file) {
+        $version = basename($file, '.php');
+        if (preg_match('/^\d+(?:\.\d+)+$/', $version) === 1
+            && version_compare($version, $latest, '>')) {
+            $latest = $version;
+        }
+    }
+    if ($latest === '0.0.0') {
+        throw new RuntimeException('The upstream database migration inventory is missing');
+    }
+    return $latest;
+}
+
 function n45ReadMigrationLedger($mysqli): array
 {
     if (!n45MigrationLedgerExists($mysqli)) {
@@ -1067,14 +1116,16 @@ function n45MigrationStatus($mysqli): array
     }
 
     $base = (string) (n45ForkManifest()['maintenance']['upstream_marker_base'] ?? '');
+    $latest_upstream_marker = n45LatestUpstreamDatabaseVersion();
     $bridge_required = n45LegacyBridgeRequired($marker, $definitions, $ledger);
-    $upstream_pending = $base !== '' && version_compare($marker, $base, '<');
+    $upstream_pending = version_compare($marker, $latest_upstream_marker, '<');
     $state = $errors ? 'integrity_error' : ($bridge_required ? 'bridge_required' : ($upstream_pending ? 'upstream_pending' : ($pending ? 'pending' : 'current')));
 
     return [
         'state' => $state,
         'upstream_marker' => $marker,
         'upstream_marker_base' => $base,
+        'upstream_marker_latest' => $latest_upstream_marker,
         'ledger_exists' => $ledger_exists,
         'applied' => $applied,
         'pending' => $pending,

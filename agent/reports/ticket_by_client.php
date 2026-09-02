@@ -16,7 +16,7 @@ if (isset($_GET['month'])) {
     $month = date('m');
 }
 
-$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets WHERE ticket_deleted_at IS NULL ORDER BY ticket_year DESC");
+$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets ORDER BY ticket_year DESC");
 
 $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_archived_at IS NULL ORDER BY client_name ASC");
 
@@ -24,21 +24,21 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
 
     <div class="card card-dark">
         <div class="card-header py-2">
-            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring mr-2"></i>Tickets By Client</h3>
+            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring me-2"></i>Tickets By Client</h3>
             <div class="card-tools">
-                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print mr-2"></i>Print</button>
+                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print me-2"></i>Print</button>
             </div>
         </div>
         <div class="card-body">
             <form class="mb-3">
-                <select onchange="this.form.submit()" class="form-control" name="year">
+                <select onchange="this.form.submit()" class="form-select" name="year">
                     <?php
                     while ($row = mysqli_fetch_assoc($sql_ticket_years)) {
                         $ticket_year = intval($row['ticket_year']); ?>
                         <option <?php if ($year == $ticket_year) { ?> selected <?php } ?> > <?= $ticket_year ?></option>
                     <?php } ?>
                 </select>
-                <select onchange="this.form.submit()" class="form-control" name="month">
+                <select onchange="this.form.submit()" class="form-select" name="month">
                     <option <?php if ($month == 1) { echo 'selected'; } ?> value="1">January</option>
                     <option <?php if ($month == 2) { echo 'selected'; } ?> value="2">February</option>
                     <option <?php if ($month == 3) { echo 'selected'; } ?> value="3">March</option>
@@ -56,7 +56,7 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
 
             <div class="card card-dark mb-3">
                 <div class="card-header">
-                    <h3 class="card-title"><i class="fas fa-fw fa-chart-area mr-2"></i>Yearly (<?= $year ?>)</h3>
+                    <h3 class="card-title"><i class="fas fa-fw fa-chart-area me-2"></i>Yearly (<?= $year ?>)</h3>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive-sm">
@@ -64,15 +64,15 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
                             <thead>
                             <tr>
                                 <th>Client</th>
-                                <th class="text-right">Raised</th>
-                                <th class="text-right">Priority: Low</th>
-                                <th class="text-right">Priority: Med</th>
-                                <th class="text-right">Priority: High</th>
-                                <th class="text-right">Priority: Urgent</th>
-                                <th class="text-right">Resolved</th>
-                                <th class="text-right">Total Time worked <i>(H:M:S)</i></th>
-                                <th class="text-right">Avg time to respond</th>
-                                <th class="text-right">Avg time to resolve</th>
+                                <th class="text-end">Raised</th>
+                                <th class="text-end">Priority: Low</th>
+                                <th class="text-end">Priority: Med</th>
+                                <th class="text-end">Priority: High</th>
+                                <th class="text-end">Priority: Urgent</th>
+                                <th class="text-end">Resolved</th>
+                                <th class="text-end">Total Time worked <i>(H:M:S)</i></th>
+                                <th class="text-end">Avg time to respond</th>
+                                <th class="text-end">Avg time to resolve</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -82,43 +82,43 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
                                 $client_name = escapeHtml($row['client_name']);
 
                                 // Calculate total tickets raised in period
-                                $sql_ticket_raised_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_raised_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id");
+                                $sql_ticket_raised_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_raised_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id");
                                 $row = mysqli_fetch_assoc($sql_ticket_raised_count);
                                 $ticket_raised_count = intval($row['ticket_raised_count']);
 
                                 // Calculate total tickets raised in period that are resolved
-                                $sql_ticket_resolved_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_resolved_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_resolved_at IS NOT NULL");
+                                $sql_ticket_resolved_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_resolved_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_resolved_at IS NOT NULL");
                                 $row = mysqli_fetch_assoc($sql_ticket_resolved_count);
                                 $ticket_resolved_count = intval($row['ticket_resolved_count']);
 
                                 // Breakdown tickets for each priority - Low
-                                $sql_low_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS low_ticket_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_priority = 'Low'");
+                                $sql_low_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS low_ticket_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_priority = 'Low'");
                                 $row = mysqli_fetch_assoc($sql_low_ticket_count);
                                 $low_ticket_count = intval($row['low_ticket_count']);
 
                                 // Breakdown tickets for each priority - Low
-                                $sql_med_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS med_ticket_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_priority = 'Medium'");
+                                $sql_med_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS med_ticket_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_priority = 'Medium'");
                                 $row = mysqli_fetch_assoc($sql_med_ticket_count);
                                 $med_ticket_count = intval($row['med_ticket_count']);
 
                                 // Breakdown tickets for each priority - Low
-                                $sql_high_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS high_ticket_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_priority = 'High'");
+                                $sql_high_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS high_ticket_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_priority = 'High'");
                                 $row = mysqli_fetch_assoc($sql_high_ticket_count);
                                 $high_ticket_count = intval($row['high_ticket_count']);
 
                                 // Breakdown tickets for each priority - Urgent
-                                $sql_urgent_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS urgent_ticket_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_priority = 'Urgent'");
+                                $sql_urgent_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS urgent_ticket_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_priority = 'Urgent'");
                                 $row = mysqli_fetch_assoc($sql_urgent_ticket_count);
                                 $urgent_ticket_count = intval($row['urgent_ticket_count']);
 
                                 // Used to calculate average time to respond to tickets that were raised in period specified
-                                $sql_tickets_respond = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_first_response_at FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id");
+                                $sql_tickets_respond = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_first_response_at FROM tickets WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id");
 
                                 // Used to calculate average time to resolve tickets that were raised in period specified
-                                $sql_tickets_resolved = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_resolved_at FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_resolved_at IS NOT NULL");
+                                $sql_tickets_resolved = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_resolved_at FROM tickets WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_resolved_at IS NOT NULL");
 
                                 // Calculate total time tracked towards tickets in the period
-                                $sql_time = mysqli_query($mysqli, "SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(ticket_reply_time_worked))) as total_time FROM ticket_replies INNER JOIN tickets ON tickets.ticket_id = ticket_replies.ticket_reply_ticket_id AND tickets.ticket_deleted_at IS NULL WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_reply_time_worked IS NOT NULL");
+                                $sql_time = mysqli_query($mysqli, "SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(ticket_reply_time_worked))) as total_time FROM ticket_replies LEFT JOIN tickets ON tickets.ticket_id = ticket_replies.ticket_reply_ticket_id WHERE YEAR(ticket_created_at) = $year AND ticket_client_id = $client_id AND ticket_reply_time_worked IS NOT NULL");
                                 $row = mysqli_fetch_assoc($sql_time);
                                 $ticket_total_time_worked = escapeHtml($row['total_time']);
 
@@ -160,15 +160,15 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
 
                                     <tr>
                                         <td><?= $client_name ?></td>
-                                        <td class="text-right"><?= $ticket_raised_count ?></td>
-                                        <td class="text-right"><?= $low_ticket_count ?></td>
-                                        <td class="text-right"><?= $med_ticket_count ?></td>
-                                        <td class="text-right"><?= $high_ticket_count ?></td>
-                                        <td class="text-right"><?= $urgent_ticket_count ?></td>
-                                        <td class="text-right"><?= $ticket_resolved_count ?></td>
-                                        <td class="text-right"><?= $ticket_total_time_worked ?></td>
-                                        <td class="text-right"><?= $avg_time_to_respond ?></td>
-                                        <td class="text-right"><?= $avg_time_to_resolve ?></td>
+                                        <td class="text-end"><?= $ticket_raised_count ?></td>
+                                        <td class="text-end"><?= $low_ticket_count ?></td>
+                                        <td class="text-end"><?= $med_ticket_count ?></td>
+                                        <td class="text-end"><?= $high_ticket_count ?></td>
+                                        <td class="text-end"><?= $urgent_ticket_count ?></td>
+                                        <td class="text-end"><?= $ticket_resolved_count ?></td>
+                                        <td class="text-end"><?= $ticket_total_time_worked ?></td>
+                                        <td class="text-end"><?= $avg_time_to_respond ?></td>
+                                        <td class="text-end"><?= $avg_time_to_resolve ?></td>
                                     </tr>
                                     <?php
                                 }
@@ -184,7 +184,7 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
 
             <div class="card card-dark mb-3">
                 <div class="card-header">
-                    <h3 class="card-title"><i class="fas fa-fw fa-chart-area mr-2"></i>Monthly (<?= date("F", mktime(1, 1, 1, $month, 1)) . ' ' . $year ?>)</h3>
+                    <h3 class="card-title"><i class="fas fa-fw fa-chart-area me-2"></i>Monthly (<?= date("F", mktime(1, 1, 1, $month, 1)) . ' ' . $year ?>)</h3>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive-sm">
@@ -192,15 +192,15 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
                             <thead>
                             <tr>
                                 <th>Client</th>
-                                <th class="text-right">Raised</th>
-                                <th class="text-right">Priority: Low</th>
-                                <th class="text-right">Priority: Med</th>
-                                <th class="text-right">Priority: High</th>
-                                <th class="text-right">Priority: Urgent</th>
-                                <th class="text-right">Resolved</th>
-                                <th class="text-right">Total Time worked <i>(H:M:S)</i></th>
-                                <th class="text-right">Avg time to respond</th>
-                                <th class="text-right">Avg time to resolve</th>
+                                <th class="text-end">Raised</th>
+                                <th class="text-end">Priority: Low</th>
+                                <th class="text-end">Priority: Med</th>
+                                <th class="text-end">Priority: High</th>
+                                <th class="text-end">Priority: Urgent</th>
+                                <th class="text-end">Resolved</th>
+                                <th class="text-end">Total Time worked <i>(H:M:S)</i></th>
+                                <th class="text-end">Avg time to respond</th>
+                                <th class="text-end">Avg time to resolve</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -211,43 +211,43 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
                                 $client_name = escapeHtml($row['client_name']);
 
                                 // Calculate total tickets raised in period
-                                $sql_ticket_raised_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_raised_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id");
+                                $sql_ticket_raised_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_raised_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id");
                                 $row = mysqli_fetch_assoc($sql_ticket_raised_count);
                                 $ticket_raised_count = intval($row['ticket_raised_count']);
 
                                 // Calculate total tickets raised in period that are resolved
-                                $sql_ticket_resolved_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_resolved_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_resolved_at IS NOT NULL");
+                                $sql_ticket_resolved_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS ticket_resolved_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_resolved_at IS NOT NULL");
                                 $row = mysqli_fetch_assoc($sql_ticket_resolved_count);
                                 $ticket_resolved_count = intval($row['ticket_resolved_count']);
 
                                 // Breakdown tickets for each priority - Low
-                                $sql_low_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS low_ticket_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_priority = 'Low'");
+                                $sql_low_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS low_ticket_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_priority = 'Low'");
                                 $row = mysqli_fetch_assoc($sql_low_ticket_count);
                                 $low_ticket_count = intval($row['low_ticket_count']);
 
                                 // Breakdown tickets for each priority - Low
-                                $sql_med_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS med_ticket_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_priority = 'Medium'");
+                                $sql_med_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS med_ticket_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_priority = 'Medium'");
                                 $row = mysqli_fetch_assoc($sql_med_ticket_count);
                                 $med_ticket_count = intval($row['med_ticket_count']);
 
                                 // Breakdown tickets for each priority - Low
-                                $sql_high_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS high_ticket_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_priority = 'High'");
+                                $sql_high_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS high_ticket_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_priority = 'High'");
                                 $row = mysqli_fetch_assoc($sql_high_ticket_count);
                                 $high_ticket_count = intval($row['high_ticket_count']);
 
                                 // Breakdown tickets for each priority - Urgent
-                                $sql_urgent_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS urgent_ticket_count FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_priority = 'Urgent'");
+                                $sql_urgent_ticket_count = mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS urgent_ticket_count FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_priority = 'Urgent'");
                                 $row = mysqli_fetch_assoc($sql_urgent_ticket_count);
                                 $urgent_ticket_count = intval($row['urgent_ticket_count']);
 
                                 // Used to calculate average time to respond to tickets that were raised in period specified
-                                $sql_tickets_respond = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_first_response_at FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id");
+                                $sql_tickets_respond = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_first_response_at FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id");
 
                                 // Used to calculate average time to resolve tickets that were raised in period specified
-                                $sql_tickets_resolved = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_resolved_at FROM tickets WHERE ticket_deleted_at IS NULL AND YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_resolved_at IS NOT NULL");
+                                $sql_tickets_resolved = mysqli_query($mysqli, "SELECT ticket_created_at, ticket_resolved_at FROM tickets WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_resolved_at IS NOT NULL");
 
                                 // Calculate total time tracked towards tickets in the period
-                                $sql_time = mysqli_query($mysqli, "SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(ticket_reply_time_worked))) as total_time FROM ticket_replies INNER JOIN tickets ON tickets.ticket_id = ticket_replies.ticket_reply_ticket_id AND tickets.ticket_deleted_at IS NULL WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_reply_time_worked IS NOT NULL");
+                                $sql_time = mysqli_query($mysqli, "SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(ticket_reply_time_worked))) as total_time FROM ticket_replies LEFT JOIN tickets ON tickets.ticket_id = ticket_replies.ticket_reply_ticket_id WHERE YEAR(ticket_created_at) = $year AND MONTH(ticket_created_at) = $month AND ticket_client_id = $client_id AND ticket_reply_time_worked IS NOT NULL");
                                 $row = mysqli_fetch_assoc($sql_time);
                                 $ticket_total_time_worked = escapeHtml($row['total_time']);
 
@@ -288,15 +288,15 @@ $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
 
                                     <tr>
                                         <td><?= $client_name ?></td>
-                                        <td class="text-right"><?= $ticket_raised_count ?></td>
-                                        <td class="text-right"><?= $low_ticket_count ?></td>
-                                        <td class="text-right"><?= $med_ticket_count ?></td>
-                                        <td class="text-right"><?= $high_ticket_count ?></td>
-                                        <td class="text-right"><?= $urgent_ticket_count ?></td>
-                                        <td class="text-right"><?= $ticket_resolved_count ?></td>
-                                        <td class="text-right"><?= $ticket_total_time_worked ?></td>
-                                        <td class="text-right"><?= $avg_time_to_respond ?></td>
-                                        <td class="text-right"><?= $avg_time_to_resolve ?></td>
+                                        <td class="text-end"><?= $ticket_raised_count ?></td>
+                                        <td class="text-end"><?= $low_ticket_count ?></td>
+                                        <td class="text-end"><?= $med_ticket_count ?></td>
+                                        <td class="text-end"><?= $high_ticket_count ?></td>
+                                        <td class="text-end"><?= $urgent_ticket_count ?></td>
+                                        <td class="text-end"><?= $ticket_resolved_count ?></td>
+                                        <td class="text-end"><?= $ticket_total_time_worked ?></td>
+                                        <td class="text-end"><?= $avg_time_to_respond ?></td>
+                                        <td class="text-end"><?= $avg_time_to_resolve ?></td>
                                     </tr>
                                     <?php
                                 }

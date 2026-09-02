@@ -18,33 +18,8 @@ require_once 'ticket_model.php';
 
 // Default
 $insert_id = false;
-$ticket_relations_valid = true;
 
-// Every supplied child record must belong to the already-authorized target
-// client. A valid API key must not become a cross-tenant association primitive.
-if ($contact > 0) {
-    $contact_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT contact_id FROM contacts
-        WHERE contact_id = $contact AND contact_client_id = $client_id
-        AND contact_archived_at IS NULL LIMIT 1"));
-    $ticket_relations_valid = (bool) $contact_row;
-}
-if ($ticket_relations_valid && $asset > 0) {
-    $asset_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT asset_id FROM assets
-        WHERE asset_id = $asset AND asset_client_id = $client_id
-        AND asset_archived_at IS NULL LIMIT 1"));
-    $ticket_relations_valid = (bool) $asset_row;
-}
-if ($ticket_relations_valid && $vendor_id > 0) {
-    $vendor_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT vendor_id FROM vendors
-        WHERE vendor_id = $vendor_id AND vendor_client_id = $client_id
-        AND vendor_archived_at IS NULL LIMIT 1"));
-    $ticket_relations_valid = (bool) $vendor_row;
-}
-if ($ticket_relations_valid && $assigned_to > 0) {
-    $ticket_relations_valid = documentationAgentHasSupportLevel($assigned_to, 1);
-}
-
-if (!empty($subject) && $ticket_operational_valid && $ticket_relations_valid) {
+if (!empty($subject)) {
 
     if (!is_int($client_id)) {
         $client_id = 0;
@@ -52,10 +27,9 @@ if (!empty($subject) && $ticket_operational_valid && $ticket_relations_valid) {
 
     // If no contact is selected automatically choose the primary contact for the client (if client set)
     if ($contact == 0 && $client_id != 0) {
-        $sql = mysqli_query($mysqli,"SELECT contact_id FROM contacts WHERE contact_client_id = $client_id
-            AND contact_primary = 1 AND contact_archived_at IS NULL LIMIT 1");
+        $sql = mysqli_query($mysqli,"SELECT contact_id FROM contacts WHERE contact_client_id = $client_id AND contact_primary = 1");
         $row = mysqli_fetch_assoc($sql);
-        $contact = intval($row['contact_id'] ?? 0);
+        $contact = intval($row['contact_id']);
     }
 
     $ticket_transaction_started = false;
@@ -82,7 +56,7 @@ if (!empty($subject) && $ticket_operational_valid && $ticket_relations_valid) {
 
         // Insert ticket
         $url_key = randomString(32);
-        $insert_sql = ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'API', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_work_type = '$work_type', ticket_impact = '$impact', ticket_urgency = '$urgency', ticket_next_action = '$next_action', ticket_next_action_due_at = $next_action_due_at, ticket_waiting_on = '$waiting_on', ticket_waiting_on_detail = $waiting_on_detail, ticket_operational_updated_by = 0, ticket_operational_updated_at = NOW(), ticket_status = 1, ticket_billable = $billable, ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_created_by = 0, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $client_id", 'Could not create the API ticket');
+        $insert_sql = ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'API', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = 1, ticket_billable = $billable, ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_created_by = 0, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $client_id", 'Could not create the API ticket');
         $insert_id = intval(mysqli_insert_id($mysqli));
         if (!$insert_id) {
             throw new RuntimeException('The API ticket did not receive an ID');

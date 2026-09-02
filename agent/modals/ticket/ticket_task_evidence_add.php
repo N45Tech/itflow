@@ -8,7 +8,7 @@ $task_id = intval($_GET['id']);
 $task = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT task_name, task_evidence_required,
     task_evidence_prompt, task_ticket_id, ticket_client_id,
     ticket_resolved_at, ticket_closed_at
-    FROM tasks INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+    FROM tasks LEFT JOIN tickets ON ticket_id = task_ticket_id
     WHERE task_id = $task_id LIMIT 1"));
 
 if (!$task) {

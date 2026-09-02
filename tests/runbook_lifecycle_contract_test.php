@@ -80,9 +80,8 @@ $assertTransactionEnvelope = function (string $contents, string $label) use (&$f
 $starter = $read('admin/post/starter_content_model.php');
 $reconcile = $read('deploy/psa/reconcile_templates.php');
 $runbooks = $read('functions/runbooks.php');
-$retention = $read('functions/retention.php');
 $assertContains("'publish_runbook' => true", $starter, 'Starter content has no publishable runbook definitions');
-$assertTrue(substr_count($starter, "'publish_runbook' => true") === 8, 'The six portal workflows plus managed onboarding and offboarding must be auto-published');
+$assertTrue(substr_count($starter, "'publish_runbook' => true") === 8, 'The six portal workflows plus managed onboarding and client offboarding must be auto-published');
 $assertContains('reconcileTemplateDeleteTaskDrafts($mysqli, $template_id)', $reconcile, 'Template reconciliation does not replace stale editable task drafts');
 $assertContains('starterInsertTicketTemplateTasks(', $reconcile, 'Template reconciliation does not rebuild canonical task metadata and dependencies');
 $assertContains("if (!empty(\$template['publish_runbook']))", $reconcile, 'Template reconciliation ignores the publication marker');
@@ -172,8 +171,7 @@ $assertOrdered(
         'mysqli_begin_transaction($mysqli)',
         'sort($project_ids, SORT_NUMERIC)',
         'FOR UPDATE',
-        'ticket_updated_at FROM tickets WHERE ticket_id = $ticket_id',
-        'AND ticket_deleted_at IS NULL FOR UPDATE',
+        'ticket_updated_at FROM tickets WHERE ticket_id = $ticket_id FOR UPDATE',
         'FROM runbook_executions WHERE runbook_execution_ticket_id = $ticket_id',
         'UPDATE tickets SET ticket_project_id = $target_project_id',
         'mysqli_affected_rows($mysqli)',
@@ -306,16 +304,8 @@ $attachment_delete = $section(
     "if (isset(\$_POST['edit_ticket_reply']))",
     'ticket attachment deletion handler'
 );
-$assertContains('enforceAdminPermission()', $attachment_delete, 'Attachment retention entry point is not administrator-only');
-$assertContains('/admin/retention.php?record_type=attachment', $attachment_delete, 'Attachment deletion bypasses recoverable retention');
-$retained_attachment = $section(
-    $retention,
-    'function retentionSoftDeleteAttachment(',
-    'function retentionDeletionForUpdate(',
-    'retained attachment deletion'
-);
-$assertContains('task_evidence_attachment_id = $attachment_id', $retained_attachment, 'Evidence-bearing ticket attachments can be deleted');
-$assertContains('retained as runbook evidence', $retained_attachment, 'Evidence attachment retention is not enforced');
+$assertContains('task_evidence_attachment_id = $attachment_id', $attachment_delete, 'Evidence-bearing ticket attachments can be deleted');
+$assertContains('retained as runbook evidence', $attachment_delete, 'Evidence attachment retention is not enforced');
 $assertContains('a.ticket_attachment_ticket_id = t.task_ticket_id', $runbooks, 'File evidence can be satisfied by an attachment from another ticket');
 
 $single_ticket_delete = $section(
@@ -330,13 +320,10 @@ $bulk_ticket_delete = $section(
     "if (isset(\$_POST['bulk_assign_ticket']))",
     'bulk ticket deletion handler'
 );
-$assertContains('/admin/retention.php?record_type=ticket', $single_ticket_delete, 'Single ticket deletion bypasses recoverable retention');
-$assertContains('Bulk ticket deletion is disabled', $bulk_ticket_delete, 'Bulk deletion can bypass per-ticket retention decisions');
-$ticket_dependencies = $section($retention, 'function retentionTicketProtectionSummary(',
-    'function retentionProtectionSummary(', 'ticket purge dependencies');
-$assertContains('runbook_executions', $ticket_dependencies, 'A ticket with an execution can be permanently purged');
-$assertContains('task_evidence', $ticket_dependencies, 'Ticket purge ignores runbook evidence');
-$assertContains('task_approvals', $ticket_dependencies, 'Ticket purge ignores runbook approvals');
+$assertContains('runbook_executions', $single_ticket_delete, 'A ticket with an execution can be permanently deleted');
+$assertContains('cannot be permanently deleted', $single_ticket_delete, 'Single-ticket execution retention is not enforced');
+$assertContains('runbook_executions', $bulk_ticket_delete, 'Bulk deletion can remove a ticket execution');
+$assertContains('$skipped_count++', $bulk_ticket_delete, 'Bulk deletion does not retain execution tickets individually');
 
 $client_delete = $section(
     $client_post,
@@ -344,8 +331,9 @@ $client_delete = $section(
     "if (isset(\$_POST[\"import_clients_csv\"]))",
     'client deletion handler'
 );
-$assertContains('Permanent client deletion is disabled by retention policy', $client_delete, 'A client with execution records can be permanently deleted');
-$assertNotContains('DELETE FROM clients', $client_delete, 'Client teardown can erase runbook execution history');
+$assertContains('FROM runbook_executions', $client_delete, 'A client with execution records can be permanently deleted');
+$assertContains('INNER JOIN tickets ON ticket_id = runbook_execution_ticket_id', $client_delete, 'Client execution retention is not linked through its tickets');
+$assertContains('cannot be permanently deleted', $client_delete, 'Client execution retention is not enforced');
 
 // Task transitions are legal, compare-and-set, auditable and refresh their
 // dependency graph. Skipping is terminal and intentionally bypasses approvals.

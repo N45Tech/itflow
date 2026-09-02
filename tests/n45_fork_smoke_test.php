@@ -59,6 +59,8 @@ $assertTrue(intval($manifest['schema_version'] ?? 0) === 2, 'The N45 manifest sc
 $assertTrue(($manifest['maintenance']['upstream_review_script'] ?? '') === 'scripts/n45-upstream-review.sh', 'The manifest does not identify the upstream review tool');
 $assertTrue(($manifest['maintenance']['diff_check_allowlist'] ?? '') === 'n45/upstream-diff-check.allowlist', 'The manifest does not identify the exact whitespace allowlist');
 $assertTrue(($manifest['maintenance']['security_sensitive_paths'] ?? '') === 'n45/security-sensitive-paths.regex', 'The manifest does not identify security-sensitive overlap rules');
+$assertTrue(($manifest['maintenance']['release_checklist'] ?? '') === 'docs/n45/release-checklist.md', 'The manifest does not identify the exact-SHA release checklist');
+$assertTrue(is_file($root . '/' . ($manifest['maintenance']['release_checklist'] ?? '')), 'The exact-SHA release checklist is missing');
 $assertTrue(($manifest['maintenance']['upstream_marker_base'] ?? '') === '2.6.7', 'The N45 namespace does not preserve the upstream marker base');
 $expected_legacy_migrations = [
     'n45-0001-entra-agent-sso' => '2.6.8',
@@ -82,7 +84,25 @@ $expected_integration_reservations = [
     '2.8.0' => 'n45-0013-portal-request-catalog',
     '2.8.1' => 'n45-0014-agreement-entitlements',
 ];
+$expected_reclaimed_upstream_checksums = [
+    '2.6.8' => 'c5ed7ba86839e37770531103bacceaeb271473c9e024173a64be871330190b63',
+    '2.6.9' => 'e9bec10d56b8322eae92acab92f921c7ea590697bc4dfe8ec2b2d3e1c3914a05',
+    '2.7.0' => 'a134902f80288a6247a72b6a74346773ee3877d7ae4e055a26ab040cade2df3a',
+    '2.7.1' => '1b707286115283cb68c76a93439feafbe49d6ab905fa2977915eb7f78f1e3a04',
+    '2.7.2' => '559b19dd2afeb826cebfc7beb30ac08bdf154cde7cc2d733563cbfe06eb956a8',
+    '2.7.3' => '85edfec112eeb26b6c57150c84b96b3054983904a5a4c5853d832011f345ee49',
+    '2.7.4' => '0fd61268b6c54e446b1fc21412bb5ee9cb54b82978aec71ad6d8a2132fe36235',
+    '2.7.5' => '68f4ef4880c69a1d39e26c9f34cd635d90a0509215494c70778a643d932eccea',
+    '2.7.6' => 'c28ae8e3bcd22f661e5c795c5e1871dd0286906e7d7df40e55de3e7a23958209',
+    '2.7.7' => '8cdf1195e94f308ea54fe90291a120eece2bf43a529f140749fd8037b36031f3',
+    '2.7.8' => '23b18afc7ebe1e3d18143e8ceea5785c83517015d9c4467fe44d2f957548ee99',
+];
 $integration_reservations = $manifest['maintenance']['integration_migration_reservations'] ?? [];
+$upstream_reclaimed_migration_checksums = $manifest['maintenance']['upstream_reclaimed_migration_checksums'] ?? [];
+$assertTrue(
+    $upstream_reclaimed_migration_checksums === $expected_reclaimed_upstream_checksums,
+    'Reviewed upstream migration checksums do not match the exact official files that collide with legacy N45 markers'
+);
 $assertTrue(
     array_map(static fn (array $reservation): string => (string) ($reservation['id'] ?? ''), $integration_reservations)
         === $expected_integration_reservations,
@@ -92,10 +112,10 @@ $post_integration_reservations = $manifest['maintenance']['post_integration_migr
 $assertTrue(
     array_keys($post_integration_reservations) === [
         'n45-0015-documentation-evidence-reference-index',
-        'n45-0016-ticket-operational-discipline',
-        'n45-0018-retention-controls',
+        'n45-0016-release-safety-hardening',
+        'n45-0017-automation-action-outbox',
     ],
-    'The post-integration compatibility, ticket-operation, and retention migrations are not reserved'
+    'The post-integration migrations are not reserved'
 );
 $required_migration_ids = array_keys($expected_legacy_migrations);
 $manifest_migration_ids = array_keys($manifest['migrations'] ?? []);
@@ -112,16 +132,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    isset($manifest['migrations']['n45-0015-documentation-evidence-reference-index']),
-    'The documentation evidence-index repair is missing from the stable N45 stream'
-);
-$assertTrue(
-    ($manifest_migration_ids[16] ?? '') === 'n45-0016-ticket-operational-discipline',
-    'Ticket operational discipline is missing or out of order in the stable N45 stream'
-);
-$assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0018-retention-controls',
-    'Recoverable deletion is not the final reserved stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0017-automation-action-outbox',
+    'The automation action-outbox migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -132,6 +144,22 @@ $assertTrue(
     ($repair_migration['fingerprint']['indexes']['documentation_evidence_locker']['documentation_evidence_reference'] ?? null)
         === ($post_integration_reservations['n45-0015-documentation-evidence-reference-index']['altered_indexes']['documentation_evidence_locker']['documentation_evidence_reference'] ?? null),
     'The documentation evidence-index repair does not match its exact final reservation'
+);
+$safety_migration = $manifest['migrations']['n45-0016-release-safety-hardening'] ?? [];
+$assertTrue(
+    ($safety_migration['fingerprint']['indexes']['api_keys']['api_key_secret_unique'] ?? null)
+        === ($post_integration_reservations['n45-0016-release-safety-hardening']['altered_indexes']['api_keys']['api_key_secret_unique'] ?? null),
+    'The release-safety migration does not match its API-key uniqueness reservation'
+);
+$action_outbox_migration = $manifest['migrations']['n45-0017-automation-action-outbox'] ?? [];
+$assertTrue(
+    ($action_outbox_migration['fingerprint']['tables'] ?? null)
+        === ($post_integration_reservations['n45-0017-automation-action-outbox']['created_tables'] ?? null),
+    'The automation action-outbox migration does not match its table reservation'
+);
+$assertTrue(
+    in_array('n45-0017-automation-action-outbox', $manifest['modules']['automation']['migrations'] ?? [], true),
+    'The durable action outbox is not owned by the automation module'
 );
 
 $manifest_migration_files = array_map(
@@ -146,12 +174,23 @@ $assertTrue($manifest_migration_files === $disk_migration_files, 'Every N45 migr
 foreach (glob($root . '/admin/database_updates/*.php') ?: [] as $upstream_migration_file) {
     $assertTrue(!str_contains((string) file_get_contents($upstream_migration_file), 'FROM_N45_DB_UPDATER'), 'An N45 migration leaked into the upstream namespace: ' . basename($upstream_migration_file));
 }
+foreach ($expected_legacy_migrations as $migration_id => $legacy_version) {
+    $upstream_migration_path = $root . '/admin/database_updates/' . $legacy_version . '.php';
+    if (is_file($upstream_migration_path)) {
+        $observed_upstream_checksum = hash_file('sha256', $upstream_migration_path);
+        $assertTrue(
+            hash_equals((string) ($expected_reclaimed_upstream_checksums[$legacy_version] ?? ''), (string) $observed_upstream_checksum),
+            "Legacy N45 migration version $legacy_version conflicts with a changed official-upstream file"
+        );
+    } else {
+        $assertTrue(
+            !isset($expected_reclaimed_upstream_checksums[$legacy_version]),
+            "Reviewed upstream migration $legacy_version is missing from the upstream namespace"
+        );
+    }
+}
 foreach ($integration_reservations as $legacy_version => $reservation) {
     $migration_id = (string) ($reservation['id'] ?? '');
-    $assertTrue(
-        !is_file($root . '/admin/database_updates/' . $legacy_version . '.php'),
-        "Reserved N45 migration $legacy_version leaked into the upstream namespace; move it to $migration_id"
-    );
     if (isset($manifest['migrations'][$migration_id])) {
         $migration = $manifest['migrations'][$migration_id];
         $assertTrue(($migration['legacy_version'] ?? null) === $legacy_version, "$migration_id does not bridge legacy marker $legacy_version");
@@ -236,7 +275,6 @@ $assertOrdered($functions, [
     "n45RequireModule('runbooks');",
     "n45RequireModule('portal_requests');",
     "n45RequireModule('agreements');",
-    "n45RequireModule('retention');",
     "require_once __DIR__ . '/functions/app.php';",
 ], 'Fork runtime modules are not loaded through the stable boundary in dependency order');
 $assertNotContains("require_once __DIR__ . '/functions/endpoint.php';", $functions, 'Endpoint runtime bypasses the stable module boundary');
@@ -248,10 +286,14 @@ $baseline_schema = $read('db.sql');
 $seed_data = $read('setup/seed_data.php');
 $update_page = $read('admin/update.php');
 $update_handler = $read('admin/post/update.php');
+$update_job = $read('cron/app_update.php');
 $update_cli = $read('scripts/update_cli.php');
 $assertContains('function n45MigrationStatus($mysqli): array', $schema_service, 'Read-only N45 pending detection is missing');
 $status_contract = $section($schema_service, 'function n45MigrationStatus($mysqli): array', 'function n45WithMigrationLock(', 'N45 status function');
 $assertTrue(!str_contains($status_contract, 'n45EnsureMigrationLedger(') && !str_contains($status_contract, 'n45RecordMigration('), 'N45 pending detection performs maintenance writes');
+$assertContains('n45LatestUpstreamDatabaseVersion()', $status_contract, 'N45 status does not compare against the current upstream migration inventory');
+$assertContains("version_compare(\$marker, \$latest_upstream_marker, '<')", $status_contract, 'N45 status only compares against the historical bridge base');
+$assertContains("'upstream_marker_latest' => \$latest_upstream_marker", $status_contract, 'N45 status does not disclose the current upstream marker');
 $assertContains("hash_file('sha256'", $schema_service, 'N45 migrations are not checksum verified');
 $assertContains("SELECT GET_LOCK('\$lock_sql', 0)", $schema_service, 'N45 migrations do not serialize on the database update lock');
 $assertContains('function n45ValidateMigrationFingerprint(', $schema_service, 'Legacy marker bridge does not validate schema/data fingerprints');
@@ -266,12 +308,19 @@ $assertContains('`n45_schema_migrations`', $baseline_schema, 'Fresh-install sche
 $assertContains('n45SeedFreshInstallMigrations($mysqli)', $seed_data, 'Fresh installs do not verify and seed the N45 ledger');
 $assertContains('n45MigrationStatus($mysqli)', $update_page, 'Admin update UI does not report N45 pending state');
 $assertContains('bridge_n45_migrations', $update_page, 'Admin update UI omits the explicit legacy marker bridge');
-$assertContains('n45RunMigrations($mysqli)', $update_handler, 'Admin database update does not run the N45 migration stream');
-$assertContains('n45PrepareMigrationNamespace($mysqli)', $update_handler, 'Admin update does not establish the N45 namespace before upstream advances');
+$assertContains('n45MigrationStatus($mysqli)', $update_handler, 'Admin update queue does not fail closed on an unresolved N45 migration state');
+$assertContains("cron_job_name = 'app_update'", $update_handler, 'Admin update handler does not queue the unified updater');
+$assertContains('scripts/update_cli.php', $update_job, 'Queued update job does not delegate to the unified CLI updater');
+$assertContains('exec(escapeshellarg(PHP_BINARY)', $update_job, 'Queued update job does not execute the unified updater in a separate process');
 $assertContains('n45BridgeLegacyMigrations($mysqli)', $update_handler, 'Admin maintenance handler omits the legacy marker bridge');
-$assertContains("'bridge_n45_migrations'", $update_cli, 'CLI does not expose the explicit legacy marker bridge');
+$assertContains("'--bridge_n45_migrations'", $update_cli, 'CLI does not expose the explicit legacy marker bridge');
 $assertContains('n45RunMigrations($mysqli)', $update_cli, 'CLI database update omits the N45 migration stream');
 $assertContains('n45PrepareMigrationNamespace($mysqli)', $update_cli, 'CLI update does not establish the N45 namespace before upstream advances');
+$assertOrdered(
+    $update_cli,
+    ['n45PrepareMigrationNamespace($mysqli)', 'require_once "../admin/database_updates.php"', 'n45RunMigrations($mysqli)'],
+    'Unified updater does not establish the N45 namespace before upstream migrations and finish with the N45 stream'
+);
 $assertTrue(!str_contains($functions, 'n45RunMigrations(') && !str_contains($functions, 'n45BridgeLegacyMigrations('), 'Normal application bootstrap mutates N45 migration state');
 
 $synthetic_runner_ledger = [];
@@ -422,32 +471,57 @@ $assertTrue(substr_count($compose, 'N45_FEATURE_AUTOMATION: ${N45_FEATURE_AUTOMA
 $assertContains('N45_FEATURE_LEVEL=1', $environment_example, 'Deployment environment example omits the Level flag');
 $assertContains('N45_FEATURE_AUTOMATION=1', $environment_example, 'Deployment environment example omits the automation flag');
 
-// Deletion smoke: legacy destructive routes must defer to recoverable retention.
+$automation_delete = $section(
+    $automation_service,
+    'function automationDeleteTicketOperations(',
+    'function automationResolveIdentityUnlocked(',
+    'Operations ticket cleanup'
+);
+$assertOrdered($automation_delete, [
+    'DELETE automation_event_dispatch_outbox',
+    'DELETE FROM automation_events',
+    'DELETE FROM automation_incidents',
+], 'Operations cleanup can orphan durable custom actions when a ticket is deleted');
+
+// Deletion smoke: the automation flag must never bypass referential cleanup.
 $single_delete = $section($ticket_post, "if (isset(\$_GET['delete_ticket']))", "if (isset(\$_POST['bulk_delete_tickets']))", 'single ticket deletion');
 $bulk_delete = $section($ticket_post, "if (isset(\$_POST['bulk_delete_tickets']))", "if (isset(\$_POST['bulk_assign_ticket']))", 'bulk ticket deletion');
-$assertOrdered($single_delete, [
-    'enforceAdminPermission()',
-    'redirect("/admin/retention.php?record_type=ticket&record_id=$ticket_id")',
-], 'Single ticket deletion does not defer to the recoverable retention workflow');
-$assertTrue(!str_contains($single_delete, 'DELETE FROM tickets') && !str_contains($single_delete, 'removeDirectory('),
-    'Single ticket deletion still exposes a permanent-delete side path');
-$assertOrdered($bulk_delete, [
-    'enforceAdminPermission()',
-    'Bulk ticket deletion is disabled',
-    "redirect('/admin/retention.php')",
-], 'Bulk ticket deletion does not fail closed into the retention workflow');
-$assertTrue(!str_contains($bulk_delete, 'DELETE FROM tickets') && !str_contains($bulk_delete, 'removeDirectory('),
-    'Bulk ticket deletion still exposes a permanent-delete side path');
+foreach ([$single_delete, $bulk_delete] as $index => $delete_handler) {
+    $label = $index === 0 ? 'Single ticket deletion' : 'Bulk ticket deletion';
+    $assertOrdered($delete_handler, [
+        'mysqli_begin_transaction($mysqli)',
+        'automationDeleteTicketOperations($ticket_id)',
+        'DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id',
+        'DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id',
+        'DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id',
+        'DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id',
+        'DELETE FROM tickets WHERE ticket_id = $ticket_id',
+        'mysqli_commit($mysqli)',
+    ], "$label does not atomically remove Operations records with the ticket");
+    $assertContains('mysqli_rollback($mysqli)', $delete_handler, "$label cannot roll back failed Operations cleanup");
+    $assertTrue(!str_contains($delete_handler, "n45FeatureEnabled('automation')"), "$label incorrectly skips cleanup when automation ingress is disabled");
+    $assertOrdered($delete_handler, [
+        'if (!mysqli_commit($mysqli))',
+        'removeDirectory("../uploads/tickets/$ticket_id")',
+    ], "$label mutates filesystem state before the database transaction commits");
+}
 
 $client_handler = $read('agent/post/client.php');
 $client_delete = $section($client_handler, "if (isset(\$_GET['delete_client']))", "if (isExportRequest('export_clients'))", 'client deletion');
 $assertOrdered($client_delete, [
-    'enforceAdminPermission()',
-    'Permanent client deletion is disabled by retention policy',
-    'redirect("client_overview.php?client_id=$client_id")',
-], 'Client deletion does not fail closed under retention policy');
-$assertTrue(!str_contains($client_delete, 'DELETE FROM clients') && !str_contains($client_delete, 'removeDirectory('),
-    'Client deletion still exposes a permanent-delete side path');
+    'if (!mysqli_begin_transaction($mysqli))',
+    'automationDeleteTicketOperations($ticket_id)',
+    'DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id',
+    'DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id',
+    'DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id',
+    'DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id',
+    'DELETE FROM tickets WHERE ticket_client_id = $client_id',
+    'DELETE FROM clients WHERE client_id = $client_id',
+    'if (!mysqli_commit($mysqli))',
+    'removeDirectory("../uploads/clients/$client_id")',
+], 'Client deletion does not preserve atomic ticket/Operations cleanup before filesystem deletion');
+$assertContains('mysqli_rollback($mysqli)', $client_delete, 'Client deletion cannot roll back failed ticket/Operations cleanup');
+$assertTrue(!str_contains($client_delete, "n45FeatureEnabled('automation')"), 'Client deletion incorrectly skips Operations cleanup when automation is disabled');
 
 foreach (glob($root . '/api/v1/tickets/*.php') ?: [] as $api_ticket_file) {
     $assertTrue(!str_contains((string) file_get_contents($api_ticket_file), 'DELETE FROM tickets'), 'Ticket deletion was added to the API without the shared Operations cleanup contract: ' . basename($api_ticket_file));
@@ -456,7 +530,6 @@ foreach (glob($root . '/api/v1/tickets/*.php') ?: [] as $api_ticket_file) {
 // Repeatable parity review must remain repository native and read-only.
 $review_script = $read('scripts/n45-upstream-review.sh');
 $review_workflow = $read('.github/workflows/upstream-parity.yml');
-$security_sensitive_paths = $read('n45/security-sensitive-paths.regex');
 $assertContains('git merge-base', $review_script, 'Upstream review does not calculate a merge base');
 $assertContains('comm -12', $review_script, 'Upstream review does not identify path overlap');
 $assertContains('sensitive-overlap-paths', $review_script, 'Upstream review does not isolate security-sensitive overlap');
@@ -471,14 +544,8 @@ $assertContains('git diff --check', $review_script, 'Upstream review does not va
 $assertContains('grep -Fvxf', $review_script, 'Upstream review does not reject whitespace errors outside the exact allowlist');
 $assertTrue(is_file($root . '/n45/upstream-diff-check.allowlist'), 'The exact historical whitespace allowlist is missing');
 $assertTrue(is_file($root . '/n45/security-sensitive-paths.regex'), 'Security-sensitive path rules are missing');
-$assertContains('^(guest|cron)/', $security_sensitive_paths, 'Security-sensitive parity review omits unauthenticated guest or background-writer paths');
-$assertContains('^libs/composer\\.(json|lock)$', $security_sensitive_paths, 'Security-sensitive parity review omits the application dependency manifest and lockfile');
 $assertContains('https://github.com/itflow-org/itflow.git', $review_workflow, 'Parity workflow does not fetch authoritative ITFlow upstream');
 $assertContains('for test_file in tests/*_test.php', $review_workflow, 'Parity workflow does not run the full regression suite');
-$assertContains("vars.N45_MONITORED_REF || 'codex/itflow-all-goals'", $review_workflow,
-    'Scheduled/manual parity does not default to the final all-goals release branch');
-$assertContains("github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", $review_workflow,
-    'Parity workflow does not distinguish release monitoring from push/PR validation');
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);

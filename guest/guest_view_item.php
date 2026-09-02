@@ -153,8 +153,7 @@ if ($item_type == "Document") {
 
 
 } elseif ($item_type == "File") {
-    $file_sql = mysqli_query($mysqli, "SELECT * FROM files WHERE file_id = $item_related_id
-        AND file_client_id = $client_id AND file_deleted_at IS NULL LIMIT 1");
+    $file_sql = mysqli_query($mysqli, "SELECT * FROM files WHERE file_id = $item_related_id AND file_client_id = $client_id LIMIT 1");
     $file_row = mysqli_fetch_assoc($file_sql);
 
     if (mysqli_num_rows($file_sql) !== 1 || !$file_row) {
@@ -218,7 +217,7 @@ if ($item_type == "Document") {
     ?>
 
     <h5><?= $credential_name ?></h5>
-    <table class="table col-md-3">
+    <table class="table w-auto">
         <tr>
             <th>URL</th>
             <td><?= $credential_uri ?></td>
@@ -244,7 +243,7 @@ if ($item_type == "Document") {
     <script>
         function refreshOTP() {
             // Send a GET request to guest_ajax.php as guest_ajax.php?get_share_totp_token=true&id=ID&key=KEY
-            jQuery.get(
+            itflowGet(
                 "guest_ajax.php",
                 {
                     get_share_totp_token: 'true',
@@ -286,7 +285,7 @@ if ($item_type == "Document") {
 
 </div>
 <div class="card-footer">
-<?= "<i class='fas fa-phone fa-fw mr-2'></i>$company_phone | <i class='fas fa-globe fa-fw mr-2 ml-2'></i>$company_website" ?>
+<?= "<i class='fas fa-phone fa-fw me-2'></i>$company_phone | <i class='fas fa-globe fa-fw me-2 ms-2'></i>$company_website" ?>
 </div>
 
 <?php

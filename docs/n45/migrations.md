@@ -1,6 +1,6 @@
 # N45 migration and rollback policy
 
-ITFlow upstream and N45 now have independent migration namespaces. Upstream files remain in `admin/database_updates/` and own `settings.config_current_database_version`; this fork's upstream base is `2.6.7`. N45 files live in `n45/migrations/` and are recorded by stable ID and SHA-256 checksum in `n45_schema_migrations`.
+ITFlow upstream and N45 now have independent migration namespaces. Upstream files remain in `admin/database_updates/` and own `settings.config_current_database_version`; this fork's historical bridge base is `2.6.7`. That base is the reset anchor for legacy N45 markers, not the current upstream version. The current upstream marker is derived from the reviewed numeric migration inventory, fresh installs record it, and the N45 runner refuses to start while the durable marker is behind it. N45 files live in `n45/migrations/` and are recorded by stable ID and SHA-256 checksum in `n45_schema_migrations`.
 
 Both runners use the `itflow-database-updates` advisory lock. Before upstream migrations run, the updater records the no-op `n45-0000-namespace-foundation` migration. That durable row prevents a future upstream release that reuses a former fork version number from being mistaken for an old fork install. The N45 runner is ordered and retryable: it validates every migration's schema/data fingerprint before writing its ledger row, refuses changed checksums or unknown ledger IDs, and resumes at the first unrecorded ID. MySQL/MariaDB DDL may commit implicitly, so retry safety still depends on idempotent migration SQL.
 
@@ -30,7 +30,7 @@ The name-only column and index form remains readable for migrations whose schema
 
 ## Final feature integration reservations
 
-The manifest reserves the next four feature IDs, plus one compatibility repair, so concurrent branches cannot collide or leave fork migrations in upstream's namespace:
+The manifest reserves the next four feature IDs, one compatibility repair, the release-safety hardening migration, and the durable automation action outbox so concurrent branches cannot collide or leave fork migrations in upstream's namespace:
 
 | Former fork file | Stable N45 ID | Module |
 | --- | --- | --- |
@@ -39,11 +39,30 @@ The manifest reserves the next four feature IDs, plus one compatibility repair, 
 | `2.8.0.php` | `n45-0013-portal-request-catalog` | Portal requests |
 | `2.8.1.php` | `n45-0014-agreement-entitlements` | Agreements |
 | — | `n45-0015-documentation-evidence-reference-index` | Documentation compatibility |
-| — | `n45-0016-ticket-operational-discipline` | Ticket operations |
+| — | `n45-0016-release-safety-hardening` | Schema/release safety |
+| — | `n45-0017-automation-action-outbox` | Automation |
 
 When integrating each feature, rename its file into `n45/migrations/`, change its guard to `FROM_N45_DB_UPDATER`, and make its header name the stable ID. Remove checks that read `settings.config_current_database_version` or require the preceding numeric fork marker; stable manifest order is the N45 prerequisite after the namespaces separate. Add the module and ordered migration definition to `n45/manifest.php`; copy the reservation's `legacy_version`, `data_change`, and rollback contract exactly; add complete column, index, and data fingerprints; update the released-file inventory and baseline-schema assertions; then add the migration to the released inventory below. `n45-0011` must retain `legacy_version => '2.7.8'`, not `null`. Remove no reservation: the durable mapping is needed to detect old installations whose upstream marker already contains that former fork number.
 
-The namespace preflight refuses an update if a reserved numeric file still exists under `admin/database_updates/`, if a consumed reservation has the wrong manifest metadata or schema inventory, or if stable IDs are consumed out of order. Once `n45-0011` through `n45-0014` are present, it also requires `n45-0015`; Goal 6 then consumes the next post-integration reservation as `n45-0016`. Conversely, neither post-integration migration can be consumed while an earlier reservation remains open. This deliberately makes an incomplete final merge fail before either migration runner changes the database.
+Official upstream may reuse any numeric version preserved as N45 legacy
+metadata. The upstream migration may coexist with the N45 legacy mapping only
+after its SHA-256 is
+reviewed and pinned in `maintenance.upstream_reclaimed_migration_checksums` in
+`n45/manifest.php`. The smoke suite rejects an unreviewed file, a checksum
+change, or a stale pin. The N45 stable ID and legacy marker remain unchanged so
+older fork databases can still be fingerprinted, bridged, reset to the upstream
+base, and then advanced through the official upstream migration stream.
+
+The namespace preflight refuses an update if a reserved numeric file under
+`admin/database_updates/` does not match its reviewed official-upstream
+checksum, if a consumed reservation has the wrong manifest metadata or schema
+inventory, or if stable IDs are consumed out of order. Once `n45-0011` through
+`n45-0014` are present, it also requires `n45-0015`. Conversely, `n45-0015`
+cannot be consumed while any of `n45-0012` through `n45-0014` remains reserved.
+This deliberately makes an incomplete final merge fail before either migration
+runner changes the database; the compatibility-repair commit is not a
+standalone release and its reservation validation is expected to fail until
+all three intervening feature migrations are integrated.
 
 ### Legacy 2.7.8 evidence-index compatibility
 
@@ -85,14 +104,8 @@ The legacy bridge remains deliberately read-only. A database whose upstream mark
 | `n45-0013-portal-request-catalog` | 2.8.0 | Portal requests | No | Disable portal request publication and submission, preserve request history, and restore the pre-upgrade database snapshot. |
 | `n45-0014-agreement-entitlements` | 2.8.1 | Agreements | No | Deploy compatible application code, preserve published agreement and review evidence, and restore the pre-upgrade database snapshot if schema rollback is required. |
 | `n45-0015-documentation-evidence-reference-index` | — | Documentation | No | Do not recreate the obsolete unique index; restore the snapshot only with the complete documentation schema. |
-| `n45-0016-ticket-operational-discipline` | — | Ticket operations | Yes | Deploy compatible application code, preserve operational audit and promise evidence, and restore the pre-upgrade database snapshot if schema rollback is required. |
-| `n45-0018-retention-controls` | — | Retention | Yes | Disable retention cron and lifecycle UI, preserve immutable events/deletion ledgers, restore the database and uploads snapshot, and restore quarantined paths from the ledger before reverting code. |
-
-### Retention-control owner defaults and rollback
-
-`n45-0018-retention-controls` ships conservative owner-decision defaults: tickets, client files, and ticket attachments retain for 2,555 days (seven years), have a 30-day restore window, and require a manually reviewed dry-run plus typed purge approval. Processed redacted event payloads are automatically minimized after 30 days; normalized integration payloads after 90 days. Evidence and approvals use a nominal seven-year review horizon but permanent purge is disabled. These are defaults, not silent owner approval: changes require an administrator, an explicit owner note, and an immutable policy event. Operational records can never switch to automatic purge, and evidence can never switch away from disabled purge.
-
-Before rollback, disable `retention_maintenance` and every delete, restore, hold, policy, preview, approval, resume, and purge entry point. Preserve `retention_events`, `retention_deletions`, and purge-batch evidence for investigation. Restore the verified pre-upgrade database and uploads snapshot as one consistency unit. If bytes were quarantined after that snapshot, use the deletion ledger's token-bound paths to restore them under a reviewed reconciler before older code is exposed; never delete the quarantine or lifecycle tables as a down migration. Verify direct web access to `uploads/.retention-quarantine` remains denied throughout.
+| `n45-0016-release-safety-hardening` | — | Schema | Yes | Disable automation ingestion and file finalization, preserve audit evidence, and restore the verified pre-upgrade snapshot before reverting application code. |
+| `n45-0017-automation-action-outbox` | — | Automation | No | Disable automation processing, preserve queued and delivered action evidence, and restore the pre-upgrade database snapshot before reverting application code. |
 
 Any environment that experimentally ran an earlier local `2.8.0.php` must be restored from its pre-upgrade snapshot or explicitly reconciled to the final portal request schema before release deployment. An advanced numeric marker alone is not proof of the final schema: the legacy bridge fails closed on an older or partial shape. Once namespace state is reconciled, an unrecorded `n45-0013` remains pending and the normal runner executes its retry-safe repair before recording the ledger row.
 

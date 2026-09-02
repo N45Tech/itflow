@@ -37,6 +37,7 @@ $legacy_updates = implode('', array_map(
 
 foreach ([
     'deviceSourcePublish',
+    'deviceSourceAssertAutoCreateSafety',
     'deviceSourceComplete',
     'deviceSourceRecordFailure',
     'deviceSourceHealthRows',
@@ -54,6 +55,18 @@ $assertContains('retirement guard blocked', $service, 'Unexpected source shrinka
 $assertContains("integrationIdentityAcquireLock(\$source, 'sync_scope', \$scope_id)", $service, 'A source scope can complete concurrently');
 $assertOrder('integrationIdentityUpsertMapping([', 'endpointReconcileAssetSourceUnlocked([', $service, 'Endpoint posture is published before its identity mapping');
 $assertContains('integrationIdentityRecordSnapshot([', $service, 'Source snapshots are not persisted');
+$assertContains("integrationIdentityFindMapping(\$source, 'sync_scope', \$scope_id)", $service,
+    'Automatic creation does not require an explicitly mapped source scope');
+$assertContains("automation_mapping_state'] ?? '') !== 'automatic'", $service,
+    'Automatic creation does not require a clean completed burn-in scope');
+$assertContains("\$source_status !== 'active'", $service,
+    'Automatic creation accepts an unclean source status');
+$assertContains('automationFindAsset($asset, $client_id, $location_id)', $service,
+    'Automatic creation bypasses deterministic existing-asset matching');
+$assertContains("endpoint_state_client_id <> \$client_id", $service,
+    'Automatic creation does not reject a foreign-client source identity');
+$assertContains("integrationIdentityAcquireLock(\$source, 'sync_scope', \$scope_id)", $service,
+    'Automatic creation is not serialized with source-scope completion');
 $assertContains("n45RequireModule('endpoint');", $loader, 'Device source service is not loaded through the N45 endpoint module');
 $assertNotContains("require_once __DIR__ . '/functions/device_source.php';", $loader, 'Device source service bypasses the N45 module boundary');
 if (($manifest['modules']['endpoint']['runtime_files'] ?? []) !== [

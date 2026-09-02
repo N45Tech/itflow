@@ -20,7 +20,6 @@ enforceClientAccess($client_id);
 
 try {
     $snapshot = agreementValidateServiceReviewSnapshot($review);
-    agreementValidateServiceReviewAgreementEvidence($review, $snapshot);
     $review_events = agreementServiceReviewEvents($review_id, $client_id);
     $approval = agreementValidateServiceReviewApproval($review, $review_events);
 } catch (Throwable $e) {

@@ -28,6 +28,8 @@ The map is configuration, not a credential. Keep it in n8n Variables so tenant/s
 
 `create_asset` defaults to `false`. Leave it false for the first production cycles: devices resolve by saved source ID, serial number, or exact same-client/same-location name. Unresolved devices receive a durable mapping and redacted snapshot and reduce coverage, but do not create ambiguous assets. Enable automatic asset creation per scope only after the unresolved list has been reviewed.
 
+Changing one scope to `create_asset: true` is the explicit post-burn-in approval. ITFlow still creates a new asset only when all deterministic checks pass: the exact source scope has a prior clean completed cycle bound to the same client; the scope is not stale or failed; the incoming source status is active; client and optional location remain valid and authorized; source ID has no foreign-client posture; the stable external/device names agree; and no existing candidate is ambiguous. An existing exact match is reused. Any conflict, retired/ignored identity, missing burn-in evidence, or cross-client signal fails closed for technician review and never silently merges or creates an asset.
+
 `retirement_guard_percent` defaults to 50. A full sync whose record count falls below that percentage of the current scoped inventory fails closed. An empty source also fails closed when the scope previously contained devices. Set `allow_empty` only for a verified, intentionally empty tenant/site; use `retirement_guard_percent: 0` only for a supervised bulk-removal cycle, then restore the guard.
 
 ## Credentials and least privilege
@@ -88,7 +90,7 @@ Only ITFlow's endpoint allowlist is retained. Vendor response expansion, tokens,
 3. Import the three new workflow JSON files and the updated error workflow. Assign credentials and Variables, but keep workflows inactive.
 4. Verify every map against the ITFlow client/location IDs and the source tenant/site IDs. Confirm that the ITFlow API technician can access each mapped client and no others.
 5. Run one tenant/site manually with `create_asset: false`. Confirm source pagination reaches its terminal cursor, the completion action is last, and the health endpoint reports the expected source count.
-6. Review unresolved mappings. Bind or create the intended ITFlow assets, replay the canary, and require expected coverage before expanding scope.
+6. Review unresolved mappings. Bind any ambiguous identities, then replay the canary and require expected coverage. For an explicitly approved clean scope, change only that map entry to `create_asset: true`; leave every other scope review-only.
 7. Canary one device with a changed compliance/security value and one interface change. Verify the endpoint summary and timeline change once, replay creates no duplicate event, and an older delivery cannot restore prior state.
 8. Remove one test device from a non-production source scope or use an approved disposable record. Confirm a complete full sync retires that source identity and closes its topology without archiving or moving the ITFlow asset.
 9. Force a source 429/5xx and a bad credential in a test scope. Verify retry behavior, no completion/retirement on failure, redacted error text, stale health, and the automation incident.

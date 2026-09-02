@@ -172,7 +172,7 @@ if (isset($_GET['reopen_ticket'], $_GET['url_key'])) {
         }
         $locked_ticket = runbookLockTicketForReopen($ticket_id);
         $key_row = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_url_key FROM tickets
-            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not verify the guest ticket link'));
+            WHERE ticket_id = $ticket_id LIMIT 1", 'Could not verify the guest ticket link'));
         if (!$key_row || !hash_equals((string) $key_row['ticket_url_key'], (string) $_GET['url_key'])) {
             throw new RuntimeException('Invalid or expired ticket link');
         }
@@ -182,13 +182,11 @@ if (isset($_GET['reopen_ticket'], $_GET['url_key'])) {
         }
         runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
             WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
-            AND ticket_deleted_at IS NULL
             AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
             AND ticket_closed_at IS NULL LIMIT 1", 'Could not reopen the ticket');
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket is no longer resolved');
         }
-        ticketOperationalOnReopened($ticket_id, 0, 'contact');
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket reopen');
         }
@@ -223,7 +221,7 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
         documentationLockClientTicket($ticket_id);
         $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
         $key_row = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_url_key FROM tickets
-            WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1", 'Could not verify the guest ticket link'));
+            WHERE ticket_id = $ticket_id LIMIT 1", 'Could not verify the guest ticket link'));
         if (!$key_row || !hash_equals((string) $key_row['ticket_url_key'], (string) $_GET['url_key'])) {
             throw new RuntimeException('Invalid or expired ticket link');
         }
@@ -237,7 +235,6 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
         }
         runbookDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW()
             WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
-            AND ticket_deleted_at IS NULL
             AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
             AND ticket_closed_at IS NULL LIMIT 1", 'Could not close the ticket');
         if (mysqli_affected_rows($mysqli) !== 1) {
@@ -273,18 +270,15 @@ if (isset($_GET['add_ticket_feedback'], $_GET['url_key'])) {
     $feedback = escapeSql($_GET['feedback']);
 
     // Select only the necessary fields
-    $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_id = $ticket_id
-        AND ticket_url_key = '$url_key' AND ticket_closed_at IS NOT NULL
-        AND ticket_deleted_at IS NULL");
+    $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key' AND ticket_closed_at IS NOT NULL");
 
     if (mysqli_num_rows($sql) == 1) {
         // Add feedback
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_feedback = '$feedback' WHERE ticket_id = $ticket_id
-            AND ticket_url_key = '$url_key' AND ticket_deleted_at IS NULL");
+        mysqli_query($mysqli, "UPDATE tickets SET ticket_feedback = '$feedback' WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'");
 
         // Notify on bad feedback
         if ($feedback == "Bad") {
-            $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number FROM tickets WHERE ticket_id = $ticket_id AND ticket_deleted_at IS NULL LIMIT 1"));
+            $ticket_details = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
             $ticket_prefix = escapeSql($ticket_details['ticket_prefix']);
             $ticket_number = intval($ticket_details['ticket_number']);
 
@@ -340,7 +334,7 @@ if (isset($_POST['decide_ticket_task_approval'])) {
         ticket_client_id
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
-        INNER JOIN tickets ON ticket_id = task_ticket_id AND ticket_deleted_at IS NULL
+        INNER JOIN tickets ON ticket_id = task_ticket_id
         WHERE approval_id = $approval_id
         AND approval_scope = 'client'
         AND approval_status = 'pending'
@@ -427,6 +421,16 @@ if (isset($_POST['decide_ticket_task_approval'])) {
         flashAlert('This approval request is no longer pending', 'error');
         redirect($return_url);
     }
+
+    // The bearer token is invalidated in the committed transaction. A short,
+    // same-session receipt permits exactly the redirect confirmation page to
+    // render without keeping the credential or exposing decided ticket details
+    // to someone who only guesses an approval ID.
+    $_SESSION['guest_task_approval_receipt'] = [
+        'approval_id' => $approval_id,
+        'decision' => $decision,
+        'expires_at' => time() + 300,
+    ];
 
     $task_name = (string) $approval_row['task_name'];
     $task_name_sql = escapeSql($task_name);
@@ -991,4 +995,120 @@ if (isset($_POST['guest_quote_upload_file'])) {
         echo "Invalid!!";
     }
 
+}
+
+if (isset($_POST['create_stripe_customer'])) {
+
+    $invoice_url_key = escapeSql($_POST['url_key']);
+    $invoice_id      = intval($_POST['invoice_id']);
+    $name = escapeSql($_POST['name']);
+    $email = escapeSql($_POST['email']);
+
+    // Query invoice details
+    $sql = mysqli_query(
+        $mysqli,
+        "SELECT client_id, client_name, invoice_amount, invoice_currency_code, invoice_date,
+            invoice_discount_amount, invoice_due, invoice_id, invoice_number, invoice_prefix,
+            invoice_status FROM invoices
+         LEFT JOIN clients ON invoice_client_id = client_id
+         WHERE invoice_id = $invoice_id
+         AND invoice_url_key = '$invoice_url_key'
+         AND invoice_status NOT IN ('Draft', 'Paid', 'Cancelled')
+         LIMIT 1"
+    );
+
+    // Ensure valid invoice
+    if (!$sql || mysqli_num_rows($sql) !== 1) {
+        echo "<br><h2>Oops, something went wrong! Please ensure you have the correct URL and have not already paid this invoice.</h2>";
+        require_once 'includes/guest_footer.php';
+        error_log("Stripe payment error - Invoice with ID $invoice_id not found or not eligible.");
+        exit();
+    }
+
+    $row = mysqli_fetch_assoc($sql);
+    $invoice_id            = intval($row['invoice_id']);
+    $invoice_prefix        = escapeHtml($row['invoice_prefix']);
+    $invoice_number        = intval($row['invoice_number']);
+    $client_id             = intval($row['client_id']);
+    $client_name           = escapeHtml($row['client_name']);
+
+    // Get Stripe provider config
+    $stripe_provider_result = mysqli_query($mysqli, "
+        SELECT payment_provider_id, payment_provider_private_key
+        FROM payment_providers
+        WHERE payment_provider_name = 'Stripe'
+        AND payment_provider_active = 1
+        LIMIT 1
+    ");
+
+    $stripe_provider = mysqli_fetch_assoc($stripe_provider_result);
+    if (!$stripe_provider) {
+        flashAlert("Stripe provider is not configured in the system.", 'danger');
+        redirect("saved_payment_methods.php");
+    }
+
+    $stripe_provider_id = intval($stripe_provider['payment_provider_id']);
+    $stripe_secret_key = escapeHtml($stripe_provider['payment_provider_private_key']);
+
+    if (empty($stripe_secret_key)) {
+        flashAlert("Stripe credentials missing. Please contact support.", 'danger');
+        redirect("saved_payment_methods.php");
+    }
+
+    // Check if client already has a Stripe customer
+    $existing_customer = mysqli_fetch_assoc(mysqli_query($mysqli, "
+        SELECT payment_provider_client
+        FROM client_payment_provider
+        WHERE client_id = $client_id
+        AND payment_provider_id = $stripe_provider_id
+        LIMIT 1
+    "));
+
+    if (!$existing_customer) {
+        try {
+            // Initialize Stripe
+            require_once '../includes/stripe_init.php';
+            $stripe = new \Stripe\StripeClient($stripe_secret_key);
+
+            // Create new customer in Stripe
+            $customer = $stripe->customers->create([
+                'name' => $client_name,
+                'email' => $email,
+                'metadata' => [
+                    'itflow_client_id' => $client_id,
+                    'consent_by' => $name,
+                ]
+            ]);
+
+            $stripe_customer_id = escapeSql($customer->id);
+
+            // Insert customer into client_payment_provider
+            mysqli_query($mysqli, "
+                INSERT INTO client_payment_provider
+                SET client_id = $client_id,
+                    payment_provider_id = $stripe_provider_id,
+                    payment_provider_client = '$stripe_customer_id',
+                    client_payment_provider_created_at = NOW()
+            ");
+
+            logAudit("Stripe", "Create", "Guest $name created Stripe customer for $client_name as $stripe_customer_id and authorized future automatic payments", $client_id);
+
+            flashAlert("Stripe customer created. Thank you for your consent.");
+
+        } catch (Exception $e) {
+            $error = $e->getMessage();
+
+            error_log("Stripe error while creating customer for $client_name: $error");
+
+            logApp("Stripe", "error", "Failed to create Stripe customer for $client_name: $error");
+
+            flashAlert("An error occurred while creating your Stripe customer. Please try again.", 'danger');
+
+        }
+
+    } else {
+        flashAlert("Stripe customer already exists for your account.", 'danger');
+    }
+
+    redirect('guest_view_invoice.php?invoice_id=' . $invoice_id . '&url_key=' . urlencode($invoice_url_key));
 }

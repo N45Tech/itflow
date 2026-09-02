@@ -16,21 +16,19 @@ if (isset($_GET['id']) && isset($_GET['key'])) {
     $item_key = escapeSql($_GET['key']);
 
     $sql = mysqli_query($mysqli, "SELECT item_active, item_client_id, item_related_id, item_type, item_view_limit, item_views FROM shared_items WHERE item_id = $item_id AND item_key = '$item_key' AND item_expire_at > NOW() LIMIT 1");
-    // Check result
-    if (!$sql || mysqli_num_rows($sql) !== 1) {
-        exit("Item cannot be viewed at this time (disabled or invalid).");
-    }
-
     $row = mysqli_fetch_assoc($sql);
-    if (!$row) {
-        exit("Item cannot be viewed at this time (disabled or invalid).");
-    }
+
     $item_active = intval($row['item_active']);
-    $item_type = (string) $row['item_type'];
+    $item_type = escapeSql($row['item_type']);
     $item_views = intval($row['item_views']);
     $item_view_limit = intval($row['item_view_limit']);
     $item_related_id = intval($row['item_related_id']);
     $client_id = intval($row['item_client_id']);
+
+    // Check result
+    if (mysqli_num_rows($sql) !== 1 || !$row) {
+        exit("Item cannot be viewed at this time (disabled or invalid).");
+    }
 
     // Check it is a file
     if ($item_type !== "File") {
@@ -51,21 +49,20 @@ if (isset($_GET['id']) && isset($_GET['key'])) {
         }
     }
 
-    $file_sql = mysqli_query($mysqli, "SELECT file_client_id, file_name, file_reference_name FROM files WHERE file_id = $item_related_id AND file_client_id = $client_id AND file_deleted_at IS NULL LIMIT 1");
+    $file_sql = mysqli_query($mysqli, "SELECT file_client_id, file_name, file_reference_name FROM files WHERE file_id = $item_related_id AND file_client_id = $client_id LIMIT 1");
     $file_row = mysqli_fetch_assoc($file_sql);
 
     if (mysqli_num_rows($file_sql) !== 1 || !$file_row) {
         exit("Item cannot be viewed at this time (No file, may have been deleted).");
     }
 
-    $file_name = (string) $file_row['file_name'];
-    $file_name_escaped = escapeSql($file_name);
-    $file_reference_name = (string) $file_row['file_reference_name'];
+    $file_name = escapeSql($file_row['file_name']);
+    $file_reference_name = escapeSql($file_row['file_reference_name']);
     $client_id = intval($file_row['file_client_id']);
-    $file_path = retentionResolveReadableUploadFile("clients/$client_id", $file_reference_name);
+    $file_path = "../uploads/clients/$client_id/$file_reference_name";
 
     // Don't burn a view on a file that is missing from disk
-    if ($file_path === null) {
+    if (!is_readable($file_path)) {
         exit("Item cannot be viewed at this time (No file, may have been deleted).");
     }
 
@@ -78,13 +75,10 @@ if (isset($_GET['id']) && isset($_GET['key'])) {
     // Display file as download
     $mime_type = mime_content_type($file_path);
     header('Content-type: '.$mime_type);
-    $safe_file_name = str_replace(array('"', "\r", "\n"), '', basename($file_name));
-    header('Cache-Control: private, no-store, max-age=0');
-    header('Pragma: no-cache');
-    header('Content-Disposition: attachment; filename="' . $safe_file_name . '"');
+    header('Content-Disposition: attachment; filename=' . $file_name);
     readfile($file_path);
 
     //Logging
-    logAudit("Share", "View", "Downloaded shared file $file_name_escaped via link", $client_id, $item_id);
+    logAudit("Share", "View", "Downloaded shared file $file_name via link", $client_id, $item_id);
 
 }

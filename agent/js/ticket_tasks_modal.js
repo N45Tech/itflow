@@ -16,7 +16,7 @@
     function buildTaskRow(taskName, taskEstimate) {
 
         const row = document.createElement("div");
-        row.className = "form-row mb-2 ticket-task-row";
+        row.className = "row g-2 mb-2 ticket-task-row";
 
         const nameColumn = document.createElement("div");
         nameColumn.className = "col-7";
@@ -47,7 +47,7 @@
 
         const removeButton = document.createElement("button");
         removeButton.type = "button";
-        removeButton.className = "btn btn-secondary btn-block ticket-task-remove";
+        removeButton.className = "btn btn-secondary w-100 ticket-task-remove";
         removeButton.title = "Remove task";
         removeButton.innerHTML = '<i class="fa fa-fw fa-trash"></i>';
         removeColumn.appendChild(removeButton);
@@ -86,11 +86,11 @@
         });
     }
 
-    // jQuery parses a data-tasks attribute holding JSON into an array on its own,
-    // but hand it a string and it stays a string - so handle both
-    function readTemplateTasks($option) {
+    // dataset always gives a string; jQuery used to auto-parse JSON here, so
+    // parse it explicitly and still tolerate an already-parsed value
+    function readTemplateTasks(option) {
 
-        const tasks = $option.data('tasks');
+        const tasks = option.dataset.tasks;
 
         if (!tasks) {
             return [];
@@ -116,10 +116,19 @@
 
         const locked = parseInt(versionId || 0, 10) > 0;
         hidden.value = locked ? parseInt(versionId, 10) : 0;
-        $('#runbookWorkflowLock').toggleClass('d-none', !locked);
-        $('#ticketTaskAdd').prop('disabled', locked).toggleClass('d-none', locked);
-        $('#ticketTasksContainer input').prop('readonly', locked);
-        $('#ticketTasksContainer .ticket-task-remove').prop('disabled', locked).toggleClass('d-none', locked);
+        document.getElementById('runbookWorkflowLock')?.classList.toggle('d-none', !locked);
+        const addButton = document.getElementById('ticketTaskAdd');
+        if (addButton) {
+            addButton.disabled = locked;
+            addButton.classList.toggle('d-none', locked);
+        }
+        document.querySelectorAll('#ticketTasksContainer input').forEach(input => {
+            input.readOnly = locked;
+        });
+        document.querySelectorAll('#ticketTasksContainer .ticket-task-remove').forEach(button => {
+            button.disabled = locked;
+            button.classList.toggle('d-none', locked);
+        });
     }
 
     $(document).off('click.ticketTasks').on('click.ticketTasks', '#ticketTaskAdd', function () {
@@ -127,44 +136,43 @@
     });
 
     $(document).off('click.ticketTaskRemove').on('click.ticketTaskRemove', '.ticket-task-remove', function () {
-        $(this).closest('.ticket-task-row').remove();
+        this.closest('.ticket-task-row')?.remove();
     });
 
     // Ticket template picker - fills in the subject, details and task rows
     $(document).off('change.ticketTemplate').on('change.ticketTemplate', '#ticket_template_select', function () {
-
-        const $option = $(this).find(':selected');
+        const option = this.options[this.selectedIndex];
 
         // Selecting "- No Template -" only unlinks the template - it must not wipe
         // whatever the user has already written or added
-        if (!parseInt($option.val(), 10)) {
+        if (!parseInt(option.value, 10)) {
             setWorkflowLock(0);
             return;
         }
 
-        const templateSubject = $option.data('subject') || '';
-        const templateDetails = $option.data('details') || '';
+        const templateSubject = option.dataset.subject || '';
+        const templateDetails = option.dataset.details || '';
 
-        $('#subjectInput').val(templateSubject);
+        document.getElementById('subjectInput').value = templateSubject;
 
         if (window.tinymce) {
             const editor = tinymce.get('detailsInput');
             if (editor) {
                 editor.setContent(templateDetails);
             } else {
-                $('#detailsInput').val(templateDetails);
+                document.getElementById('detailsInput').value = templateDetails;
             }
         } else {
-            $('#detailsInput').val(templateDetails);
+            document.getElementById('detailsInput').value = templateDetails;
         }
 
-        setTaskRows(readTemplateTasks($option));
-        setWorkflowLock($option.data('runbook-version') || 0);
+        setTaskRows(readTemplateTasks(option));
+        setWorkflowLock(option.dataset.runbookVersion || 0);
     });
 
-    const $selectedTemplate = $('#ticket_template_select').find(':selected');
-    if ($selectedTemplate.length) {
-        setWorkflowLock($selectedTemplate.data('runbook-version') || 0);
+    const templateSelect = document.getElementById('ticket_template_select');
+    if (templateSelect && templateSelect.selectedIndex >= 0) {
+        setWorkflowLock(templateSelect.options[templateSelect.selectedIndex].dataset.runbookVersion || 0);
     }
 
 })();

@@ -35,8 +35,7 @@ if (isset($_GET['thumb']) && intval($_GET['thumb']) == 1) {
 }
 
 // Look up the file
-$sql = mysqli_query($mysqli, "SELECT * FROM files WHERE file_id = $file_id
-    AND file_deleted_at IS NULL LIMIT 1");
+$sql = mysqli_query($mysqli, "SELECT * FROM files WHERE file_id = $file_id LIMIT 1");
 
 if (mysqli_num_rows($sql) !== 1) {
     http_response_code(404);
@@ -55,23 +54,18 @@ enforceClientAccess();
 
 // MIME types that are safe to render inline in the browser
 // Everything else (esp. HTML/SVG - stored XSS risk) falls back to download
-$inline_allowed_mime_types = array(
-    "application/pdf",
-    "image/png",
-    "image/jpeg",
-    "image/gif",
-    "image/webp",
-    "text/plain"
-);
+$inline_allowed_mime_types = getInlineViewableMimeTypes();
 
 if ($disposition == "inline" && !in_array($file_mime_type, $inline_allowed_mime_types, true)) {
     $disposition = "attachment";
 }
 
-// Stored references are basename-only and must resolve to a regular,
-// non-symlink file beneath this exact client's canonical uploads directory.
-$file_path = retentionResolveReadableUploadFile("clients/$client_id", (string) $file_reference_name);
-if ($file_path === null) {
+// Build the on-disk path, anchored to this file's directory
+$uploads_base = realpath(__DIR__ . "/../uploads");
+$file_path = realpath(__DIR__ . "/../uploads/clients/$client_id/$file_reference_name");
+
+// Path traversal guard - resolved path must stay inside uploads
+if ($file_path === false || $uploads_base === false || strpos($file_path, $uploads_base) !== 0) {
     http_response_code(404);
     exit("File not found");
 }
@@ -102,8 +96,6 @@ if ((isset($_SERVER['HTTP_IF_NONE_MATCH']) && trim($_SERVER['HTTP_IF_NONE_MATCH'
 
 // Send the file
 header("Content-Type: $file_mime_type");
-header('Cache-Control: private, no-store, max-age=0');
-header('Pragma: no-cache');
 header("Content-Disposition: $disposition; filename=\"$safe_file_name\"");
 header("Content-Length: " . filesize($file_path));
 header("X-Content-Type-Options: nosniff");

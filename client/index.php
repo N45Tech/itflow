@@ -23,7 +23,6 @@ $sql_active_tickets = mysqli_query(
     LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
     WHERE ticket_client_id = $session_client_id
         $ticket_contact_scope
-        AND ticket_deleted_at IS NULL
         AND ticket_archived_at IS NULL
         AND ticket_closed_at IS NULL
     ORDER BY COALESCE(ticket_updated_at, ticket_created_at) DESC, ticket_id DESC
@@ -45,7 +44,6 @@ $sql_active_ticket_count = mysqli_query(
     FROM tickets
     WHERE ticket_client_id = $session_client_id
         $ticket_contact_scope
-        AND ticket_deleted_at IS NULL
         AND ticket_archived_at IS NULL
         AND ticket_closed_at IS NULL"
 );

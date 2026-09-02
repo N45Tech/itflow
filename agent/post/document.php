@@ -19,33 +19,52 @@ if (isset($_POST['add_document'])) {
 
     enforceClientAccess();
 
-    // Document add query
-    mysqli_query($mysqli,"INSERT INTO documents SET document_name = '$name', document_description = '$description', document_content = '', document_content_raw = '$content_raw', document_folder_id = $folder, document_created_by = $session_user_id, document_client_id = $client_id");
-
-    $document_id = mysqli_insert_id($mysqli);
-
-    $processed_content = mysqli_escape_string(
-        $mysqli,
-        saveBase64Images(
-            $_POST['content'],
-            $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
-            "uploads/documents/",
-            $document_id
-        )
-    );
-
-    // Document update content
-    mysqli_query($mysqli,"UPDATE documents SET document_content = '$processed_content' WHERE document_id = $document_id");
-
-    if ($contact_id) {
-        mysqli_query($mysqli,"INSERT INTO contact_documents SET contact_id = $contact_id, document_id = $document_id");
+    $staging_batch = fileStagingBatchToken();
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document creation transaction');
+        }
+        if (!documentationLockClient($client_id)) {
+            throw new RuntimeException('The document client is unavailable');
+        }
+        if (!mysqli_query($mysqli,"INSERT INTO documents SET document_name = '$name', document_description = '$description', document_content = '', document_content_raw = '$content_raw', document_folder_id = $folder, document_created_by = $session_user_id, document_client_id = $client_id")) {
+            throw new RuntimeException('Could not create the document');
+        }
+        $document_id = intval(mysqli_insert_id($mysqli));
+        $processed_content = mysqli_escape_string(
+            $mysqli,
+            saveBase64Images(
+                $_POST['content'],
+                $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
+                "uploads/documents/",
+                $document_id,
+                $staging_batch,
+                'document'
+            )
+        );
+        if (!mysqli_query($mysqli,"UPDATE documents SET document_content = '$processed_content' WHERE document_id = $document_id")) {
+            throw new RuntimeException('Could not save document content');
+        }
+        if ($contact_id && !mysqli_query($mysqli,"INSERT INTO contact_documents SET contact_id = $contact_id, document_id = $document_id")) {
+            throw new RuntimeException('Could not link the document contact');
+        }
+        if ($asset_id && !mysqli_query($mysqli,"INSERT INTO asset_documents SET asset_id = $asset_id, document_id = $document_id")) {
+            throw new RuntimeException('Could not link the document asset');
+        }
+        if (!logAudit("Document", "Create", "$session_name created document $name", $client_id, $document_id)) {
+            throw new RuntimeException('Could not audit document creation');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit document creation');
+        }
+    } catch (Throwable $error) {
+        mysqli_rollback($mysqli);
+        fileStagingDiscardBatch($staging_batch);
+        logApp('Document', 'error', $error->getMessage());
+        flashAlert('The document could not be created.', 'error');
+        redirect();
     }
-
-    if ($asset_id) {
-        mysqli_query($mysqli,"INSERT INTO asset_documents SET asset_id = $asset_id, document_id = $document_id");
-    }
-
-    logAudit("Document", "Create", "$session_name created document $name", $client_id, $document_id);
+    fileStagingFinalizeCommittedBatch($staging_batch, "Document $document_id creation");
 
     flashAlert("Document <strong>$name</strong> created");
 
@@ -67,70 +86,101 @@ if (isset($_POST['add_document_from_template'])) {
 
     enforceClientAccess();
 
-    // Get template
-    $sql_document = mysqli_query(
-        $mysqli,
-        "SELECT document_template_content, document_template_name FROM document_templates
-         WHERE document_template_id = $document_template_id"
-    );
+    $staging_batch = fileStagingBatchToken();
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the template-document transaction');
+        }
+        $transaction_started = true;
+        if (!documentationLockClient($client_id)) {
+            throw new RuntimeException('The document client is unavailable');
+        }
+        $sql_document = mysqli_query(
+            $mysqli,
+            "SELECT document_template_content, document_template_name FROM document_templates
+             WHERE document_template_id = $document_template_id LIMIT 1 FOR UPDATE"
+        );
+        $row = $sql_document ? mysqli_fetch_assoc($sql_document) : null;
+        if (!$row) {
+            throw new RuntimeException('The document template no longer exists');
+        }
 
-    $row = mysqli_fetch_assoc($sql_document);
+        $document_template_name = escapeSql($row['document_template_name']);
+        $template_content_html = (string) $row['document_template_content'];
+        if (!mysqli_query(
+            $mysqli,
+            "INSERT INTO documents SET
+                document_name        = '$document_name',
+                document_description = '$document_description',
+                document_content     = '',
+                document_content_raw = '',
+                document_folder_id   = $folder,
+                document_created_by  = $session_user_id,
+                document_client_id   = $client_id"
+        )) {
+            throw new RuntimeException('Could not create the document from its template');
+        }
+        $document_id = intval(mysqli_insert_id($mysqli));
 
-    $document_template_name = escapeSql($row['document_template_name']);
-    $template_content_html  = $row['document_template_content']; // raw HTML from template
-
-    // 1) Create the new document with placeholder content to get an ID
-    mysqli_query(
-        $mysqli,
-        "INSERT INTO documents SET
-            document_name        = '$document_name',
-            document_description = '$document_description',
-            document_content     = '',
-            document_content_raw = '',
-            document_folder_id   = $folder,
-            document_created_by  = $session_user_id,
-            document_client_id   = $client_id"
-    );
-
-    $document_id = mysqli_insert_id($mysqli);
-
-    // 2) Copy template images to the document's folder
-    $templateFsPath = $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/" . $document_template_id;
-    $documentFsPath = $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id;
-
-    copyDirectory($templateFsPath, $documentFsPath);
-
-    // 3) Rewrite image paths in the HTML
-    //    /uploads/document_templates/{template_id}/ -> /uploads/documents/{document_id}/
-    $oldPath = "/uploads/document_templates/" . $document_template_id . "/";
-    $newPath = "/uploads/documents/" . $document_id . "/";
-
-    $processed_html = str_replace($oldPath, $newPath, $template_content_html);
-
-    // 4) Prepare content + content_raw
-    $content = mysqli_real_escape_string($mysqli, $processed_html);
-
-    $content_raw = escapeSql(
-        $document_name . " " . str_replace("<", " <", $processed_html)
-    );
-    $content_raw = mysqli_real_escape_string($mysqli, $content_raw);
-
-    // 5) Update the document with final content
-    mysqli_query(
-        $mysqli,
-        "UPDATE documents SET
-            document_content     = '$content',
-            document_content_raw = '$content_raw'
-         WHERE document_id = $document_id"
-    );
-
-    logAudit(
-        "Document",
-        "Create",
-        "$session_name created document $document_name from template $document_template_name",
-        $client_id,
-        $document_id
-    );
+        $template_fs_path = $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/$document_template_id";
+        $staged_files = fileStagingStageDirectory(
+            $template_fs_path,
+            "uploads/documents/$document_id",
+            $staging_batch,
+            'document',
+            $document_id
+        );
+        $old_path = "/uploads/document_templates/$document_template_id/";
+        $new_path = "/uploads/documents/$document_id/";
+        preg_match_all('/<img[^>]+src=["\']([^"\']+)["\']/i', $template_content_html, $image_matches);
+        foreach ($image_matches[1] ?? [] as $image_source) {
+            $image_path = parse_url((string) $image_source, PHP_URL_PATH);
+            if (is_string($image_path) && str_starts_with($image_path, $old_path)) {
+                $relative_image = rawurldecode(substr($image_path, strlen($old_path)));
+                if (!in_array($relative_image, $staged_files, true)) {
+                    throw new RuntimeException('A document-template image is unavailable for durable staging');
+                }
+            }
+        }
+        $processed_html = str_replace($old_path, $new_path, $template_content_html);
+        $content = mysqli_real_escape_string($mysqli, $processed_html);
+        $content_raw = escapeSql(
+            $document_name . " " . str_replace("<", " <", $processed_html)
+        );
+        $content_raw = mysqli_real_escape_string($mysqli, $content_raw);
+        if (!mysqli_query(
+            $mysqli,
+            "UPDATE documents SET
+                document_content     = '$content',
+                document_content_raw = '$content_raw'
+             WHERE document_id = $document_id AND document_client_id = $client_id LIMIT 1"
+        ) || mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('Could not save the document-template content');
+        }
+        if (!logAudit(
+            "Document",
+            "Create",
+            "$session_name created document $document_name from template $document_template_name",
+            $client_id,
+            $document_id
+        )) {
+            throw new RuntimeException('Could not audit the template-document creation');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the template-document creation');
+        }
+        $transaction_started = false;
+    } catch (Throwable $error) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        fileStagingDiscardBatch($staging_batch);
+        logApp('Document', 'error', $error->getMessage());
+        flashAlert('The document could not be created from its template.', 'error');
+        redirect();
+    }
+    fileStagingFinalizeCommittedBatch($staging_batch, "Document $document_id template creation");
 
     flashAlert("Document <strong>$document_name</strong> created from template");
 
@@ -151,28 +201,8 @@ if (isset($_POST['edit_document'])) {
 
     enforceClientAccess();
 
-    // Process the new content before taking lifecycle locks. Database state and
-    // verification invalidation still commit atomically below.
-    //    - convert base64 <img> tags to files under /uploads/documents/<document_id>/
-    //    - rewrite <img src> to file URLs
     $raw_post_content = $_POST['content'];
-
-    $processed_html = saveBase64Images(
-        $raw_post_content,
-        $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
-        "uploads/documents/",
-        $document_id
-    );
-
-    // Escape for DB
-    $content = mysqli_real_escape_string($mysqli, $processed_html);
-
-    // Rebuild content_raw for full-text search
-    $content_raw = escapeSql(
-        $name . " " . str_replace("<", " <", $processed_html)
-    );
-    $content_raw = mysqli_real_escape_string($mysqli, $content_raw);
-
+    $staging_batch = fileStagingBatchToken();
     $transaction_started = false;
     try {
         if (!mysqli_begin_transaction($mysqli)) {
@@ -197,6 +227,18 @@ if (isset($_POST['edit_document'])) {
         if (!$row || intval($row['document_client_id']) !== $client_id) {
             throw new RuntimeException('The document client changed before it could be edited');
         }
+
+        $processed_html = saveBase64Images(
+            $raw_post_content,
+            $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
+            "uploads/documents/",
+            $document_id,
+            $staging_batch,
+            'document'
+        );
+        $content = mysqli_real_escape_string($mysqli, $processed_html);
+        $content_raw = escapeSql($name . " " . str_replace("<", " <", $processed_html));
+        $content_raw = mysqli_real_escape_string($mysqli, $content_raw);
 
         $original_document_name = escapeSql($row['document_name']);
         $original_document_description = escapeSql($row['document_description']);
@@ -227,6 +269,15 @@ if (isset($_POST['edit_document'])) {
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The document changed before the edit could be committed');
         }
+        if (!logAudit(
+            "Document",
+            "Edit",
+            "$session_name edited document $name, previous version kept",
+            $client_id,
+            $document_version_id
+        )) {
+            throw new RuntimeException('Could not audit the document edit');
+        }
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the document edit');
         }
@@ -235,18 +286,18 @@ if (isset($_POST['edit_document'])) {
         if ($transaction_started) {
             mysqli_rollback($mysqli);
         }
+        fileStagingDiscardBatch($staging_batch);
         error_log("Document $document_id edit failed safely: " . $e->getMessage());
         flashAlert('The document could not be edited. Refresh and try again.', 'error');
         redirect("document.php?client_id=$client_id&document_id=$document_id");
     }
-
-    logAudit(
-        "Document",
-        "Edit",
-        "$session_name edited document $name, previous version kept",
-        $client_id,
-        $document_version_id
-    );
+    if (fileStagingFinalizeCommittedBatch($staging_batch, "Document $document_id update")) {
+        cleanupUnusedImages(
+            $processed_html,
+            $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id,
+            "/uploads/documents/" . $document_id
+        );
+    }
 
     flashAlert("Document <strong>$name</strong> edited, previous version kept");
 
@@ -368,53 +419,19 @@ if (isset($_POST['link_file_to_document'])) {
     $document_id = intval($_POST['document_id']);
     $file_id = intval($_POST['file_id']);
 
-    // Get active document scope for authorization; the transaction below
-    // repeats this check while both relation endpoints are locked.
-    $sql_document = mysqli_query($mysqli, "SELECT document_name, document_client_id FROM documents
-        WHERE document_id = $document_id AND document_archived_at IS NULL LIMIT 1");
+    // Get Document Name and Client ID for logging
+    $sql_document = mysqli_query($mysqli,"SELECT document_name, document_client_id FROM documents WHERE document_id = $document_id");
     $row = mysqli_fetch_assoc($sql_document);
-    if (!$row) {
-        flashAlert('The active document is unavailable.', 'error');
-        redirect();
-    }
     $document_name = escapeSql($row['document_name']);
     $client_id = intval($row['document_client_id']);
 
-    enforceClientAccess($client_id);
+    enforceClientAccess();
 
-    try {
-        if (!mysqli_begin_transaction($mysqli)) {
-            throw new RuntimeException('Could not begin the document file-link transaction');
-        }
-        documentationLockClient($client_id);
-        $file = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT file_id, file_name,
-            file_client_id FROM files WHERE file_id = $file_id AND file_client_id = $client_id
-            AND file_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the active linked file'));
-        $document = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT document_id,
-            document_name, document_client_id FROM documents WHERE document_id = $document_id
-            AND document_client_id = $client_id AND document_archived_at IS NULL
-            LIMIT 1 FOR UPDATE", 'Could not lock the active linked document'));
-        if (!$file || !$document
-            || intval($file['file_client_id']) !== intval($document['document_client_id'])) {
-            throw new DomainException('The active file and document must belong to the same authorized client');
-        }
-        documentationLifecycleDbQuery("INSERT IGNORE INTO document_files (file_id, document_id)
-            SELECT f.file_id, d.document_id FROM files f
-            INNER JOIN documents d ON d.document_client_id = f.file_client_id
-            WHERE f.file_id = $file_id AND f.file_client_id = $client_id
-            AND f.file_deleted_at IS NULL AND d.document_id = $document_id
-            AND d.document_client_id = $client_id AND d.document_archived_at IS NULL",
-            'Could not create the active document file relation');
-        if (!mysqli_commit($mysqli)) {
-            throw new RuntimeException('Could not commit the document file link');
-        }
-        $file_name = escapeSql($file['file_name']);
-        $document_name = escapeSql($document['document_name']);
-    } catch (Throwable $e) {
-        mysqli_rollback($mysqli);
-        flashAlert($e->getMessage(), 'error');
-        redirect();
-    }
+    // Get File Name for logging
+    $file_name = escapeSql(getFieldById('files', $file_id, 'file_name'));
+
+    // Document add query
+    mysqli_query($mysqli,"INSERT INTO document_files SET file_id = $file_id, document_id = $document_id");
 
     logAudit("Document", "Link", "$session_name linked file $file_name to document $document_name", $client_id, $document_id);
 
@@ -433,53 +450,18 @@ if (isset($_GET['unlink_file_from_document'])) {
     $file_id = intval($_GET['file_id']);
     $document_id = intval($_GET['document_id']);
 
-    // Get active document scope for authorization; the transaction below
-    // repeats this check while both relation endpoints are locked.
-    $sql_document = mysqli_query($mysqli, "SELECT document_name, document_client_id FROM documents
-        WHERE document_id = $document_id AND document_archived_at IS NULL LIMIT 1");
+    // Get Document Name and Client ID for logging
+    $sql_document = mysqli_query($mysqli,"SELECT document_name, document_client_id FROM documents WHERE document_id = $document_id");
     $row = mysqli_fetch_assoc($sql_document);
-    if (!$row) {
-        flashAlert('The active document is unavailable.', 'error');
-        redirect();
-    }
     $document_name = escapeSql($row['document_name']);
     $client_id = intval($row['document_client_id']);
 
-    enforceClientAccess($client_id);
+    enforceClientAccess();
 
-    try {
-        if (!mysqli_begin_transaction($mysqli)) {
-            throw new RuntimeException('Could not begin the document file-unlink transaction');
-        }
-        documentationLockClient($client_id);
-        $file = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT file_id, file_name,
-            file_client_id FROM files WHERE file_id = $file_id AND file_client_id = $client_id
-            AND file_deleted_at IS NULL LIMIT 1 FOR UPDATE", 'Could not lock the active unlinked file'));
-        $document = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT document_id,
-            document_name, document_client_id FROM documents WHERE document_id = $document_id
-            AND document_client_id = $client_id AND document_archived_at IS NULL
-            LIMIT 1 FOR UPDATE", 'Could not lock the active unlinked document'));
-        if (!$file || !$document
-            || intval($file['file_client_id']) !== intval($document['document_client_id'])) {
-            throw new DomainException('The active file and document must belong to the same authorized client');
-        }
-        documentationLifecycleDbQuery("DELETE df FROM document_files df
-            INNER JOIN files f ON f.file_id = df.file_id AND f.file_deleted_at IS NULL
-            INNER JOIN documents d ON d.document_id = df.document_id
-                AND d.document_client_id = f.file_client_id AND d.document_archived_at IS NULL
-            WHERE df.file_id = $file_id AND df.document_id = $document_id
-            AND f.file_client_id = $client_id AND d.document_client_id = $client_id",
-            'Could not remove the active document file relation');
-        if (!mysqli_commit($mysqli)) {
-            throw new RuntimeException('Could not commit the document file unlink');
-        }
-        $file_name = escapeSql($file['file_name']);
-        $document_name = escapeSql($document['document_name']);
-    } catch (Throwable $e) {
-        mysqli_rollback($mysqli);
-        flashAlert($e->getMessage(), 'error');
-        redirect();
-    }
+    // Get File Name for logging
+    $file_name = escapeSql(getFieldById('files', $file_id, 'file_name'));
+
+    mysqli_query($mysqli,"DELETE FROM document_files WHERE file_id = $file_id AND document_id = $document_id");
 
     logAudit("Document", "Unlink", "$session_name unlinked file $file_name from document $document_name", $client_id, $document_id);
 

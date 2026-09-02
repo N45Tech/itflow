@@ -11,14 +11,6 @@ ITFlow assets remain the canonical device identity. The unified record adds sour
 
 The asset page combines these records into assigned user, Entra/Intune identity, compliance, encryption, Secure Boot, operating system/build, Level and SentinelOne health, warranty/lifecycle, physical and virtual interfaces, address history, VLAN/switch adjacency, ticket evidence, and the device/network timeline.
 
-`endpointLoadUnifiedRecord()` returns one source-neutral contract with `summary`,
-`sources`, `identities`, editable `interfaces`, current and historical network
-observations, `timeline`, runbook `evidence`, `related_tickets`, and
-`related_documentation`. `endpointUnifiedRecordContractViolations()` guards the
-runtime shape, while the strict synthetic acceptance fixture exercises every
-optional relationship. This keeps downstream reporting and future UI consumers
-from binding directly to vendor tables or silently dropping related work.
-
 ## Source ingestion contract
 
 External adapters use a two-step contract. First register or refresh the durable, tenant-scoped device identity:

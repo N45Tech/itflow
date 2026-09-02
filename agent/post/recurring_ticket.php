@@ -199,9 +199,9 @@ if (isset($_POST['bulk_force_recurring_tickets'])) {
                 $sql = mysqli_query(
                     $mysqli,
                     "SELECT client_name, contact_name, contact_email, ticket_prefix, ticket_number, ticket_priority, ticket_subject, ticket_details FROM tickets
-                        LEFT JOIN clients ON ticket_client_id = client_id
-                        LEFT JOIN contacts ON ticket_contact_id = contact_id
-                        WHERE ticket_id = $id AND ticket_deleted_at IS NULL"
+                LEFT JOIN clients ON ticket_client_id = client_id
+                LEFT JOIN contacts ON ticket_contact_id = contact_id
+                WHERE ticket_id = $id"
                 );
                 $row = mysqli_fetch_assoc($sql);
 
@@ -227,7 +227,7 @@ if (isset($_POST['bulk_force_recurring_tickets'])) {
                         'ticket_number' => $ticket_prefix . $ticket_number,
                         'ticket_subject' => $ticket_subject,
                         'ticket_status' => 'Open',
-                        'message_html' => $ticket_details,
+                        'message_html' => $ticket_details . getTicketSlaEmailNotice($id, $company_phone),
                         'action_url' => "https://$config_base_url/client/ticket.php?id=$id",
                         'footer_email' => $config_ticket_from_email,
                         'footer_phone' => $company_phone,
@@ -388,7 +388,7 @@ if (isset($_GET['force_recurring_ticket'])) {
             "SELECT client_name, contact_name, contact_email, ticket_prefix, ticket_number, ticket_priority, ticket_subject, ticket_details FROM tickets
                 LEFT JOIN clients ON ticket_client_id = client_id
                 LEFT JOIN contacts ON ticket_contact_id = contact_id
-                WHERE ticket_id = $id AND ticket_deleted_at IS NULL"
+                WHERE ticket_id = $id"
         );
         $row = mysqli_fetch_assoc($sql);
 
@@ -414,7 +414,7 @@ if (isset($_GET['force_recurring_ticket'])) {
                 'ticket_number' => $ticket_prefix . $ticket_number,
                 'ticket_subject' => $ticket_subject,
                 'ticket_status' => 'Open',
-                'message_html' => $ticket_details,
+                'message_html' => $ticket_details . getTicketSlaEmailNotice($id, $company_phone),
                 'action_url' => "https://$config_base_url/client/ticket.php?id=$id",
                 'footer_email' => $config_ticket_from_email,
                 'footer_phone' => $company_phone,

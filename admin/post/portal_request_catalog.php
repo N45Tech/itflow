@@ -5,21 +5,11 @@ defined('FROM_POST_HANDLER') || die('Direct file access is not allowed');
 if (isset($_POST['install_portal_request_starters'])) {
     validateCSRFToken();
     try {
-        $result = portalRequestReconcileStarters($session_user_id);
-        $installed = intval($result['installed']);
-        $published = intval($result['published']);
-        $reused = intval($result['reused']);
-        $draft = intval($result['draft']);
-        logAudit('Portal Request Catalog', 'Publish',
-            "$session_name reconciled canonical starter requests: $installed installed, $published published, $reused reused, $draft draft");
-        $message = "$installed installed, $published published, $reused already current";
-        if ($draft) {
-            $message .= ", $draft left as drafts because a canonical prerequisite is missing or incompatible";
-        }
-        flashAlert('Starter request reconciliation: ' . $message, $draft ? 'warning' : 'success');
+        $installed = portalRequestInstallStarters($session_user_id);
+        logAudit('Portal Request Catalog', 'Create', "$session_name installed $installed starter portal requests");
+        flashAlert($installed ? "$installed starter requests installed as drafts" : 'Starter requests are already installed');
     } catch (Throwable $exception) {
-        error_log('Starter portal request reconciliation failed: ' . $exception->getMessage());
-        flashAlert('Starter requests could not be reconciled safely', 'error');
+        flashAlert(escapeHtml($exception->getMessage()), 'error');
     }
     redirect('portal_request_catalog.php');
 }

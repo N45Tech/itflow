@@ -23,7 +23,7 @@ if ($month) {
     $period_label = date("F", mktime(1, 1, 1, $month, 1)) . " $year";
 }
 
-$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets WHERE ticket_deleted_at IS NULL ORDER BY ticket_year DESC");
+$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets ORDER BY ticket_year DESC");
 
 $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_archived_at IS NULL ORDER BY client_name ASC");
 
@@ -40,8 +40,7 @@ $sql_resolve_times = mysqli_query($mysqli, "SELECT ticket_client_id, ticket_id,
     SUM(sla_history_minutes) AS logged_minutes
     FROM tickets
     LEFT JOIN sla_history ON sla_history_ticket_id = ticket_id
-    WHERE ticket_deleted_at IS NULL
-    AND ticket_sla_id > 0
+    WHERE ticket_sla_id > 0
     AND ticket_resolved_at IS NOT NULL
     AND $period_query
     GROUP BY ticket_id, ticket_client_id, ticket_created_at, ticket_resolved_at,
@@ -70,21 +69,21 @@ while ($resolve_row = mysqli_fetch_assoc($sql_resolve_times)) {
 
     <div class="card card-dark">
         <div class="card-header py-2">
-            <h3 class="card-title mt-2"><i class="fas fa-fw fa-stopwatch mr-2"></i>SLA by Client</h3>
+            <h3 class="card-title mt-2"><i class="fas fa-fw fa-stopwatch me-2"></i>SLA by Client</h3>
             <div class="card-tools">
-                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print mr-2"></i>Print</button>
+                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print me-2"></i>Print</button>
             </div>
         </div>
         <div class="card-body">
             <form class="mb-3">
-                <select onchange="this.form.submit()" class="form-control" name="year">
+                <select onchange="this.form.submit()" class="form-select" name="year">
                     <?php
                     while ($row = mysqli_fetch_assoc($sql_ticket_years)) {
                         $ticket_year = intval($row['ticket_year']); ?>
                         <option <?php if ($year == $ticket_year) { ?> selected <?php } ?> > <?= $ticket_year ?></option>
                     <?php } ?>
                 </select>
-                <select onchange="this.form.submit()" class="form-control" name="month">
+                <select onchange="this.form.submit()" class="form-select" name="month">
                     <option <?php if ($month == 0) { echo 'selected'; } ?> value="0">Whole year</option>
                     <?php for ($m = 1; $m <= 12; $m++) { ?>
                         <option <?php if ($month == $m) { echo 'selected'; } ?> value="<?= $m ?>"><?= date("F", mktime(1, 1, 1, $m, 1)) ?></option>
@@ -94,7 +93,7 @@ while ($resolve_row = mysqli_fetch_assoc($sql_resolve_times)) {
 
             <div class="card card-dark mb-3">
                 <div class="card-header">
-                    <h3 class="card-title"><i class="fas fa-fw fa-chart-area mr-2"></i><?= $period_label ?></h3>
+                    <h3 class="card-title"><i class="fas fa-fw fa-chart-area me-2"></i><?= $period_label ?></h3>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive-sm">
@@ -102,15 +101,15 @@ while ($resolve_row = mysqli_fetch_assoc($sql_resolve_times)) {
                             <thead>
                             <tr>
                                 <th>Client</th>
-                                <th class="text-right">Tickets</th>
-                                <th class="text-right">Response met</th>
-                                <th class="text-right">Response missed</th>
-                                <th class="text-right">Response %</th>
-                                <th class="text-right">Resolution met</th>
-                                <th class="text-right">Resolution missed</th>
-                                <th class="text-right">Resolution %</th>
-                                <th class="text-right">Avg time to respond</th>
-                                <th class="text-right">Avg clock to resolve</th>
+                                <th class="text-end">Tickets</th>
+                                <th class="text-end">Response met</th>
+                                <th class="text-end">Response missed</th>
+                                <th class="text-end">Response %</th>
+                                <th class="text-end">Resolution met</th>
+                                <th class="text-end">Resolution missed</th>
+                                <th class="text-end">Resolution %</th>
+                                <th class="text-end">Avg time to respond</th>
+                                <th class="text-end">Avg clock to resolve</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -128,7 +127,7 @@ while ($resolve_row = mysqli_fetch_assoc($sql_resolve_times)) {
                                     SUM(ticket_resolution_sla_met = 0) AS resolution_missed,
                                     AVG(CASE WHEN ticket_first_response_at IS NOT NULL THEN TIMESTAMPDIFF(SECOND, ticket_created_at, ticket_first_response_at) END) AS avg_response_seconds
                                     FROM tickets
-                                    WHERE ticket_deleted_at IS NULL AND ticket_sla_id > 0 AND ticket_client_id = $client_id AND $period_query"
+                                    WHERE ticket_sla_id > 0 AND ticket_client_id = $client_id AND $period_query"
                                 ));
 
                                 $ticket_count = intval($stats['ticket_count']);
@@ -159,15 +158,15 @@ while ($resolve_row = mysqli_fetch_assoc($sql_resolve_times)) {
                                 ?>
                                 <tr>
                                     <td><?= $client_name ?></td>
-                                    <td class="text-right"><?= $ticket_count ?></td>
-                                    <td class="text-right"><?= $response_met ?></td>
-                                    <td class="text-right"><?= $response_missed ?></td>
-                                    <td class="text-right"><?= slaPercentDisplay($response_percent) ?></td>
-                                    <td class="text-right"><?= $resolution_met ?></td>
-                                    <td class="text-right"><?= $resolution_missed ?></td>
-                                    <td class="text-right"><?= slaPercentDisplay($resolution_percent) ?></td>
-                                    <td class="text-right"><?= $avg_time_to_respond ?></td>
-                                    <td class="text-right"><?= $avg_time_to_resolve ?></td>
+                                    <td class="text-end"><?= $ticket_count ?></td>
+                                    <td class="text-end"><?= $response_met ?></td>
+                                    <td class="text-end"><?= $response_missed ?></td>
+                                    <td class="text-end"><?= slaPercentDisplay($response_percent) ?></td>
+                                    <td class="text-end"><?= $resolution_met ?></td>
+                                    <td class="text-end"><?= $resolution_missed ?></td>
+                                    <td class="text-end"><?= slaPercentDisplay($resolution_percent) ?></td>
+                                    <td class="text-end"><?= $avg_time_to_respond ?></td>
+                                    <td class="text-end"><?= $avg_time_to_resolve ?></td>
                                 </tr>
                             <?php }
                             if (!$any_rows) { ?>

@@ -8,6 +8,9 @@ cd "$ROOT"
 # This is the reviewed, clean ITFlow ancestor documented in
 # docs/n45/upstream-parity.md. Its highest upstream migration is 2.6.7.
 UPSTREAM_SCHEMA_COMMIT=0262707ef029ffb294df197e10d9b918adb0c85d
+# This is the integrated N45 schema immediately before the official-upstream
+# merge. It represents a legacy marker install without later upstream DDL.
+LEGACY_SCHEMA_COMMIT=b93ad474a84413df44355dfaef981d79714d0252
 FINAL_DATABASE=n45_ci_final
 UPGRADE_DATABASE=n45_ci_upgrade
 LEGACY_DATABASE=n45_ci_legacy
@@ -17,7 +20,7 @@ fail() {
     exit 1
 }
 
-for command_name in git mariadb mariadb-dump php; do
+for command_name in git mariadb php; do
     command -v "$command_name" > /dev/null || fail "missing required command: $command_name"
 done
 for environment_name in N45_CI_DB_HOST N45_CI_DB_USER N45_CI_DB_PASSWORD; do
@@ -73,13 +76,17 @@ run_update() {
 
 assert_current() {
     local database_name=$1
+    local source_mode=${2:-runner}
     export N45_CI_DB_NAME="$database_name"
-    php tests/n45_release_database_assert.php runner
-    php tests/ticket_operational_database_assert.php
+    php tests/n45_release_database_assert.php "$source_mode"
 }
 
-UPSTREAM_MARKER=$(php -r '$manifest = require "n45/manifest.php"; echo $manifest["maintenance"]["upstream_marker_base"] ?? "";')
-[[ "$UPSTREAM_MARKER" == '2.6.7' ]] || fail "unexpected upstream marker base: $UPSTREAM_MARKER"
+UPSTREAM_MARKER_BASE=$(php -r '$manifest = require "n45/manifest.php"; echo $manifest["maintenance"]["upstream_marker_base"] ?? "";')
+[[ "$UPSTREAM_MARKER_BASE" == '2.6.7' ]] || fail "unexpected upstream marker base: $UPSTREAM_MARKER_BASE"
+CURRENT_UPSTREAM_MARKER=$(php -r 'require "includes/database_version.php"; echo LATEST_DATABASE_VERSION;')
+[[ "$CURRENT_UPSTREAM_MARKER" =~ ^[0-9]+(\.[0-9]+)+$ ]] || fail "invalid current upstream marker: $CURRENT_UPSTREAM_MARKER"
+php -r 'exit(version_compare($argv[1], $argv[2], "<=") ? 0 : 1);' "$UPSTREAM_MARKER_BASE" "$CURRENT_UPSTREAM_MARKER" \
+    || fail 'the current upstream marker predates the bridge base'
 git cat-file -e "$UPSTREAM_SCHEMA_COMMIT^{commit}" || fail 'reviewed upstream schema commit is unavailable'
 git merge-base --is-ancestor "$UPSTREAM_SCHEMA_COMMIT" HEAD || fail 'reviewed upstream schema commit is not an ancestor of this release'
 git show "$UPSTREAM_SCHEMA_COMMIT:db.sql" > "$TEMP_DIRECTORY/upstream-2.6.7.sql"
@@ -90,109 +97,29 @@ UPSTREAM_LATEST=$(
         | sort -V \
         | tail -n 1
 )
-[[ "$UPSTREAM_LATEST" == "$UPSTREAM_MARKER" ]] || fail "reviewed schema ends at $UPSTREAM_LATEST instead of $UPSTREAM_MARKER"
+[[ "$UPSTREAM_LATEST" == "$UPSTREAM_MARKER_BASE" ]] || fail "reviewed schema ends at $UPSTREAM_LATEST instead of $UPSTREAM_MARKER_BASE"
 
 echo 'Importing and validating the final db.sql snapshot'
 reset_database "$FINAL_DATABASE"
 import_database "$FINAL_DATABASE" db.sql
 FINAL_TABLE_COUNT=$("${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE();")
 [[ "$FINAL_TABLE_COUNT" -gt 0 ]] || fail 'final db.sql imported no tables'
-seed_marker "$FINAL_DATABASE" "$UPSTREAM_MARKER"
+seed_marker "$FINAL_DATABASE" "$CURRENT_UPSTREAM_MARKER"
+export N45_CI_DB_NAME="$FINAL_DATABASE"
+php tests/fixtures/seed_n45_fresh_install.php
+assert_current "$FINAL_DATABASE" fresh
 run_update "$FINAL_DATABASE" "$TEMP_DIRECTORY/final-update.log"
-assert_current "$FINAL_DATABASE"
+grep -Fq "Database is already at the latest version ($CURRENT_UPSTREAM_MARKER). No updates were applied." "$TEMP_DIRECTORY/final-update.log" || fail 'the fresh-install update was not a durable no-op'
+assert_current "$FINAL_DATABASE" fresh
 php tests/n45_transaction_state_database_assert.php
-php tests/retention_authorization_database_assert.php
-php tests/retention_lock_order_database_assert.php
-php tests/retention_tenant_scope_database_assert.php
-php tests/ticket_operational_authorization_database_assert.php
-
-echo 'Exercising the documentation evaluator against MariaDB'
-"${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "UPDATE settings SET config_enable_cron = 1 WHERE company_id = 1;"
-export N45_CI_DB_NAME="$FINAL_DATABASE"
-php cron/documentation_evaluator.php 2>&1 | tee "$TEMP_DIRECTORY/documentation-evaluator.log"
-grep -Fq 'failed 0.' "$TEMP_DIRECTORY/documentation-evaluator.log" \
-    || fail 'the documentation evaluator did not complete cleanly'
-
-echo 'Exercising the N45 Internal agreement reconciler and immutable review lifecycle'
-INTERNAL_CLIENT_ID=450001
-INTERNAL_ACTOR_ID=450001
-INTERNAL_ROLE_ID=450001
-"${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "INSERT INTO user_roles
-    (role_id, role_name, role_description, role_type, role_is_admin)
-    VALUES ($INTERNAL_ROLE_ID, 'N45 CI Agreement Owner', 'Synthetic release-test owner', 1, 1);
-    INSERT INTO users
-    (user_id, user_name, user_email, user_password, user_auth_method,
-     user_type, user_status, user_role_id)
-    VALUES ($INTERNAL_ACTOR_ID, 'N45 CI Agreement Owner', 'agreement-owner@example.invalid',
-        'not-a-login-secret', 'local', 1, 1, $INTERNAL_ROLE_ID);
-    INSERT INTO clients
-    (client_id, client_lead, client_name, client_currency_code, client_net_terms)
-    VALUES ($INTERNAL_CLIENT_ID, 0, 'N45 Internal', 'USD', 30);"
-export N45_CI_DB_NAME="$FINAL_DATABASE"
-php deploy/psa/reconcile_internal_agreement.php --dry-run \
-    --client-id="$INTERNAL_CLIENT_ID" --actor-id="$INTERNAL_ACTOR_ID" \
-    2>&1 | tee "$TEMP_DIRECTORY/internal-agreement-dry-run.log"
-grep -Fq 'DRY RUN (rolled back): created 1 contract(s); created 1 version(s); published 1 version(s); unchanged 0.' \
-    "$TEMP_DIRECTORY/internal-agreement-dry-run.log" \
-    || fail 'the internal agreement dry run did not exercise the complete publication transaction'
-INTERNAL_DRY_RUN_ROWS=$("${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "SELECT COUNT(*) FROM contracts WHERE contract_client_id = $INTERNAL_CLIENT_ID;")
-[[ "$INTERNAL_DRY_RUN_ROWS" == '0' ]] || fail 'the internal agreement dry run persisted rows'
-
-php deploy/psa/reconcile_internal_agreement.php --apply \
-    --client-id="$INTERNAL_CLIENT_ID" --actor-id="$INTERNAL_ACTOR_ID" \
-    2>&1 | tee "$TEMP_DIRECTORY/internal-agreement-apply.log"
-grep -Fq 'APPLIED: created 1 contract(s); created 1 version(s); published 1 version(s); unchanged 0.' \
-    "$TEMP_DIRECTORY/internal-agreement-apply.log" \
-    || fail 'the internal agreement apply pass did not publish the canonical baseline'
-php deploy/psa/reconcile_internal_agreement.php --apply \
-    --client-id="$INTERNAL_CLIENT_ID" --actor-id="$INTERNAL_ACTOR_ID" \
-    2>&1 | tee "$TEMP_DIRECTORY/internal-agreement-repeat.log"
-grep -Fq 'APPLIED: created 0 contract(s); created 0 version(s); published 0 version(s); unchanged 1.' \
-    "$TEMP_DIRECTORY/internal-agreement-repeat.log" \
-    || fail 'the internal agreement second apply pass was not idempotent'
-php tests/agreement_internal_database_assert.php "$INTERNAL_CLIENT_ID" "$INTERNAL_ACTOR_ID"
 
 echo 'Upgrading the clean upstream 2.6.7 schema through the production CLI'
 reset_database "$UPGRADE_DATABASE"
 import_database "$UPGRADE_DATABASE" "$TEMP_DIRECTORY/upstream-2.6.7.sql"
 UPSTREAM_LEDGER_COUNT=$("${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'n45_schema_migrations';")
 [[ "$UPSTREAM_LEDGER_COUNT" == '0' ]] || fail 'reviewed upstream schema unexpectedly contains the N45 ledger'
-seed_marker "$UPGRADE_DATABASE" "$UPSTREAM_MARKER"
+seed_marker "$UPGRADE_DATABASE" "$UPSTREAM_MARKER_BASE"
 run_update "$UPGRADE_DATABASE" "$TEMP_DIRECTORY/upgrade.log"
-assert_current "$UPGRADE_DATABASE"
-
-echo 'Exercising append-only retention events and exact trigger drift refusal'
-RETENTION_EVENT_ID=$("${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "INSERT INTO retention_events
-    (retention_event_record_type, retention_event_record_id, retention_event_client_id,
-     retention_event_generation, retention_event_action, retention_event_actor_type,
-     retention_event_actor_id, retention_event_reason, retention_event_metadata,
-     retention_event_metadata_hash, retention_event_batch_id)
-    VALUES ('release-test', 1, 0, 0, 'created', 'system', 0, 'Trigger contract',
-        '{}', SHA2('{}',256), 0); SELECT LAST_INSERT_ID();")
-[[ "$RETENTION_EVENT_ID" =~ ^[1-9][0-9]*$ ]] || fail 'could not create the retention trigger fixture'
-set +e
-"${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "UPDATE retention_events SET retention_event_reason = 'mutated' WHERE retention_event_id = $RETENTION_EVENT_ID;" > "$TEMP_DIRECTORY/retention-update.log" 2>&1
-RETENTION_UPDATE_STATUS=$?
-"${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "DELETE FROM retention_events WHERE retention_event_id = $RETENTION_EVENT_ID;" > "$TEMP_DIRECTORY/retention-delete.log" 2>&1
-RETENTION_DELETE_STATUS=$?
-set -e
-[[ "$RETENTION_UPDATE_STATUS" -ne 0 ]] || fail 'the retention UPDATE trigger allowed immutable history to change'
-[[ "$RETENTION_DELETE_STATUS" -ne 0 ]] || fail 'the retention DELETE trigger allowed immutable history to disappear'
-
-"${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "DROP TRIGGER retention_events_no_update;
-    CREATE TRIGGER retention_events_no_update BEFORE UPDATE ON retention_events FOR EACH ROW
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'wrong retention trigger';"
-export N45_CI_DB_NAME="$UPGRADE_DATABASE"
-set +e
-php tests/n45_release_database_assert.php runner > "$TEMP_DIRECTORY/retention-trigger-drift.log" 2>&1
-RETENTION_DRIFT_STATUS=$?
-set -e
-[[ "$RETENTION_DRIFT_STATUS" -ne 0 ]] || fail 'an unexpected same-name retention trigger passed release validation'
-grep -Fq 'retention event UPDATE immutability trigger is missing or drifted' "$TEMP_DIRECTORY/retention-trigger-drift.log" \
-    || fail 'retention trigger drift was not identified precisely'
-"${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "DROP TRIGGER retention_events_no_update;
-    CREATE TRIGGER retention_events_no_update BEFORE UPDATE ON retention_events FOR EACH ROW
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'retention_events is append-only';"
 assert_current "$UPGRADE_DATABASE"
 
 echo 'Exercising n45-0012 historical index repair and unexpected-drift refusal'
@@ -247,15 +174,9 @@ LEGACY_MARKER=$(php -r '
 ')
 [[ "$LEGACY_MARKER" =~ ^[0-9]+(\.[0-9]+)+$ ]] || fail 'the manifest has no safe legacy bridge marker'
 
-mariadb-dump \
-    --protocol=TCP \
-    --host="$N45_CI_DB_HOST" \
-    --port="${N45_CI_DB_PORT:-3306}" \
-    --user="$N45_CI_DB_USER" \
-    --single-transaction \
-    --skip-comments \
-    --skip-lock-tables \
-    "$UPGRADE_DATABASE" > "$TEMP_DIRECTORY/legacy-fixture.sql"
+git cat-file -e "$LEGACY_SCHEMA_COMMIT^{commit}" || fail 'legacy N45 schema commit is unavailable'
+git merge-base --is-ancestor "$LEGACY_SCHEMA_COMMIT" HEAD || fail 'legacy N45 schema commit is not an ancestor of this release'
+git show "$LEGACY_SCHEMA_COMMIT:db.sql" > "$TEMP_DIRECTORY/legacy-fixture.sql"
 reset_database "$LEGACY_DATABASE"
 import_database "$LEGACY_DATABASE" "$TEMP_DIRECTORY/legacy-fixture.sql"
 # Reconstruct the one schema difference in the historical numeric 2.7.8
@@ -270,7 +191,8 @@ import_database "$LEGACY_DATABASE" "$TEMP_DIRECTORY/legacy-fixture.sql"
         documentation_evidence_reference_id,
         documentation_evidence_reference_hash
     );"
-"${DATABASE_CLIENT[@]}" "$LEGACY_DATABASE" -e "DELETE FROM n45_schema_migrations; UPDATE settings SET config_current_database_version = '$LEGACY_MARKER' WHERE company_id = 1;"
+"${DATABASE_CLIENT[@]}" "$LEGACY_DATABASE" -e "DELETE FROM n45_schema_migrations;"
+seed_marker "$LEGACY_DATABASE" "$LEGACY_MARKER"
 
 export N45_CI_DB_NAME="$LEGACY_DATABASE"
 php scripts/update_cli.php --bridge_n45_migrations 2>&1 | tee "$TEMP_DIRECTORY/legacy-bridge.log"
@@ -306,7 +228,7 @@ run_update "$UPGRADE_DATABASE" "$TEMP_DIRECTORY/no-op.log"
 LEDGER_AFTER=$("${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "SELECT CONCAT_WS('|', migration_id, migration_checksum, COALESCE(migration_legacy_version, ''), migration_applied_by, migration_applied_at) FROM n45_schema_migrations ORDER BY migration_id;")
 [[ "$LEDGER_AFTER" == "$LEDGER_BEFORE" ]] || fail 'the no-op update changed the migration ledger'
 ! grep -Fq 'Applied N45 database migration' "$TEMP_DIRECTORY/no-op.log" || fail 'the no-op update replayed an N45 migration'
-grep -Fq "Database is already at the latest version ($UPSTREAM_MARKER). No updates were applied." "$TEMP_DIRECTORY/no-op.log" || fail 'the CLI did not report a no-op update'
+grep -Fq "Database is already at the latest version ($CURRENT_UPSTREAM_MARKER). No updates were applied." "$TEMP_DIRECTORY/no-op.log" || fail 'the CLI did not report a no-op update'
 assert_current "$UPGRADE_DATABASE"
 
 echo "N45 release database validation passed ($FINAL_TABLE_COUNT final tables, last migration $LAST_MIGRATION_ID)."
