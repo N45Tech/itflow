@@ -81,7 +81,7 @@ $starter = $read('admin/post/starter_content_model.php');
 $reconcile = $read('deploy/psa/reconcile_templates.php');
 $runbooks = $read('functions/runbooks.php');
 $assertContains("'publish_runbook' => true", $starter, 'Starter content has no publishable runbook definitions');
-$assertTrue(substr_count($starter, "'publish_runbook' => true") === 4, 'Only the two portal workflows plus onboarding and offboarding should be auto-published');
+$assertTrue(substr_count($starter, "'publish_runbook' => true") === 8, 'The six portal workflows plus managed onboarding and client offboarding must be auto-published');
 $assertContains('reconcileTemplateDeleteTaskDrafts($mysqli, $template_id)', $reconcile, 'Template reconciliation does not replace stale editable task drafts');
 $assertContains('starterInsertTicketTemplateTasks(', $reconcile, 'Template reconciliation does not rebuild canonical task metadata and dependencies');
 $assertContains("if (!empty(\$template['publish_runbook']))", $reconcile, 'Template reconciliation ignores the publication marker');
