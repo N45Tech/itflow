@@ -103,6 +103,7 @@ assert_current "$FINAL_DATABASE"
 php tests/n45_transaction_state_database_assert.php
 php tests/retention_authorization_database_assert.php
 php tests/retention_lock_order_database_assert.php
+php tests/retention_tenant_scope_database_assert.php
 php tests/ticket_operational_authorization_database_assert.php
 
 echo 'Exercising the documentation evaluator against MariaDB'

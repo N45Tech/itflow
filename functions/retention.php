@@ -767,7 +767,10 @@ function retentionMoveToQuarantine(string $record_type, int $record_id, array $s
 
 function retentionLockQuarantineLifecycleTarget(string $record_type, int $record_id, int $client_id): array
 {
-    documentationLockClient($client_id);
+    // A client can be archived after the deletion ledger commits. Durable
+    // byte movement and recovery must still finish, so lifecycle workers lock
+    // client existence without treating archive as cancellation.
+    documentationLockClientForExpiry($client_id);
     if ($record_type === 'file') {
         $target = mysqli_fetch_assoc(retentionDbQuery("SELECT * FROM files
             WHERE file_id = $record_id AND file_client_id = $client_id
@@ -1121,12 +1124,12 @@ function retentionSoftDeleteTicket(int $ticket_id, int $actor_id, string $reason
     $reason = retentionValidateDeleteReason($reason);
     $ticket_id = max(1, $ticket_id);
     $actor_id = max(1, $actor_id);
-    $policy = retentionPolicy('tickets');
     if (!mysqli_begin_transaction($mysqli)) {
         throw new RuntimeException('Could not begin the ticket retention transaction');
     }
     try {
         retentionLockAdministratorActor($actor_id);
+        $policy = retentionPolicy('tickets', true);
         $prelock = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_client_id FROM tickets
             WHERE ticket_id = $ticket_id LIMIT 1", 'Could not locate the ticket for retention'));
         if (!$prelock) {
@@ -1217,7 +1220,6 @@ function retentionSoftDeleteFile(int $file_id, int $client_id, int $actor_id, st
     global $mysqli;
     retentionRequireAdministratorActor($actor_id);
     $reason = retentionValidateDeleteReason($reason);
-    $policy = retentionPolicy('files');
     $quarantine = null;
     $generation = 0;
     if (!mysqli_begin_transaction($mysqli)) {
@@ -1225,6 +1227,7 @@ function retentionSoftDeleteFile(int $file_id, int $client_id, int $actor_id, st
     }
     try {
         retentionLockAdministratorActor($actor_id);
+        $policy = retentionPolicy('files', true);
         documentationLockClient($client_id);
         $file = mysqli_fetch_assoc(retentionDbQuery("SELECT files.* FROM files
             WHERE file_id = $file_id AND file_client_id = $client_id
@@ -1301,7 +1304,6 @@ function retentionSoftDeleteAttachment(int $attachment_id, int $actor_id, string
     global $mysqli;
     retentionRequireAdministratorActor($actor_id);
     $reason = retentionValidateDeleteReason($reason);
-    $policy = retentionPolicy('attachments');
     $quarantine = null;
     $generation = 0;
     if (!mysqli_begin_transaction($mysqli)) {
@@ -1309,6 +1311,7 @@ function retentionSoftDeleteAttachment(int $attachment_id, int $actor_id, string
     }
     try {
         retentionLockAdministratorActor($actor_id);
+        $policy = retentionPolicy('attachments', true);
         $prelock = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_attachment_ticket_id
             FROM ticket_attachments WHERE ticket_attachment_id = $attachment_id LIMIT 1",
             'Could not locate the retained attachment'));
@@ -1455,12 +1458,20 @@ function retentionResolveRecordClient(string $record_type, int $record_id, bool 
             WHERE ticket_attachment_id = $record_id LIMIT 1";
         $column = 'ticket_client_id';
     } elseif ($record_type === 'automation-event') {
-        $sql = "SELECT e.automation_event_id, t.ticket_client_id AS ticket_client_id,
-            i.automation_incident_client_id AS incident_client_id
+        $sql = "SELECT e.automation_event_id, e.automation_event_client_id AS event_client_id,
+            e.automation_event_ticket_id AS event_ticket_id,
+            t.ticket_id AS resolved_ticket_id, t.ticket_client_id AS ticket_client_id,
+            i.automation_incident_id AS incident_id,
+            i.automation_incident_client_id AS incident_client_id,
+            i.automation_incident_ticket_id AS incident_ticket_id,
+            it.ticket_id AS resolved_incident_ticket_id,
+            it.ticket_client_id AS incident_ticket_client_id
             FROM automation_events e
             LEFT JOIN tickets t ON t.ticket_id = e.automation_event_ticket_id
             LEFT JOIN automation_incidents i ON i.automation_incident_source = e.automation_event_source
+                AND i.automation_incident_client_id = e.automation_event_client_id
                 AND i.automation_incident_key = e.automation_event_incident_key
+            LEFT JOIN tickets it ON it.ticket_id = i.automation_incident_ticket_id
             WHERE e.automation_event_id = $record_id LIMIT 1$lock_sql";
         $column = '';
     } elseif ($record_type === 'normalized-payload') {
@@ -1475,14 +1486,25 @@ function retentionResolveRecordClient(string $record_type, int $record_id, bool 
         throw new DomainException('The held record is unavailable');
     }
     if ($record_type === 'automation-event') {
-        $clients = array_values(array_unique(array_filter([
-            intval($row['ticket_client_id'] ?? 0),
-            intval($row['incident_client_id'] ?? 0),
-        ])));
-        if (count($clients) !== 1) {
+        $client_id = intval($row['event_client_id'] ?? 0);
+        $event_ticket_id = intval($row['event_ticket_id'] ?? 0);
+        $incident_id = intval($row['incident_id'] ?? 0);
+        $incident_ticket_id = intval($row['incident_ticket_id'] ?? 0);
+        if ($client_id < 1
+            || ($event_ticket_id > 0 && (
+                intval($row['resolved_ticket_id'] ?? 0) !== $event_ticket_id
+                || intval($row['ticket_client_id'] ?? 0) !== $client_id
+            ))
+            || ($incident_id > 0 && intval($row['incident_client_id'] ?? 0) !== $client_id)
+            || ($incident_ticket_id > 0 && (
+                intval($row['resolved_incident_ticket_id'] ?? 0) !== $incident_ticket_id
+                || intval($row['incident_ticket_client_id'] ?? 0) !== $client_id
+            ))
+            || ($event_ticket_id > 0 && $incident_ticket_id > 0
+                && $event_ticket_id !== $incident_ticket_id)) {
             throw new DomainException('The event client scope is missing or ambiguous; preserve it by default');
         }
-        return $clients[0];
+        return $client_id;
     }
     return intval($row[$column]);
 }
@@ -1889,7 +1911,7 @@ function retentionRestoreRecord(string $record_type, int $record_id, int $actor_
         if ($client_id < 1) {
             throw new RuntimeException('The deleted record has no canonical client scope');
         }
-        documentationLockClient($client_id);
+        documentationLockClientForExpiry($client_id);
         $row = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_id FROM tickets
             WHERE ticket_id = $record_id AND ticket_client_id = $client_id
             AND ticket_deleted_at IS NOT NULL LIMIT 1 FOR UPDATE",
@@ -2055,13 +2077,21 @@ function retentionActiveHolds(
         $inheritance_sql = " OR (retention_hold_record_type = 'ticket'
             AND retention_hold_record_id IN (
                 SELECT e.automation_event_ticket_id FROM automation_events e
-                    WHERE e.automation_event_id = $record_id AND e.automation_event_ticket_id > 0
+                    INNER JOIN tickets t ON t.ticket_id = e.automation_event_ticket_id
+                        AND t.ticket_client_id = e.automation_event_client_id
+                    WHERE e.automation_event_id = $record_id
+                    AND e.automation_event_client_id = $client_id
+                    AND e.automation_event_ticket_id > 0
                 UNION
                 SELECT i.automation_incident_ticket_id FROM automation_events e
                     INNER JOIN automation_incidents i
                         ON i.automation_incident_source = e.automation_event_source
+                        AND i.automation_incident_client_id = e.automation_event_client_id
                         AND i.automation_incident_key = e.automation_event_incident_key
+                    INNER JOIN tickets t ON t.ticket_id = i.automation_incident_ticket_id
+                        AND t.ticket_client_id = e.automation_event_client_id
                     WHERE e.automation_event_id = $record_id
+                    AND e.automation_event_client_id = $client_id
                     AND i.automation_incident_ticket_id > 0
             ))";
     }
@@ -2774,15 +2804,28 @@ function retentionCleanupQuarantine(int $limit = 200): array
 
 function retentionResolvedPayloadClient(array $row): int
 {
-    $clients = array_values(array_unique(array_filter([
-        intval($row['ticket_client_id'] ?? 0),
-        intval($row['incident_client_id'] ?? 0),
-        intval($row['snapshot_client_id'] ?? 0),
-    ], static fn (int $client_id): bool => $client_id > 0)));
-    // Missing ownership and conflicting ticket/incident ownership both fail
-    // closed. Payload minimization may resume only after the client scope is
-    // unambiguous, so a legal/client-wide hold can never be bypassed.
-    return count($clients) === 1 ? $clients[0] : 0;
+    if (array_key_exists('event_client_id', $row)) {
+        $client_id = intval($row['event_client_id'] ?? 0);
+        $event_ticket_id = intval($row['event_ticket_id'] ?? 0);
+        $incident_id = intval($row['incident_id'] ?? 0);
+        $incident_ticket_id = intval($row['incident_ticket_id'] ?? 0);
+        if ($client_id < 1
+            || ($event_ticket_id > 0 && (
+                intval($row['resolved_ticket_id'] ?? 0) !== $event_ticket_id
+                || intval($row['ticket_client_id'] ?? 0) !== $client_id
+            ))
+            || ($incident_id > 0 && intval($row['incident_client_id'] ?? 0) !== $client_id)
+            || ($incident_ticket_id > 0 && (
+                intval($row['resolved_incident_ticket_id'] ?? 0) !== $incident_ticket_id
+                || intval($row['incident_ticket_client_id'] ?? 0) !== $client_id
+            ))
+            || ($event_ticket_id > 0 && $incident_ticket_id > 0
+                && $event_ticket_id !== $incident_ticket_id)) {
+            return 0;
+        }
+        return $client_id;
+    }
+    return max(0, intval($row['snapshot_client_id'] ?? 0));
 }
 
 function retentionRedactPayloads(int $limit = 1000): array
@@ -2806,11 +2849,20 @@ function retentionRedactPayloads(int $limit = 1000): array
     // Dead letters remain replayable and are not minimized until resolved.
     $events = $event_policy['purge_mode'] === 'automatic' ? retentionDbQuery("SELECT e.automation_event_id,
         e.automation_event_source, e.automation_event_payload_hash,
-        t.ticket_client_id, i.automation_incident_client_id AS incident_client_id
+        e.automation_event_client_id AS event_client_id,
+        e.automation_event_ticket_id AS event_ticket_id,
+        t.ticket_id AS resolved_ticket_id, t.ticket_client_id,
+        i.automation_incident_id AS incident_id,
+        i.automation_incident_client_id AS incident_client_id,
+        i.automation_incident_ticket_id AS incident_ticket_id,
+        it.ticket_id AS resolved_incident_ticket_id,
+        it.ticket_client_id AS incident_ticket_client_id
         FROM automation_events e
         LEFT JOIN tickets t ON t.ticket_id = e.automation_event_ticket_id
         LEFT JOIN automation_incidents i ON i.automation_incident_source = e.automation_event_source
+            AND i.automation_incident_client_id = e.automation_event_client_id
             AND i.automation_incident_key = e.automation_event_incident_key
+        LEFT JOIN tickets it ON it.ticket_id = i.automation_incident_ticket_id
         WHERE e.automation_event_status = 'Processed' AND e.automation_event_payload IS NOT NULL
         AND e.automation_event_payload_redacted_at IS NULL
         AND TIMESTAMPDIFF(DAY, e.automation_event_last_received_at, NOW()) >= GREATEST($event_days,
@@ -2828,14 +2880,23 @@ function retentionRedactPayloads(int $limit = 1000): array
             throw new RuntimeException('Could not begin event payload redaction');
         }
         try {
-            documentationLockClient($candidate_client_id);
+            documentationLockClientForExpiry($candidate_client_id);
             $locked_event = mysqli_fetch_assoc(retentionDbQuery("SELECT e.automation_event_id,
                 e.automation_event_source, e.automation_event_payload_hash,
-                t.ticket_client_id, i.automation_incident_client_id AS incident_client_id
+                e.automation_event_client_id AS event_client_id,
+                e.automation_event_ticket_id AS event_ticket_id,
+                t.ticket_id AS resolved_ticket_id, t.ticket_client_id,
+                i.automation_incident_id AS incident_id,
+                i.automation_incident_client_id AS incident_client_id,
+                i.automation_incident_ticket_id AS incident_ticket_id,
+                it.ticket_id AS resolved_incident_ticket_id,
+                it.ticket_client_id AS incident_ticket_client_id
                 FROM automation_events e
                 LEFT JOIN tickets t ON t.ticket_id = e.automation_event_ticket_id
                 LEFT JOIN automation_incidents i ON i.automation_incident_source = e.automation_event_source
+                    AND i.automation_incident_client_id = e.automation_event_client_id
                     AND i.automation_incident_key = e.automation_event_incident_key
+                LEFT JOIN tickets it ON it.ticket_id = i.automation_incident_ticket_id
                 WHERE e.automation_event_id = $event_id
                 AND e.automation_event_status = 'Processed'
                 AND e.automation_event_payload IS NOT NULL
@@ -2891,7 +2952,7 @@ function retentionRedactPayloads(int $limit = 1000): array
             throw new RuntimeException('Could not begin normalized payload redaction');
         }
         try {
-            documentationLockClient($candidate_client_id);
+            documentationLockClientForExpiry($candidate_client_id);
             $locked_snapshot = mysqli_fetch_assoc(retentionDbQuery("SELECT automation_snapshot_id,
                 automation_snapshot_client_id AS snapshot_client_id,
                 automation_snapshot_source, automation_snapshot_payload_hash
@@ -3054,7 +3115,7 @@ function retentionReconcileDeletionLedger(int $limit = 500): array
             try {
                 $record_id = intval($row['record_id']);
                 $client_id = intval($row['client_id']);
-                documentationLockClient($client_id);
+                documentationLockClientForExpiry($client_id);
                 if ($type === 'ticket') {
                     $locked = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_id AS record_id,
                         ticket_client_id AS client_id, ticket_deleted_at AS deleted_at,

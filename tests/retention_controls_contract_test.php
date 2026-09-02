@@ -53,6 +53,23 @@ foreach ([
         ucfirst($label) . ' does not reauthorize the administrator inside its transaction');
 }
 
+foreach ([
+    ['function retentionSoftDeleteTicket(', 'function retentionFilePaths(', 'tickets',
+        'documentationLockClientTicket($ticket_id, $client_id)'],
+    ['function retentionSoftDeleteFile(', 'function retentionSoftDeleteAttachment(', 'files',
+        'documentationLockClient($client_id)'],
+    ['function retentionSoftDeleteAttachment(', 'function retentionDeletionForUpdate(', 'attachments',
+        'documentationLockClient($client_id)'],
+] as [$start, $end, $policy_key, $target_lock]) {
+    $body = $section($start, $end, "$policy_key policy lock");
+    $ordered($body, [
+        'mysqli_begin_transaction($mysqli)',
+        'retentionLockAdministratorActor($actor_id)',
+        "retentionPolicy('$policy_key', true)",
+        $target_lock,
+    ], ucfirst($policy_key) . ' deletion does not freeze its policy before business rows');
+}
+
 $preview = $section('function retentionPreviewPurge(', 'function retentionPurgeRunToken(', 'purge preview');
 $contains($preview, 'if ($actor_id > 0)', 'Scheduled preview exception is not explicit');
 $ordered($preview, [
@@ -87,6 +104,45 @@ $ordered($resolver, [
     'FROM ticket_attachments',
     'LIMIT 1 FOR UPDATE',
 ], 'Attachment holds do not lock their parent ticket before the attachment');
+$contains($resolver, 'e.automation_event_client_id AS event_client_id',
+    'Automation-event retention does not use the durable event tenant');
+$contains($resolver, 'i.automation_incident_client_id = e.automation_event_client_id',
+    'Automation-event retention joins incidents without tenant scope');
+$contains($resolver, '$client_id < 1',
+    'Legacy tenant-zero automation events do not fail closed');
+$contains($resolver, '$event_ticket_id !== $incident_ticket_id',
+    'Conflicting event and incident tickets do not fail closed');
+
+$active_holds = $section('function retentionActiveHolds(', 'function retentionCount(', 'active holds');
+$contains($active_holds, 'e.automation_event_client_id = $client_id',
+    'Automation-event inherited holds are not restricted to the canonical tenant');
+$contains($active_holds, 'i.automation_incident_client_id = e.automation_event_client_id',
+    'Automation-event incident holds can cross tenant boundaries');
+
+$quarantine_target = $section('function retentionLockQuarantineLifecycleTarget(',
+    'function retentionClaimQuarantineMove(', 'quarantine lifecycle target');
+$contains($quarantine_target, 'documentationLockClientForExpiry($client_id)',
+    'Durable quarantine recovery stops when a client is archived');
+if (str_contains($quarantine_target, 'documentationLockClient($client_id)')) {
+    $failures[] = 'Durable quarantine recovery still requires an active client';
+}
+
+$payload_client = $section('function retentionResolvedPayloadClient(',
+    'function retentionRedactPayloads(', 'payload client resolver');
+$contains($payload_client, "array_key_exists('event_client_id', \$row)",
+    'Payload retention does not distinguish canonical event tenants');
+$contains($payload_client, '$client_id < 1',
+    'Payload retention accepts legacy tenant-zero events');
+$contains($payload_client, '$event_ticket_id !== $incident_ticket_id',
+    'Payload retention accepts conflicting ticket ownership');
+$redaction = $section('function retentionRedactPayloads(',
+    'function retentionRunScheduledMaintenance(', 'payload redaction');
+$contains($redaction, 'e.automation_event_client_id AS event_client_id',
+    'Payload candidates omit the durable event tenant');
+$contains($redaction, 'i.automation_incident_client_id = e.automation_event_client_id',
+    'Payload candidates can join an incident from another tenant');
+$contains($redaction, 'documentationLockClientForExpiry($candidate_client_id)',
+    'Payload minimization stops when its client is archived');
 
 if ($failures) {
     fwrite(STDERR, implode("\n", $failures) . "\n");
@@ -94,4 +150,3 @@ if ($failures) {
 }
 
 echo "Retention controls contract passed.\n";
-
