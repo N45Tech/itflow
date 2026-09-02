@@ -8,6 +8,9 @@ cd "$ROOT"
 # This is the reviewed, clean ITFlow ancestor documented in
 # docs/n45/upstream-parity.md. Its highest upstream migration is 2.6.7.
 UPSTREAM_SCHEMA_COMMIT=0262707ef029ffb294df197e10d9b918adb0c85d
+# This is the integrated N45 schema immediately before the official-upstream
+# merge. It represents a legacy marker install without later upstream DDL.
+LEGACY_SCHEMA_COMMIT=b93ad474a84413df44355dfaef981d79714d0252
 FINAL_DATABASE=n45_ci_final
 UPGRADE_DATABASE=n45_ci_upgrade
 LEGACY_DATABASE=n45_ci_legacy
@@ -17,7 +20,7 @@ fail() {
     exit 1
 }
 
-for command_name in git mariadb mariadb-dump php; do
+for command_name in git mariadb php; do
     command -v "$command_name" > /dev/null || fail "missing required command: $command_name"
 done
 for environment_name in N45_CI_DB_HOST N45_CI_DB_USER N45_CI_DB_PASSWORD; do
@@ -77,8 +80,12 @@ assert_current() {
     php tests/n45_release_database_assert.php runner
 }
 
-UPSTREAM_MARKER=$(php -r '$manifest = require "n45/manifest.php"; echo $manifest["maintenance"]["upstream_marker_base"] ?? "";')
-[[ "$UPSTREAM_MARKER" == '2.6.7' ]] || fail "unexpected upstream marker base: $UPSTREAM_MARKER"
+UPSTREAM_MARKER_BASE=$(php -r '$manifest = require "n45/manifest.php"; echo $manifest["maintenance"]["upstream_marker_base"] ?? "";')
+[[ "$UPSTREAM_MARKER_BASE" == '2.6.7' ]] || fail "unexpected upstream marker base: $UPSTREAM_MARKER_BASE"
+CURRENT_UPSTREAM_MARKER=$(php -r 'require "includes/database_version.php"; echo LATEST_DATABASE_VERSION;')
+[[ "$CURRENT_UPSTREAM_MARKER" =~ ^[0-9]+(\.[0-9]+)+$ ]] || fail "invalid current upstream marker: $CURRENT_UPSTREAM_MARKER"
+php -r 'exit(version_compare($argv[1], $argv[2], "<=") ? 0 : 1);' "$UPSTREAM_MARKER_BASE" "$CURRENT_UPSTREAM_MARKER" \
+    || fail 'the current upstream marker predates the bridge base'
 git cat-file -e "$UPSTREAM_SCHEMA_COMMIT^{commit}" || fail 'reviewed upstream schema commit is unavailable'
 git merge-base --is-ancestor "$UPSTREAM_SCHEMA_COMMIT" HEAD || fail 'reviewed upstream schema commit is not an ancestor of this release'
 git show "$UPSTREAM_SCHEMA_COMMIT:db.sql" > "$TEMP_DIRECTORY/upstream-2.6.7.sql"
@@ -89,14 +96,14 @@ UPSTREAM_LATEST=$(
         | sort -V \
         | tail -n 1
 )
-[[ "$UPSTREAM_LATEST" == "$UPSTREAM_MARKER" ]] || fail "reviewed schema ends at $UPSTREAM_LATEST instead of $UPSTREAM_MARKER"
+[[ "$UPSTREAM_LATEST" == "$UPSTREAM_MARKER_BASE" ]] || fail "reviewed schema ends at $UPSTREAM_LATEST instead of $UPSTREAM_MARKER_BASE"
 
 echo 'Importing and validating the final db.sql snapshot'
 reset_database "$FINAL_DATABASE"
 import_database "$FINAL_DATABASE" db.sql
 FINAL_TABLE_COUNT=$("${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE();")
 [[ "$FINAL_TABLE_COUNT" -gt 0 ]] || fail 'final db.sql imported no tables'
-seed_marker "$FINAL_DATABASE" "$UPSTREAM_MARKER"
+seed_marker "$FINAL_DATABASE" "$CURRENT_UPSTREAM_MARKER"
 run_update "$FINAL_DATABASE" "$TEMP_DIRECTORY/final-update.log"
 assert_current "$FINAL_DATABASE"
 php tests/n45_transaction_state_database_assert.php
@@ -106,7 +113,7 @@ reset_database "$UPGRADE_DATABASE"
 import_database "$UPGRADE_DATABASE" "$TEMP_DIRECTORY/upstream-2.6.7.sql"
 UPSTREAM_LEDGER_COUNT=$("${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'n45_schema_migrations';")
 [[ "$UPSTREAM_LEDGER_COUNT" == '0' ]] || fail 'reviewed upstream schema unexpectedly contains the N45 ledger'
-seed_marker "$UPGRADE_DATABASE" "$UPSTREAM_MARKER"
+seed_marker "$UPGRADE_DATABASE" "$UPSTREAM_MARKER_BASE"
 run_update "$UPGRADE_DATABASE" "$TEMP_DIRECTORY/upgrade.log"
 assert_current "$UPGRADE_DATABASE"
 
@@ -162,15 +169,9 @@ LEGACY_MARKER=$(php -r '
 ')
 [[ "$LEGACY_MARKER" =~ ^[0-9]+(\.[0-9]+)+$ ]] || fail 'the manifest has no safe legacy bridge marker'
 
-mariadb-dump \
-    --protocol=TCP \
-    --host="$N45_CI_DB_HOST" \
-    --port="${N45_CI_DB_PORT:-3306}" \
-    --user="$N45_CI_DB_USER" \
-    --single-transaction \
-    --skip-comments \
-    --skip-lock-tables \
-    "$UPGRADE_DATABASE" > "$TEMP_DIRECTORY/legacy-fixture.sql"
+git cat-file -e "$LEGACY_SCHEMA_COMMIT^{commit}" || fail 'legacy N45 schema commit is unavailable'
+git merge-base --is-ancestor "$LEGACY_SCHEMA_COMMIT" HEAD || fail 'legacy N45 schema commit is not an ancestor of this release'
+git show "$LEGACY_SCHEMA_COMMIT:db.sql" > "$TEMP_DIRECTORY/legacy-fixture.sql"
 reset_database "$LEGACY_DATABASE"
 import_database "$LEGACY_DATABASE" "$TEMP_DIRECTORY/legacy-fixture.sql"
 # Reconstruct the one schema difference in the historical numeric 2.7.8
@@ -185,7 +186,8 @@ import_database "$LEGACY_DATABASE" "$TEMP_DIRECTORY/legacy-fixture.sql"
         documentation_evidence_reference_id,
         documentation_evidence_reference_hash
     );"
-"${DATABASE_CLIENT[@]}" "$LEGACY_DATABASE" -e "DELETE FROM n45_schema_migrations; UPDATE settings SET config_current_database_version = '$LEGACY_MARKER' WHERE company_id = 1;"
+"${DATABASE_CLIENT[@]}" "$LEGACY_DATABASE" -e "DELETE FROM n45_schema_migrations;"
+seed_marker "$LEGACY_DATABASE" "$LEGACY_MARKER"
 
 export N45_CI_DB_NAME="$LEGACY_DATABASE"
 php scripts/update_cli.php --bridge_n45_migrations 2>&1 | tee "$TEMP_DIRECTORY/legacy-bridge.log"
@@ -221,7 +223,7 @@ run_update "$UPGRADE_DATABASE" "$TEMP_DIRECTORY/no-op.log"
 LEDGER_AFTER=$("${DATABASE_CLIENT[@]}" "$UPGRADE_DATABASE" -e "SELECT CONCAT_WS('|', migration_id, migration_checksum, COALESCE(migration_legacy_version, ''), migration_applied_by, migration_applied_at) FROM n45_schema_migrations ORDER BY migration_id;")
 [[ "$LEDGER_AFTER" == "$LEDGER_BEFORE" ]] || fail 'the no-op update changed the migration ledger'
 ! grep -Fq 'Applied N45 database migration' "$TEMP_DIRECTORY/no-op.log" || fail 'the no-op update replayed an N45 migration'
-grep -Fq "Database is already at the latest version ($UPSTREAM_MARKER). No updates were applied." "$TEMP_DIRECTORY/no-op.log" || fail 'the CLI did not report a no-op update'
+grep -Fq "Database is already at the latest version ($CURRENT_UPSTREAM_MARKER). No updates were applied." "$TEMP_DIRECTORY/no-op.log" || fail 'the CLI did not report a no-op update'
 assert_current "$UPGRADE_DATABASE"
 
 echo "N45 release database validation passed ($FINAL_TABLE_COUNT final tables, last migration $LAST_MIGRATION_ID)."

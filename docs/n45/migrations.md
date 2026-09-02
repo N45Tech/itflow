@@ -1,6 +1,6 @@
 # N45 migration and rollback policy
 
-ITFlow upstream and N45 now have independent migration namespaces. Upstream files remain in `admin/database_updates/` and own `settings.config_current_database_version`; this fork's upstream base is `2.6.7`. N45 files live in `n45/migrations/` and are recorded by stable ID and SHA-256 checksum in `n45_schema_migrations`.
+ITFlow upstream and N45 now have independent migration namespaces. Upstream files remain in `admin/database_updates/` and own `settings.config_current_database_version`; this fork's historical bridge base is `2.6.7`. That base is the reset anchor for legacy N45 markers, not the current upstream version. The current upstream marker is derived from the reviewed numeric migration inventory, fresh installs record it, and the N45 runner refuses to start while the durable marker is behind it. N45 files live in `n45/migrations/` and are recorded by stable ID and SHA-256 checksum in `n45_schema_migrations`.
 
 Both runners use the `itflow-database-updates` advisory lock. Before upstream migrations run, the updater records the no-op `n45-0000-namespace-foundation` migration. That durable row prevents a future upstream release that reuses a former fork version number from being mistaken for an old fork install. The N45 runner is ordered and retryable: it validates every migration's schema/data fingerprint before writing its ledger row, refuses changed checksums or unknown ledger IDs, and resumes at the first unrecorded ID. MySQL/MariaDB DDL may commit implicitly, so retry safety still depends on idempotent migration SQL.
 
@@ -44,8 +44,9 @@ The manifest reserves the next four feature IDs, one compatibility repair, the r
 
 When integrating each feature, rename its file into `n45/migrations/`, change its guard to `FROM_N45_DB_UPDATER`, and make its header name the stable ID. Remove checks that read `settings.config_current_database_version` or require the preceding numeric fork marker; stable manifest order is the N45 prerequisite after the namespaces separate. Add the module and ordered migration definition to `n45/manifest.php`; copy the reservation's `legacy_version`, `data_change`, and rollback contract exactly; add complete column, index, and data fingerprints; update the released-file inventory and baseline-schema assertions; then add the migration to the released inventory below. `n45-0011` must retain `legacy_version => '2.7.8'`, not `null`. Remove no reservation: the durable mapping is needed to detect old installations whose upstream marker already contains that former fork number.
 
-Official upstream may later reuse one of these numeric versions. The upstream
-migration may coexist with the N45 legacy mapping only after its SHA-256 is
+Official upstream may reuse any numeric version preserved as N45 legacy
+metadata. The upstream migration may coexist with the N45 legacy mapping only
+after its SHA-256 is
 reviewed and pinned in `maintenance.upstream_reclaimed_migration_checksums` in
 `n45/manifest.php`. The smoke suite rejects an unreviewed file, a checksum
 change, or a stale pin. The N45 stable ID and legacy marker remain unchanged so

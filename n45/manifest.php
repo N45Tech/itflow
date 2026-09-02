@@ -72,6 +72,16 @@ return [
         // exact official-upstream migration before it is allowed to coexist
         // with the durable legacy bridge mapping below.
         'upstream_reclaimed_migration_checksums' => [
+            '2.6.8' => 'c5ed7ba86839e37770531103bacceaeb271473c9e024173a64be871330190b63',
+            '2.6.9' => 'e9bec10d56b8322eae92acab92f921c7ea590697bc4dfe8ec2b2d3e1c3914a05',
+            '2.7.0' => 'a134902f80288a6247a72b6a74346773ee3877d7ae4e055a26ab040cade2df3a',
+            '2.7.1' => '1b707286115283cb68c76a93439feafbe49d6ab905fa2977915eb7f78f1e3a04',
+            '2.7.2' => '559b19dd2afeb826cebfc7beb30ac08bdf154cde7cc2d733563cbfe06eb956a8',
+            '2.7.3' => '85edfec112eeb26b6c57150c84b96b3054983904a5a4c5853d832011f345ee49',
+            '2.7.4' => '0fd61268b6c54e446b1fc21412bb5ee9cb54b82978aec71ad6d8a2132fe36235',
+            '2.7.5' => '68f4ef4880c69a1d39e26c9f34cd635d90a0509215494c70778a643d932eccea',
+            '2.7.6' => 'c28ae8e3bcd22f661e5c795c5e1871dd0286906e7d7df40e55de3e7a23958209',
+            '2.7.7' => '8cdf1195e94f308ea54fe90291a120eece2bf43a529f140749fd8037b36031f3',
             '2.7.8' => '23b18afc7ebe1e3d18143e8ceea5785c83517015d9c4467fe44d2f957548ee99',
         ],
         // These former fork-version files are allocated by feature branches

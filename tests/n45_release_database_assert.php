@@ -56,7 +56,9 @@ try {
 
     $upstream_marker_base = (string) ($manifest['maintenance']['upstream_marker_base'] ?? '');
     $assert($upstream_marker_base === '2.6.7', 'The manifest no longer pins the reviewed upstream 2.6.7 marker');
-    $assert(($status['upstream_marker'] ?? '') === $upstream_marker_base, 'The N45 runner changed the upstream database marker');
+    $current_upstream_marker = n45LatestUpstreamDatabaseVersion();
+    $assert(($status['upstream_marker_latest'] ?? '') === $current_upstream_marker, 'N45 status does not report the current upstream marker');
+    $assert(($status['upstream_marker'] ?? '') === $current_upstream_marker, 'The upstream runner did not advance the durable database marker to the current version');
 
     $manifest_files = [];
     foreach ($definitions as $id => $definition) {

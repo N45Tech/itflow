@@ -84,11 +84,24 @@ $expected_integration_reservations = [
     '2.8.0' => 'n45-0013-portal-request-catalog',
     '2.8.1' => 'n45-0014-agreement-entitlements',
 ];
+$expected_reclaimed_upstream_checksums = [
+    '2.6.8' => 'c5ed7ba86839e37770531103bacceaeb271473c9e024173a64be871330190b63',
+    '2.6.9' => 'e9bec10d56b8322eae92acab92f921c7ea590697bc4dfe8ec2b2d3e1c3914a05',
+    '2.7.0' => 'a134902f80288a6247a72b6a74346773ee3877d7ae4e055a26ab040cade2df3a',
+    '2.7.1' => '1b707286115283cb68c76a93439feafbe49d6ab905fa2977915eb7f78f1e3a04',
+    '2.7.2' => '559b19dd2afeb826cebfc7beb30ac08bdf154cde7cc2d733563cbfe06eb956a8',
+    '2.7.3' => '85edfec112eeb26b6c57150c84b96b3054983904a5a4c5853d832011f345ee49',
+    '2.7.4' => '0fd61268b6c54e446b1fc21412bb5ee9cb54b82978aec71ad6d8a2132fe36235',
+    '2.7.5' => '68f4ef4880c69a1d39e26c9f34cd635d90a0509215494c70778a643d932eccea',
+    '2.7.6' => 'c28ae8e3bcd22f661e5c795c5e1871dd0286906e7d7df40e55de3e7a23958209',
+    '2.7.7' => '8cdf1195e94f308ea54fe90291a120eece2bf43a529f140749fd8037b36031f3',
+    '2.7.8' => '23b18afc7ebe1e3d18143e8ceea5785c83517015d9c4467fe44d2f957548ee99',
+];
 $integration_reservations = $manifest['maintenance']['integration_migration_reservations'] ?? [];
 $upstream_reclaimed_migration_checksums = $manifest['maintenance']['upstream_reclaimed_migration_checksums'] ?? [];
 $assertTrue(
-    array_diff_key($upstream_reclaimed_migration_checksums, $integration_reservations) === [],
-    'Reviewed upstream migration checksums include a version outside the legacy N45 reservations'
+    $upstream_reclaimed_migration_checksums === $expected_reclaimed_upstream_checksums,
+    'Reviewed upstream migration checksums do not match the exact official files that collide with legacy N45 markers'
 );
 $assertTrue(
     array_map(static fn (array $reservation): string => (string) ($reservation['id'] ?? ''), $integration_reservations)
@@ -161,22 +174,23 @@ $assertTrue($manifest_migration_files === $disk_migration_files, 'Every N45 migr
 foreach (glob($root . '/admin/database_updates/*.php') ?: [] as $upstream_migration_file) {
     $assertTrue(!str_contains((string) file_get_contents($upstream_migration_file), 'FROM_N45_DB_UPDATER'), 'An N45 migration leaked into the upstream namespace: ' . basename($upstream_migration_file));
 }
-foreach ($integration_reservations as $legacy_version => $reservation) {
-    $migration_id = (string) ($reservation['id'] ?? '');
+foreach ($expected_legacy_migrations as $migration_id => $legacy_version) {
     $upstream_migration_path = $root . '/admin/database_updates/' . $legacy_version . '.php';
     if (is_file($upstream_migration_path)) {
-        $expected_upstream_checksum = (string) ($upstream_reclaimed_migration_checksums[$legacy_version] ?? '');
         $observed_upstream_checksum = hash_file('sha256', $upstream_migration_path);
         $assertTrue(
-            $expected_upstream_checksum !== '' && hash_equals($expected_upstream_checksum, (string) $observed_upstream_checksum),
-            "Reserved N45 migration version $legacy_version is present in the upstream namespace without a reviewed official-upstream checksum"
+            hash_equals((string) ($expected_reclaimed_upstream_checksums[$legacy_version] ?? ''), (string) $observed_upstream_checksum),
+            "Legacy N45 migration version $legacy_version conflicts with a changed official-upstream file"
         );
     } else {
         $assertTrue(
-            !isset($upstream_reclaimed_migration_checksums[$legacy_version]),
+            !isset($expected_reclaimed_upstream_checksums[$legacy_version]),
             "Reviewed upstream migration $legacy_version is missing from the upstream namespace"
         );
     }
+}
+foreach ($integration_reservations as $legacy_version => $reservation) {
+    $migration_id = (string) ($reservation['id'] ?? '');
     if (isset($manifest['migrations'][$migration_id])) {
         $migration = $manifest['migrations'][$migration_id];
         $assertTrue(($migration['legacy_version'] ?? null) === $legacy_version, "$migration_id does not bridge legacy marker $legacy_version");
@@ -277,6 +291,9 @@ $update_cli = $read('scripts/update_cli.php');
 $assertContains('function n45MigrationStatus($mysqli): array', $schema_service, 'Read-only N45 pending detection is missing');
 $status_contract = $section($schema_service, 'function n45MigrationStatus($mysqli): array', 'function n45WithMigrationLock(', 'N45 status function');
 $assertTrue(!str_contains($status_contract, 'n45EnsureMigrationLedger(') && !str_contains($status_contract, 'n45RecordMigration('), 'N45 pending detection performs maintenance writes');
+$assertContains('n45LatestUpstreamDatabaseVersion()', $status_contract, 'N45 status does not compare against the current upstream migration inventory');
+$assertContains("version_compare(\$marker, \$latest_upstream_marker, '<')", $status_contract, 'N45 status only compares against the historical bridge base');
+$assertContains("'upstream_marker_latest' => \$latest_upstream_marker", $status_contract, 'N45 status does not disclose the current upstream marker');
 $assertContains("hash_file('sha256'", $schema_service, 'N45 migrations are not checksum verified');
 $assertContains("SELECT GET_LOCK('\$lock_sql', 0)", $schema_service, 'N45 migrations do not serialize on the database update lock');
 $assertContains('function n45ValidateMigrationFingerprint(', $schema_service, 'Legacy marker bridge does not validate schema/data fingerprints');
