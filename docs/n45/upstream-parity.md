@@ -65,7 +65,7 @@ Authentication restrictions, portal authorization, runbook lifecycle gates, evid
 - Keep destructive ticket deletion, dependent ticket rows, and Operations cleanup in one transaction even when automation ingress is disabled. Delete upload directories only after that database transaction commits.
 - Avoid broad formatting or file moves in upstream-owned files; they hide semantic conflicts and make future reviews harder.
 - New N45 tables and columns require a stable-ID migration, checksum-ledger manifest entry, schema/data fingerprint, explicit rollback note, baseline-schema parity, and a regression test.
-- Before integrating a concurrent feature branch, check `maintenance.integration_migration_reservations` in `n45/manifest.php`. A reserved former fork version must be renamed into the listed stable N45 ID, retain that numeric version only as bridge metadata, and consume reservations in order. The runtime preflight and smoke contract reject leaked numeric files.
+- Before integrating a concurrent feature branch, check `maintenance.integration_migration_reservations` in `n45/manifest.php`. A reserved former fork version must be renamed into the listed stable N45 ID, retain that numeric version only as bridge metadata, and consume reservations in order. The runtime preflight and smoke contract reject numeric files unless an official-upstream collision was explicitly reviewed and its exact SHA-256 pinned in `maintenance.upstream_reclaimed_migration_checksums`.
 
 ## Release evidence
 

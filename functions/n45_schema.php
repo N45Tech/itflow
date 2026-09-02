@@ -297,14 +297,39 @@ function n45MigrationReservationDefinitionMatches(array $definition, string $leg
 
 function n45AssertMigrationNamespaceReservations(array $definitions): void
 {
+    $namespace_reservations = n45MigrationNamespaceReservations();
+    $reclaimed_upstream_checksums = n45ForkManifest()['maintenance']['upstream_reclaimed_migration_checksums'] ?? [];
+    if (!is_array($reclaimed_upstream_checksums)
+        || array_diff_key($reclaimed_upstream_checksums, $namespace_reservations)) {
+        throw new RuntimeException('The reviewed upstream migration checksum inventory is invalid');
+    }
+    foreach ($reclaimed_upstream_checksums as $legacy_version => $checksum) {
+        if (!is_string($legacy_version)
+            || preg_match('/^\d+(?:\.\d+)+$/', $legacy_version) !== 1
+            || !is_string($checksum)
+            || preg_match('/^[a-f0-9]{64}$/', $checksum) !== 1) {
+            throw new RuntimeException('The reviewed upstream migration checksum inventory contains invalid metadata');
+        }
+    }
+
     $seen_unconsumed = false;
     $first_unconsumed_id = null;
-    foreach (n45MigrationNamespaceReservations() as $legacy_version => $reservation) {
+    foreach ($namespace_reservations as $legacy_version => $reservation) {
         $id = $reservation['id'];
         $upstream_file = dirname(__DIR__) . '/admin/database_updates/' . $legacy_version . '.php';
         if (is_file($upstream_file)) {
+            $expected_checksum = $reclaimed_upstream_checksums[$legacy_version] ?? null;
+            $observed_checksum = hash_file('sha256', $upstream_file);
+            if (!is_string($expected_checksum)
+                || !is_string($observed_checksum)
+                || !hash_equals($expected_checksum, $observed_checksum)) {
+                throw new RuntimeException(
+                    "Reserved N45 migration version $legacy_version conflicts with an unreviewed upstream migration file"
+                );
+            }
+        } elseif (isset($reclaimed_upstream_checksums[$legacy_version])) {
             throw new RuntimeException(
-                "Reserved N45 migration $legacy_version must be moved to n45/migrations/$id.php before database update"
+                "Reviewed upstream migration $legacy_version is missing from admin/database_updates"
             );
         }
 
