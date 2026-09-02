@@ -39,11 +39,34 @@ function retentionRequireAdministratorActor(int $actor_id): void
     $count = retentionCount("SELECT COUNT(*) FROM users
         INNER JOIN user_roles ON role_id = user_role_id
         WHERE user_id = $actor_id AND user_type = 1 AND user_status = 1
-        AND user_archived_at IS NULL AND role_is_admin = 1",
+        AND user_archived_at IS NULL AND role_type = 1
+        AND role_archived_at IS NULL AND role_is_admin = 1",
         'Could not verify the retention administrator');
     if ($count !== 1) {
         throw new DomainException('Retention lifecycle mutations are administrator-only');
     }
+}
+
+/**
+ * Revalidate the administrator inside the mutation transaction. The session
+ * and preflight check are advisory only: disabling the user or demoting or
+ * archiving their role must serialize behind this principal lock.
+ */
+function retentionLockAdministratorActor(int $actor_id): array
+{
+    if ($actor_id < 1) {
+        throw new DomainException('An authenticated administrator is required');
+    }
+    $locked = authorizationLockAgents([[
+        'user_id' => $actor_id,
+        'minimum_level' => 1,
+        'client_ids' => [],
+        'require_admin' => true,
+    ]]);
+    if (!isset($locked[$actor_id])) {
+        throw new RuntimeException('Could not lock the retention administrator');
+    }
+    return $locked[$actor_id];
 }
 
 function retentionRecordPolicyKey(string $record_type): string
@@ -127,6 +150,7 @@ function retentionUpdatePolicy(
         throw new RuntimeException('Could not begin the retention policy transaction');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
         // Serialize owner decisions so the immutable event's "from" snapshot
         // cannot be stale or lose a concurrent administrator edit.
         $policy = retentionPolicy($policy_key, true);
@@ -1102,6 +1126,7 @@ function retentionSoftDeleteTicket(int $ticket_id, int $actor_id, string $reason
         throw new RuntimeException('Could not begin the ticket retention transaction');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
         $prelock = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_client_id FROM tickets
             WHERE ticket_id = $ticket_id LIMIT 1", 'Could not locate the ticket for retention'));
         if (!$prelock) {
@@ -1199,6 +1224,7 @@ function retentionSoftDeleteFile(int $file_id, int $client_id, int $actor_id, st
         throw new RuntimeException('Could not begin the file retention transaction');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
         documentationLockClient($client_id);
         $file = mysqli_fetch_assoc(retentionDbQuery("SELECT files.* FROM files
             WHERE file_id = $file_id AND file_client_id = $client_id
@@ -1282,6 +1308,7 @@ function retentionSoftDeleteAttachment(int $attachment_id, int $actor_id, string
         throw new RuntimeException('Could not begin the attachment retention transaction');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
         $prelock = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_attachment_ticket_id
             FROM ticket_attachments WHERE ticket_attachment_id = $attachment_id LIMIT 1",
             'Could not locate the retained attachment'));
@@ -1386,21 +1413,46 @@ function retentionDeletionForUpdate(string $record_type, int $record_id): array
     return $row;
 }
 
-function retentionResolveRecordClient(string $record_type, int $record_id): int
+function retentionResolveRecordClient(string $record_type, int $record_id, bool $for_update = true): int
 {
     if ($record_id < 1) {
         throw new InvalidArgumentException('A specific record ID is required');
     }
+    $lock_sql = $for_update ? ' FOR UPDATE' : '';
     if ($record_type === 'ticket') {
-        $sql = "SELECT ticket_client_id FROM tickets WHERE ticket_id = $record_id LIMIT 1 FOR UPDATE";
+        $sql = "SELECT ticket_client_id FROM tickets WHERE ticket_id = $record_id LIMIT 1$lock_sql";
         $column = 'ticket_client_id';
     } elseif ($record_type === 'file') {
-        $sql = "SELECT file_client_id FROM files WHERE file_id = $record_id LIMIT 1 FOR UPDATE";
+        $sql = "SELECT file_client_id FROM files WHERE file_id = $record_id LIMIT 1$lock_sql";
         $column = 'file_client_id';
     } elseif ($record_type === 'attachment') {
+        if ($for_update) {
+            // The caller already owns the canonical client row. Lock the
+            // parent ticket before the attachment so this path matches delete,
+            // restore, and purge ordering regardless of the join optimizer.
+            $attachment = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_attachment_ticket_id
+                FROM ticket_attachments WHERE ticket_attachment_id = $record_id LIMIT 1",
+                'Could not locate the held attachment parent'));
+            $ticket_id = intval($attachment['ticket_attachment_ticket_id'] ?? 0);
+            if ($ticket_id < 1) {
+                throw new DomainException('The held attachment is unavailable');
+            }
+            $ticket = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_id, ticket_client_id
+                FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE",
+                'Could not lock the held attachment ticket'));
+            $attachment = mysqli_fetch_assoc(retentionDbQuery("SELECT ticket_attachment_id,
+                ticket_attachment_ticket_id FROM ticket_attachments
+                WHERE ticket_attachment_id = $record_id
+                AND ticket_attachment_ticket_id = $ticket_id LIMIT 1 FOR UPDATE",
+                'Could not lock the held attachment'));
+            if (!$ticket || !$attachment) {
+                throw new DomainException('The held attachment ownership changed');
+            }
+            return intval($ticket['ticket_client_id']);
+        }
         $sql = "SELECT ticket_client_id FROM ticket_attachments
             INNER JOIN tickets ON ticket_id = ticket_attachment_ticket_id
-            WHERE ticket_attachment_id = $record_id LIMIT 1 FOR UPDATE";
+            WHERE ticket_attachment_id = $record_id LIMIT 1";
         $column = 'ticket_client_id';
     } elseif ($record_type === 'automation-event') {
         $sql = "SELECT e.automation_event_id, t.ticket_client_id AS ticket_client_id,
@@ -1409,11 +1461,11 @@ function retentionResolveRecordClient(string $record_type, int $record_id): int
             LEFT JOIN tickets t ON t.ticket_id = e.automation_event_ticket_id
             LEFT JOIN automation_incidents i ON i.automation_incident_source = e.automation_event_source
                 AND i.automation_incident_key = e.automation_event_incident_key
-            WHERE e.automation_event_id = $record_id LIMIT 1 FOR UPDATE";
+            WHERE e.automation_event_id = $record_id LIMIT 1$lock_sql";
         $column = '';
     } elseif ($record_type === 'normalized-payload') {
         $sql = "SELECT automation_snapshot_client_id FROM automation_entity_snapshots
-            WHERE automation_snapshot_id = $record_id LIMIT 1 FOR UPDATE";
+            WHERE automation_snapshot_id = $record_id LIMIT 1$lock_sql";
         $column = 'automation_snapshot_client_id';
     } else {
         throw new InvalidArgumentException('Unsupported held record type');
@@ -1460,6 +1512,7 @@ function retentionPrepareDurableRestore(string $record_type, int $record_id,
         throw new RuntimeException('Could not begin the durable restore preparation');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
         $advisory = mysqli_fetch_assoc(retentionDbQuery("SELECT retention_deletion_client_id,
             retention_deletion_generation FROM retention_deletions
             WHERE retention_deletion_record_type = '$type_sql'
@@ -1817,6 +1870,7 @@ function retentionRestoreRecord(string $record_type, int $record_id, int $actor_
         throw new RuntimeException('Could not begin the retention restore transaction');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
         // Advisory only: discover the canonical client/generation without
         // taking the ledger lock. Restore and purge must both acquire
         // client -> target -> ledger to avoid a deadlock and TOCTOU window.
@@ -1902,23 +1956,32 @@ function retentionPlaceHold(
     if ($client_id === 0 && ($record_type === '*' || $record_id === 0)) {
         throw new InvalidArgumentException('A hold must target a client or a specific record');
     }
+    // Resolve ownership without row locks before BEGIN. The transaction then
+    // locks actor -> client -> parent -> record and verifies this exact value.
+    // No record lock may be acquired before the canonical client serializer.
+    $advisory_client_id = $client_id;
+    if ($record_id > 0) {
+        $advisory_client_id = retentionResolveRecordClient($record_type, $record_id, false);
+        if ($client_id > 0 && $client_id !== $advisory_client_id) {
+            throw new DomainException('The selected hold client does not own that record');
+        }
+        $client_id = $advisory_client_id;
+    } elseif ($record_type !== '*') {
+        throw new InvalidArgumentException('A record-specific hold requires a record ID');
+    }
     if (!mysqli_begin_transaction($mysqli)) {
         throw new RuntimeException('Could not begin the retention hold transaction');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
+        $client = documentationLockClientForExpiry($client_id);
+        if (intval($client['client_id']) !== $advisory_client_id) {
+            throw new DomainException('The held client scope changed');
+        }
         if ($record_id > 0) {
-            $resolved_client_id = retentionResolveRecordClient($record_type, $record_id);
-            if ($client_id > 0 && $client_id !== $resolved_client_id) {
-                throw new DomainException('The selected hold client does not own that record');
-            }
-            $client_id = $resolved_client_id;
-        } elseif ($record_type !== '*') {
-            throw new InvalidArgumentException('A record-specific hold requires a record ID');
-        } else {
-            $client = mysqli_fetch_assoc(retentionDbQuery("SELECT client_id FROM clients
-                WHERE client_id = $client_id LIMIT 1 FOR UPDATE", 'Could not lock the held client'));
-            if (!$client) {
-                throw new DomainException('The held client is unavailable');
+            $resolved_client_id = retentionResolveRecordClient($record_type, $record_id, true);
+            if ($resolved_client_id !== $advisory_client_id) {
+                throw new DomainException('The held record client changed before it could be locked');
             }
         }
         $type_sql = retentionDbEscape(substr($record_type, 0, 40));
@@ -1949,6 +2012,7 @@ function retentionReleaseHold(int $hold_id, string $reason, int $actor_id): void
         throw new RuntimeException('Could not begin the hold release transaction');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
         $hold = mysqli_fetch_assoc(retentionDbQuery("SELECT * FROM retention_holds
             WHERE retention_hold_id = $hold_id LIMIT 1 FOR UPDATE", 'Could not lock the retention hold'));
         if (!$hold || !empty($hold['retention_hold_released_at'])) {
@@ -1974,7 +2038,12 @@ function retentionReleaseHold(int $hold_id, string $reason, int $actor_id): void
     }
 }
 
-function retentionActiveHolds(string $record_type, int $record_id, int $client_id): array
+function retentionActiveHolds(
+    string $record_type,
+    int $record_id,
+    int $client_id,
+    bool $for_update = true
+): array
 {
     $type_sql = retentionDbEscape($record_type);
     $inheritance_sql = '';
@@ -1996,13 +2065,14 @@ function retentionActiveHolds(string $record_type, int $record_id, int $client_i
                     AND i.automation_incident_ticket_id > 0
             ))";
     }
+    $lock_sql = $for_update ? ' FOR UPDATE' : '';
     $rows = retentionDbQuery("SELECT retention_hold_id, retention_hold_reason FROM retention_holds
         WHERE retention_hold_released_at IS NULL AND (
             (retention_hold_record_type = '$type_sql' AND retention_hold_record_id = $record_id)
             OR (retention_hold_client_id = $client_id AND retention_hold_record_type = '*'
                 AND retention_hold_record_id = 0)
             $inheritance_sql
-        ) ORDER BY retention_hold_id FOR UPDATE", 'Could not inspect active retention holds');
+        ) ORDER BY retention_hold_id$lock_sql", 'Could not inspect active retention holds');
     $holds = [];
     while ($row = mysqli_fetch_assoc($rows)) {
         $holds[] = ['id' => intval($row['retention_hold_id']), 'reason' => $row['retention_hold_reason']];
@@ -2087,14 +2157,15 @@ function retentionTicketProtectionSummary(int $ticket_id): array
     return $counts;
 }
 
-function retentionProtectionSummary(array $deletion): array
+function retentionProtectionSummary(array $deletion, bool $for_update = true): array
 {
     $record_type = (string) $deletion['retention_deletion_record_type'];
     $record_id = intval($deletion['retention_deletion_record_id']);
     $client_id = intval($deletion['retention_deletion_client_id']);
-    // Preview and execution both run inside a transaction. Lock the owner
-    // policy so a concurrent disable/change cannot race this decision.
-    $policy = retentionPolicy(retentionRecordPolicyKey($record_type), true);
+    // Execution locks policy and holds authoritatively. Preview is an advisory
+    // snapshot and must not take broad policy/hold/range locks; the captured
+    // dependency hash is always revalidated by execution.
+    $policy = retentionPolicy(retentionRecordPolicyKey($record_type), $for_update);
     $blockers = [];
     $dependencies = [];
     if ($policy['purge_mode'] === 'disabled') {
@@ -2107,7 +2178,7 @@ function retentionProtectionSummary(array $deletion): array
     if (strtotime((string) $deletion['retention_deletion_purge_eligible_at']) > time()) {
         $blockers[] = 'retention_period_active';
     }
-    $holds = retentionActiveHolds($record_type, $record_id, $client_id);
+    $holds = retentionActiveHolds($record_type, $record_id, $client_id, $for_update);
     if ($holds) {
         $blockers[] = 'retention_hold';
         $dependencies['holds'] = $holds;
@@ -2178,6 +2249,9 @@ function retentionPreviewPurge(int $actor_id, ?string $idempotency_key = null, i
         throw new RuntimeException('Could not begin the purge preview transaction');
     }
     try {
+        if ($actor_id > 0) {
+            retentionLockAdministratorActor($actor_id);
+        }
         retentionDbQuery("INSERT IGNORE INTO retention_purge_batches SET
             retention_purge_batch_idempotency_key = '$key_sql',
             retention_purge_batch_mode = 'preview', retention_purge_batch_status = 'Previewed',
@@ -2191,14 +2265,14 @@ function retentionPreviewPurge(int $actor_id, ?string $idempotency_key = null, i
             $rows = retentionDbQuery("SELECT * FROM retention_deletions
                 WHERE retention_deletion_restored_at IS NULL AND retention_deletion_purged_at IS NULL
                 AND retention_deletion_purge_eligible_at <= NOW()
-                ORDER BY retention_deletion_purge_eligible_at, retention_deletion_id LIMIT $limit FOR UPDATE",
+                ORDER BY retention_deletion_purge_eligible_at, retention_deletion_id LIMIT $limit",
                 'Could not load purge preview candidates');
             $candidate_count = 0;
             $eligible_count = 0;
             $blocked_count = 0;
             while ($deletion = mysqli_fetch_assoc($rows)) {
                 $candidate_count++;
-                $summary = retentionProtectionSummary($deletion);
+                $summary = retentionProtectionSummary($deletion, false);
                 $outcome = $summary['eligible'] ? 'Eligible' : 'Blocked';
                 $summary['eligible'] ? $eligible_count++ : $blocked_count++;
                 $reason = $summary['eligible'] ? 'Eligible after retention and restore windows'
@@ -2397,7 +2471,7 @@ function retentionPurgeRecord(array $item, int $actor_id, int $batch_id, string 
         }
         // This is the authoritative check. It runs only after client, target,
         // ledger generation, batch, and item locks are held through commit.
-        $summary = retentionProtectionSummary($deletion);
+        $summary = retentionProtectionSummary($deletion, true);
         if (!$summary['eligible']) {
             $reason = implode(', ', $summary['blockers']);
             retentionAppendEvent($record_type, $record_id,
@@ -2565,6 +2639,7 @@ function retentionApproveAndExecuteBatch(int $batch_id, int $actor_id, string $c
         throw new RuntimeException('Could not begin purge batch approval');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
         retentionDbQuery("UPDATE retention_purge_batches SET retention_purge_batch_mode = 'execute',
             retention_purge_batch_status = 'Running', retention_purge_batch_approved_by = $actor_id,
             retention_purge_batch_approved_at = NOW(), retention_purge_batch_run_token = '$token_sql',
@@ -2598,6 +2673,7 @@ function retentionResumeBatch(int $batch_id, int $actor_id, string $confirmation
         throw new RuntimeException('Could not begin purge batch recovery');
     }
     try {
+        retentionLockAdministratorActor($actor_id);
         retentionDbQuery("UPDATE retention_purge_batches SET
             retention_purge_batch_run_token = '$token_sql',
             retention_purge_batch_lease_until = DATE_ADD(NOW(), INTERVAL 30 MINUTE),

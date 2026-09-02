@@ -100,6 +100,8 @@ seed_marker "$FINAL_DATABASE" "$UPSTREAM_MARKER"
 run_update "$FINAL_DATABASE" "$TEMP_DIRECTORY/final-update.log"
 assert_current "$FINAL_DATABASE"
 php tests/n45_transaction_state_database_assert.php
+php tests/retention_authorization_database_assert.php
+php tests/retention_lock_order_database_assert.php
 
 echo 'Exercising the documentation evaluator against MariaDB'
 "${DATABASE_CLIENT[@]}" "$FINAL_DATABASE" -e "UPDATE settings SET config_enable_cron = 1 WHERE company_id = 1;"
