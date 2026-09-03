@@ -107,6 +107,8 @@ while ($available = mysqli_fetch_assoc($sql_available_obligations)) {
 
 [$gate_allowed, $gate_error] = ticketLifecycleCanResolve($ticket_id, true);
 
+ob_start();
+
 ?>
 
 <div class="modal-header bg-dark">
@@ -272,3 +274,5 @@ while ($available = mysqli_fetch_assoc($sql_available_obligations)) {
 </div>
 
 <div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">Close</button></div>
+
+<?php require_once '../../../includes/modal_footer.php'; ?>

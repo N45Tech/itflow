@@ -92,6 +92,8 @@ $assertContains("enforceUserPermission('module_support')", $obligation_modal, 'O
 $assertContains('enforceClientAccess($client_id)', $obligation_modal, 'Obligation detail is not client scoped');
 $assertContains("enforceUserPermission('module_support')", $ticket_modal, 'Ticket documentation detail is not permission gated');
 $assertContains('enforceClientAccess($client_id)', $ticket_modal, 'Ticket documentation detail is not client scoped');
+$assertContains('ob_start();', $ticket_modal, 'Ticket documentation detail does not buffer its modal response');
+$assertContains("require_once '../../../includes/modal_footer.php';", $ticket_modal, 'Ticket documentation detail does not emit the standard JSON modal envelope');
 $assertContains('ticketLifecycleCanResolve($ticket_id, true)', $ticket_page, 'Authorized ticket UI does not show composite gate detail');
 
 $assertContains('documentationDocumentHasObligations($document_id)', $document_post, 'Canonical documents can be archived or deleted without a guard');
