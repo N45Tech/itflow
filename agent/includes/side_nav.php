@@ -68,18 +68,7 @@
                                 </p>
                             </a>
                         </li>
-                        <li class="nav-item">
-                            <a href="/agent/documentation.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "documentation.php") { echo "active"; } ?>">
-                                <i class="nav-icon fas fa-book-medical"></i>
-                                <p>
-                                    Documentation
-                                    <?php if ($num_documentation_attention) { ?>
-                                        <span class="right badge badge-warning" data-toggle="tooltip" title="Documentation obligations needing attention"><?= $num_documentation_attention ?></span>
-                                    <?php } ?>
-                                </p>
-                            </a>
-                        </li>
-                        <li class="nav-item">
+                                                <li class="nav-item">
                             <a href="/agent/tickets.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "tickets.php" || basename($_SERVER["PHP_SELF"]) == "ticket.php") { echo "active"; } ?>">
                                 <i class="nav-icon fas fa-life-ring"></i>
                                 <p>

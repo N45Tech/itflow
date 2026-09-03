@@ -104,15 +104,15 @@ ob_start();
                     <textarea class="form-control tinymceTicket" id="detailsInput" name="details"></textarea>
                 </div>
 
-                <div class="card bg-light border mb-3">
+                <div class="card bg-light border mb-3 d-none" aria-hidden="true">
                     <div class="card-body py-3">
                         <div class="row align-items-end">
                             <div class="col-md-7">
                                 <div class="form-group mb-md-0">
                                     <label for="documentationImpact">Documentation impact <strong class="text-danger">*</strong></label>
                                     <select class="form-control" name="documentation_impact" id="documentationImpact" required>
-                                        <option value="" selected disabled>Unassessed — select an impact</option>
-                                        <option value="None">No required client documentation affected</option>
+                                        <option value="" disabled>Unassessed — select an impact</option>
+                                        <option value="None" selected>No required client documentation affected</option>
                                         <option value="Required">Required documentation must be linked or updated</option>
                                     </select>
                                     <small class="form-text text-muted">This assessment is audited and controls the ticket's resolution gate.</small>

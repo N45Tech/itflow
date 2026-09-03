@@ -49,7 +49,7 @@ $documentation_migration = is_file($documentation_migration_path) ? file_get_con
 
 $assertContains('function runbookOnlyTicketCanResolve(', $runbooks, 'The runbook-only gate was not preserved');
 $assertContains('function ticketLifecycleCanResolve(', $runbooks, 'The composite lifecycle gate is missing');
-$assertContains('documentationTicketCanResolve(', $runbooks, 'The composite lifecycle gate does not call the documentation gate');
+$assertNotContains('documentationTicketCanResolve(', $runbooks, 'Ticket completion is still coupled to per-document audit obligations');
 $assertContains('return ticketLifecycleCanResolve($ticket_id, false);', $runbooks, 'Legacy gate callers do not reach the composite lifecycle gate');
 $assertContains("require_once __DIR__ . '/documentation_lifecycle.php';", $runbooks, 'Documentation lifecycle helpers are not loaded');
 
@@ -94,7 +94,7 @@ $assertContains("enforceUserPermission('module_support')", $ticket_modal, 'Ticke
 $assertContains('enforceClientAccess($client_id)', $ticket_modal, 'Ticket documentation detail is not client scoped');
 $assertContains('ob_start();', $ticket_modal, 'Ticket documentation detail does not buffer its modal response');
 $assertContains("require_once '../../../includes/modal_footer.php';", $ticket_modal, 'Ticket documentation detail does not emit the standard JSON modal envelope');
-$assertContains('ticketLifecycleCanResolve($ticket_id, true)', $ticket_page, 'Authorized ticket UI does not show composite gate detail');
+$assertContains('ticket-task-workspace', $ticket_page, 'Tasks are not promoted to a full-width ticket workspace');
 $assertContains('$task_page_size = $task_view === \'all\' ? max(1, $task_total_count) : 1', $ticket_page, 'Ticket task list does not focus on one current task');
 $assertContains("['active', 'all']", $ticket_page, 'Ticket task list does not separate active work from full history');
 $assertContains('Current task', $ticket_page, 'Ticket task list does not label its focused workflow');
@@ -102,6 +102,9 @@ $assertContains('Show all', $ticket_page, 'Ticket task list does not expose the 
 $assertContains('LIMIT $task_page_size OFFSET $task_page_start', $ticket_page, 'Ticket task query is not paginated at the database');
 $assertContains('ticket-task-horizontal-scroll', $ticket_page, 'Complete runbooks are not presented horizontally');
 $assertContains('aria-label="All ticket tasks"', $ticket_page, 'Horizontal runbook overview is not accessible');
+$assertContains('aria-label="Current ticket task"', $ticket_page, 'Current task focus is not accessible');
+$assertContains('scroll-snap-type: x proximity', $ticket_page, 'Large runbooks do not use a scalable horizontal progress rail');
+$assertNotContains('modals/ticket/ticket_documentation.php?ticket_id=', $ticket_page, 'Per-ticket documentation audit remains in the primary ticket UI');
 $assertNotContains('ticket_task_page', $ticket_page, 'Ticket task list still exposes obsolete pagination controls');
 $assertContains('<details class="ticket-task-details', $ticket_page, 'Verbose task instructions are always expanded');
 $assertNotContains('show_all_ticket_tasks', $ticket_page, 'Ticket task list still exposes an unbounded show-all path');

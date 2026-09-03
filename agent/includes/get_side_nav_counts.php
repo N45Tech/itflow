@@ -62,7 +62,7 @@ $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
             AND automation_incident_key = automation_event_incident_key
         WHERE automation_event_status IN ('Failed', 'Dead')
         $operations_event_scope) AS num"));
-$num_operations_attention = intval($row['num'] ?? 0) + $num_documentation_attention;
+$num_operations_attention = intval($row['num'] ?? 0);
 
 // Recurring Ticket Count
 $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('recurring_ticket_id') AS num FROM recurring_tickets WHERE 1 = 1 " . clientScopeSql('recurring_ticket_client_id') . ""));

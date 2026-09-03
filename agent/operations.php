@@ -489,11 +489,6 @@ foreach ($coverage_rows as $coverage_row) {
             <strong><?= intval($mapping_stats['mapping_count'] ?? 0) ?></strong>
             <small><?= $identity_unresolved_devices + $identity_conflicting_devices ?> need review</small>
         </a>
-        <a href="#documentation-attention">
-            <span>Documentation</span>
-            <strong><?= $documentation_attention ?></strong>
-            <small>freshness exceptions</small>
-        </a>
     </div>
 
     <div class="row">
@@ -584,40 +579,6 @@ foreach ($coverage_rows as $coverage_row) {
             </section>
         </div>
     </div>
-
-    <details class="n45-panel" id="documentation-attention">
-        <summary class="n45-panel-heading" style="cursor: pointer;"><div><h2>Documentation review</h2><p>Use onboarding and recurring service reviews to address missing or outdated client documents.</p></div><span class="small text-muted">Show document items</span></summary>
-        <div class="n45-panel-heading">
-            <div>
-                <h2 id="documentation-attention-heading">Documentation exceptions</h2>
-                <p>Missing, stale, due-soon, and expiring-exception records that need an owner decision.</p>
-            </div>
-            <div class="text-right"><span class="n45-panel-count d-block mb-1"><?= count($documentation_attention_shown) ?> of <?= $documentation_attention ?> shown</span><a href="/agent/documentation.php?owner=all&status=attention">Open complete documentation queue <i class="fas fa-arrow-right ml-1"></i></a></div>
-        </div>
-        <?php if ($documentation_attention_shown) { ?>
-            <div class="table-responsive">
-                <table class="table table-hover n45-ops-table mb-0">
-                    <thead><tr><th>Requirement</th><th>Client</th><th>Status</th><th>Review</th><th class="text-right">Action</th></tr></thead>
-                    <tbody>
-                    <?php foreach ($documentation_attention_shown as $documentation_row) {
-                        $documentation_status = $documentation_row['effective_status'];
-                        $documentation_client_id = intval($documentation_row['documentation_obligation_client_id']);
-                        ?>
-                        <tr>
-                            <td><strong><?= escapeHtml($documentation_row['documentation_requirement_version_name']) ?></strong><div class="small text-muted"><code><?= escapeHtml($documentation_row['documentation_requirement_version_key']) ?></code><?php if (!empty($documentation_row['current_document_exists']) && !empty($documentation_row['document_name'])) { ?> · <?= escapeHtml($documentation_row['document_name']) ?><?php } elseif (!empty($documentation_row['documentation_obligation_projection_pending'])) { ?> · projection pending<?php } ?></div></td>
-                            <td><a href="/agent/client_overview.php?client_id=<?= $documentation_client_id ?>"><?= escapeHtml($documentation_row['client_name']) ?></a></td>
-                            <td><span class="badge badge-<?= documentationLifecycleStatusBadge($documentation_status) ?>"><?= escapeHtml($documentation_status) ?></span></td>
-                            <td><?= $documentation_row['documentation_obligation_next_review_at'] ? escapeHtml(date('Y-m-d', strtotime($documentation_row['documentation_obligation_next_review_at']))) : '—' ?></td>
-                            <td class="text-right"><a class="btn btn-sm btn-outline-primary" href="/agent/documentation.php?client_id=<?= $documentation_client_id ?>&owner=all&status=<?= urlencode($documentation_status) ?>">Review</a></td>
-                        </tr>
-                    <?php } ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php } else { ?>
-            <div class="n45-empty-state"><i class="fas fa-book-medical"></i><strong>No documentation exceptions</strong><span>Required client records are current and active exceptions are outside their warning window.</span></div>
-        <?php } ?>
-    </details>
 
     <section class="n45-panel" id="endpoint-coverage" aria-labelledby="coverage-heading">
         <div class="n45-panel-heading">

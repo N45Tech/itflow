@@ -800,6 +800,370 @@ if (isset($_GET['ticket_id'])) {
             </div>
         </div>
 
+                <!-- Tasks -->
+                <?php if (!$ticket_is_resolved || $task_total_count) { ?>
+                    <div class="card mb-3 ticket-task-workspace">
+                        <div class="card-header px-3 py-2">
+                            <h5 class="card-title mt-1">
+                                <i class="fas fa-fw fa-tasks me-2"></i>Tasks
+                            </h5>
+                            <div class="card-tools">
+                                <?php if (!$ticket_is_resolved && $can_edit_ticket && $task_total_count) { ?>
+                                    <div class="dropdown dropstart d-inline-block">
+                                        <button class="btn btn-tool" type="button" data-bs-toggle="dropdown">
+                                            <i class="fas fa-ellipsis-v"></i>
+                                        </button>
+                                        <div class="dropdown-menu">
+                                            <a class="dropdown-item text-success" href="post.php?complete_all_tasks=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                                                <i class="fas fa-fw fa-check-double me-2"></i>Mark All Complete
+                                            </a>
+                                            <a class="dropdown-item" href="post.php?undo_complete_all_tasks=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                                                <i class="far fa-fw fa-square me-2"></i>Mark All Incomplete
+                                            </a>
+                                        </div>
+                                    </div>
+                                <?php } ?>
+                                <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse">
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+
+                            <?php if ($runbook_execution) { ?>
+                                <div class="px-3 py-2 border-bottom bg-light small">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span>
+                                            <i class="fas fa-code-branch mr-1"></i>
+                                            <?= escapeHtml($runbook_execution['runbook_version_name']) ?>
+                                            <strong>v<?= intval($runbook_execution['runbook_version_number']) ?></strong>
+                                            <span class="badge badge-<?= $runbook_execution['runbook_execution_status'] === 'Completed' ? 'success' : 'primary' ?> ml-1"><?= escapeHtml($runbook_execution['runbook_execution_status']) ?></span>
+                                        </span>
+                                        <?php if ($runbook_execution['runbook_execution_status'] === 'Completed') { ?>
+                                            <a href="runbook_export.php?ticket_id=<?= $ticket_id ?>" title="Download completed runbook closeout">
+                                                <i class="fas fa-download mr-1"></i>Export closeout
+                                            </a>
+                                        <?php } else { ?>
+                                            <span class="text-muted" title="Closeout export becomes available after every runbook task reaches a terminal state">
+                                                <i class="fas fa-lock mr-1"></i>Closeout pending
+                                            </span>
+                                        <?php } ?>
+                                    </div>
+                                    <div class="text-muted">Snapshot <?= escapeHtml(substr($runbook_execution['runbook_execution_snapshot_hash'], 0, 12)) ?></div>
+                                </div>
+                            <?php } ?>
+
+                            <?php if (!$ticket_is_resolved && $can_edit_ticket) { ?>
+                                <form action="post.php" method="post" autocomplete="off">
+                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                    <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
+                                    <div class="mb-3 px-3 pt-3 mb-2">
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" class="form-control" name="name" placeholder="Add a task" required maxlength="255">
+                                                <button type="submit" name="add_task" class="btn btn-outline-primary">
+                                                    <i class="fas fa-plus"></i>
+                                                </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            <?php } ?>
+
+                            <?php if ($task_total_count) { ?>
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-bottom bg-light">
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="Task view">
+                                        <a class="btn btn-<?= $task_view === 'active' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_view_url('active')) ?>">
+                                            Current <span class="badge badge-light ml-1"><?= $task_active_count ?> remaining</span>
+                                        </a>
+                                        <a class="btn btn-<?= $task_view === 'all' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_view_url('all')) ?>">
+                                            Runbook <span class="badge badge-light ml-1"><?= $task_total_count ?></span>
+                                        </a>
+                                    </div>
+                                    <span class="small text-muted"><?= $task_view === 'active' ? 'The next unfinished step is shown automatically' : 'Scroll sideways to review every step' ?></span>
+                                </div>
+                            <?php } ?>
+
+                            <?php if (!$task_count) { ?>
+                                <div class="px-3 py-3 text-muted small">
+                                    <?= $task_view === 'active' && $task_total_count ? 'No current task. Open the Runbook to review completed work.' : 'No tasks on this ticket.' ?>
+                                </div>
+                            <?php } ?>
+
+                            <style>
+                                .ticket-task-horizontal-scroll {
+                                    overflow-x: auto;
+                                    overscroll-behavior-inline: contain;
+                                    scroll-snap-type: x proximity;
+                                    padding: .75rem;
+                                    scrollbar-gutter: stable;
+                                }
+                                .ticket-task-horizontal-scroll #tasks {
+                                    display: block;
+                                    width: max-content;
+                                    min-width: 100%;
+                                }
+                                .ticket-task-horizontal-scroll #tasks tbody {
+                                    display: flex;
+                                    align-items: stretch;
+                                    gap: .75rem;
+                                    padding-bottom: .25rem;
+                                }
+                                .ticket-task-horizontal-scroll #tasks tr {
+                                    display: flex;
+                                    flex: 0 0 clamp(16rem, 24vw, 20rem);
+                                    scroll-snap-align: start;
+                                    border: 1px solid var(--bs-border-color, #dee2e6);
+                                    border-radius: .5rem;
+                                    background: var(--bs-body-bg, #fff);
+                                    overflow: hidden;
+                                }
+                                .ticket-task-horizontal-scroll #tasks td:first-child {
+                                    flex: 1 1 auto;
+                                    min-width: 0;
+                                }
+                                .ticket-task-horizontal-scroll #tasks td:last-child {
+                                    flex: 0 0 auto;
+                                }
+                                .ticket-task-current {
+                                    padding: 1rem;
+                                }
+                                .ticket-task-current #tasks tbody,
+                                .ticket-task-current #tasks tr {
+                                    display: flex;
+                                    width: 100%;
+                                }
+                                .ticket-task-current #tasks tr {
+                                    align-items: flex-start;
+                                    border: 1px solid var(--bs-border-color, #dee2e6);
+                                    border-left: .3rem solid var(--bs-primary, #0d6efd);
+                                    border-radius: .65rem;
+                                    background: var(--bs-body-bg, #fff);
+                                    overflow: hidden;
+                                }
+                                .ticket-task-current #tasks td:first-child {
+                                    flex: 1 1 auto;
+                                    min-width: 0;
+                                    padding: 1rem !important;
+                                }
+                                .ticket-task-current #tasks td:last-child {
+                                    flex: 0 0 auto;
+                                    padding: 1rem .75rem !important;
+                                }
+                                @media (max-width: 767.98px) {
+                                    .ticket-task-horizontal-scroll #tasks tr {
+                                        flex-basis: 82vw;
+                                    }
+                                }                            </style>
+                            <div class="<?= $task_view === 'all' ? 'ticket-task-horizontal-scroll' : 'ticket-task-current' ?>"<?= $task_view === 'all' ? ' role="region" aria-label="All ticket tasks" tabindex="0"' : ' aria-label="Current ticket task"' ?>>
+                            <table class="table table-sm mb-0" id="tasks">
+                                <tbody>
+                                <?php
+                                while ($task_row = mysqli_fetch_assoc($sql_tasks)) {
+                                    $task_id = intval($task_row['task_id']);
+                                    $task_name = escapeHtml($task_row['task_name']);
+                                    $task_completion_estimate = intval($task_row['task_completion_estimate']);
+                                    $task_completed_at = escapeHtml($task_row['task_completed_at']);
+                                    $task_state = $task_row['task_state'] ?: ($task_completed_at ? 'Completed' : 'Ready');
+                                    $task_instructions = escapeHtml($task_row['task_instructions']);
+                                    $task_assigned_name = escapeHtml($task_row['user_name']);
+                                    $task_due_at = escapeHtml($task_row['task_due_at']);
+                                    $task_waiting_reason = escapeHtml($task_row['task_waiting_reason']);
+                                    $task_condition_result = $task_row['task_condition_result'];
+                                    $task_evidence_required = $task_row['task_evidence_required'] ?: 'none';
+                                    $task_evidence_prompt = escapeHtml($task_row['task_evidence_prompt']);
+                                    $task_evidence_items = $task_evidence[$task_id] ?? [];
+                                    $task_dependencies_list = $task_dependencies[$task_id] ?? [];
+                                    $task_evidence_satisfied = runbookTaskEvidenceSatisfied($task_id, $task_evidence_required);
+
+                                    // Approvals came from the single batched query above
+                                    $task_has_approvals = isset($task_approvals[$task_id]);
+                                    $task_needs_approval = false;
+                                    $approval_id = 0;
+                                    $unresolved_approval_id = 0;
+                                    $declined_approval_id = 0;
+                                    $approval_approved_count = 0;
+                                    $approval_pending_count = 0;
+                                    $approval_declined_count = 0;
+                                    $user_can_approve = false;
+
+                                    if ($task_has_approvals) {
+                                        foreach ($task_approvals[$task_id] as $approval) {
+                                            if ($approval['approval_status'] === 'approved') {
+                                                $approval_approved_count++;
+                                                continue;
+                                            }
+                                            $task_needs_approval = true;
+                                            if (!$unresolved_approval_id) {
+                                                $unresolved_approval_id = intval($approval['approval_id']);
+                                            }
+                                            if ($approval['approval_status'] === 'declined') {
+                                                $declined_approval_id = intval($approval['approval_id']);
+                                                $approval_declined_count++;
+                                            }
+                                            if ($approval['approval_status'] !== 'pending') {
+                                                continue;
+                                            }
+                                            $approval_pending_count++;
+
+                                            $scope = escapeHtml($approval['approval_scope']);
+                                            $type = escapeHtml($approval['approval_type']);
+                                            $required_user = intval($approval['approval_required_user_id']);
+                                            $created_by = intval($approval['approval_created_by']);
+
+                                            // Named, specific user?
+                                            if ($scope == 'internal' && $type == 'specific' && $required_user == $session_user_id) {
+                                                $user_can_approve = true;
+                                                $approval_id = intval($approval['approval_id']);
+                                                continue;
+                                            }
+
+                                            // Any internal user, but the one who created the task
+                                            if ($scope == 'internal' && $type == 'any' && $created_by !== $session_user_id) {
+                                                $user_can_approve = true;
+                                                $approval_id = intval($approval['approval_id']);
+                                                continue;
+                                            }
+                                        }
+                                    }
+
+                                    ?>
+                                    <tr data-task-id="<?= $task_id ?>">
+                                        <td class="px-3">
+                                            <?php if ($task_state === 'Skipped') { ?>
+                                                <i class="fas fa-minus-circle text-muted" title="Skipped: <?= $task_waiting_reason ?>"></i>
+                                            <?php } elseif ($task_state === 'Completed' || $task_completed_at) { ?>
+                                                <i class="far fa-check-square text-success" title="Completed <?= $task_completed_at ?>"></i>
+                                            <?php } elseif ($can_edit_ticket) { ?>
+
+                                                <?php if ($task_state === 'Blocked') { ?>
+                                                    <i class="fas fa-lock text-secondary" title="Blocked by incomplete prerequisites"></i>
+                                                <?php } elseif ($task_needs_approval && $user_can_approve) { ?>
+                                                    <i class="fas fa-shield-alt text-warning" title="Approval required"></i>
+
+                                                    <form action="post.php" method="post" class="d-inline">
+                                                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                                        <input type="hidden" name="task_id" value="<?= $task_id ?>">
+                                                        <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
+                                                        <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0" title="Approve" onclick="this.form.decision.value='approved'">
+                                                            <i class="fas fa-thumbs-up text-success"></i>
+                                                        </button>
+                                                        <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0 ms-1" title="Decline" onclick="this.form.decision.value='declined'">
+                                                            <i class="fas fa-thumbs-down text-danger"></i>
+                                                        </button>
+                                                        <input type="hidden" name="decision" value="approved">
+                                                    </form>
+                                                <?php } elseif ($task_state === 'Waiting') { ?>
+                                                    <i class="fas fa-pause-circle text-warning" title="Waiting: <?= $task_waiting_reason ?>"></i>
+                                                <?php } elseif ($task_needs_approval) { ?>
+                                                    <i class="fas fa-shield-alt text-warning" title="Approval required"></i>
+
+                                                    <?php if ($declined_approval_id && lookupUserPermission('module_support') >= 3) { ?>
+                                                        <a class="ajax-modal text-danger" href="#"
+                                                           data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $declined_approval_id ?>"
+                                                           title="Reroute or re-request this approval">
+                                                            <i class="fas fa-redo me-1"></i>Manage approval
+                                                        </a>
+                                                    <?php } ?>
+
+                                                <?php } elseif (!$task_evidence_satisfied) { ?>
+                                                    <i class="fas fa-paperclip text-danger" title="Required <?= escapeHtml($task_evidence_required) ?> evidence is missing"></i>
+                                                <?php } else { ?>
+                                                    <a href="post.php?complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" title="Mark complete">
+                                                        <i class="far fa-square text-dark"></i>
+                                                    </a>
+                                                <?php } ?>
+
+                                            <?php } ?>
+                                            <span class="ms-2 <?= in_array($task_state, ['Completed','Skipped'], true) ? 'text-muted' : 'text-dark' ?>"><?= $task_name ?></span>
+                                            <div class="ms-4 mt-1 small">
+                                                <span class="badge badge-<?= runbookTaskStateBadge($task_state) ?>"><?= escapeHtml($task_state) ?></span>
+                                                <?php if ($task_condition_result !== 'Matched') { ?><span class="badge text-bg-light ms-1"><?= escapeHtml($task_condition_result) ?></span><?php } ?>
+                                                <?php if ($task_assigned_name) { ?><span class="text-muted ms-1"><i class="fas fa-user me-1"></i><?= $task_assigned_name ?></span><?php } ?>
+                                                <?php if ($task_due_at) { ?><span class="<?= strtotime($task_due_at) < time() && !in_array($task_state, ['Completed','Skipped'], true) ? 'text-danger' : 'text-muted' ?> ms-1"><i class="far fa-calendar me-1"></i><?= $task_due_at ?></span><?php } ?>
+                                                <?php if ($task_evidence_required !== 'none') { ?><span class="<?= $task_evidence_satisfied ? 'text-success' : 'text-danger' ?> ms-1"><i class="fas fa-paperclip me-1"></i><?= count($task_evidence_items) ?>/<?= escapeHtml($task_evidence_required) ?></span><?php } ?>
+                                                <?php if ($task_has_approvals) { ?>
+                                                    <span class="<?= $task_needs_approval ? 'text-warning' : 'text-success' ?> ms-1" title="<?= $approval_approved_count ?> approved, <?= $approval_pending_count ?> pending, <?= $approval_declined_count ?> declined">
+                                                        <i class="fas fa-shield-alt me-1"></i><?= $task_needs_approval ? ($approval_pending_count . ' pending' . ($approval_declined_count ? ', ' . $approval_declined_count . ' declined' : '')) : 'approved' ?>
+                                                    </span>
+                                                    <?php if ($unresolved_approval_id && lookupUserPermission('module_support') >= 3 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
+                                                        <a class="ajax-modal ms-1" href="#" data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $unresolved_approval_id ?>">Manage</a>
+                                                    <?php } ?>
+                                                <?php } ?>
+                                                <?php if ($task_completion_estimate) { ?><span class="text-muted ms-1"><?= $task_completion_estimate ?>m</span><?php } ?>
+                                            </div>
+                                            <?php if ($task_waiting_reason && in_array($task_state, ['Waiting','Skipped'], true)) { ?><div class="ms-4 small text-warning mt-1"><?= $task_waiting_reason ?></div><?php } ?>
+                                            <?php if ($task_state === 'Blocked' && $task_dependencies_list) { ?>
+                                                <div class="ms-4 small text-muted mt-1">Blocked by:
+                                                    <?= escapeHtml(implode(', ', array_map(static fn($dependency) => $dependency['task_name'], array_filter($task_dependencies_list, static fn($dependency) => empty($dependency['task_completed_at']) && $dependency['task_state'] !== 'Skipped')))) ?>
+                                                </div>
+                                            <?php } ?>
+                                            <?php if ($task_instructions || ($task_evidence_prompt && !$task_evidence_satisfied)) { ?>
+                                                <details class="ticket-task-details ms-4 mt-1 small">
+                                                    <summary class="text-primary"><?= $task_evidence_prompt && !$task_evidence_satisfied ? 'Instructions and evidence' : 'Instructions' ?></summary>
+                                                    <?php if ($task_instructions) { ?><div class="text-muted mt-2"><?= $task_instructions ?></div><?php } ?>
+                                                    <?php if ($task_evidence_prompt && !$task_evidence_satisfied) { ?><div class="text-danger mt-2"><?= $task_evidence_prompt ?></div><?php } ?>
+                                                </details>
+                                            <?php } ?>
+                                        </td>
+                                        <td class="px-2 text-end text-nowrap">
+                                            <div class="btn-group">
+                                                <?php if (intval($task_row['task_runbook_version_task_id']) === 0 && $task_view === 'all') { ?>
+                                                    <button class="btn btn-sm btn-link drag-handle" title="Drag to reorder"><i class="fas fa-bars text-muted"></i></button>
+                                                <?php } ?>
+
+                                                <?php if (!$ticket_is_resolved && $can_edit_ticket) { ?>
+                                                    <div class="dropdown dropstart text-center">
+                                                        <button class="btn btn-light text-secondary btn-sm" type="button" data-bs-toggle="dropdown">
+                                                            <i class="fas fa-ellipsis-v"></i>
+                                                        </button>
+                                                        <div class="dropdown-menu">
+                                                            <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_edit.php?id=<?= $task_id ?>">
+                                                                <i class="fas fa-fw fa-edit me-2"></i>Edit
+                                                            </a>
+                                                            <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_evidence_add.php?id=<?= $task_id ?>">
+                                                                <i class="fas fa-fw fa-paperclip mr-2"></i>Evidence
+                                                            </a>
+                                                            <?php if ($task_row['task_runbook_version_task_id'] > 0 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
+                                                                <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_state.php?id=<?= $task_id ?>">
+                                                                    <i class="fas fa-fw fa-hourglass-half mr-2"></i>Waiting / applicability
+                                                                </a>
+                                                            <?php } ?>
+                                                            <?php if (intval($task_row['task_runbook_version_task_id']) === 0 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
+                                                                <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_approver_add.php?id=<?= $task_id ?>">
+                                                                    <i class="fas fa-fw fa-shield-alt me-2"></i>Add Approvers
+                                                                </a>
+                                                            <?php } elseif ($task_state === 'Completed') { ?>
+                                                                <a class="dropdown-item" href="post.php?undo_complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                                                                    <i class="fas fa-fw fa-arrow-circle-left me-2"></i>Mark incomplete
+                                                                </a>
+                                                            <?php } ?>
+                                                            <div class="dropdown-divider"></div>
+                                                            <a class="dropdown-item text-danger confirm-link" href="post.php?delete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                                                                <i class="fas fa-fw fa-trash-alt me-2"></i>Delete
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                <?php } ?>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <?php
+                                }
+                                ?>
+                                </tbody>
+                            </table>
+                            </div>
+                            <?php if ($task_view_count) { ?>
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top ticket-task-overflow">
+                                    <span class="small text-muted">
+                                        <?= $task_view === 'active' ? 'Showing the current actionable task' : 'Showing all ' . $task_view_count . ' tasks in runbook order' ?>
+                                    </span>
+                                </div>
+                            <?php } ?>
+                        </div>
+                    </div>
+                <?php } ?>
+
+
         <div class="row">
 
             <div class="col-lg-9">
@@ -1126,355 +1490,6 @@ if (isset($_GET['ticket_id'])) {
             </div>
 
             <div class="col-lg-3">
-
-                <div class="card card-outline card-<?= documentationTicketImpactBadge($ticket['ticket_documentation_impact']) ?>">
-                    <div class="card-header px-3 py-2">
-                        <h5 class="card-title mt-1"><i class="fas fa-fw fa-book-medical mr-2"></i>Documentation</h5>
-                        <div class="card-tools"><a href="#" class="btn btn-tool ajax-modal" data-modal-size="lg" data-modal-url="modals/ticket/ticket_documentation.php?ticket_id=<?= $ticket_id ?>" title="Review documentation impact"><i class="fas fa-external-link-alt"></i></a></div>
-                    </div>
-                    <div class="card-body p-3">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span>Impact</span>
-                            <span class="badge badge-<?= documentationTicketImpactBadge($ticket['ticket_documentation_impact']) ?>"><?= $ticket_documentation_impact ?></span>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center mt-2"><span>Affected records</span><strong><?= $ticket_documentation_link_count ?></strong></div>
-                        <?php if ($ticket_configuration_change) { ?><div class="small text-dark mt-2"><i class="fas fa-cogs mr-1"></i>Configuration-changing work</div><?php } ?>
-                        <?php if ($ticket_documentation_assessed_at) { ?><div class="small text-muted mt-2">Assessed <?= escapeHtml(timeAgo($ticket['ticket_documentation_assessed_at'])) ?></div><?php } ?>
-                        <?php if ($tasks_block_resolve && stripos($ticket_resolution_gate_error, 'document') !== false) { ?><div class="alert alert-warning py-2 px-2 mt-3 mb-0 small"><i class="fas fa-lock mr-1"></i><?= escapeHtml($ticket_resolution_gate_error) ?></div><?php } ?>
-                        <a href="#" class="btn btn-sm btn-outline-primary btn-block mt-3 ajax-modal" data-modal-size="lg" data-modal-url="modals/ticket/ticket_documentation.php?ticket_id=<?= $ticket_id ?>">Review impact and links</a>
-                    </div>
-                </div>
-
-                <!-- Tasks -->
-                <?php if (!$ticket_is_resolved || $task_total_count) { ?>
-                    <div class="card mb-3">
-                        <div class="card-header px-3 py-2">
-                            <h5 class="card-title mt-1">
-                                <i class="fas fa-fw fa-tasks me-2"></i>Tasks
-                            </h5>
-                            <div class="card-tools">
-                                <?php if (!$ticket_is_resolved && $can_edit_ticket && $task_total_count) { ?>
-                                    <div class="dropdown dropstart d-inline-block">
-                                        <button class="btn btn-tool" type="button" data-bs-toggle="dropdown">
-                                            <i class="fas fa-ellipsis-v"></i>
-                                        </button>
-                                        <div class="dropdown-menu">
-                                            <a class="dropdown-item text-success" href="post.php?complete_all_tasks=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                                <i class="fas fa-fw fa-check-double me-2"></i>Mark All Complete
-                                            </a>
-                                            <a class="dropdown-item" href="post.php?undo_complete_all_tasks=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                                <i class="far fa-fw fa-square me-2"></i>Mark All Incomplete
-                                            </a>
-                                        </div>
-                                    </div>
-                                <?php } ?>
-                                <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse">
-                                    <i class="fas fa-chevron-down"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="card-body p-0">
-
-                            <?php if ($runbook_execution) { ?>
-                                <div class="px-3 py-2 border-bottom bg-light small">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <span>
-                                            <i class="fas fa-code-branch mr-1"></i>
-                                            <?= escapeHtml($runbook_execution['runbook_version_name']) ?>
-                                            <strong>v<?= intval($runbook_execution['runbook_version_number']) ?></strong>
-                                            <span class="badge badge-<?= $runbook_execution['runbook_execution_status'] === 'Completed' ? 'success' : 'primary' ?> ml-1"><?= escapeHtml($runbook_execution['runbook_execution_status']) ?></span>
-                                        </span>
-                                        <?php if ($runbook_execution['runbook_execution_status'] === 'Completed') { ?>
-                                            <a href="runbook_export.php?ticket_id=<?= $ticket_id ?>" title="Download completed runbook closeout">
-                                                <i class="fas fa-download mr-1"></i>Export closeout
-                                            </a>
-                                        <?php } else { ?>
-                                            <span class="text-muted" title="Closeout export becomes available after every runbook task reaches a terminal state">
-                                                <i class="fas fa-lock mr-1"></i>Closeout pending
-                                            </span>
-                                        <?php } ?>
-                                    </div>
-                                    <div class="text-muted">Snapshot <?= escapeHtml(substr($runbook_execution['runbook_execution_snapshot_hash'], 0, 12)) ?></div>
-                                </div>
-                            <?php } ?>
-
-                            <?php if (!$ticket_is_resolved && $can_edit_ticket) { ?>
-                                <form action="post.php" method="post" autocomplete="off">
-                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                    <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
-                                    <div class="mb-3 px-3 pt-3 mb-2">
-                                        <div class="input-group input-group-sm">
-                                            <input type="text" class="form-control" name="name" placeholder="Add a task" required maxlength="255">
-                                                <button type="submit" name="add_task" class="btn btn-outline-primary">
-                                                    <i class="fas fa-plus"></i>
-                                                </button>
-                                        </div>
-                                    </div>
-                                </form>
-                            <?php } ?>
-
-                            <?php if ($task_total_count) { ?>
-                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-bottom bg-light">
-                                    <div class="btn-group btn-group-sm" role="group" aria-label="Task view">
-                                        <a class="btn btn-<?= $task_view === 'active' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_view_url('active')) ?>">
-                                            Current task <span class="badge badge-light ml-1"><?= $task_active_count ?></span>
-                                        </a>
-                                        <a class="btn btn-<?= $task_view === 'all' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_view_url('all')) ?>">
-                                            Show all <span class="badge badge-light ml-1"><?= $task_total_count ?></span>
-                                        </a>
-                                    </div>
-                                    <span class="small text-muted"><?= $task_view === 'active' ? 'Completing this task automatically advances the runbook' : 'Scroll horizontally to review the complete runbook' ?></span>
-                                </div>
-                            <?php } ?>
-
-                            <?php if (!$task_count) { ?>
-                                <div class="px-3 py-3 text-muted small">
-                                    <?= $task_view === 'active' && $task_total_count ? 'No current task. Use Show all to review task history.' : 'No tasks on this ticket.' ?>
-                                </div>
-                            <?php } ?>
-
-                            <style>
-                                .ticket-task-horizontal-scroll {
-                                    overflow-x: auto;
-                                    overscroll-behavior-inline: contain;
-                                    padding: .75rem;
-                                    scrollbar-gutter: stable;
-                                }
-                                .ticket-task-horizontal-scroll #tasks {
-                                    display: block;
-                                    width: max-content;
-                                    min-width: 100%;
-                                }
-                                .ticket-task-horizontal-scroll #tasks tbody {
-                                    display: flex;
-                                    align-items: stretch;
-                                    gap: .75rem;
-                                }
-                                .ticket-task-horizontal-scroll #tasks tr {
-                                    display: flex;
-                                    flex: 0 0 min(28rem, 82vw);
-                                    border: 1px solid var(--bs-border-color, #dee2e6);
-                                    border-radius: .5rem;
-                                    background: var(--bs-body-bg, #fff);
-                                    overflow: hidden;
-                                }
-                                .ticket-task-horizontal-scroll #tasks td:first-child {
-                                    flex: 1 1 auto;
-                                    min-width: 0;
-                                }
-                                .ticket-task-horizontal-scroll #tasks td:last-child {
-                                    flex: 0 0 auto;
-                                }
-                            </style>
-                            <div class="<?= $task_view === 'all' ? 'ticket-task-horizontal-scroll' : '' ?>"<?= $task_view === 'all' ? ' role="region" aria-label="All ticket tasks" tabindex="0"' : '' ?>>
-                            <table class="table table-sm mb-0" id="tasks">
-                                <tbody>
-                                <?php
-                                while ($task_row = mysqli_fetch_assoc($sql_tasks)) {
-                                    $task_id = intval($task_row['task_id']);
-                                    $task_name = escapeHtml($task_row['task_name']);
-                                    $task_completion_estimate = intval($task_row['task_completion_estimate']);
-                                    $task_completed_at = escapeHtml($task_row['task_completed_at']);
-                                    $task_state = $task_row['task_state'] ?: ($task_completed_at ? 'Completed' : 'Ready');
-                                    $task_instructions = escapeHtml($task_row['task_instructions']);
-                                    $task_assigned_name = escapeHtml($task_row['user_name']);
-                                    $task_due_at = escapeHtml($task_row['task_due_at']);
-                                    $task_waiting_reason = escapeHtml($task_row['task_waiting_reason']);
-                                    $task_condition_result = $task_row['task_condition_result'];
-                                    $task_evidence_required = $task_row['task_evidence_required'] ?: 'none';
-                                    $task_evidence_prompt = escapeHtml($task_row['task_evidence_prompt']);
-                                    $task_evidence_items = $task_evidence[$task_id] ?? [];
-                                    $task_dependencies_list = $task_dependencies[$task_id] ?? [];
-                                    $task_evidence_satisfied = runbookTaskEvidenceSatisfied($task_id, $task_evidence_required);
-
-                                    // Approvals came from the single batched query above
-                                    $task_has_approvals = isset($task_approvals[$task_id]);
-                                    $task_needs_approval = false;
-                                    $approval_id = 0;
-                                    $unresolved_approval_id = 0;
-                                    $declined_approval_id = 0;
-                                    $approval_approved_count = 0;
-                                    $approval_pending_count = 0;
-                                    $approval_declined_count = 0;
-                                    $user_can_approve = false;
-
-                                    if ($task_has_approvals) {
-                                        foreach ($task_approvals[$task_id] as $approval) {
-                                            if ($approval['approval_status'] === 'approved') {
-                                                $approval_approved_count++;
-                                                continue;
-                                            }
-                                            $task_needs_approval = true;
-                                            if (!$unresolved_approval_id) {
-                                                $unresolved_approval_id = intval($approval['approval_id']);
-                                            }
-                                            if ($approval['approval_status'] === 'declined') {
-                                                $declined_approval_id = intval($approval['approval_id']);
-                                                $approval_declined_count++;
-                                            }
-                                            if ($approval['approval_status'] !== 'pending') {
-                                                continue;
-                                            }
-                                            $approval_pending_count++;
-
-                                            $scope = escapeHtml($approval['approval_scope']);
-                                            $type = escapeHtml($approval['approval_type']);
-                                            $required_user = intval($approval['approval_required_user_id']);
-                                            $created_by = intval($approval['approval_created_by']);
-
-                                            // Named, specific user?
-                                            if ($scope == 'internal' && $type == 'specific' && $required_user == $session_user_id) {
-                                                $user_can_approve = true;
-                                                $approval_id = intval($approval['approval_id']);
-                                                continue;
-                                            }
-
-                                            // Any internal user, but the one who created the task
-                                            if ($scope == 'internal' && $type == 'any' && $created_by !== $session_user_id) {
-                                                $user_can_approve = true;
-                                                $approval_id = intval($approval['approval_id']);
-                                                continue;
-                                            }
-                                        }
-                                    }
-
-                                    ?>
-                                    <tr data-task-id="<?= $task_id ?>">
-                                        <td class="px-3">
-                                            <?php if ($task_state === 'Skipped') { ?>
-                                                <i class="fas fa-minus-circle text-muted" title="Skipped: <?= $task_waiting_reason ?>"></i>
-                                            <?php } elseif ($task_state === 'Completed' || $task_completed_at) { ?>
-                                                <i class="far fa-check-square text-success" title="Completed <?= $task_completed_at ?>"></i>
-                                            <?php } elseif ($can_edit_ticket) { ?>
-
-                                                <?php if ($task_state === 'Blocked') { ?>
-                                                    <i class="fas fa-lock text-secondary" title="Blocked by incomplete prerequisites"></i>
-                                                <?php } elseif ($task_needs_approval && $user_can_approve) { ?>
-                                                    <i class="fas fa-shield-alt text-warning" title="Approval required"></i>
-
-                                                    <form action="post.php" method="post" class="d-inline">
-                                                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                                        <input type="hidden" name="task_id" value="<?= $task_id ?>">
-                                                        <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
-                                                        <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0" title="Approve" onclick="this.form.decision.value='approved'">
-                                                            <i class="fas fa-thumbs-up text-success"></i>
-                                                        </button>
-                                                        <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0 ms-1" title="Decline" onclick="this.form.decision.value='declined'">
-                                                            <i class="fas fa-thumbs-down text-danger"></i>
-                                                        </button>
-                                                        <input type="hidden" name="decision" value="approved">
-                                                    </form>
-                                                <?php } elseif ($task_state === 'Waiting') { ?>
-                                                    <i class="fas fa-pause-circle text-warning" title="Waiting: <?= $task_waiting_reason ?>"></i>
-                                                <?php } elseif ($task_needs_approval) { ?>
-                                                    <i class="fas fa-shield-alt text-warning" title="Approval required"></i>
-
-                                                    <?php if ($declined_approval_id && lookupUserPermission('module_support') >= 3) { ?>
-                                                        <a class="ajax-modal text-danger" href="#"
-                                                           data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $declined_approval_id ?>"
-                                                           title="Reroute or re-request this approval">
-                                                            <i class="fas fa-redo me-1"></i>Manage approval
-                                                        </a>
-                                                    <?php } ?>
-
-                                                <?php } elseif (!$task_evidence_satisfied) { ?>
-                                                    <i class="fas fa-paperclip text-danger" title="Required <?= escapeHtml($task_evidence_required) ?> evidence is missing"></i>
-                                                <?php } else { ?>
-                                                    <a href="post.php?complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" title="Mark complete">
-                                                        <i class="far fa-square text-dark"></i>
-                                                    </a>
-                                                <?php } ?>
-
-                                            <?php } ?>
-                                            <span class="ms-2 <?= in_array($task_state, ['Completed','Skipped'], true) ? 'text-muted' : 'text-dark' ?>"><?= $task_name ?></span>
-                                            <div class="ms-4 mt-1 small">
-                                                <span class="badge badge-<?= runbookTaskStateBadge($task_state) ?>"><?= escapeHtml($task_state) ?></span>
-                                                <?php if ($task_condition_result !== 'Matched') { ?><span class="badge text-bg-light ms-1"><?= escapeHtml($task_condition_result) ?></span><?php } ?>
-                                                <?php if ($task_assigned_name) { ?><span class="text-muted ms-1"><i class="fas fa-user me-1"></i><?= $task_assigned_name ?></span><?php } ?>
-                                                <?php if ($task_due_at) { ?><span class="<?= strtotime($task_due_at) < time() && !in_array($task_state, ['Completed','Skipped'], true) ? 'text-danger' : 'text-muted' ?> ms-1"><i class="far fa-calendar me-1"></i><?= $task_due_at ?></span><?php } ?>
-                                                <?php if ($task_evidence_required !== 'none') { ?><span class="<?= $task_evidence_satisfied ? 'text-success' : 'text-danger' ?> ms-1"><i class="fas fa-paperclip me-1"></i><?= count($task_evidence_items) ?>/<?= escapeHtml($task_evidence_required) ?></span><?php } ?>
-                                                <?php if ($task_has_approvals) { ?>
-                                                    <span class="<?= $task_needs_approval ? 'text-warning' : 'text-success' ?> ms-1" title="<?= $approval_approved_count ?> approved, <?= $approval_pending_count ?> pending, <?= $approval_declined_count ?> declined">
-                                                        <i class="fas fa-shield-alt me-1"></i><?= $task_needs_approval ? ($approval_pending_count . ' pending' . ($approval_declined_count ? ', ' . $approval_declined_count . ' declined' : '')) : 'approved' ?>
-                                                    </span>
-                                                    <?php if ($unresolved_approval_id && lookupUserPermission('module_support') >= 3 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
-                                                        <a class="ajax-modal ms-1" href="#" data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $unresolved_approval_id ?>">Manage</a>
-                                                    <?php } ?>
-                                                <?php } ?>
-                                                <?php if ($task_completion_estimate) { ?><span class="text-muted ms-1"><?= $task_completion_estimate ?>m</span><?php } ?>
-                                            </div>
-                                            <?php if ($task_waiting_reason && in_array($task_state, ['Waiting','Skipped'], true)) { ?><div class="ms-4 small text-warning mt-1"><?= $task_waiting_reason ?></div><?php } ?>
-                                            <?php if ($task_state === 'Blocked' && $task_dependencies_list) { ?>
-                                                <div class="ms-4 small text-muted mt-1">Blocked by:
-                                                    <?= escapeHtml(implode(', ', array_map(static fn($dependency) => $dependency['task_name'], array_filter($task_dependencies_list, static fn($dependency) => empty($dependency['task_completed_at']) && $dependency['task_state'] !== 'Skipped')))) ?>
-                                                </div>
-                                            <?php } ?>
-                                            <?php if ($task_instructions || ($task_evidence_prompt && !$task_evidence_satisfied)) { ?>
-                                                <details class="ticket-task-details ms-4 mt-1 small">
-                                                    <summary class="text-primary"><?= $task_evidence_prompt && !$task_evidence_satisfied ? 'Instructions and evidence' : 'Instructions' ?></summary>
-                                                    <?php if ($task_instructions) { ?><div class="text-muted mt-2"><?= $task_instructions ?></div><?php } ?>
-                                                    <?php if ($task_evidence_prompt && !$task_evidence_satisfied) { ?><div class="text-danger mt-2"><?= $task_evidence_prompt ?></div><?php } ?>
-                                                </details>
-                                            <?php } ?>
-                                        </td>
-                                        <td class="px-2 text-end text-nowrap">
-                                            <div class="btn-group">
-                                                <?php if (intval($task_row['task_runbook_version_task_id']) === 0 && $task_view === 'all') { ?>
-                                                    <button class="btn btn-sm btn-link drag-handle" title="Drag to reorder"><i class="fas fa-bars text-muted"></i></button>
-                                                <?php } ?>
-
-                                                <?php if (!$ticket_is_resolved && $can_edit_ticket) { ?>
-                                                    <div class="dropdown dropstart text-center">
-                                                        <button class="btn btn-light text-secondary btn-sm" type="button" data-bs-toggle="dropdown">
-                                                            <i class="fas fa-ellipsis-v"></i>
-                                                        </button>
-                                                        <div class="dropdown-menu">
-                                                            <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_edit.php?id=<?= $task_id ?>">
-                                                                <i class="fas fa-fw fa-edit me-2"></i>Edit
-                                                            </a>
-                                                            <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_evidence_add.php?id=<?= $task_id ?>">
-                                                                <i class="fas fa-fw fa-paperclip mr-2"></i>Evidence
-                                                            </a>
-                                                            <?php if ($task_row['task_runbook_version_task_id'] > 0 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
-                                                                <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_state.php?id=<?= $task_id ?>">
-                                                                    <i class="fas fa-fw fa-hourglass-half mr-2"></i>Waiting / applicability
-                                                                </a>
-                                                            <?php } ?>
-                                                            <?php if (intval($task_row['task_runbook_version_task_id']) === 0 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
-                                                                <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_approver_add.php?id=<?= $task_id ?>">
-                                                                    <i class="fas fa-fw fa-shield-alt me-2"></i>Add Approvers
-                                                                </a>
-                                                            <?php } elseif ($task_state === 'Completed') { ?>
-                                                                <a class="dropdown-item" href="post.php?undo_complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                                                    <i class="fas fa-fw fa-arrow-circle-left me-2"></i>Mark incomplete
-                                                                </a>
-                                                            <?php } ?>
-                                                            <div class="dropdown-divider"></div>
-                                                            <a class="dropdown-item text-danger confirm-link" href="post.php?delete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                                                <i class="fas fa-fw fa-trash-alt me-2"></i>Delete
-                                                            </a>
-                                                        </div>
-                                                    </div>
-                                                <?php } ?>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <?php
-                                }
-                                ?>
-                                </tbody>
-                            </table>
-                            </div>
-                            <?php if ($task_view_count) { ?>
-                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top ticket-task-overflow">
-                                    <span class="small text-muted">
-                                        <?= $task_view === 'active' ? 'Showing the current actionable task' : 'Showing all ' . $task_view_count . ' tasks in runbook order' ?>
-                                    </span>
-                                </div>
-                            <?php } ?>
-                        </div>
-                    </div>
-                <?php } ?>
 
                 <?php if ($level_alert_link) {
                     $level_alert_id = escapeHtml($level_alert_link['level_alert_id']);

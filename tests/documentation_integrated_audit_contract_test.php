@@ -88,10 +88,12 @@ $assertContains('$configuration_downgrade_locked', $ticket_modal, 'Ticket UI doe
 
 // Human-created tickets require an explicit choice; system incident tickets
 // make a deliberate, attributable no-impact assessment.
-$assertContains('<option value="" selected disabled>Unassessed — select an impact</option>', $ticket_add,
-    'New agent tickets silently default their documentation assessment');
-$assertContains("['None', 'Required']", $ticket_post, 'Agent ticket creation accepts a non-explicit documentation assessment');
-$assertContains('Unassessed — select an impact', $ticket_modal, 'Legacy/unassessed ticket reassessment silently defaults to None');
+$assertContains('card bg-light border mb-3 d-none', $ticket_add,
+    'The retired documentation assessment is still exposed during ticket creation');
+$assertContains('$_POST[\'documentation_impact\'] ?? \'None\'', $ticket_post,
+    'Agent ticket creation does not use the compatibility no-impact default');
+$assertContains('Unassessed — select an impact', $ticket_modal,
+    'Historical documentation assessments can no longer be inspected administratively');
 $incident = $section($automation, 'function automationCreateIncidentTicket(', 'function automationAddIncidentReply(', 'automation incident creation');
 foreach (["ticket_configuration_change = 0", "ticket_documentation_impact = 'None'",
           'ticket_documentation_assessed_by = 0', 'ticket_documentation_assessed_at = NOW()'] as $incident_contract) {

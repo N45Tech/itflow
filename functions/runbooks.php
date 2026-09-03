@@ -1761,24 +1761,8 @@ function runbookOnlyTicketCanResolve($ticket_id) {
  * requirement names, exception reasons and client context cannot leak.
  */
 function ticketLifecycleCanResolve($ticket_id, $include_documentation_detail = false) {
-    [$runbook_allowed, $runbook_error] = runbookOnlyTicketCanResolve($ticket_id);
-    if (!$runbook_allowed) {
-        return [false, $runbook_error];
-    }
-
-    if (function_exists('documentationTicketCanResolve')) {
-        $documentation_result = documentationTicketCanResolve(intval($ticket_id));
-        $documentation_allowed = boolval($documentation_result[0] ?? false);
-        if (!$documentation_allowed) {
-            $generic_error = 'Required documentation must be assessed or updated before this ticket can be resolved.';
-            $detail = trim((string) ($documentation_result[1] ?? ''));
-            return [false, $include_documentation_detail && $detail !== '' ? $detail : $generic_error];
-        }
-    }
-
-    return [true, ''];
+    return runbookOnlyTicketCanResolve($ticket_id);
 }
-
 /**
  * Backwards-compatible public gate used by all existing terminal transitions.
  */

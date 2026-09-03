@@ -33,7 +33,7 @@ if (isset($_POST['add_ticket'])) {
     $subject_raw = $_POST['subject'] ?? '';
     $details_raw = $_POST['details'] ?? '';
     $configuration_change = intval($_POST['configuration_change'] ?? 0) === 1 ? 1 : 0;
-    $documentation_impact = (string) ($_POST['documentation_impact'] ?? 'Unassessed');
+    $documentation_impact = (string) ($_POST['documentation_impact'] ?? 'None');
     if (!in_array($documentation_impact, ['None', 'Required'], true)) {
         flashAlert('Select whether this ticket affects required client documentation', 'error');
         redirect();
