@@ -7,6 +7,7 @@ $network_observations = file_get_contents($root . '/agent/includes/inc_asset_net
 $side_nav = file_get_contents($root . '/agent/includes/side_nav.php');
 $custom_css = file_get_contents($root . '/css/itflow_custom.css');
 $ajax_modal = file_get_contents($root . '/js/ajax_modal.js');
+$footer = file_get_contents($root . '/includes/footer.php');
 $client_add_modal = file_get_contents($root . '/agent/modals/client/client_add.php');
 $client_edit_modal = file_get_contents($root . '/agent/modals/client/client_edit.php');
 $ticket_tasks_modal = file_get_contents($root . '/agent/js/ticket_tasks_modal.js');
@@ -75,6 +76,8 @@ $assertContains('existing.src === resolvedSrc', $ajax_modal,
     'AJAX modals re-execute global scripts already loaded by the page');
 $assertContains('old.remove();', $ajax_modal,
     'AJAX modal script deduplication leaves inert duplicate script elements behind');
+$assertContains("ajax_modal.js?v=<?= filemtime(__DIR__ . '/../js/ajax_modal.js') ?>", $footer,
+    'The global AJAX modal loader is not cache-busted across deployments');
 
 foreach (['add' => $client_add_modal, 'edit' => $client_edit_modal] as $client_modal_name => $client_modal) {
     $assertContains("setClientSlaPreset(this.form, 'default')", $client_modal,
