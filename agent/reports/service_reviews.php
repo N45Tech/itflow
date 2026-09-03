@@ -27,7 +27,7 @@ $reviews = mysqli_query($mysqli, "SELECT service_review_id, service_review_perio
 ?>
 
 <div class="card card-dark">
-    <div class="card-header py-2"><h3 class="card-title float-none mb-0"><i class="fas fa-fw fa-chart-line mr-2"></i>Service Reviews</h3><p class="small text-light mb-0 mt-1">Review outcomes, documentation readiness, and follow-up work in one place.</p></div>
+    <div class="card-header py-3"><h3 class="h5 mb-1"><i class="fas fa-fw fa-chart-line mr-2"></i>Service Reviews</h3><p class="small text-muted mb-0">Review outcomes, documentation readiness, and follow-up work in one place.</p></div>
     <div class="card-body">
         <form class="form-row mb-3">
             <div class="col-md-3"><select class="form-control" name="year" onchange="this.form.submit()">
