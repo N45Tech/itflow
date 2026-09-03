@@ -8,6 +8,7 @@ $side_nav = file_get_contents($root . '/agent/includes/side_nav.php');
 $custom_css = file_get_contents($root . '/css/itflow_custom.css');
 $client_add_modal = file_get_contents($root . '/agent/modals/client/client_add.php');
 $client_edit_modal = file_get_contents($root . '/agent/modals/client/client_edit.php');
+$ticket_tasks_modal = file_get_contents($root . '/agent/js/ticket_tasks_modal.js');
 
 $failures = [];
 $assertContains = static function (string $needle, string $haystack, string $message) use (&$failures): void {
@@ -79,6 +80,15 @@ foreach (['add' => $client_add_modal, 'edit' => $client_edit_modal] as $client_m
     $assertNotContains("onclick=\"$(this.form)", $client_modal,
         "The client $client_modal_name SLA presets still require unavailable jQuery");
 }
+
+$assertContains("document.addEventListener('change', handleTicketTemplateChange);", $ticket_tasks_modal,
+    'The ticket runbook picker does not install its native change handler');
+$assertContains("document.removeEventListener('change', previousHandlers.change);", $ticket_tasks_modal,
+    'The ticket runbook picker does not replace its handler when an AJAX modal reopens');
+$assertContains("event.target.matches('#ticket_template_select')", $ticket_tasks_modal,
+    'The ticket runbook handler is not delegated to the template selector');
+$assertNotContains("$(document)", $ticket_tasks_modal,
+    'The ticket runbook picker still requires unavailable jQuery');
 
 $auth_script_start = strpos($asset_view, '<!-- JavaScript to Show/Hide Password Form Group -->');
 $auth_script_end = $auth_script_start === false ? false : strpos($asset_view, '</script>', $auth_script_start);

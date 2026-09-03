@@ -6,7 +6,7 @@
 //
 // Wrapped in an IIFE because a modal can be opened, closed and opened again in one
 // page load, which re-runs this file - top-level const/let would throw on the
-// second run. Delegated handlers are namespaced and unbound first for the same
+// second run. Delegated handlers are stored on document and replaced for the same
 // reason, otherwise "Add Task" would add one row per time the modal was opened.
 
 (function () {
@@ -131,17 +131,28 @@
         });
     }
 
-    $(document).off('click.ticketTasks').on('click.ticketTasks', '#ticketTaskAdd', function () {
-        addTaskRow('', '');
-    });
+    function handleTicketTaskClick(event) {
 
-    $(document).off('click.ticketTaskRemove').on('click.ticketTaskRemove', '.ticket-task-remove', function () {
-        this.closest('.ticket-task-row')?.remove();
-    });
+        if (event.target.closest('#ticketTaskAdd')) {
+            addTaskRow('', '');
+            return;
+        }
+
+        const removeButton = event.target.closest('.ticket-task-remove');
+        if (removeButton) {
+            removeButton.closest('.ticket-task-row')?.remove();
+        }
+    }
 
     // Ticket template picker - fills in the subject, details and task rows
-    $(document).off('change.ticketTemplate').on('change.ticketTemplate', '#ticket_template_select', function () {
-        const option = this.options[this.selectedIndex];
+    function handleTicketTemplateChange(event) {
+
+        if (!event.target.matches('#ticket_template_select')) {
+            return;
+        }
+
+        const select = event.target;
+        const option = select.options[select.selectedIndex];
 
         // Selecting "- No Template -" only unlinks the template - it must not wipe
         // whatever the user has already written or added
@@ -168,7 +179,24 @@
 
         setTaskRows(readTemplateTasks(option));
         setWorkflowLock(option.dataset.runbookVersion || 0);
-    });
+    }
+
+    // AJAX modals can be opened more than once without reloading the page. Keep
+    // the delegated listeners native and replace the previous instance whenever
+    // this script runs so the modal does not depend on jQuery or double-bind.
+    const handlerRegistryKey = '__n45TicketTasksModalHandlers';
+    const previousHandlers = document[handlerRegistryKey];
+    if (previousHandlers) {
+        document.removeEventListener('click', previousHandlers.click);
+        document.removeEventListener('change', previousHandlers.change);
+    }
+
+    document[handlerRegistryKey] = {
+        click: handleTicketTaskClick,
+        change: handleTicketTemplateChange
+    };
+    document.addEventListener('click', handleTicketTaskClick);
+    document.addEventListener('change', handleTicketTemplateChange);
 
     const templateSelect = document.getElementById('ticket_template_select');
     if (templateSelect && templateSelect.selectedIndex >= 0) {
