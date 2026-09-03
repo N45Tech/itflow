@@ -14,6 +14,15 @@ function runScriptsInOrder(scripts) {
                     s.setAttribute(attr.name, attr.value);
                 }
                 if (old.src) {
+                    const resolvedSrc = new URL(old.getAttribute('src'), document.baseURI).href;
+                    const alreadyLoaded = Array.from(document.scripts).some(function (existing) {
+                        return existing !== old && existing.src === resolvedSrc;
+                    });
+                    if (alreadyLoaded) {
+                        old.remove();
+                        resolve();
+                        return;
+                    }
                     s.async = false;
                     s.onload = resolve;
                     s.onerror = function () {
@@ -102,8 +111,9 @@ document.addEventListener('click', function (e) {
             // its own script first and modal_footer.php's http.js / app.js
             // after, and the modal script depends on helpers those define.
             // A dynamically created <script src> is async by default and would
-            // run in completion order instead - jQuery's .append() loaded them
-            // sequentially, which is the behaviour reproduced here.
+            // run in completion order instead. Global helpers already present
+            // on the page are skipped so opening a modal never reinitializes
+            // page-wide scripts or repeats their side effects.
             runScriptsInOrder(Array.from(wrapper.querySelectorAll('script')))
                 .then(function () {
                     bootstrap.Modal.getOrCreateInstance(wrapper).show();

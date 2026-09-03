@@ -6,6 +6,7 @@ $asset_view = file_get_contents($root . '/agent/asset.php');
 $network_observations = file_get_contents($root . '/agent/includes/inc_asset_network_observations.php');
 $side_nav = file_get_contents($root . '/agent/includes/side_nav.php');
 $custom_css = file_get_contents($root . '/css/itflow_custom.css');
+$ajax_modal = file_get_contents($root . '/js/ajax_modal.js');
 $client_add_modal = file_get_contents($root . '/agent/modals/client/client_add.php');
 $client_edit_modal = file_get_contents($root . '/agent/modals/client/client_edit.php');
 $ticket_tasks_modal = file_get_contents($root . '/agent/js/ticket_tasks_modal.js');
@@ -70,6 +71,10 @@ $assertContains('.sidebar-collapse .app-sidebar:not(:hover) .n45-sidebar-mark', 
     'The collapsed AdminLTE 4 sidebar does not show the compact mark');
 $assertNotContains('.main-sidebar .n45-sidebar-lockup', $custom_css,
     'Sidebar logo rules still target the retired AdminLTE 3 sidebar class');
+$assertContains('existing.src === resolvedSrc', $ajax_modal,
+    'AJAX modals re-execute global scripts already loaded by the page');
+$assertContains('old.remove();', $ajax_modal,
+    'AJAX modal script deduplication leaves inert duplicate script elements behind');
 
 foreach (['add' => $client_add_modal, 'edit' => $client_edit_modal] as $client_modal_name => $client_modal) {
     $assertContains("setClientSlaPreset(this.form, 'default')", $client_modal,
