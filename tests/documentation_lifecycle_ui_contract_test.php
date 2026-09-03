@@ -97,8 +97,8 @@ $assertContains("require_once '../../../includes/modal_footer.php';", $ticket_mo
 $assertContains('ticket-task-workspace', $ticket_page, 'Tasks are not promoted to a full-width ticket workspace');
 $assertContains('$task_page_size = $task_view === \'all\' ? max(1, $task_total_count) : 1', $ticket_page, 'Ticket task list does not focus on one current task');
 $assertContains("['active', 'all']", $ticket_page, 'Ticket task list does not separate active work from full history');
-$assertContains('Current task', $ticket_page, 'Ticket task list does not label its focused workflow');
-$assertContains('Show all', $ticket_page, 'Ticket task list does not expose the complete runbook on demand');
+$assertContains('Current <span class="badge badge-light ml-1">', $ticket_page, 'Ticket task list does not label its focused workflow');
+$assertContains('Runbook <span class="badge badge-light ml-1">', $ticket_page, 'Ticket task list does not expose the complete runbook on demand');
 $assertContains('LIMIT $task_page_size OFFSET $task_page_start', $ticket_page, 'Ticket task query is not paginated at the database');
 $assertContains('ticket-task-horizontal-scroll', $ticket_page, 'Complete runbooks are not presented horizontally');
 $assertContains('aria-label="All ticket tasks"', $ticket_page, 'Horizontal runbook overview is not accessible');
