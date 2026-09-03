@@ -236,6 +236,9 @@ $assertContains('LIMIT 1 FOR UPDATE', $reconciler, 'Endpoint reconciler does not
 $assertContains("automation_mapping_source IN ('entra', 'intune', 'sentinelone')", $reconciler, 'Endpoint reconciler does not backfill directory and security sources');
 $assertContains("'automatic', 'confirmed' => 'active'", $reconciler, 'Endpoint reconciler does not explicitly limit active projection to trusted identity states');
 $assertContains("'ignored' => 'ignored'", $reconciler, 'Endpoint reconciler treats an ignored identity as active and requires a nonexistent source snapshot');
+if (substr_count($reconciler, "if (\$status === 'ignored') {") !== 2) {
+    $failures[] = 'Endpoint reconciler does not exclude ignored Level and external identities before retirement';
+}
 $assertContains("default => 'unmanaged'", $reconciler, 'Endpoint reconciler does not fail closed for an unknown identity state');
 $assertContains('identity mapping diverges from the locked asset link', $reconciler, 'Level backfill does not require the exact locked identity binding');
 

@@ -168,6 +168,9 @@ try {
         }
         $identity_state = (string) $mapping['automation_mapping_state'];
         $status = reconcileEndpointStatusForIdentity($identity_state);
+        if ($status === 'ignored') {
+            continue;
+        }
         if (!in_array($status, ['active', 'stale'], true)) {
             $retired = endpointRetireIdentityBindingUnlocked([
                 'asset_id' => $asset_id,
@@ -253,6 +256,9 @@ try {
             continue;
         }
         $status = reconcileEndpointStatusForIdentity((string) $mapping['automation_mapping_state']);
+        if ($status === 'ignored') {
+            continue;
+        }
         if (!in_array($status, ['active', 'stale'], true)) {
             $retired = endpointRetireIdentityBindingUnlocked([
                 'asset_id' => intval($mapping['automation_mapping_asset_id']),
