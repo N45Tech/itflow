@@ -253,8 +253,8 @@ ob_start();
                             <?php } ?>
                         </div>
                         <div class="btn-group btn-group-sm mt-2" role="group" aria-label="SLA presets">
-                            <button type="button" class="btn btn-outline-secondary" onclick="$(this.form).find('[name^=client_sla_]').val('default').trigger('change')">Use Managed Care defaults</button>
-                            <button type="button" class="btn btn-outline-secondary" onclick="$(this.form).find('[name^=client_sla_]').val('0').trigger('change')">No SLA</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setClientSlaPreset(this.form, 'default')">Use Managed Care defaults</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setClientSlaPreset(this.form, '0')">No SLA</button>
                         </div>
                         <small class="text-muted d-block mt-1">Use No SLA for hourly and project-only clients. Individual priorities can still be overridden.</small>
                     </div>
@@ -269,6 +269,15 @@ ob_start();
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
     </div>
 </form>
+
+<script>
+    function setClientSlaPreset(form, value) {
+        form.querySelectorAll('[name^="client_sla_"]').forEach(function (select) {
+            select.value = value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    }
+</script>
 
 <?php
 require_once '../../../includes/modal_footer.php';

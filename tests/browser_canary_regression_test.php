@@ -6,6 +6,8 @@ $asset_view = file_get_contents($root . '/agent/asset.php');
 $network_observations = file_get_contents($root . '/agent/includes/inc_asset_network_observations.php');
 $side_nav = file_get_contents($root . '/agent/includes/side_nav.php');
 $custom_css = file_get_contents($root . '/css/itflow_custom.css');
+$client_add_modal = file_get_contents($root . '/agent/modals/client/client_add.php');
+$client_edit_modal = file_get_contents($root . '/agent/modals/client/client_edit.php');
 
 $failures = [];
 $assertContains = static function (string $needle, string $haystack, string $message) use (&$failures): void {
@@ -66,6 +68,17 @@ $assertContains('.sidebar-collapse .app-sidebar:not(:hover) .n45-sidebar-mark', 
     'The collapsed AdminLTE 4 sidebar does not show the compact mark');
 $assertNotContains('.main-sidebar .n45-sidebar-lockup', $custom_css,
     'Sidebar logo rules still target the retired AdminLTE 3 sidebar class');
+
+foreach (['add' => $client_add_modal, 'edit' => $client_edit_modal] as $client_modal_name => $client_modal) {
+    $assertContains("setClientSlaPreset(this.form, 'default')", $client_modal,
+        "The client $client_modal_name modal does not provide the native default-SLA preset");
+    $assertContains("setClientSlaPreset(this.form, '0')", $client_modal,
+        "The client $client_modal_name modal does not provide the native no-SLA preset");
+    $assertContains("form.querySelectorAll('[name^=\"client_sla_\"]')", $client_modal,
+        "The client $client_modal_name modal does not update SLA fields without jQuery");
+    $assertNotContains("onclick=\"$(this.form)", $client_modal,
+        "The client $client_modal_name SLA presets still require unavailable jQuery");
+}
 
 $auth_script_start = strpos($asset_view, '<!-- JavaScript to Show/Hide Password Form Group -->');
 $auth_script_end = $auth_script_start === false ? false : strpos($asset_view, '</script>', $auth_script_start);
