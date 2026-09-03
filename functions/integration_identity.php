@@ -60,6 +60,7 @@ function integrationIdentityDateTime($value, bool $default_now = true): ?string
 
     try {
         $date = new DateTimeImmutable((string) $value);
+        $date = $date->setTimezone(new DateTimeZone(date_default_timezone_get()));
     } catch (Throwable $e) {
         throw new InvalidArgumentException('Identity timestamp is invalid');
     }

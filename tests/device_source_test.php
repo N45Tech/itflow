@@ -28,6 +28,19 @@ $assertThrows(fn() => deviceSourceName('level'), 'An unsupported device source w
 $assertThrows(fn() => deviceSourceScopeId("tenant\nother"), 'A control character was accepted in a scope id');
 $assertThrows(fn() => deviceSourceCycleId('../unsafe'), 'An unsafe cycle id was accepted');
 
+date_default_timezone_set('America/New_York');
+$assertSame(
+    '2026-09-03 17:15:27',
+    integrationIdentityDateTime('2026-09-03T21:15:27.897Z', false),
+    'A UTC device-source timestamp was not normalized to the application timezone'
+);
+$assertSame(
+    date('Y-m-d H:i:s'),
+    deviceSourceCycleStartedAt(gmdate('Y-m-d\\TH:i:s\\Z')),
+    'A current UTC device-source cycle was rejected or stored as a future local timestamp'
+);
+date_default_timezone_set('UTC');
+
 $redacted = deviceSourceRedactError(
     'Bearer abc.def ApiToken top-secret https://source.test/?access_token=secret&code=secret '
     . '{"client_secret":"secret","password":"secret"}'
