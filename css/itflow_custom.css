@@ -1784,17 +1784,8 @@ body [tabindex]:focus-visible {
     width: auto;
 }
 
-.app-sidebar .n45-sidebar-lockup-dark-bg,
 .app-sidebar .n45-sidebar-mark {
     display: none;
-}
-
-.app-sidebar[data-bs-theme="dark"] .n45-sidebar-lockup-light-bg {
-    display: none;
-}
-
-.app-sidebar[data-bs-theme="dark"] .n45-sidebar-lockup-dark-bg {
-    display: block;
 }
 
 .sidebar-collapse .app-sidebar:not(:hover) .n45-sidebar-lockup {

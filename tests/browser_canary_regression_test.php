@@ -56,18 +56,16 @@ $assertContains('data-bs-target="#<?= $network_evidence_id ?>"', $network_observ
 $assertNotContains('data-toggle="collapse"', $network_observations,
     'The source-observation disclosure still uses the removed Bootstrap collapse API');
 
-$assertContains('class="n45-sidebar-lockup n45-sidebar-lockup-light-bg"', $side_nav,
-    'The sidebar is missing its light-background lockup');
-$assertContains('class="n45-sidebar-lockup n45-sidebar-lockup-dark-bg"', $side_nav,
-    'The sidebar is missing its dark-background lockup');
+$assertContains('class="n45-sidebar-lockup" src="/assets/branding/n45-lockup-light.svg"', $side_nav,
+    'The dark sidebar is missing its single expanded lockup');
 $assertContains('class="n45-sidebar-mark"', $side_nav,
     'The sidebar is missing its collapsed mark');
-$assertContains('.app-sidebar .n45-sidebar-lockup-dark-bg,', $custom_css,
-    'The sidebar logo visibility rule does not target the AdminLTE 4 sidebar');
-$assertContains('.app-sidebar[data-bs-theme="dark"] .n45-sidebar-lockup-light-bg', $custom_css,
-    'The dark sidebar does not hide the dark-lettered lockup');
-$assertContains('.app-sidebar[data-bs-theme="dark"] .n45-sidebar-lockup-dark-bg', $custom_css,
-    'The dark sidebar does not show the light-lettered lockup');
+$assertNotContains('n45-sidebar-lockup-light-bg', $side_nav,
+    'The sidebar still emits a redundant light-background lockup');
+$assertNotContains('n45-sidebar-lockup-dark-bg', $side_nav,
+    'The sidebar still emits a redundant dark-background lockup');
+$assertContains('.app-sidebar .n45-sidebar-mark {', $custom_css,
+    'The expanded AdminLTE 4 sidebar does not hide the compact mark');
 $assertContains('.sidebar-collapse .app-sidebar:not(:hover) .n45-sidebar-mark', $custom_css,
     'The collapsed AdminLTE 4 sidebar does not show the compact mark');
 $assertNotContains('.main-sidebar .n45-sidebar-lockup', $custom_css,

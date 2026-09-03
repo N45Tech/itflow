@@ -737,6 +737,7 @@ function integrationIdentityUpsertMapping(array $input): array
                 'client_id' => intval($mapping['automation_mapping_client_id']),
                 'source' => $source,
                 'external_id' => $external_id,
+                'allow_state_divergence' => true,
                 'occurred_at' => date('Y-m-d H:i:s'),
                 'reason' => $last_error !== ''
                     ? $last_error
@@ -947,6 +948,7 @@ function integrationIdentityRetireMapping(
                 'client_id' => intval($mapping['automation_mapping_client_id']),
                 'source' => $source,
                 'external_id' => $external_id,
+                'allow_state_divergence' => true,
                 'occurred_at' => date('Y-m-d H:i:s'),
                 'reason' => $reason,
             ]);
@@ -1169,6 +1171,7 @@ function integrationIdentityReviewMapping(int $mapping_id, string $action, array
                     'client_id' => $old_client_id,
                     'source' => $source,
                     'external_id' => $external_id,
+                    'allow_state_divergence' => true,
                     'occurred_at' => date('Y-m-d H:i:s'),
                     'reason' => "Identity remapped by technician: $reason",
                 ])) {
@@ -1252,6 +1255,7 @@ function integrationIdentityReviewMapping(int $mapping_id, string $action, array
                     'client_id' => $old_client_id,
                     'source' => $source,
                     'external_id' => $external_id,
+                    'allow_state_divergence' => true,
                     'occurred_at' => date('Y-m-d H:i:s'),
                     'reason' => "Identity $action by technician: $reason",
                 ])) {
@@ -1462,6 +1466,7 @@ function integrationIdentityQuarantineOrphanMapping(int $mapping_id): bool
                 'client_id' => $client_id,
                 'source' => $source,
                 'external_id' => $external_id,
+                'allow_state_divergence' => true,
                 'occurred_at' => date('Y-m-d H:i:s'),
                 'reason' => $reason,
             ])) {

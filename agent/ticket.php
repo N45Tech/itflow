@@ -340,11 +340,19 @@ if (isset($_GET['ticket_id'])) {
         );
 
         // Get Tasks, including immutable runbook execution metadata when present.
+        $task_display_limit = 20;
+        $task_show_all = ((int) ($_GET['show_all_ticket_tasks'] ?? 0)) === 1;
+        $task_sql_limit = $task_show_all ? '' : " LIMIT $task_display_limit";
+        $task_total_count_sql = mysqli_fetch_assoc(mysqli_query(
+            $mysqli,
+            "SELECT COUNT(task_id) AS count FROM tasks WHERE task_ticket_id = $ticket_id"
+        ));
+        $task_total_count = $task_total_count_sql ? intval($task_total_count_sql['count']) : 0;
         $sql_tasks = mysqli_query($mysqli, "SELECT tasks.*, user_name
             FROM tasks
             LEFT JOIN users ON user_id = task_assigned_to
             WHERE task_ticket_id = $ticket_id
-            ORDER BY task_order ASC, task_id ASC");
+            ORDER BY task_order ASC, task_id ASC" . $task_sql_limit);
         $task_count = mysqli_num_rows($sql_tasks);
 
         $runbook_execution = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT runbook_execution_id,
@@ -385,8 +393,8 @@ if (isset($_GET['ticket_id'])) {
 
         // Tasks Completed Percent
         $tasks_completed_percent = 0;
-        if ($task_count) {
-            $tasks_completed_percent = round(($completed_task_count / $task_count) * 100);
+        if ($task_total_count) {
+            $tasks_completed_percent = round(($completed_task_count / $task_total_count) * 100);
         }
 
         // Tasks still open block resolving the ticket - the page says so rather than just hiding the button
@@ -753,14 +761,14 @@ if (isset($_GET['ticket_id'])) {
                         </div>
                     <?php } ?>
 
-                    <?php if ($task_count) { ?>
+                    <?php if ($task_total_count) { ?>
                         <div class="ticket-field">
                             <div class="ticket-field-label">Tasks</div>
                             <div class="ticket-field-value d-flex align-items-center">
                                 <div class="progress ticket-task-progress me-2" role="progressbar" aria-valuenow="<?= $tasks_completed_percent ?>" aria-valuemin="0" aria-valuemax="100" title="<?= $tasks_completed_percent ?>% complete">
                                     <div class="progress-bar <?= $tasks_block_resolve ? 'bg-secondary' : 'bg-success' ?>" style="width: <?= $tasks_completed_percent ?>%;"></div>
                                 </div>
-                                <?= "$completed_task_count of $task_count" ?>
+                                <?= "$completed_task_count of $task_total_count" ?>
                             </div>
                         </div>
                     <?php } ?>
@@ -1377,6 +1385,19 @@ if (isset($_GET['ticket_id'])) {
                                 ?>
                                 </tbody>
                             </table>
+                            <?php if (!$task_show_all && $task_total_count > $task_display_limit) { ?>
+                                <div class="px-3 py-2 border-top text-center ticket-task-overflow">
+                                    <span class="small text-muted me-1">Showing <?= $task_display_limit ?> of <?= $task_total_count ?> tasks</span>
+                                    <a class="btn btn-sm btn-link p-0" href="ticket.php?ticket_id=<?= $ticket_id ?>&show_all_ticket_tasks=1#tasks">
+                                        Show all <?= $task_total_count ?> tasks
+                                    </a>
+                                </div>
+                            <?php } elseif ($task_show_all && $task_total_count > $task_display_limit) { ?>
+                                <div class="px-3 py-2 border-top text-center ticket-task-overflow">
+                                    <span class="small text-muted me-1">Showing all <?= $task_total_count ?> tasks</span>
+                                    <a class="btn btn-sm btn-link p-0" href="ticket.php?ticket_id=<?= $ticket_id ?>">Show first <?= $task_display_limit ?> tasks</a>
+                                </div>
+                            <?php } ?>
                         </div>
                     </div>
                 <?php } ?>
@@ -1918,7 +1939,7 @@ require_once "../includes/footer.php";
                 .finally(() => {
                     cannedPicker.disabled = false;
                     cannedPicker.value = '';
-                });
+            });
         });
     }
 

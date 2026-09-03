@@ -1904,6 +1904,10 @@ function endpointRetireIdentityBindingUnlocked(array $input): bool
     $client_id = intval($asset['asset_client_id']);
     $source = endpointSource($input['source'] ?? '');
     $external_id = endpointExternalId($input['external_id'] ?? '');
+    $allow_state_divergence = filter_var(
+        $input['allow_state_divergence'] ?? false,
+        FILTER_VALIDATE_BOOLEAN
+    );
     $source_sql = endpointDbEscape($source);
     $external_id_sql = endpointDbEscape($external_id);
     $state = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT endpoint_state_external_id,
@@ -1918,10 +1922,10 @@ function endpointRetireIdentityBindingUnlocked(array $input): bool
     if ($external_state
         && (intval($external_state['endpoint_state_asset_id']) !== $asset_id
             || intval($external_state['endpoint_state_client_id']) !== $client_id)) {
-        return false;
+        return $allow_state_divergence;
     }
     if ($state && (string) $state['endpoint_state_external_id'] !== $external_id) {
-        return false;
+        return $allow_state_divergence;
     }
 
     $occurred_at = endpointObservationDateTime($input['occurred_at'] ?? null);

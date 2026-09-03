@@ -95,6 +95,9 @@ $assertContains('enforceClientAccess($client_id)', $ticket_modal, 'Ticket docume
 $assertContains('ob_start();', $ticket_modal, 'Ticket documentation detail does not buffer its modal response');
 $assertContains("require_once '../../../includes/modal_footer.php';", $ticket_modal, 'Ticket documentation detail does not emit the standard JSON modal envelope');
 $assertContains('ticketLifecycleCanResolve($ticket_id, true)', $ticket_page, 'Authorized ticket UI does not show composite gate detail');
+$assertContains('$task_display_limit = 20', $ticket_page, 'Ticket task list no longer enforces a bounded page size');
+$assertContains('show_all_ticket_tasks=1#tasks', $ticket_page, 'Ticket task page has no user control to show all tasks beyond the bound');
+$assertContains('SELECT COUNT(task_id) AS count FROM tasks WHERE task_ticket_id = $ticket_id', $ticket_page, 'Ticket task overflow UI cannot determine total task count for truncation');
 
 $assertContains('documentationDocumentHasObligations($document_id)', $document_post, 'Canonical documents can be archived or deleted without a guard');
 $assertContains('documentationTicketHasAuditRecords($ticket_id)', $ticket_post, 'Tickets with documentation history can be permanently deleted');

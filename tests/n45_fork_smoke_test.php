@@ -531,6 +531,7 @@ foreach (glob($root . '/api/v1/tickets/*.php') ?: [] as $api_ticket_file) {
 // Repeatable parity review must remain repository native and read-only.
 $review_script = $read('scripts/n45-upstream-review.sh');
 $review_workflow = $read('.github/workflows/upstream-parity.yml');
+$dockerignore = $read('.dockerignore');
 $assertContains('git merge-base', $review_script, 'Upstream review does not calculate a merge base');
 $assertContains('comm -12', $review_script, 'Upstream review does not identify path overlap');
 $assertContains('sensitive-overlap-paths', $review_script, 'Upstream review does not isolate security-sensitive overlap');
@@ -547,6 +548,10 @@ $assertTrue(is_file($root . '/n45/upstream-diff-check.allowlist'), 'The exact hi
 $assertTrue(is_file($root . '/n45/security-sensitive-paths.regex'), 'Security-sensitive path rules are missing');
 $assertContains('https://github.com/itflow-org/itflow.git', $review_workflow, 'Parity workflow does not fetch authoritative ITFlow upstream');
 $assertContains('for test_file in tests/*_test.php', $review_workflow, 'Parity workflow does not run the full regression suite');
+$assertContains('.github/*', $dockerignore, 'Deployment image does not bound the reopened .github build context.');
+$assertContains('!.github/workflows', $dockerignore, 'Deployment image excludes the .github workflows directory, preventing parity-wrapper discovery.');
+$assertContains('.github/workflows/*', $dockerignore, 'Deployment image does not limit workflow inclusion to the required parity contract.');
+$assertContains('!.github/workflows/upstream-parity.yml', $dockerignore, 'Deployment image excludes the upstream-parity workflow required by the release wrapper.');
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);

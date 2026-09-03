@@ -329,7 +329,7 @@ $assertContains('Deleted evidence #', $endpoint_ui, 'Deleted runbook evidence lo
 $assertContains('2 MiB', $docs, 'Endpoint documentation omits the route-specific API request limit');
 $assertContains('function integrationIdentityReviewMapping', $identity, 'Identity review actions are not implemented');
 $assertContains('integrationIdentityRecordDecisionUnlocked', $identity, 'Mapping decisions are not appended to the audit ledger');
-$assertContains('Identity conflict quarantine stopped because endpoint state diverged', $identity, 'Mapping conflicts leave formerly trusted endpoint posture active');
+$assertContains('allow_state_divergence', $identity, 'Identity conflict quarantine can continue when the endpoint posture diverged');
 $assertContains('retired_identity_reappeared', $identity, 'Repeated polling can silently resurrect a retired durable identity');
 $assertContains('Replaying the last old sighting is not source recovery', $identity, 'An equal-watermark replay can falsely clear identity staleness');
 $assertContains('safer review state regardless of delivery order', $identity, 'Equal-watermark mapping assessments are delivery-order dependent');
