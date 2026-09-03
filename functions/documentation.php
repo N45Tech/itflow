@@ -1803,7 +1803,8 @@ function documentationEvaluateDueClients($limit = 100) {
             ON obligation.documentation_obligation_client_id = client.client_id
         WHERE client.client_archived_at IS NULL AND client.client_lead = 0
         GROUP BY client.client_id
-        ORDER BY last_evaluation IS NULL DESC, last_evaluation ASC, client.client_id ASC
+        ORDER BY MAX(obligation.documentation_obligation_evaluated_at) IS NULL DESC,
+            MAX(obligation.documentation_obligation_evaluated_at) ASC, client.client_id ASC
         LIMIT $limit", 'Could not select clients for documentation evaluation');
     while ($row = mysqli_fetch_assoc($rows)) {
         $client_ids[] = intval($row['client_id']);

@@ -3,9 +3,10 @@
 $root = dirname(__DIR__);
 $registry = file_get_contents($root . '/includes/cron_jobs.php');
 $job = file_get_contents($root . '/cron/documentation_evaluator.php');
+$core = file_get_contents($root . '/functions/documentation.php');
 $failures = [];
 
-if ($registry === false || $job === false) {
+if ($registry === false || $job === false || $core === false) {
     fwrite(STDERR, "Could not read documentation cron files\n");
     exit(1);
 }
@@ -24,6 +25,11 @@ $assertContains('documentationEvaluateDueClients(100)', $job, 'Scheduled work do
 $assertContains('documentationExpirePromises(100)', $job, 'Scheduled work does not expire Promise Ledger commitments');
 $assertContains('documentationExpireTicketWaivers(100)', $job, 'Scheduled work does not expire ticket waivers');
 $assertContains("require_once \"../functions.php\"", $job, 'Scheduled work does not load the shared documentation domain');
+$assertContains(
+    'ORDER BY MAX(obligation.documentation_obligation_evaluated_at) IS NULL DESC',
+    $core,
+    'Documentation evaluator uses an aggregate alias inside an ORDER BY expression that MariaDB rejects'
+);
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);
