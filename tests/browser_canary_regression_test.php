@@ -9,6 +9,9 @@ $custom_css = file_get_contents($root . '/css/itflow_custom.css');
 $client_add_modal = file_get_contents($root . '/agent/modals/client/client_add.php');
 $client_edit_modal = file_get_contents($root . '/agent/modals/client/client_edit.php');
 $ticket_tasks_modal = file_get_contents($root . '/agent/js/ticket_tasks_modal.js');
+$ticket_add_modal = file_get_contents($root . '/agent/modals/ticket/ticket_add.php');
+$recurring_ticket_add_modal = file_get_contents($root . '/agent/modals/recurring_ticket/recurring_ticket_add.php');
+$recurring_ticket_edit_modal = file_get_contents($root . '/agent/modals/recurring_ticket/recurring_ticket_edit.php');
 
 $failures = [];
 $assertContains = static function (string $needle, string $haystack, string $message) use (&$failures): void {
@@ -89,6 +92,18 @@ $assertContains("event.target.matches('#ticket_template_select')", $ticket_tasks
     'The ticket runbook handler is not delegated to the template selector');
 $assertNotContains("$(document)", $ticket_tasks_modal,
     'The ticket runbook picker still requires unavailable jQuery');
+
+foreach ([
+    'ticket add' => $ticket_add_modal,
+    'recurring ticket add' => $recurring_ticket_add_modal,
+    'recurring ticket edit' => $recurring_ticket_edit_modal,
+] as $ticket_modal_name => $ticket_modal) {
+    $assertContains(
+        "ticket_tasks_modal.js?v=<?= filemtime(__DIR__ . '/../../js/ticket_tasks_modal.js') ?>",
+        $ticket_modal,
+        "The $ticket_modal_name modal does not cache-bust the runbook script after a deployment"
+    );
+}
 
 $auth_script_start = strpos($asset_view, '<!-- JavaScript to Show/Hide Password Form Group -->');
 $auth_script_end = $auth_script_start === false ? false : strpos($asset_view, '</script>', $auth_script_start);

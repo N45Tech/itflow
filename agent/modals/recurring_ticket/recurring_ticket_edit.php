@@ -318,7 +318,7 @@ ob_start();
 </form>
 
 
-<script src="/agent/js/ticket_tasks_modal.js"></script>
+<script src="/agent/js/ticket_tasks_modal.js?v=<?= filemtime(__DIR__ . '/../../js/ticket_tasks_modal.js') ?>"></script>
 
 <?php
 

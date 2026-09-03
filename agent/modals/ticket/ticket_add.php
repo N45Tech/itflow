@@ -318,7 +318,7 @@ ob_start();
 <!-- Ticket Client/Contact JS -->
 <script src="/agent/js/tickets_add_modal.js"></script>
 
-<script src="/agent/js/ticket_tasks_modal.js"></script>
+<script src="/agent/js/ticket_tasks_modal.js?v=<?= filemtime(__DIR__ . '/../../js/ticket_tasks_modal.js') ?>"></script>
 
 <script>
 document.getElementById('configurationChange')?.addEventListener('change', function () {
