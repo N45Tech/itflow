@@ -24,11 +24,13 @@ require $app_root . '/functions/endpoint.php';
 function reconcileEndpointStatusForIdentity(string $identity_state): string
 {
     return match ($identity_state) {
+        'automatic', 'confirmed' => 'active',
         'retired' => 'retired',
+        'ignored' => 'ignored',
         'conflicting' => 'conflicting',
         'stale' => 'stale',
         'unresolved', 'suggested' => 'unmanaged',
-        default => 'active',
+        default => 'unmanaged',
     };
 }
 
