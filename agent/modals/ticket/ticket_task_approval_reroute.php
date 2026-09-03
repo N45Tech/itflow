@@ -64,7 +64,7 @@ ob_start();
 
 <div class="modal-header bg-dark">
     <h5 class="modal-title"><i class="fas fa-fw fa-route mr-2"></i>Manage approval</h5>
-    <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+    <button type="button" class="close text-white" data-bs-dismiss="modal"><span>&times;</span></button>
 </div>
 <div class="modal-body">
     <p><strong><?= $task_name ?></strong></p>
@@ -127,19 +127,22 @@ ob_start();
     <?php } ?>
 </div>
 <div class="modal-footer">
-    <button type="button" class="btn btn-light" data-dismiss="modal">Close</button>
+    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
 </div>
 
 <script>
-$(function () {
-    const route = $('#approval_route_<?= $approval_id ?>');
-    const wrapper = $('#approval_user_wrapper_<?= $approval_id ?>');
+(function () {
+    const route = document.getElementById('approval_route_<?= $approval_id ?>');
+    const wrapper = document.getElementById('approval_user_wrapper_<?= $approval_id ?>');
+    if (!route || !wrapper) {
+        return;
+    }
     const syncSpecificUser = function () {
-        wrapper.toggle(route.val() === 'internal:specific');
+        wrapper.hidden = route.value !== 'internal:specific';
     };
-    route.on('change', syncSpecificUser);
+    route.addEventListener('change', syncSpecificUser);
     syncSpecificUser();
-});
+})();
 </script>
 
 <?php
