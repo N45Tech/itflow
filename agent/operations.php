@@ -585,7 +585,8 @@ foreach ($coverage_rows as $coverage_row) {
         </div>
     </div>
 
-    <section class="n45-panel" id="documentation-attention" aria-labelledby="documentation-attention-heading">
+    <details class="n45-panel" id="documentation-attention">
+        <summary class="n45-panel-heading" style="cursor: pointer;"><div><h2>Documentation review</h2><p>Use onboarding and recurring service reviews to address missing or outdated client documents.</p></div><span class="small text-muted">Show document items</span></summary>
         <div class="n45-panel-heading">
             <div>
                 <h2 id="documentation-attention-heading">Documentation exceptions</h2>
@@ -616,7 +617,7 @@ foreach ($coverage_rows as $coverage_row) {
         <?php } else { ?>
             <div class="n45-empty-state"><i class="fas fa-book-medical"></i><strong>No documentation exceptions</strong><span>Required client records are current and active exceptions are outside their warning window.</span></div>
         <?php } ?>
-    </section>
+    </details>
 
     <section class="n45-panel" id="endpoint-coverage" aria-labelledby="coverage-heading">
         <div class="n45-panel-heading">
