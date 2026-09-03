@@ -201,6 +201,13 @@ $assertContains('hash_equals($stored_request_hash, $request_hash)', $submit, 'Ch
 $assertContains('portalRequestApprovalRouteAvailable($definition, $client_id, $contact_id, true)', $submit, 'Approval route availability is not revalidated and locked immediately before PendingApproval');
 $assertNotContains('portal_request_submission_idempotency_key', $schema . $migration . $service, 'A raw idempotency credential is persisted');
 
+$approval_route = $section($service, 'function portalRequestApprovalRouteAvailable(', 'function portalRequestClientHasAuditHistory(', 'approval-route availability');
+$assertContains('$auth_sql = portalRequestApprovalAuthSql();', $approval_route,
+    'Approval-route discovery does not derive the active login-surface constraint');
+if (substr_count($approval_route, '$auth_sql') !== 3) {
+    $failures[] = 'Approval-route authentication constraints are not applied to both agent and contact principals';
+}
+
 $initiate = $section($service, 'function portalRequestInitiateLockedSubmission(', 'function portalRequestSubmit(', 'ticket/runbook initiation');
 $assertOrdered($initiate, [
     'portalRequestResponsePayload($submission)',
@@ -431,6 +438,11 @@ if (portalRequestStatusLabel('PendingApproval') !== 'Waiting for approval'
     || portalRequestStatusLabel('Initiated') !== 'Ticket created'
     || portalRequestStatusLabel('not-a-state') !== 'Unknown') {
     $failures[] = 'Portal request statuses are not rendered through safe user-facing labels';
+}
+if (portalRequestApprovalAuthSql('portal.n45tech.com') !== "AND u.user_auth_method = 'azure'"
+    || portalRequestApprovalAuthSql('psa.n45tech.com:443') !== "AND u.user_auth_method = 'azure'"
+    || portalRequestApprovalAuthSql('127.0.0.1:8088') !== "AND u.user_auth_method IN ('local', 'azure')") {
+    $failures[] = 'Approval-route discovery does not match the configured public and recovery login surfaces';
 }
 if (portalRequestClientEventActorLabel([
         'portal_request_submission_event_actor_type' => 'agent',

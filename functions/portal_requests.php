@@ -1,5 +1,9 @@
 <?php
 
+if (function_exists('n45RequireModule')) {
+    n45RequireModule('login_surface');
+}
+
 /*
  * Versioned client-portal request catalog.
  *
@@ -760,6 +764,19 @@ function portalRequestContactCanUse($definition, $context, $client_id) {
 }
 
 /**
+ * Restrict approval-route discovery to principals that can authenticate on
+ * the active deployment surface. The N45 public hostnames are Entra-only;
+ * unknown/local recovery hosts retain both supported authentication methods.
+ */
+function portalRequestApprovalAuthSql($host = null) {
+    $surface = n45LoginSurfaceForHost($host ?? ($_SERVER['HTTP_HOST'] ?? ''));
+    if (n45LocalLoginAllowed($surface)) {
+        return "AND u.user_auth_method IN ('local', 'azure')";
+    }
+    return "AND u.user_auth_method = 'azure'";
+}
+
+/**
  * Check that a request which will wait for approval has at least one distinct,
  * currently active principal capable of deciding it. Locking the selected
  * principal serializes the final check with ordinary contact/user mutations.
@@ -774,12 +791,14 @@ function portalRequestApprovalRouteAvailable($definition, $client_id, $requester
         return true;
     }
     $lock_sql = $lock ? ' FOR UPDATE' : '';
+    $auth_sql = portalRequestApprovalAuthSql();
     if ($rule === 'internal') {
         $result = portalRequestDbQuery("SELECT u.user_id
             FROM users u
             INNER JOIN user_roles r ON r.role_id = u.user_role_id
             INNER JOIN clients c ON c.client_id = $client_id AND c.client_archived_at IS NULL
             WHERE u.user_type = 1 AND u.user_status = 1 AND u.user_archived_at IS NULL
+            $auth_sql
             AND (r.role_is_admin = 1 OR EXISTS (
                 SELECT 1 FROM user_role_permissions p
                 INNER JOIN modules m ON m.module_id = p.module_id
@@ -821,6 +840,7 @@ function portalRequestApprovalRouteAvailable($definition, $client_id, $requester
         WHERE c.contact_client_id = $client_id AND c.contact_id <> $requester_contact_id
         AND c.contact_archived_at IS NULL AND cl.client_archived_at IS NULL
         AND u.user_type = 2 AND u.user_status = 1 AND u.user_archived_at IS NULL
+        $auth_sql
         $role_sql ORDER BY c.contact_id ASC LIMIT 1$lock_sql",
         'Could not validate the contact portal request approval route');
     return mysqli_num_rows($result) === 1;
