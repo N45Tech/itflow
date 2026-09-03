@@ -27,7 +27,7 @@ $reviews = mysqli_query($mysqli, "SELECT service_review_id, service_review_perio
 ?>
 
 <div class="card card-dark">
-    <div class="card-header py-2"><h3 class="card-title mt-2"><i class="fas fa-fw fa-chart-line mr-2"></i>Service Reviews</h3></div>
+    <div class="card-header py-2"><h3 class="card-title mt-2"><i class="fas fa-fw fa-chart-line mr-2"></i>Service Reviews</h3><p class="small text-light mb-0 mt-1">Review outcomes, documentation readiness, and follow-up work in one place.</p></div>
     <div class="card-body">
         <form class="form-row mb-3">
             <div class="col-md-3"><select class="form-control" name="year" onchange="this.form.submit()">
@@ -38,19 +38,16 @@ $reviews = mysqli_query($mysqli, "SELECT service_review_id, service_review_perio
         </form>
         <div class="table-responsive">
             <table class="table table-striped table-borderless">
-                <thead><tr><th>Client</th><th>Agreement</th><th>Period</th><th>Status</th><th>Summary</th><th>Snapshot</th><th></th></tr></thead>
+                <thead><tr><th>Client</th><th>Period</th><th>Status</th><th>Review</th></tr></thead>
                 <tbody>
                 <?php $count = 0; while ($review = mysqli_fetch_assoc($reviews)) { $count++; ?>
                     <tr>
                         <td><?= escapeHtml($review['client_name']) ?></td>
-                        <td><?= escapeHtml($review['agreement_version_name'] ?: 'Agreement evidence unavailable') ?></td>
                         <td><?= escapeHtml($review['service_review_period_start']) ?> through <?= escapeHtml($review['service_review_period_end']) ?></td>
                         <td><span class="badge badge-<?= $review['service_review_status'] === 'Published' ? 'success' : 'warning' ?>"><?= escapeHtml($review['service_review_status']) ?></span></td>
-                        <td><?= escapeHtml($review['service_review_summary']) ?></td>
-                        <td><code title="<?= escapeHtml($review['service_review_snapshot_hash']) ?>"><?= escapeHtml(substr($review['service_review_snapshot_hash'], 0, 12)) ?>&hellip;</code></td>
-                        <td class="text-right"><a class="btn btn-sm btn-secondary" href="/agent/service_review.php?review_id=<?= intval($review['service_review_id']) ?>">Open</a></td>
+                        <td><div class="d-flex justify-content-between align-items-start gap-3"><div><?= escapeHtml($review['service_review_summary']) ?><details class="small text-muted mt-2"><summary style="cursor: pointer;">Evidence details</summary><div class="mt-1">Agreement: <?= escapeHtml($review['agreement_version_name'] ?: 'Unavailable') ?><br>Snapshot: <code title="<?= escapeHtml($review['service_review_snapshot_hash']) ?>"><?= escapeHtml(substr($review['service_review_snapshot_hash'], 0, 12)) ?>&hellip;</code></div></details></div><a class="btn btn-sm btn-primary text-nowrap" href="/agent/service_review.php?review_id=<?= intval($review['service_review_id']) ?>">Open review</a></div></td>
                     </tr>
-                <?php } if (!$count) { ?><tr><td colspan="7" class="text-muted">No service reviews match this period.</td></tr><?php } ?>
+                <?php } if (!$count) { ?><tr><td colspan="4" class="text-center text-muted py-5"><i class="fas fa-calendar-check fa-2x d-block mb-2"></i>No service reviews match this period.</td></tr><?php } ?>
                 </tbody>
             </table>
         </div>

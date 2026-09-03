@@ -95,14 +95,20 @@ $assertContains('enforceClientAccess($client_id)', $ticket_modal, 'Ticket docume
 $assertContains('ob_start();', $ticket_modal, 'Ticket documentation detail does not buffer its modal response');
 $assertContains("require_once '../../../includes/modal_footer.php';", $ticket_modal, 'Ticket documentation detail does not emit the standard JSON modal envelope');
 $assertContains('ticketLifecycleCanResolve($ticket_id, true)', $ticket_page, 'Authorized ticket UI does not show composite gate detail');
-$assertContains('$task_page_size = 6', $ticket_page, 'Ticket task list no longer enforces a compact page size');
+$assertContains('$task_page_size = $task_view === \'all\' ? max(1, $task_total_count) : 1', $ticket_page, 'Ticket task list does not focus on one current task');
 $assertContains("['active', 'all']", $ticket_page, 'Ticket task list does not separate active work from full history');
-$assertContains('ticket_task_page', $ticket_page, 'Ticket task list has no bounded pagination control');
+$assertContains('Current task', $ticket_page, 'Ticket task list does not label its focused workflow');
+$assertContains('Show all', $ticket_page, 'Ticket task list does not expose the complete runbook on demand');
 $assertContains('LIMIT $task_page_size OFFSET $task_page_start', $ticket_page, 'Ticket task query is not paginated at the database');
-$assertContains('aria-label="Ticket task pages"', $ticket_page, 'Ticket task pagination is not accessible');
+$assertContains('ticket-task-horizontal-scroll', $ticket_page, 'Complete runbooks are not presented horizontally');
+$assertContains('aria-label="All ticket tasks"', $ticket_page, 'Horizontal runbook overview is not accessible');
+$assertNotContains('ticket_task_page', $ticket_page, 'Ticket task list still exposes obsolete pagination controls');
 $assertContains('<details class="ticket-task-details', $ticket_page, 'Verbose task instructions are always expanded');
 $assertNotContains('show_all_ticket_tasks', $ticket_page, 'Ticket task list still exposes an unbounded show-all path');
 $assertContains('COUNT(task_id) AS count', $ticket_page, 'Ticket task pagination cannot determine the full task count');
+$assertContains('Documentation overview', $documentation_page, 'Documentation UI does not use the simplified overview');
+$assertContains('Review the document set during onboarding and recurring service reviews', $documentation_page, 'Documentation UI does not anchor review to operational workflows');
+$assertContains('Document-level details', $documentation_page, 'Detailed documentation records cannot be disclosed on demand');
 
 $assertContains('documentationDocumentHasObligations($document_id)', $document_post, 'Canonical documents can be archived or deleted without a guard');
 $assertContains('documentationTicketHasAuditRecords($ticket_id)', $ticket_post, 'Tickets with documentation history can be permanently deleted');

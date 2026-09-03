@@ -5,7 +5,7 @@ $order = 'DESC';
 require_once 'includes/inc_all.php';
 enforceUserPermission('module_support');
 
-$status = (string) ($_GET['status'] ?? '');
+$status = (string) ($_GET['status'] ?? 'PendingApproval');
 $allowed_statuses = ['PendingApproval', 'Initiated', 'Declined'];
 $status_filter = in_array($status, $allowed_statuses, true)
     ? "AND s.portal_request_submission_status = '" . escapeSql($status) . "'" : '';
@@ -38,12 +38,12 @@ $submissions = mysqli_query($mysqli, "SELECT s.portal_request_submission_id,
 <div class="card card-dark">
     <div class="card-header"><h3 class="card-title"><i class="fas fa-clipboard-check mr-2"></i>Portal Requests</h3></div>
     <div class="card-body">
-        <div class="btn-group mb-3"><a class="btn btn-sm <?= $status === '' ? 'btn-primary' : 'btn-outline-primary' ?>" href="portal_requests.php">All</a><?php foreach ($allowed_statuses as $filter) { ?><a class="btn btn-sm <?= $status === $filter ? 'btn-primary' : 'btn-outline-primary' ?>" href="?status=<?= escapeHtml($filter) ?>"><?= escapeHtml(portalRequestStatusLabel($filter)) ?></a><?php } ?></div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><p class="text-muted small mb-0">Pending approvals are shown first. Completed request history remains available when needed.</p><div class="btn-group"><a class="btn btn-sm <?= $status === 'all' ? 'btn-primary' : 'btn-outline-primary' ?>" href="?status=all">All</a><?php foreach ($allowed_statuses as $filter) { ?><a class="btn btn-sm <?= $status === $filter ? 'btn-primary' : 'btn-outline-primary' ?>" href="?status=<?= escapeHtml($filter) ?>"><?= escapeHtml(portalRequestStatusLabel($filter)) ?></a><?php } ?></div></div>
         <div class="table-responsive">
             <table class="table table-striped table-borderless">
                 <thead><tr><th>Request</th><th>Client / requester</th><th>Status</th><th>Submitted</th><th>Ticket</th><th class="text-right">Approval</th></tr></thead>
                 <tbody>
-                <?php while ($submission = mysqli_fetch_assoc($submissions)) {
+                <?php $submission_count = 0; while ($submission = mysqli_fetch_assoc($submissions)) { $submission_count++;
                     $submission_id = intval($submission['portal_request_submission_id']);
                     $definition = null;
                     $responses = [];
@@ -81,7 +81,7 @@ $submissions = mysqli_query($mysqli, "SELECT s.portal_request_submission_id,
                             <?php } ?>
                         </td>
                     </tr>
-                <?php } ?>
+                <?php } if (!$submission_count) { ?><tr><td colspan="6" class="text-center text-muted py-5"><i class="fas fa-check-circle fa-2x d-block mb-2"></i>No requests need attention in this view.</td></tr><?php } ?>
                 </tbody>
             </table>
         </div>

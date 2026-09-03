@@ -340,8 +340,8 @@ if (isset($_GET['ticket_id'])) {
         );
 
         // Keep long template runbooks usable without turning the ticket into an
-        // unbounded page. Active work is the default; history remains paged.
-        $task_page_size = 6;
+        // unbounded page. The next actionable task is the default; the complete
+        // runbook remains available as a horizontal overview.
         $task_counts = mysqli_fetch_assoc(mysqli_query(
             $mysqli,
             "SELECT COUNT(task_id) AS count,
@@ -357,19 +357,15 @@ if (isset($_GET['ticket_id'])) {
             ? $task_requested_view
             : ((!$ticket_is_resolved && $task_active_count) ? 'active' : 'all');
         $task_view_count = $task_view === 'active' ? $task_active_count : $task_total_count;
-        $task_total_pages = max(1, (int) ceil($task_view_count / $task_page_size));
-        $task_page = min(max(1, intval($_GET['ticket_task_page'] ?? 1)), $task_total_pages);
-        $task_page_start = ($task_page - 1) * $task_page_size;
+        $task_page_size = $task_view === 'all' ? max(1, $task_total_count) : 1;
+        $task_page_start = 0;
         $task_view_sql = $task_view === 'active'
             ? " AND task_completed_at IS NULL AND COALESCE(task_state, 'Ready') NOT IN ('Completed', 'Skipped')"
             : '';
-        $task_page_url = static function (int $page, string $view) use ($ticket_id, $client_id): string {
+        $task_view_url = static function (string $view) use ($ticket_id, $client_id): string {
             $params = ['ticket_id' => $ticket_id, 'ticket_task_view' => $view];
             if ($client_id) {
                 $params['client_id'] = $client_id;
-            }
-            if ($page > 1) {
-                $params['ticket_task_page'] = $page;
             }
             return 'ticket.php?' . http_build_query($params) . '#tasks';
         };
@@ -1220,23 +1216,57 @@ if (isset($_GET['ticket_id'])) {
                             <?php if ($task_total_count) { ?>
                                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-bottom bg-light">
                                     <div class="btn-group btn-group-sm" role="group" aria-label="Task view">
-                                        <a class="btn btn-<?= $task_view === 'active' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_page_url(1, 'active')) ?>">
-                                            Active <span class="badge badge-light ml-1"><?= $task_active_count ?></span>
+                                        <a class="btn btn-<?= $task_view === 'active' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_view_url('active')) ?>">
+                                            Current task <span class="badge badge-light ml-1"><?= $task_active_count ?></span>
                                         </a>
-                                        <a class="btn btn-<?= $task_view === 'all' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_page_url(1, 'all')) ?>">
-                                            All <span class="badge badge-light ml-1"><?= $task_total_count ?></span>
+                                        <a class="btn btn-<?= $task_view === 'all' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_view_url('all')) ?>">
+                                            Show all <span class="badge badge-light ml-1"><?= $task_total_count ?></span>
                                         </a>
                                     </div>
-                                    <span class="small text-muted">Up to <?= $task_page_size ?> tasks per page</span>
+                                    <span class="small text-muted"><?= $task_view === 'active' ? 'Completing this task automatically advances the runbook' : 'Scroll horizontally to review the complete runbook' ?></span>
                                 </div>
                             <?php } ?>
 
                             <?php if (!$task_count) { ?>
                                 <div class="px-3 py-3 text-muted small">
-                                    <?= $task_view === 'active' && $task_total_count ? 'No active tasks. Use All to review task history.' : 'No tasks on this ticket.' ?>
+                                    <?= $task_view === 'active' && $task_total_count ? 'No current task. Use Show all to review task history.' : 'No tasks on this ticket.' ?>
                                 </div>
                             <?php } ?>
 
+                            <style>
+                                .ticket-task-horizontal-scroll {
+                                    overflow-x: auto;
+                                    overscroll-behavior-inline: contain;
+                                    padding: .75rem;
+                                    scrollbar-gutter: stable;
+                                }
+                                .ticket-task-horizontal-scroll #tasks {
+                                    display: block;
+                                    width: max-content;
+                                    min-width: 100%;
+                                }
+                                .ticket-task-horizontal-scroll #tasks tbody {
+                                    display: flex;
+                                    align-items: stretch;
+                                    gap: .75rem;
+                                }
+                                .ticket-task-horizontal-scroll #tasks tr {
+                                    display: flex;
+                                    flex: 0 0 min(28rem, 82vw);
+                                    border: 1px solid var(--bs-border-color, #dee2e6);
+                                    border-radius: .5rem;
+                                    background: var(--bs-body-bg, #fff);
+                                    overflow: hidden;
+                                }
+                                .ticket-task-horizontal-scroll #tasks td:first-child {
+                                    flex: 1 1 auto;
+                                    min-width: 0;
+                                }
+                                .ticket-task-horizontal-scroll #tasks td:last-child {
+                                    flex: 0 0 auto;
+                                }
+                            </style>
+                            <div class="<?= $task_view === 'all' ? 'ticket-task-horizontal-scroll' : '' ?>"<?= $task_view === 'all' ? ' role="region" aria-label="All ticket tasks" tabindex="0"' : '' ?>>
                             <table class="table table-sm mb-0" id="tasks">
                                 <tbody>
                                 <?php
@@ -1389,7 +1419,7 @@ if (isset($_GET['ticket_id'])) {
                                         </td>
                                         <td class="px-2 text-end text-nowrap">
                                             <div class="btn-group">
-                                                <?php if (intval($task_row['task_runbook_version_task_id']) === 0 && $task_view === 'all' && $task_total_pages === 1) { ?>
+                                                <?php if (intval($task_row['task_runbook_version_task_id']) === 0 && $task_view === 'all') { ?>
                                                     <button class="btn btn-sm btn-link drag-handle" title="Drag to reorder"><i class="fas fa-bars text-muted"></i></button>
                                                 <?php } ?>
 
@@ -1434,20 +1464,12 @@ if (isset($_GET['ticket_id'])) {
                                 ?>
                                 </tbody>
                             </table>
+                            </div>
                             <?php if ($task_view_count) { ?>
                                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top ticket-task-overflow">
                                     <span class="small text-muted">
-                                        Showing <?= $task_page_start + 1 ?>&ndash;<?= min($task_page_start + $task_page_size, $task_view_count) ?> of <?= $task_view_count ?> <?= $task_view === 'active' ? 'active' : 'total' ?> tasks
+                                        <?= $task_view === 'active' ? 'Showing the current actionable task' : 'Showing all ' . $task_view_count . ' tasks in runbook order' ?>
                                     </span>
-                                    <?php if ($task_total_pages > 1) { ?>
-                                        <nav aria-label="Ticket task pages">
-                                            <ul class="pagination pagination-sm mb-0">
-                                                <li class="page-item <?= $task_page <= 1 ? 'disabled' : '' ?>"><a class="page-link" href="<?= escapeHtml($task_page_url($task_page - 1, $task_view)) ?>">Previous</a></li>
-                                                <li class="page-item disabled"><span class="page-link">Page <?= $task_page ?> of <?= $task_total_pages ?></span></li>
-                                                <li class="page-item <?= $task_page >= $task_total_pages ? 'disabled' : '' ?>"><a class="page-link" href="<?= escapeHtml($task_page_url($task_page + 1, $task_view)) ?>">Next</a></li>
-                                            </ul>
-                                        </nav>
-                                    <?php } ?>
                                 </div>
                             <?php } ?>
                         </div>

@@ -54,7 +54,7 @@ if (in_array('asset', $field_types, true)) {
         <i class="<?= escapeHtml($definition['icon']) ?> fa-2x text-primary mb-2" aria-hidden="true"></i>
         <h1><?= escapeHtml($definition['name']) ?></h1>
         <p><?= escapeHtml($definition['description']) ?></p>
-        <?php if ($definition['instructions']) { ?><div class="alert alert-light"><?= nl2br(escapeHtml($definition['instructions'])) ?></div><?php } ?>
+        <?php if ($definition['instructions']) { ?><details class="alert alert-light"><summary class="font-weight-bold" style="cursor: pointer;">Before you submit</summary><div class="mt-2"><?= nl2br(escapeHtml($definition['instructions'])) ?></div></details><?php } ?>
         <?php if ($definition['approval_rule'] !== 'none') { ?><p class="small text-muted"><i class="fas fa-user-check mr-1"></i>This request needs <?= escapeHtml(strtolower(portalRequestApprovalRules()[$definition['approval_rule']])) ?> before its ticket and workflow are created.</p><?php } ?>
     </div>
     <form action="post.php" method="post" autocomplete="off">

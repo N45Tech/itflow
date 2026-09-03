@@ -780,8 +780,8 @@ foreach ($coverage_rows as $coverage_row) {
         <?php } ?>
     </section>
 
-    <section class="n45-panel" id="identity-decisions" aria-labelledby="identity-decisions-heading">
-        <div class="n45-panel-heading"><div><h2 id="identity-decisions-heading">Recent mapping decisions</h2><p>Append-only automated and technician mapping-decision audit.</p></div></div>
+    <details class="n45-panel" id="identity-decisions">
+        <summary class="n45-panel-heading" style="cursor: pointer;"><div><h2 id="identity-decisions-heading">Mapping history</h2><p>Open when a discovery or identity decision needs to be traced.</p></div><span class="small text-muted">Show history</span></summary>
         <?php if (mysqli_num_rows($sql_mapping_decisions)) { ?>
             <div class="table-responsive">
                 <table class="table table-hover n45-ops-table mb-0">
@@ -803,14 +803,14 @@ foreach ($coverage_rows as $coverage_row) {
         <?php } else { ?>
             <div class="n45-empty-state"><i class="fas fa-history"></i><strong>No mapping decisions recorded</strong><span>The ledger begins with the next automated discovery or technician review.</span></div>
         <?php } ?>
-    </section>
+    </details>
 
     <div class="row">
         <div class="col-xl-7">
             <section class="n45-panel" id="recent-activity" aria-labelledby="activity-heading">
                 <div class="n45-panel-heading"><div><h2 id="activity-heading">Recent automation activity</h2><p>Processed signals, including recoveries and duplicate suppression.</p></div></div>
                 <?php if (mysqli_num_rows($sql_recent_events)) { ?>
-                    <div class="n45-activity-list">
+                    <div class="n45-activity-list" style="max-height: 32rem; overflow-y: auto;">
                         <?php while ($event = mysqli_fetch_assoc($sql_recent_events)) { ?>
                             <div class="n45-activity-row">
                                 <span class="n45-state-icon n45-state-<?= strtolower($event['automation_event_status'] ?? 'processed') === 'dead' ? 'danger' : (strtolower($event['automation_event_status'] ?? 'processed') === 'failed' ? 'warning' : (strtolower($event['automation_event_state']) === 'resolved' ? 'success' : (strtolower($event['automation_event_state']) === 'open' ? 'danger' : 'warning'))) ?>"><i class="fas <?= $source_icon($event['automation_event_source']) ?>"></i></span>
@@ -832,7 +832,7 @@ foreach ($coverage_rows as $coverage_row) {
             <section class="n45-panel" id="entity-mappings" aria-labelledby="mappings-heading">
                 <div class="n45-panel-heading"><div><h2 id="mappings-heading">Recently seen mappings</h2><p>Durable links that prevent duplicate clients, sites, and assets.</p></div></div>
                 <?php if (mysqli_num_rows($sql_recent_mappings)) { ?>
-                    <div class="n45-mapping-list">
+                    <div class="n45-mapping-list" style="max-height: 32rem; overflow-y: auto;">
                         <?php while ($mapping = mysqli_fetch_assoc($sql_recent_mappings)) {
                             $object_name = $mapping['asset_name'] ?: ($mapping['domain_name'] ?: ($mapping['location_name'] ?: $mapping['client_name']));
                             $object_url = '';

@@ -124,13 +124,18 @@ $readiness_denominator = is_array($readiness) ? intval($readiness['denominator']
 $readiness_score = is_array($readiness) && $readiness_denominator > 0
     ? intval($readiness['score_percent'])
     : null;
+$documentation_attention_count = array_sum(array_intersect_key(
+    $status_counts,
+    array_flip(['Missing', 'Draft', 'Due Soon', 'Stale', 'Exception'])
+));
+$documentation_current_count = intval($status_counts['Current'] ?? 0);
 
 ?>
 
 <div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
     <div>
-        <h1 class="h3 mb-1"><i class="fas fa-book-medical text-primary mr-2"></i>Documentation readiness</h1>
-        <p class="text-muted mb-0"><?= $client_id ? 'Required records, freshness, ownership, and evidence for this client.' : 'Your actionable documentation queue across authorized clients.' ?></p>
+        <h1 class="h3 mb-1"><i class="fas fa-folder-open text-primary mr-2"></i>Documentation overview</h1>
+        <p class="text-muted mb-0"><?= $client_id ? 'Keep the client document set useful, current, and easy to review.' : 'A simple view of documentation readiness across authorized clients.' ?></p>
     </div>
     <?php if ($client_id) { ?>
         <div class="text-right">
@@ -178,14 +183,34 @@ $readiness_score = is_array($readiness) && $readiness_denominator > 0
             <div class="form-group col-md-4">
                 <label for="documentationOwner">Owner</label>
                 <select class="form-control" id="documentationOwner" name="owner">
-                    <option value="mine" <?= $selected_owner === 'mine' ? 'selected' : '' ?>>My obligations</option>
-                    <option value="unassigned" <?= $selected_owner === 'unassigned' ? 'selected' : '' ?>>Unassigned</option>
-                    <option value="all" <?= $selected_owner === 'all' ? 'selected' : '' ?>>All owners</option>
+                    <option value="mine" <?= $selected_owner === 'mine' ? 'selected' : '' ?>>My review items</option>
+                    <option value="unassigned" <?= $selected_owner === 'unassigned' ? 'selected' : '' ?>>Needs an owner</option>
+                    <option value="all" <?= $selected_owner === 'all' ? 'selected' : '' ?>>Everyone</option>
                 </select>
             </div>
             <div class="form-group col-md-2"><button class="btn btn-primary btn-block"><i class="fas fa-filter mr-1"></i>Apply</button></div>
         </form>
 
+        <div class="card border-0 bg-light mb-3">
+            <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div>
+                    <h2 class="h6 mb-1">Review the document set during onboarding and recurring service reviews</h2>
+                    <p class="small text-muted mb-0">Attach the documents needed to deliver service, then use the QBR or service review to address anything missing or outdated.</p>
+                </div>
+                <div class="d-flex gap-3 text-center">
+                    <div><strong class="d-block h5 mb-0 text-warning"><?= $documentation_attention_count ?></strong><span class="small text-muted">Needs attention</span></div>
+                    <div><strong class="d-block h5 mb-0 text-success"><?= $documentation_current_count ?></strong><span class="small text-muted">Current</span></div>
+                    <div><strong class="d-block h5 mb-0"><?= array_sum($status_counts) ?></strong><span class="small text-muted">Total</span></div>
+                </div>
+            </div>
+        </div>
+
+        <details class="card mb-0">
+            <summary class="card-header bg-white d-flex justify-content-between align-items-center" style="cursor: pointer;">
+                <span><i class="fas fa-list-check mr-2 text-muted"></i>Document-level details</span>
+                <span class="small text-muted">Open only when a specific record needs attention</span>
+            </summary>
+            <div class="card-body">
         <div class="table-responsive">
             <table class="table table-hover table-sm">
                 <thead><tr><th>Requirement</th><?php if (!$client_id) { ?><th>Client</th><?php } ?><th>Status</th><th>Owner / reviewer</th><th>Review</th><th>Record</th><th class="text-right">Action</th></tr></thead>
@@ -206,7 +231,7 @@ $readiness_score = is_array($readiness) && $readiness_denominator > 0
                         <td class="text-right"><?php if ($obligation_id) { ?><a href="#" class="btn btn-sm btn-outline-primary ajax-modal" data-modal-size="lg" data-modal-url="modals/documentation/obligation.php?id=<?= $obligation_id ?>"><i class="fas fa-clipboard-check mr-1"></i>Review</a><?php } else { ?><form action="post.php" method="post" class="d-inline"><input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>"><input type="hidden" name="client_id" value="<?= $obligation_client_id ?>"><button class="btn btn-sm btn-outline-warning" name="reconcile_documentation_client"><i class="fas fa-sync-alt mr-1"></i>Reconcile pending</button></form><?php } ?></td>
                     </tr>
                 <?php } ?>
-                <?php if (!$obligations) { ?><tr><td colspan="7" class="text-center text-muted py-5"><i class="fas fa-check-circle fa-2x d-block mb-2"></i>No obligations match this view.</td></tr><?php } ?>
+                <?php if (!$obligations) { ?><tr><td colspan="7" class="text-center text-muted py-5"><i class="fas fa-check-circle fa-2x d-block mb-2"></i>No document details match this view.</td></tr><?php } ?>
                 </tbody>
             </table>
         </div>
@@ -222,6 +247,8 @@ $readiness_score = is_array($readiness) && $readiness_denominator > 0
                 <?php } ?>
             </div>
         <?php } ?>
+            </div>
+        </details>
     </div>
 </div>
 
