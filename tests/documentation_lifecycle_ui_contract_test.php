@@ -106,9 +106,9 @@ $assertNotContains('ticket_task_page', $ticket_page, 'Ticket task list still exp
 $assertContains('<details class="ticket-task-details', $ticket_page, 'Verbose task instructions are always expanded');
 $assertNotContains('show_all_ticket_tasks', $ticket_page, 'Ticket task list still exposes an unbounded show-all path');
 $assertContains('COUNT(task_id) AS count', $ticket_page, 'Ticket task pagination cannot determine the full task count');
-$assertContains('Documentation overview', $documentation_page, 'Documentation UI does not use the simplified overview');
-$assertContains('Review the document set during onboarding and recurring service reviews', $documentation_page, 'Documentation UI does not anchor review to operational workflows');
-$assertContains('Document-level details', $documentation_page, 'Detailed documentation records cannot be disclosed on demand');
+$assertContains('Documentation overview', $queue, 'Documentation UI does not use the simplified overview');
+$assertContains('Review the document set during onboarding and recurring service reviews', $queue, 'Documentation UI does not anchor review to operational workflows');
+$assertContains('Document-level details', $queue, 'Detailed documentation records cannot be disclosed on demand');
 
 $assertContains('documentationDocumentHasObligations($document_id)', $document_post, 'Canonical documents can be archived or deleted without a guard');
 $assertContains('documentationTicketHasAuditRecords($ticket_id)', $ticket_post, 'Tickets with documentation history can be permanently deleted');
