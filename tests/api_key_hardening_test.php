@@ -38,6 +38,12 @@ $admin = $read('admin/post/api_keys.php');
 $contains($schema, 'api_key_secret', 'API secrets are absent from the baseline schema');
 $contains($schema, 'varbinary(255) NOT NULL', 'API secrets are not binary in the baseline schema');
 $contains($schema, 'api_key_secret_unique', 'API secrets are not unique in the baseline schema');
+$ordered($validator, [
+    'require_once __DIR__ . "../../../config.php";',
+    "require_once dirname(__DIR__, 2) . '/includes/inc_set_timezone.php';",
+    "header('Content-Type: application/json');",
+    'api_key_expire > CURRENT_DATE()',
+], 'API requests do not establish the configured application timezone before authentication and writes');
 $ordered($migration, [
     'OCTET_LENGTH(api_key_secret) = 0',
     'GROUP BY BINARY api_key_secret HAVING duplicate_count > 1',

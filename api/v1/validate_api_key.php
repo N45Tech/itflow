@@ -9,6 +9,7 @@
 // Includes
 require_once __DIR__ . '../../../functions.php';
 require_once __DIR__ . "../../../config.php";
+require_once dirname(__DIR__, 2) . '/includes/inc_set_timezone.php';
 
 // JSON header
 header('Content-Type: application/json');

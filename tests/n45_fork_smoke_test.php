@@ -435,6 +435,7 @@ $automation_resolve_api = $read('api/v1/integrations/automation/resolve.php');
 $automation_service = $read('functions/automation.php');
 $automation_events = $read('functions/automation_events.php');
 $assertContains("preg_match('/^Bearer\\s+([^\\s]+)$/i'", $api_key, 'API bearer authentication is missing');
+$assertContains("require_once dirname(__DIR__, 2) . '/includes/inc_set_timezone.php';", $api_key, 'API requests do not inherit the configured application timezone');
 $assertContains("require __DIR__ . '/enforce_api_rbac.php';", $api_key, 'API authentication no longer enters shared RBAC');
 $assertContains("'automation'    => 'module_support'", $api_rbac, 'Automation API is not mapped to support permissions');
 $assertContains("require_once '../../require_post_method.php';", $automation_event_api, 'Automation event endpoint accepts unrestricted methods');
