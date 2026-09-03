@@ -44,6 +44,8 @@ $section = static function (string $contents, string $start, string $end) use (&
 $runbooks = $read('functions/runbooks.php');
 $tasks = $read('agent/post/task.php');
 $tickets = $read('agent/post/ticket.php');
+$agent_ticket = $read('agent/ticket.php');
+$task_edit = $read('agent/modals/ticket/ticket_task_edit.php');
 $client = $read('client/post.php');
 $guest = $read('guest/guest_post.php');
 $migration = $read('n45/migrations/n45-0010-versioned-runbooks.php');
@@ -79,6 +81,12 @@ if (substr_count($tasks, 'runbookRequireLockedTicketClient($locked_ticket, $clie
 }
 $assertContains('The requester cannot be the specific internal approver.', $runbooks, 'Specific internal routes permit requester self-approval');
 $assertContains("if (intval(\$approval['approval_created_by']) === \$session_user_id)", $tasks, 'Internal decisions permit requester self-approval');
+$assertOrdered(
+    $agent_ticket,
+    ["elseif (\$task_needs_approval && \$user_can_approve)", "elseif (\$task_state === 'Waiting')"],
+    'A waiting task hides the assigned internal approver decision controls'
+);
+$assertContains("if (lookupUserPermission('module_support') >= 3)", $task_edit, 'The task editor exposes the administrator-only approval manager to technicians');
 
 $resume = $section($tasks, "if (isset(\$_POST['resume_task']))", "if (isset(\$_POST['skip_runbook_task']))");
 $assertOrdered(

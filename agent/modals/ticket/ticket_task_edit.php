@@ -126,9 +126,11 @@ ob_start();
                             <td>
                                 <?php if ($approval_status !== 'approved') { ?>
                                     <?php if ($published_runbook_task) { ?>
-                                        <a class="ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $approval_id ?>">
-                                            <i class="fas fa-fw fa-route"></i>Manage
-                                        </a>
+                                        <?php if (lookupUserPermission('module_support') >= 3) { ?>
+                                            <a class="ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $approval_id ?>">
+                                                <i class="fas fa-fw fa-route"></i>Manage
+                                            </a>
+                                        <?php } ?>
                                     <?php } else { ?>
                                         <button type="submit" name="delete_ticket_task_approver" value="<?= $approval_id ?>"
                                                 class="btn btn-sm btn-link text-danger p-0" formnovalidate

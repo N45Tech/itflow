@@ -1277,25 +1277,27 @@ if (isset($_GET['ticket_id'])) {
 
                                                 <?php if ($task_state === 'Blocked') { ?>
                                                     <i class="fas fa-lock text-secondary" title="Blocked by incomplete prerequisites"></i>
+                                                <?php } elseif ($task_needs_approval && $user_can_approve) { ?>
+                                                    <i class="fas fa-shield-alt text-warning" title="Approval required"></i>
+
+                                                    <form action="post.php" method="post" class="d-inline">
+                                                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                                        <input type="hidden" name="task_id" value="<?= $task_id ?>">
+                                                        <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
+                                                        <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0" title="Approve" onclick="this.form.decision.value='approved'">
+                                                            <i class="fas fa-thumbs-up text-success"></i>
+                                                        </button>
+                                                        <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0 ms-1" title="Decline" onclick="this.form.decision.value='declined'">
+                                                            <i class="fas fa-thumbs-down text-danger"></i>
+                                                        </button>
+                                                        <input type="hidden" name="decision" value="approved">
+                                                    </form>
                                                 <?php } elseif ($task_state === 'Waiting') { ?>
                                                     <i class="fas fa-pause-circle text-warning" title="Waiting: <?= $task_waiting_reason ?>"></i>
                                                 <?php } elseif ($task_needs_approval) { ?>
                                                     <i class="fas fa-shield-alt text-warning" title="Approval required"></i>
 
-                                                    <?php if ($user_can_approve) { ?>
-                                                        <form action="post.php" method="post" class="d-inline">
-                                                            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                                            <input type="hidden" name="task_id" value="<?= $task_id ?>">
-                                                            <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
-                                                            <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0" title="Approve" onclick="this.form.decision.value='approved'">
-                                                                <i class="fas fa-thumbs-up text-success"></i>
-                                                            </button>
-                                                            <button type="submit" name="decide_ticket_task_approval" value="1" class="btn btn-link btn-sm p-0 ms-1" title="Decline" onclick="this.form.decision.value='declined'">
-                                                                <i class="fas fa-thumbs-down text-danger"></i>
-                                                            </button>
-                                                            <input type="hidden" name="decision" value="approved">
-                                                        </form>
-                                                    <?php } elseif ($declined_approval_id && lookupUserPermission('module_support') >= 3) { ?>
+                                                    <?php if ($declined_approval_id && lookupUserPermission('module_support') >= 3) { ?>
                                                         <a class="ajax-modal text-danger" href="#"
                                                            data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $declined_approval_id ?>"
                                                            title="Reroute or re-request this approval">
