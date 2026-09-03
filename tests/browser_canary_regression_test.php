@@ -4,6 +4,8 @@ $root = dirname(__DIR__);
 $obligation_modal = file_get_contents($root . '/agent/modals/documentation/obligation.php');
 $asset_view = file_get_contents($root . '/agent/asset.php');
 $network_observations = file_get_contents($root . '/agent/includes/inc_asset_network_observations.php');
+$side_nav = file_get_contents($root . '/agent/includes/side_nav.php');
+$custom_css = file_get_contents($root . '/css/itflow_custom.css');
 
 $failures = [];
 $assertContains = static function (string $needle, string $haystack, string $message) use (&$failures): void {
@@ -47,6 +49,23 @@ $assertContains('data-bs-target="#<?= $network_evidence_id ?>"', $network_observ
     'The source-observation disclosure does not target its Bootstrap 5 collapse panel');
 $assertNotContains('data-toggle="collapse"', $network_observations,
     'The source-observation disclosure still uses the removed Bootstrap collapse API');
+
+$assertContains('class="n45-sidebar-lockup n45-sidebar-lockup-light-bg"', $side_nav,
+    'The sidebar is missing its light-background lockup');
+$assertContains('class="n45-sidebar-lockup n45-sidebar-lockup-dark-bg"', $side_nav,
+    'The sidebar is missing its dark-background lockup');
+$assertContains('class="n45-sidebar-mark"', $side_nav,
+    'The sidebar is missing its collapsed mark');
+$assertContains('.app-sidebar .n45-sidebar-lockup-dark-bg,', $custom_css,
+    'The sidebar logo visibility rule does not target the AdminLTE 4 sidebar');
+$assertContains('.app-sidebar[data-bs-theme="dark"] .n45-sidebar-lockup-light-bg', $custom_css,
+    'The dark sidebar does not hide the dark-lettered lockup');
+$assertContains('.app-sidebar[data-bs-theme="dark"] .n45-sidebar-lockup-dark-bg', $custom_css,
+    'The dark sidebar does not show the light-lettered lockup');
+$assertContains('.sidebar-collapse .app-sidebar:not(:hover) .n45-sidebar-mark', $custom_css,
+    'The collapsed AdminLTE 4 sidebar does not show the compact mark');
+$assertNotContains('.main-sidebar .n45-sidebar-lockup', $custom_css,
+    'Sidebar logo rules still target the retired AdminLTE 3 sidebar class');
 
 $auth_script_start = strpos($asset_view, '<!-- JavaScript to Show/Hide Password Form Group -->');
 $auth_script_end = $auth_script_start === false ? false : strpos($asset_view, '</script>', $auth_script_start);
