@@ -127,6 +127,34 @@ function itflowReady(fn) {
     }
 }
 
+/* Normalize old and new Bootstrap modal exits without changing footer actions. */
+function itflowNormalizeModalControls(root) {
+    root.querySelectorAll('[data-dismiss="modal"]').forEach(function (control) {
+        control.setAttribute('data-bs-dismiss', 'modal');
+        if (control.tagName === 'BUTTON' && !control.hasAttribute('type')) {
+            control.type = 'button';
+        }
+    });
+    root.querySelectorAll('.modal-header button.close, .modal-header button.btn-close').forEach(function (control) {
+        control.type = 'button';
+        control.setAttribute('data-bs-dismiss', 'modal');
+        if (!control.getAttribute('aria-label')) {
+            control.setAttribute('aria-label', 'Close dialog');
+        }
+        control.querySelectorAll('span, i').forEach(function (icon) {
+            icon.setAttribute('aria-hidden', 'true');
+        });
+    });
+}
+
+itflowReady(function () { itflowNormalizeModalControls(document); });
+if (!window.itflowModalCloseBound) {
+    window.itflowModalCloseBound = true;
+    document.addEventListener('show.bs.modal', function (event) {
+        itflowNormalizeModalControls(event.target);
+    });
+}
+
 function itflowInit() {
     // Prevents resubmit on forms
     if (window.history.replaceState) {

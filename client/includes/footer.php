@@ -23,7 +23,7 @@
 <script src="/libs/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="/js/http.js"></script>
 <script src="/libs/tinymce/tinymce.min.js" referrerpolicy="origin"></script>
-<script src="/js/client_portal.js"></script>
+<script src="/js/client_portal.js?v=<?= filemtime(__DIR__ . '/../../js/client_portal.js') ?>"></script>
 <script src="/js/pretty_content.js"></script>
 <script src="/libs/sweetalert2/js/sweetalert2.min.js"></script>
 <script src="/js/confirm_modal.js"></script>

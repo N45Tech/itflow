@@ -335,8 +335,8 @@ if ($date_filter_active) {
         <?php if (lookupUserPermission("module_support") >= 2) { ?>
             <div class="card-tools">
                 <div class="btn-group">
-                    <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/ticket/ticket_add.php?<?= $client_url ?>" data-modal-size="lg">
-                        <i class="fas fa-plus"></i><span class="d-none d-lg-inline ms-2">New Ticket</span>
+                    <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/ticket/ticket_add.php?<?= $client_url ?>" data-modal-size="lg" aria-label="New ticket">
+                        <i class="fas fa-plus" aria-hidden="true"></i><span class="ms-2">New Ticket</span>
                     </button>
                     <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-label="More ticket actions"></button>
                     <div class="dropdown-menu dropdown-menu-end">
@@ -369,7 +369,7 @@ if ($date_filter_active) {
                     <div>
                         <div class="input-group">
                             <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Tickets" aria-label="Search tickets">
-                                <button class="btn <?= $hidden_filter_count ? 'btn-warning' : 'btn-secondary' ?>" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilter" title="Filters" aria-controls="advancedFilter" aria-expanded="false" aria-label="Show advanced filters">
+                                <button class="btn <?= $hidden_filter_count ? 'btn-warning' : 'btn-secondary' ?>" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilter" title="Filters" aria-controls="advancedFilter" aria-expanded="<?= $hidden_filter_count ? 'true' : 'false' ?>" aria-label="Toggle advanced filters">
                                     <i class="fas fa-filter"></i><?php if ($hidden_filter_count) { ?><span class="ms-1"><?= $hidden_filter_count ?></span><?php } ?>
                                 </button>
                                 <button class="btn btn-primary" type="submit" aria-label="Search tickets"><i class="fa fa-search"></i></button>
@@ -380,11 +380,11 @@ if ($date_filter_active) {
                 <div class="col-sm-8">
                     <div class="btn-group float-sm-end">
                         <a href="<?= $ticket_assigned_filter_id === intval($session_user_id) ? ticketsFilterUrl(['assigned' => null]) : ticketsFilterUrl(['assigned' => $session_user_id]) ?>"
-                            class="btn <?= $ticket_assigned_filter_id === intval($session_user_id) ? 'btn-primary' : 'btn-outline-primary' ?>">
+                            class="btn <?= $ticket_assigned_filter_id === intval($session_user_id) ? 'btn-primary' : 'btn-outline-primary' ?>" aria-label="Filter tickets assigned to me">
                             <i class="fas fa-fw fa-user"></i><span class="d-none d-xl-inline ms-2">Mine</span> | <strong><?= $user_active_assigned_tickets ?></strong>
                         </a>
                         <a href="<?= $ticket_assigned_filter_id === 0 ? ticketsFilterUrl(['assigned' => null]) : ticketsFilterUrl(['assigned' => 'unassigned']) ?>"
-                            class="btn <?= $ticket_assigned_filter_id === 0 ? 'btn-danger' : 'btn-outline-danger' ?>">
+                            class="btn <?= $ticket_assigned_filter_id === 0 ? 'btn-danger' : 'btn-outline-danger' ?>" aria-label="Filter unassigned tickets">
                             <i class="fas fa-fw fa-exclamation-triangle"></i><span class="d-none d-xl-inline ms-2">Unassigned</span> | <strong><?= $total_tickets_unassigned ?></strong>
                         </a>
                         <a href="<?= ticketsFilterUrl(['view' => $view == 'kanban' ? 'list' : 'kanban']) ?>" class="btn btn-outline-dark ms-2" title="Switch to the <?= $view == 'kanban' ? 'list' : 'kanban' ?> view">

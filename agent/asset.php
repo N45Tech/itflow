@@ -154,7 +154,8 @@ if (isset($_GET['asset_id'])) {
             }
 
             $asset_tag_id_array[] = $asset_tag_id;
-            $asset_tag_name_display_array[] = "<a href='client_assets.php?client_id=$client_id&q=$asset_tag_name'><span class='badge text-light p-1 me-1' style='background-color: $asset_tag_color;'><i class='fa fa-fw fa-$asset_tag_icon me-2'></i>$asset_tag_name</span></a>";
+            $asset_tag_query = rawurlencode((string) $row['tag_name']);
+            $asset_tag_name_display_array[] = "<a href='assets.php?client_id=$client_id&q=$asset_tag_query'><span class='badge text-light p-1 me-1' style='background-color: $asset_tag_color;'><i class='fa fa-fw fa-$asset_tag_icon me-2'></i>$asset_tag_name</span></a>";
         }
         $asset_tags_display = implode('', $asset_tag_name_display_array);
 

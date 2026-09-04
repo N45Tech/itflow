@@ -105,6 +105,9 @@ document.addEventListener('click', function (e) {
                     '</div>' +
                 '</div>';
             host.appendChild(wrapper);
+            if (typeof itflowNormalizeModalControls === 'function') {
+                itflowNormalizeModalControls(wrapper);
+            }
 
             // innerHTML does not execute <script> tags, so they have to be
             // re-injected. They must also run IN ORDER: a modal payload loads

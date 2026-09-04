@@ -88,10 +88,16 @@ if ($tickets) {
 
         <div class="text-center text-secondary py-5">
             <i class="fas fa-fw fa-life-ring fa-2x mb-3"></i>
-            <p class="mb-1">No tickets match these filters.</p>
+            <p class="mb-1"><?= $active_filters ? 'No tickets match these filters.' : ($state === 'open' ? 'No open tickets in this view.' : 'No tickets in this view yet.') ?></p>
             <?php if ($active_filters) { ?>
                 <a href="<?= escapeHtml('?' . http_build_query(array_filter(array('client_id' => $_GET['client_id'] ?? null, 'view' => 'list')))) ?>">Clear the filters</a>
             <?php } ?>
+            <div class="d-flex justify-content-center flex-wrap gap-2 mt-3">
+                <?php if (lookupUserPermission('module_support') >= 2) { ?>
+                    <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/ticket/ticket_add.php?<?= $client_url ?>" data-modal-size="lg">New ticket</button>
+                <?php } ?>
+                <a class="btn btn-light" href="<?= escapeHtml('?' . http_build_query(array_filter(['client_id' => $_GET['client_id'] ?? null, 'view' => 'list', 'state' => 'all', 'canned_date' => 'custom']))) ?>">Browse all tickets</a>
+            </div>
         </div>
 
     <?php } else { ?>

@@ -6142,3 +6142,370 @@ label,
         grid-template-columns: 1fr;
     }
 }
+
+/* Shared modal exits: Bootstrap 4 text crosses and Bootstrap 5 image buttons
+   must use the same hit area and foreground on the themed header. */
+.modal-header {
+    --n45-modal-close-color: var(--n45-ink, #17332f);
+}
+
+.modal-header.bg-primary,
+.modal-header.bg-secondary,
+.modal-header.bg-success,
+.modal-header.bg-danger {
+    --n45-modal-close-color: #fff;
+}
+
+.modal-header button.close,
+.modal-header button.btn-close {
+    align-self: center;
+    background: transparent !important;
+    border: 1px solid transparent;
+    border-radius: .5rem;
+    box-shadow: none;
+    color: var(--n45-modal-close-color) !important;
+    cursor: pointer;
+    display: inline-block;
+    filter: none !important;
+    flex: 0 0 2.75rem;
+    font-size: 0;
+    height: 2.75rem;
+    margin: -.375rem -.375rem -.375rem auto;
+    opacity: 1;
+    padding: 0 !important;
+    position: relative;
+    text-shadow: none;
+    width: 2.75rem;
+}
+
+.modal-header button.close > span,
+.modal-header button.close > i,
+.modal-header button.btn-close > span,
+.modal-header button.btn-close > i {
+    display: none;
+}
+
+.modal-header button.close::before,
+.modal-header button.close::after,
+.modal-header button.btn-close::before,
+.modal-header button.btn-close::after {
+    background: currentColor;
+    border-radius: 1px;
+    content: '';
+    height: 2px;
+    left: 50%;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    width: 1.125rem;
+}
+
+.modal-header button.close::after,
+.modal-header button.btn-close::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.modal-header button.close:not(:disabled):hover,
+.modal-header button.btn-close:not(:disabled):hover {
+    background: rgba(112, 133, 128, .16) !important;
+}
+
+.modal-header button.close:focus-visible,
+.modal-header button.btn-close:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+.modal-header button.close:disabled,
+.modal-header button.btn-close:disabled {
+    cursor: not-allowed;
+    opacity: .5;
+}
+
+.n45-client-portal .modal-header {
+    --n45-modal-close-color: var(--n45-portal-white, #fff);
+    background: var(--n45-portal-mountain, #163d38) !important;
+}
+
+.n45-client-portal .modal-header .modal-title,
+.n45-client-portal .modal-header.bg-dark .text-white,
+.n45-client-portal .modal-header button.close,
+.n45-client-portal .modal-header button.btn-close {
+    color: var(--n45-portal-white, #fff) !important;
+}
+
+/* Agreement setup is a focused page, rather than a long modal. */
+.n45-agreement-setup {
+    color: var(--n45-ink, #17332f);
+    margin: 0 auto 2rem;
+    max-width: 70rem;
+}
+
+.n45-agreement-heading {
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: space-between;
+    margin: .5rem 0 1.5rem;
+}
+
+.n45-agreement-heading h1 {
+    font-size: clamp(1.6rem, 2.4vw, 2rem);
+    font-weight: 700;
+    margin-bottom: .45rem;
+}
+
+.n45-agreement-setup p {
+    max-width: 72ch;
+}
+
+.n45-agreement-heading p,
+.n45-agreement-setup small,
+.n45-agreement-help {
+    color: var(--n45-muted, #536b64);
+}
+
+.n45-agreement-setup small {
+    display: block;
+    line-height: 1.5;
+    margin-top: .35rem;
+}
+
+.n45-agreement-client {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .8rem;
+}
+
+.n45-agreement-client span {
+    color: var(--n45-muted, #536b64);
+    font-size: .85rem;
+}
+
+.n45-agreement-steps {
+    border-bottom: 1px solid var(--n45-border, #d7e1de);
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    padding: .5rem 0 1rem;
+}
+
+.n45-agreement-steps button {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: .5rem;
+    color: inherit;
+    display: inline-flex;
+    gap: .5rem;
+    min-height: 2.75rem;
+    padding: .5rem .75rem;
+}
+
+.n45-agreement-steps button span {
+    font-variant-numeric: tabular-nums;
+    opacity: .8;
+}
+
+.n45-agreement-steps button[aria-current="step"] {
+    background: var(--n45-ink, #17332f);
+    color: #fff;
+    font-weight: 650;
+}
+
+.n45-agreement-steps button:hover:not([aria-current]) {
+    background: var(--n45-surface-subtle, #edf3ef);
+}
+
+.n45-agreement-setup [data-setup-step],
+.n45-agreement-client-picker {
+    background: var(--n45-surface, #fff);
+    padding: clamp(1rem, 3vw, 2rem);
+}
+
+.n45-agreement-setup h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0 0 .6rem;
+}
+
+.n45-agreement-setup h3 {
+    font-size: 1.05rem;
+    font-weight: 650;
+    margin: 1.75rem 0 .65rem;
+}
+
+.n45-agreement-fields {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 1.5rem;
+}
+
+.n45-agreement-wide {
+    grid-column: 1 / -1;
+}
+
+.n45-agreement-setup label {
+    font-size: .875rem;
+    font-weight: 600;
+}
+
+.n45-agreement-setup .form-control {
+    height: auto;
+    min-height: 2.75rem;
+    min-width: 0;
+}
+
+.n45-agreement-setup textarea {
+    resize: vertical;
+}
+
+.n45-agreement-coverage-row,
+.n45-agreement-sla-row,
+.n45-agreement-exception {
+    align-items: start;
+    display: grid;
+    gap: 1rem;
+    padding: 1rem 0;
+}
+
+.n45-agreement-coverage-row {
+    grid-template-columns: minmax(8rem, 1fr) minmax(0, 1.5fr) minmax(0, 1fr);
+}
+
+.n45-agreement-sla-row {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+}
+
+.n45-agreement-coverage-row + .n45-agreement-coverage-row,
+.n45-agreement-sla-row + .n45-agreement-sla-row,
+.n45-agreement-exception + .n45-agreement-exception {
+    border-top: 1px solid var(--n45-border, #d7e1de);
+}
+
+.n45-agreement-exception {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, .85fr) minmax(0, 1fr) auto;
+}
+
+.n45-agreement-exception > button {
+    align-self: end;
+    min-height: 2.75rem;
+}
+
+.n45-agreement-help {
+    font-size: .85rem;
+    margin: 1rem 0;
+}
+
+.n45-agreement-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem 1rem;
+}
+
+.n45-agreement-days legend {
+    font-size: .875rem;
+    font-weight: 600;
+    margin-bottom: .4rem;
+}
+
+.n45-agreement-days label {
+    align-items: center;
+    display: inline-flex;
+    gap: .35rem;
+    min-height: 2.75rem;
+}
+
+.n45-agreement-days input {
+    accent-color: var(--n45-ink, #17332f);
+    height: 1.125rem;
+    width: 1.125rem;
+}
+
+.n45-agreement-actions {
+    align-items: center;
+    background: var(--n45-surface, #fff);
+    border-top: 1px solid var(--n45-border, #d7e1de);
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    justify-content: space-between;
+    padding: 1rem clamp(1rem, 3vw, 2rem);
+}
+
+.n45-agreement-actions > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+
+.n45-agreement-summary-group + .n45-agreement-summary-group {
+    border-top: 1px solid var(--n45-border, #d7e1de);
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+}
+
+.n45-agreement-summary-group > div {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.n45-agreement-summary-group h3 {
+    margin: 0;
+}
+
+.n45-agreement-summary-group dl {
+    display: grid;
+    gap: .6rem 1.5rem;
+    grid-template-columns: minmax(8rem, 1fr) minmax(0, 3fr);
+}
+
+.n45-agreement-summary-group dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.n45-agreement-setup :is(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid var(--n45-ink, #17332f);
+    outline-offset: 3px;
+}
+
+.n45-agreement-setup [hidden] {
+    display: none !important;
+}
+
+@media (max-width: 991.98px) {
+    .n45-agreement-sla-row,
+    .n45-agreement-exception {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 575.98px) {
+    .n45-agreement-fields,
+    .n45-agreement-coverage-row,
+    .n45-agreement-sla-row,
+    .n45-agreement-exception,
+    .n45-agreement-summary-group dl {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .n45-agreement-steps button {
+        font-size: .8rem;
+        padding: .5rem;
+    }
+
+    .n45-agreement-summary-group dd {
+        margin-bottom: .65rem;
+    }
+
+    .n45-agreement-exception > button {
+        justify-self: end;
+    }
+}

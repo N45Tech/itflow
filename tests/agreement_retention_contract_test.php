@@ -54,6 +54,7 @@ $sla = $read('functions/sla.php');
 $ticket_post = $read('agent/post/ticket.php');
 $client_post = $read('agent/post/client.php');
 $agreement_post = $read('agent/post/agreement.php');
+$agreement_setup = $read('functions/agreement_setup.php');
 
 $client_lock = $section(
     $agreements,
@@ -216,12 +217,20 @@ $add_agreement = $section(
     'agreement creation writer'
 );
 $assertOrdered($add_agreement, [
+    'enforceClientAccess($client_id)',
+    'agreementCreateFromSetup($_POST, $client_id, intval($session_user_id))',
+], 'Agreement setup must enforce client access before invoking the retained writer');
+$assertOrdered($agreement_setup, [
     'mysqli_begin_transaction($mysqli)',
     'agreementLockClientForAuditRetention($client_id)',
-    'INSERT INTO contracts',
-    'INSERT INTO agreement_version_events',
+    "agreementSetupInsert('contracts'",
+    "agreementSetupInsert('agreement_versions'",
+    "agreementSetupInsert('agreement_entitlements'",
+    "agreementSetupInsert('agreement_sla_rules'",
+    "agreementSetupInsert('agreement_version_events'",
     'mysqli_commit($mysqli)',
 ], 'Agreement creation reads a client outside its retained write lock');
+$assertContains('mysqli_rollback($mysqli)', $agreement_setup, 'Incomplete agreement setup must roll back all definition rows');
 
 $single_delete = $section(
     $ticket_post,

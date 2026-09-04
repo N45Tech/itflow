@@ -49,9 +49,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, 'SELECT FOUND_ROWS()'));
         <h3 class="card-title mt-2"><i class="fas fa-fw fa-file-contract mr-2"></i>Agreements</h3>
         <div class="card-tools">
             <?php if (lookupUserPermission('module_support') >= 2) { ?>
-                <button type="button" class="btn btn-primary ajax-modal"
-                    data-modal-url="modals/agreement/agreement_add.php?<?= $client_url ?>"
-                    data-modal-size="lg"><i class="fas fa-plus mr-2"></i>New Agreement</button>
+                <a class="btn btn-primary" href="agreement_create.php?<?= $client_url ?>"><i class="fas fa-plus mr-2" aria-hidden="true"></i>New Agreement</a>
             <?php } ?>
         </div>
     </div>

@@ -151,7 +151,8 @@ if (isset($_GET['contact_id'])) {
         }
 
         $contact_tag_id_array[] = $contact_tag_id;
-        $contact_tag_name_display_array[] = "<a href='client_contacts.php?client_id=$client_id&q=$contact_tag_name'><span class='badge text-light p-1 me-1' style='background-color: $contact_tag_color;'><i class='fa fa-fw fa-$contact_tag_icon me-2'></i>$contact_tag_name</span></a>";
+        $contact_tag_query = rawurlencode((string) $row['tag_name']);
+        $contact_tag_name_display_array[] = "<a href='contacts.php?client_id=$client_id&q=$contact_tag_query'><span class='badge text-light p-1 me-1' style='background-color: $contact_tag_color;'><i class='fa fa-fw fa-$contact_tag_icon me-2'></i>$contact_tag_name</span></a>";
     }
     $contact_tags_display = implode('', $contact_tag_name_display_array);
 

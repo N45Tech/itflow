@@ -7,6 +7,17 @@
     var scrim = document.querySelector('.n45-portal-scrim');
     var stage = document.querySelector('.n45-portal-stage');
 
+    // Portal pages do not load the technician app initializer.
+    function labelModalExits(root) {
+        root.querySelectorAll('.modal-header button.close, .modal-header button.btn-close').forEach(function (button) {
+            button.type = 'button';
+            button.setAttribute('data-bs-dismiss', 'modal');
+            if (!button.getAttribute('aria-label')) button.setAttribute('aria-label', 'Close dialog');
+        });
+    }
+    labelModalExits(document);
+    document.addEventListener('show.bs.modal', function (event) { labelModalExits(event.target); });
+
     document.querySelectorAll('.n45-portal-route .table').forEach(function (table) {
         var tableBody = table.querySelector('tbody');
         if (tableBody && tableBody.children.length === 0) {
@@ -46,6 +57,7 @@
         scrim.setAttribute('tabindex', isOpen ? '0' : '-1');
 
         if (isOpen) {
+            sidebar.removeAttribute('inert');
             sidebar.removeAttribute('aria-hidden');
             stage.setAttribute('inert', '');
             var firstLink = sidebar.querySelector('a, summary');
@@ -55,8 +67,10 @@
         } else {
             stage.removeAttribute('inert');
             if (isMobileLayout()) {
+                sidebar.setAttribute('inert', '');
                 sidebar.setAttribute('aria-hidden', 'true');
             } else {
+                sidebar.removeAttribute('inert');
                 sidebar.removeAttribute('aria-hidden');
             }
         }
@@ -74,6 +88,19 @@
     });
 
     document.addEventListener('keydown', function (event) {
+        if (event.key === 'Tab' && body.classList.contains('n45-portal-menu-open')) {
+            var focusable = Array.from(sidebar.querySelectorAll('a[href], summary, button:not([disabled]), [tabindex="0"]'))
+                .filter(function (element) { return element.getClientRects().length > 0; });
+            var first = focusable[0];
+            var last = focusable[focusable.length - 1];
+            if (first && event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (last && !event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        }
         if (event.key === 'Escape' && body.classList.contains('n45-portal-menu-open')) {
             setMenuOpen(false);
             menuButton.focus();

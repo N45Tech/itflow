@@ -4,11 +4,25 @@ require_once 'includes/inc_all_client.php';
 
 enforceUserPermission('module_support');
 
-$year = intval($_GET['year'] ?? date('Y'));
+$year = max(1000, min(9999, intval($_GET['year'] ?? date('Y'))));
 $years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(service_review_period_end) AS review_year
     FROM service_reviews
     WHERE service_review_client_id = $client_id
     ORDER BY review_year DESC");
+$review_years = [$year => $year, intval(date('Y')) => intval(date('Y'))];
+while ($review_year_row = mysqli_fetch_assoc($years)) {
+    $review_year_value = intval($review_year_row['review_year']);
+    if ($review_year_value > 0) $review_years[$review_year_value] = $review_year_value;
+}
+krsort($review_years);
+$scheduled_agreement = mysqli_fetch_assoc(agreementDbQuery("SELECT contract_id, contract_name, contract_next_review_at
+    FROM contracts JOIN agreement_versions ON agreement_version_id = contract_published_version_id
+        AND agreement_version_contract_id = contract_id
+    WHERE contract_client_id = $client_id AND contract_status = 'Active' AND contract_archived_at IS NULL
+        AND agreement_version_status = 'Published'
+        AND (contract_start_date IS NULL OR contract_start_date <= CURDATE())
+        AND (contract_end_date IS NULL OR contract_end_date >= CURDATE())
+    ORDER BY agreement_version_published_at DESC, contract_id DESC LIMIT 1", 'Could not load the review schedule'));
 $reviews_sql = mysqli_query($mysqli, "SELECT service_review_id, service_review_period_start,
     service_review_period_end, service_review_status, service_review_summary,
     service_review_snapshot_hash, agreement_version_name
@@ -47,8 +61,14 @@ while ($review = mysqli_fetch_assoc($reviews_sql)) {
 <div class="card border-left border-success mb-3">
     <div class="card-body py-3 d-flex flex-wrap justify-content-between align-items-center">
         <div>
-            <strong>Reviews follow the active agreement schedule.</strong>
-            <div class="small text-muted">Use the generated review as the meeting agenda. Capture one outcome, then create tickets only for work that needs an owner.</div>
+            <?php if ($scheduled_agreement) { ?>
+                <strong>Reviews follow the active agreement schedule.</strong>
+                <div class="small text-muted">Next review: <?= escapeHtml($scheduled_agreement['contract_next_review_at'] ?: 'Not scheduled') ?>. Use the review as the meeting agenda and create tickets only for work that needs an owner.</div>
+            <?php } else { ?>
+                <strong>No active agreement is scheduling reviews.</strong>
+                <div class="small text-muted">Set the review cadence during agreement setup. Existing completed reviews remain available below.</div>
+                <?php if (lookupUserPermission('module_support') >= 2) { ?><a class="btn btn-primary mt-2" href="agreement_create.php?client_id=<?= $client_id ?>">Set up an agreement</a><?php } ?>
+            <?php } ?>
         </div>
         <div class="d-flex mt-3 mt-lg-0">
             <div class="text-center px-3"><strong class="d-block h4 mb-0"><?= $draft_reviews ?></strong><span class="small text-muted">Ready</span></div>
@@ -64,8 +84,7 @@ while ($review = mysqli_fetch_assoc($reviews_sql)) {
             <input type="hidden" name="client_id" value="<?= $client_id ?>">
             <label class="sr-only" for="businessReviewYear">Review year</label>
             <select class="form-control" id="businessReviewYear" name="year" onchange="this.form.submit()">
-                <?php if (!mysqli_num_rows($years)) { ?><option><?= $year ?></option><?php } ?>
-                <?php while ($row = mysqli_fetch_assoc($years)) { $review_year = intval($row['review_year']); ?>
+                <?php foreach ($review_years as $review_year) { ?>
                     <option value="<?= $review_year ?>" <?= $year === $review_year ? 'selected' : '' ?>><?= $review_year ?></option>
                 <?php } ?>
             </select>
@@ -76,7 +95,7 @@ while ($review = mysqli_fetch_assoc($reviews_sql)) {
             <div class="text-center text-muted py-5 px-3">
                 <i class="far fa-calendar-check fa-2x d-block mb-2"></i>
                 <strong class="d-block text-body">No reviews for <?= $year ?></strong>
-                <span>The first review will appear here when it is due under the active agreement.</span>
+                <span><?= $scheduled_agreement ? 'Scheduled review drafts appear here when due. Use the year selector to browse earlier reviews.' : 'Activate an agreement to schedule the first review, or choose another year to browse existing reviews.' ?></span>
             </div>
         <?php } else { ?>
             <div class="list-group list-group-flush">

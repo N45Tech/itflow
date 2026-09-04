@@ -80,68 +80,17 @@ if ($agreement_action !== null) {
 
     try {
         if ($agreement_action === 'add_agreement') {
+            require_once __DIR__ . '/../../functions/agreement_setup.php';
             $client_id = intval($_POST['client_id'] ?? 0);
             enforceClientAccess($client_id);
-            $name_value = trim((string) ($_POST['name'] ?? ''));
-            $type_value = trim((string) ($_POST['type'] ?? 'Managed Services'));
-            if ($name_value === '' || $type_value === '') {
-                throw new RuntimeException('Agreement name and type are required');
-            }
-            $effective_from = $agreement_date($_POST['effective_from'] ?? '', 'Effective-from date');
-            $effective_until = $agreement_date($_POST['effective_until'] ?? '', 'Effective-until date');
-            if ($effective_from && $effective_until && $effective_until < $effective_from) {
-                throw new RuntimeException('Effective-until date must not precede effective-from date');
-            }
-            $cadence = max(1, min(24, intval($_POST['review_cadence_months'] ?? 3)));
-            $notice = max(0, min(365, intval($_POST['renewal_notice_days'] ?? 90)));
-            $name = mysqli_real_escape_string($mysqli, substr($name_value, 0, 255));
-            $type = mysqli_real_escape_string($mysqli, substr($type_value, 0, 50));
-            $support_hours = mysqli_real_escape_string($mysqli, substr(trim((string) ($_POST['support_hours'] ?? '')), 0, 100));
-            $details = mysqli_real_escape_string($mysqli, trim((string) ($_POST['details'] ?? '')));
-            $from_sql = is_null($effective_from) ? 'NULL' : "'$effective_from'";
-            $until_sql = is_null($effective_until) ? 'NULL' : "'$effective_until'";
-
-            mysqli_begin_transaction($mysqli);
-            try {
-                $client = agreementLockClientForAuditRetention($client_id);
-                if (!$client || !empty($client['client_archived_at'])) {
-                    throw new RuntimeException('Select an active client');
-                }
-                $client_name = mysqli_real_escape_string($mysqli, $client['client_name']);
-                agreementDbQuery("INSERT INTO contracts SET contract_name = '$name',
-                    contract_status = 'Draft', contract_type = '$type', contract_details = '$details',
-                    contract_client_id = $client_id, contract_client_name = '$client_name',
-                    contract_support_hours = '$support_hours', contract_start_date = $from_sql,
-                    contract_end_date = $until_sql, contract_review_cadence_months = $cadence",
-                    'Could not create the agreement');
-                $contract_id = intval(mysqli_insert_id($mysqli));
-                agreementDbQuery("INSERT INTO agreement_versions SET
-                    agreement_version_contract_id = $contract_id,
-                    agreement_version_number = 1, agreement_version_name = '$name',
-                    agreement_version_type = '$type', agreement_version_effective_from = $from_sql,
-                    agreement_version_effective_until = $until_sql,
-                    agreement_version_support_hours = '$support_hours',
-                    agreement_version_review_cadence_months = $cadence,
-                    agreement_version_renewal_notice_days = $notice,
-                    agreement_version_details = '$details',
-                    agreement_version_created_by = $session_user_id",
-                    'Could not create the initial agreement draft');
-                $version_id = intval(mysqli_insert_id($mysqli));
-                agreementDbQuery("INSERT INTO agreement_version_events SET
-                    agreement_version_event_contract_id = $contract_id,
-                    agreement_version_event_version_id = $version_id,
-                    agreement_version_event_action = 'Drafted',
-                    agreement_version_event_actor_id = $session_user_id,
-                    agreement_version_event_reason = 'Initial agreement draft created'",
-                    'Could not record agreement creation');
-                mysqli_commit($mysqli);
-            } catch (Throwable $e) {
-                mysqli_rollback($mysqli);
-                throw $e;
-            }
-
-            logAudit('Agreement', 'Create', "$session_name created agreement $name_value", $client_id, $contract_id);
-            flashAlert("Agreement <strong>" . escapeHtml($name_value) . "</strong> created as draft");
+            $return_url = "agreement_create.php?client_id=$client_id";
+            $_SESSION['agreement_setup_input'] = agreementSetupRememberInput($_POST);
+            $created = agreementCreateFromSetup($_POST, $client_id, intval($session_user_id));
+            $contract_id = $created['contract_id'];
+            $version_id = $created['version_id'];
+            unset($_SESSION['agreement_setup_input'], $_SESSION['agreement_setup_error']);
+            logAudit('Agreement', 'Create', "$session_name created agreement " . $created['name'], $client_id, $contract_id);
+            flashAlert('Complete agreement draft saved with coverage, SLA targets, support hours and review cadence. Review it below, then publish when approved.');
             redirect("agreement.php?agreement_id=$contract_id&version_id=$version_id");
         }
 
@@ -510,6 +459,9 @@ if ($agreement_action !== null) {
             redirect($return_url);
         }
     } catch (Throwable $e) {
+        if ($agreement_action === 'add_agreement') {
+            $_SESSION['agreement_setup_error'] = $e->getMessage();
+        }
         logApp('Agreement', 'error', $agreement_action . ' failed: ' . $e->getMessage());
         flashAlert(escapeHtml($e->getMessage()), 'error');
         redirect($return_url);
