@@ -285,6 +285,18 @@ return [
                 'altered_indexes' => [],
                 'legacy_bridge_index_overrides' => [],
             ],
+            'n45-0018-portal-business-review-access' => [
+                'module' => 'portal',
+                'legacy_version' => null,
+                'data_change' => false,
+                'rollback' => 'Disable portal business-review access and restore the pre-upgrade database snapshot before reverting application code.',
+                'created_tables' => [],
+                'altered_columns' => [
+                    'contacts' => ['contact_portal_review_access'],
+                ],
+                'altered_indexes' => [],
+                'legacy_bridge_index_overrides' => [],
+            ],
         ],
     ],
     'features' => [
@@ -368,7 +380,10 @@ return [
         ],
         'portal' => [
             'runtime_files' => [],
-            'migrations' => ['n45-0005-portal-access-scopes'],
+            'migrations' => [
+                'n45-0005-portal-access-scopes',
+                'n45-0018-portal-business-review-access',
+            ],
             'toggleable' => false,
             'reason' => 'Portal authorization scopes are fail-closed access controls.',
         ],
@@ -1869,6 +1884,18 @@ return [
                     "SELECT COUNT(*) FROM automation_event_dispatch_outbox WHERE automation_dispatch_status <> 'Processing' AND (automation_dispatch_processing_at IS NOT NULL OR automation_dispatch_lease_token IS NOT NULL)",
                     "SELECT COUNT(*) FROM automation_event_dispatch_outbox WHERE (automation_dispatch_status = 'Delivered') <> (automation_dispatch_delivered_at IS NOT NULL)",
                 ],
+            ],
+        ],
+        'n45-0018-portal-business-review-access' => [
+            'module' => 'portal', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0018-portal-business-review-access.php',
+            'summary' => 'Add explicit portal access for completed business reviews and their client discussion.',
+            'data_change' => false,
+            'rollback' => 'Disable portal business-review access and restore the pre-upgrade database snapshot before reverting application code.',
+            'fingerprint' => [
+                'columns' => ['contacts' => [
+                    'contact_portal_review_access' => $column_fingerprint('tinyint(1)', false, 0),
+                ]],
             ],
         ],
     ],

@@ -8,7 +8,7 @@ $assertContains = static function (string $needle, string $haystack, string $mes
 };
 
 $schema = file_get_contents(__DIR__ . '/../db.sql');
-$migration = file_get_contents(__DIR__ . '/../admin/database_updates/2.7.9.php');
+$migration = file_get_contents(__DIR__ . '/../n45/migrations/n45-0018-portal-business-review-access.php');
 $functions = file_get_contents(__DIR__ . '/../client/functions.php');
 $header = file_get_contents(__DIR__ . '/../client/includes/header.php');
 $reviews = file_get_contents(__DIR__ . '/../client/reviews.php');
@@ -18,7 +18,7 @@ $agent_review = file_get_contents(__DIR__ . '/../agent/service_review.php');
 $client_nav = file_get_contents(__DIR__ . '/../agent/includes/client_side_nav.php');
 
 $assertContains('contact_portal_review_access', $schema, 'The baseline schema is missing the review permission');
-$assertContains('contact_portal_review_access', $migration, 'The production migration is missing the review permission');
+$assertContains('contact_portal_review_access', $migration, 'The stable N45 migration is missing the review permission');
 $assertContains("case 'service_reviews'", $functions, 'The portal capability is not fail-closed behind a named permission');
 $assertContains("=== 'client'", $functions, 'Business reviews are not restricted to portal managers');
 $assertContains('/client/reviews.php', $header, 'Business reviews are missing from portal navigation');

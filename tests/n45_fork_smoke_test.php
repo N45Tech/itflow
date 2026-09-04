@@ -114,6 +114,7 @@ $assertTrue(
         'n45-0015-documentation-evidence-reference-index',
         'n45-0016-release-safety-hardening',
         'n45-0017-automation-action-outbox',
+        'n45-0018-portal-business-review-access',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -132,8 +133,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0017-automation-action-outbox',
-    'The automation action-outbox migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0018-portal-business-review-access',
+    'The portal business-review migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -160,6 +161,16 @@ $assertTrue(
 $assertTrue(
     in_array('n45-0017-automation-action-outbox', $manifest['modules']['automation']['migrations'] ?? [], true),
     'The durable action outbox is not owned by the automation module'
+);
+$portal_review_migration = $manifest['migrations']['n45-0018-portal-business-review-access'] ?? [];
+$assertTrue(
+    ($portal_review_migration['fingerprint']['columns']['contacts']['contact_portal_review_access'] ?? null)
+        !== null,
+    'The portal business-review migration does not fingerprint its permission column'
+);
+$assertTrue(
+    in_array('n45-0018-portal-business-review-access', $manifest['modules']['portal']['migrations'] ?? [], true),
+    'The business-review permission is not owned by the portal module'
 );
 
 $manifest_migration_files = array_map(

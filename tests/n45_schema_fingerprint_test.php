@@ -48,6 +48,7 @@ $required_migration_prefix = [
     'n45-0015-documentation-evidence-reference-index.php',
     'n45-0016-release-safety-hardening.php',
     'n45-0017-automation-action-outbox.php',
+    'n45-0018-portal-business-review-access.php',
 ];
 $disk_migration_files = array_map('basename', glob($root . '/n45/migrations/*.php') ?: []);
 sort($disk_migration_files);
@@ -79,6 +80,7 @@ $assertTrue(
         'n45-0015-documentation-evidence-reference-index',
         'n45-0016-release-safety-hardening',
         'n45-0017-automation-action-outbox',
+        'n45-0018-portal-business-review-access',
     ],
     'The post-integration migration reservations are missing'
 );
@@ -198,9 +200,10 @@ unset(
     $skipped_reservation['n45-0014-agreement-entitlements'],
     $skipped_reservation['n45-0015-documentation-evidence-reference-index'],
     $skipped_reservation['n45-0016-release-safety-hardening'],
-    $skipped_reservation['n45-0017-automation-action-outbox']
+    $skipped_reservation['n45-0017-automation-action-outbox'],
+    $skipped_reservation['n45-0018-portal-business-review-access']
 );
-$skipped_reservation['n45-0018-future-feature'] = ['legacy_version' => null];
+$skipped_reservation['n45-0019-future-feature'] = ['legacy_version' => null];
 $assertThrows(
     static function () use ($skipped_reservation): void {
         n45AssertMigrationNamespaceReservations($skipped_reservation);
@@ -559,6 +562,17 @@ foreach (($automation_outbox_fingerprint['indexes']['automation_event_dispatch_o
     $assertTrue($comparison === [], 'The automation outbox index contract does not match db.sql for '
         . $index . ': ' . implode('; ', $comparison));
 }
+
+$portal_review_fingerprint = $definitions['n45-0018-portal-business-review-access']['fingerprint'] ?? [];
+$portal_review_column = $portal_review_fingerprint['columns']['contacts']['contact_portal_review_access'] ?? [];
+$comparison = n45CompareColumnFingerprint(
+    'db.sql', 'contacts', 'contact_portal_review_access', $portal_review_column,
+    $baselineColumns('contacts')['contact_portal_review_access'] ?? null
+);
+$assertTrue(
+    $comparison === [],
+    'The portal business-review permission contract does not match db.sql: ' . implode('; ', $comparison)
+);
 
 $expected_agreement_tables = [
     'agreement_versions',
