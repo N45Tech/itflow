@@ -13,8 +13,8 @@
                     $related_document_name = escapeHtml($row['document_name']);
                     ?>
                     <p>
-                        <i class="fas fa-fw fa-document text-secondary"></i>
-                        <?= $related_document_name ?> <a href="client_documents.php?q=<?= $related_document_name ?>"><?= $related_document_name ?></a>
+                        <i class="fas fa-fw fa-file-alt text-secondary" aria-hidden="true"></i>
+                        <a href="document.php?client_id=<?= intval($client_id) ?>&document_id=<?= $related_document_id ?>"><?= $related_document_name ?></a>
                     </p>
                 <?php } ?>
             </div>

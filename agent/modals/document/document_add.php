@@ -2,7 +2,10 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_support', 2);
+
 $client_id = intval($_GET['client_id'] ?? 0);
+enforceClientAccess($client_id);
 $contact_id = intval($_GET['contact_id'] ?? 0);
 $asset_id = intval($_GET['asset_id'] ?? 0);
 intval($_GET['folder_id'] ?? 0);
@@ -22,11 +25,13 @@ ob_start();
     <div class="modal-body">
 
         <div class="mb-3">
-            <input type="text" class="form-control" name="name" placeholder="Name" maxlength="200" required autofocus>
+            <label for="new-document-name">Document name</label>
+            <input id="new-document-name" type="text" class="form-control" name="name" placeholder="Name" maxlength="200" required autofocus>
         </div>
 
         <div class="mb-3">
-            <textarea class="form-control tinymce" name="content"></textarea>
+            <label for="new-document-content">Content</label>
+            <textarea id="new-document-content" class="form-control tinymce" name="content"></textarea>
         </div>
 
         <div class="mb-3">

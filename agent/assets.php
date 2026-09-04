@@ -220,7 +220,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/asset/asset_add.php?<?= $client_url ?>&type=<?= $type_filter ?>">
                     <i class="fas fa-plus me-2"></i>New <?php if ($type_filter) { echo ucwords($type_filter); } else { echo "Asset"; } ?>
                 </button>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
+                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-label="More asset actions"></button>
                 <div class="dropdown-menu">
                     <?php if ($client_url) { ?>
                     <a class="dropdown-item text-dark ajax-modal" href="#"
@@ -252,13 +252,13 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <div class="col-md-3">
                     <div class="input-group">
                         <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search <?php if (!empty($_GET['type'])) { echo ucwords(stripslashes(escapeHtml($_GET['type']))); } else { echo "Asset"; } ?>s">
-                            <button class="btn btn-dark"><i class="fa fa-search"></i></button>
+                            <button class="btn btn-dark" aria-label="Search assets"><i class="fa fa-search" aria-hidden="true"></i></button>
                     </div>
                 </div>
                 <?php if ($client_url) { ?>
                 <div class="col-md-2">
                     <div class="input-group">
-                        <select class="form-select select2" name="location" onchange="this.form.submit()">
+                        <select class="form-select select2" name="location" onchange="this.form.submit()" aria-label="Filter assets by location">
                             <option value="">- All Locations -</option>
 
                             <?php
@@ -311,7 +311,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <?php } ?>
                 <div class="col-md-2">
                     <div class="input-group">
-                        <select onchange="this.form.submit()" class="form-select select2" name="tags[]" data-placeholder="- Select Tags -" multiple>
+                        <select onchange="this.form.submit()" class="form-select select2" name="tags[]" data-placeholder="- Select Tags -" multiple aria-label="Filter assets by tags">
 
                             <?php
                             $sql_tags_filter = mysqli_query($mysqli, "
@@ -465,7 +465,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <tr>
                     <td class="checkbox-column border-end">
                         <div class="form-check">
-                            <input class="form-check-input" id="selectAllCheckbox" type="checkbox" onclick="checkAll(this)">
+                            <input class="form-check-input" id="selectAllCheckbox" type="checkbox" onclick="checkAll(this)" aria-label="Select all displayed assets">
                         </div>
                     </td>
                     <th>
@@ -663,7 +663,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     <tr>
                         <td class="checkbox-column bg-light border-end">
                             <div class="form-check">
-                                <input class="form-check-input bulk-select" type="checkbox" name="asset_ids[]" value="<?= $asset_id ?>">
+                                <input class="form-check-input bulk-select" type="checkbox" name="asset_ids[]" value="<?= $asset_id ?>" aria-label="Select asset <?= $asset_name ?>">
                             </div>
                         </td>
                         <td>
@@ -751,7 +751,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                         <td class="text-center">
                             <div class="btn-group">
                                 <div class="dropdown dropstart text-center">
-                                    <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown"><i class="fas fa-ellipsis-h"></i></button>
+                                    <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-label="Actions for <?= $asset_name ?>"><i class="fas fa-ellipsis-h" aria-hidden="true"></i></button>
                                     <div class="dropdown-menu">
                                         <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/asset/asset_edit.php?id=<?= $asset_id ?>">
                                             <i class="fas fa-fw fa-edit me-2"></i>Edit

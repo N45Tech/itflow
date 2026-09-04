@@ -1266,11 +1266,11 @@ function applyTicketSla(
 // in the email, so the wording only has to give the right impression - a
 // remainder under five minutes is dropped rather than rendering the likes of
 // "1 business hour 1 minute".
-function formatSlaMinutes($minutes)
+function formatSlaMinutes($minutes, ?array $calendar = null)
 {
     $minutes = intval($minutes);
 
-    $sla_settings = getSlaSettings();
+    $sla_settings = is_null($calendar) ? getSlaSettings() : slaNormalizeCalendarSnapshot($calendar);
     $day_start = $sla_settings['business_hours_start'];
     $day_end = $sla_settings['business_hours_end'];
 
@@ -1327,8 +1327,10 @@ function getTicketSlaEmailNotice($ticket_id, $company_phone = '')
 
     $ticket_id = intval($ticket_id);
 
-    $sql = mysqli_query($mysqli, "SELECT ticket_priority, ticket_response_due_at, sla_response_minutes
-        FROM tickets
+    $sql = mysqli_query($mysqli, "SELECT ticket_priority, ticket_response_due_at, sla_response_minutes,
+        ticket_sla_response_minutes_snapshot, ticket_sla_calendar_mode,
+        ticket_sla_business_days, ticket_sla_business_hours_start, ticket_sla_business_hours_end,
+        ticket_sla_timezone FROM tickets
         LEFT JOIN slas ON ticket_sla_id = sla_id
         WHERE ticket_id = $ticket_id LIMIT 1");
     if (!$sql || !mysqli_num_rows($sql)) {
@@ -1336,7 +1338,7 @@ function getTicketSlaEmailNotice($ticket_id, $company_phone = '')
     }
     $row = mysqli_fetch_assoc($sql);
 
-    $response_minutes = intval($row['sla_response_minutes']);
+    $response_minutes = intval(slaTicketTargetMinutes($row, 'response'));
 
     if (empty($row['ticket_response_due_at']) || $response_minutes <= 0) {
         return '';
@@ -1345,8 +1347,10 @@ function getTicketSlaEmailNotice($ticket_id, $company_phone = '')
     // The only value in this notice that comes from the database rather than a
     // literal - escaped so the quote-free guarantee above holds for it too
     $priority = escapeHtml($row['ticket_priority']);
-    $target = formatSlaMinutes($response_minutes);
-    $due = date('D j M, g:i A', strtotime($row['ticket_response_due_at']));
+    $calendar = slaCalendarFromTicket($row);
+    $target = formatSlaMinutes($response_minutes, $calendar);
+    $due = escapeHtml(slaAppTimestampInstant($row['ticket_response_due_at'])
+        ->setTimezone(new DateTimeZone($calendar['timezone']))->format('D j M, g:i A T'));
 
     $notice = "<br><br>Priority: $priority<br>Target response: within $target (by $due)";
 

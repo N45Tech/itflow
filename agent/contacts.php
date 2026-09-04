@@ -97,7 +97,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/contact/contact_add.php?client_id=<?= $client_id ?>">
                     <i class="fas fa-plus me-2"></i>New Contact
                 </button>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
+                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-label="More contact actions"></button>
                 <div class="dropdown-menu">
                     <?php if ($client_url) { ?>
 <!--                    <a class="dropdown-item text-dark" href="#" data-bs-toggle="modal" data-bs-target="#contactInviteModal"><i class="fas fa-fw fa-paper-plane me-2"></i>Invite</a>-->
@@ -127,13 +127,13 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <div class="col-md-4">
                     <div class="input-group">
                         <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Contacts">
-                            <button class="btn btn-dark"><i class="fa fa-search"></i></button>
+                            <button class="btn btn-dark" aria-label="Search contacts"><i class="fa fa-search" aria-hidden="true"></i></button>
                     </div>
                 </div>
 
                 <div class="col-md-3">
                     <div class="input-group">
-                        <select onchange="this.form.submit()" class="form-select select2" name="tags[]" data-placeholder="- Select Tags -" multiple>
+                        <select onchange="this.form.submit()" class="form-select select2" name="tags[]" data-placeholder="- Select Tags -" multiple aria-label="Filter contacts by tags">
 
                             <?php
                             $sql_tags_filter = mysqli_query($mysqli, "
@@ -160,7 +160,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <?php if ($client_url) { ?>
                 <div class="col-md-2">
                     <div class="input-group">
-                        <select class="form-select select2" name="location" onchange="this.form.submit()">
+                        <select class="form-select select2" name="location" onchange="this.form.submit()" aria-label="Filter contacts by location">
                             <option value="">- All Locations -</option>
 
                             <?php
@@ -296,7 +296,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <tr>
                     <td class="checkbox-column border-end">
                         <div class="form-check">
-                            <input class="form-check-input" id="selectAllCheckbox" type="checkbox" onclick="checkAll(this)">
+                            <input class="form-check-input" id="selectAllCheckbox" type="checkbox" onclick="checkAll(this)" aria-label="Select all displayed contacts">
                         </div>
                     </td>
                     <th>
@@ -469,7 +469,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     <tr>
                         <td class="checkbox-column bg-light border-end">
                             <div class="form-check">
-                                <input class="form-check-input bulk-select" type="checkbox" name="contact_ids[]" value="<?= $contact_id ?>">
+                                <input class="form-check-input bulk-select" type="checkbox" name="contact_ids[]" value="<?= $contact_id ?>" aria-label="Select contact <?= $contact_name ?>">
                             </div>
                         </td>
                         <td>
@@ -512,7 +512,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                         <?php } ?>
                         <td>
                             <div class="dropdown dropstart text-center">
-                                <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown">
+                                <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-label="Actions for <?= $contact_name ?>">
                                     <i class="fas fa-ellipsis-h"></i>
                                 </button>
                                 <div class="dropdown-menu">

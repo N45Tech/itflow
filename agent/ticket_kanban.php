@@ -84,10 +84,16 @@ $kanban = array_values($statuses);
                 <p class="mb-1">The board has no column for these tickets - closed tickets are not shown on the kanban.</p>
                 <a href="<?= ticketsFilterUrl(['view' => 'list']) ?>">Show them in the list</a>
             <?php } else { ?>
-                <p class="mb-1">No tickets match these filters.</p>
+                <p class="mb-1"><?= $active_filters ? 'No tickets match these filters.' : 'No active tickets on this board.' ?></p>
                 <?php if ($active_filters) { ?>
                     <a href="<?= escapeHtml('?' . http_build_query(array_filter(array('client_id' => $_GET['client_id'] ?? null, 'view' => 'kanban')))) ?>">Clear the filters</a>
                 <?php } ?>
+                <div class="d-flex justify-content-center flex-wrap gap-2 mt-3">
+                    <?php if (lookupUserPermission('module_support') >= 2) { ?>
+                        <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/ticket/ticket_add.php?<?= $client_url ?>" data-modal-size="lg">New ticket</button>
+                    <?php } ?>
+                    <a class="btn btn-light" href="<?= escapeHtml('?' . http_build_query(array_filter(['client_id' => $_GET['client_id'] ?? null, 'view' => 'list', 'state' => 'all', 'canned_date' => 'custom']))) ?>">Browse all tickets</a>
+                </div>
             <?php } ?>
         </div>
     </div>

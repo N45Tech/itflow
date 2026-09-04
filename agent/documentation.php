@@ -139,6 +139,7 @@ $documentation_current_count = intval($status_counts['Current'] ?? 0);
     </div>
 </div>
 
+<?php if ($client_id) { require 'includes/inc_client_document_library.php'; } else { ?>
 <div class="card mb-3">
     <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
         <div>
@@ -148,17 +149,18 @@ $documentation_current_count = intval($status_counts['Current'] ?? 0);
         <div class="d-flex gap-4 text-center">
             <div><strong class="d-block h4 mb-0 text-warning"><?= $documentation_attention_count ?></strong><span class="small text-muted">Review</span></div>
             <div><strong class="d-block h4 mb-0 text-success"><?= $documentation_current_count ?></strong><span class="small text-muted">Current</span></div>
-            <div><strong class="d-block h4 mb-0"><?= array_sum($status_counts) ?></strong><span class="small text-muted">Attached</span></div>
+            <div><strong class="d-block h4 mb-0"><?= array_sum($status_counts) ?></strong><span class="small text-muted">Tracked requirements</span></div>
         </div>
     </div>
 </div>
 
-<div class="card card-dark collapsed-card">
-    <div class="card-header py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-sliders-h mr-2"></i>Document maintenance</h3>
-        <div class="card-tools"><button class="btn btn-tool" type="button" data-lte-toggle="card-collapse" aria-label="Show document maintenance"><i class="fas fa-chevron-up"></i></button></div>
-    </div>
-    <div class="card-body" style="display: none;">
+<?php } ?>
+<details class="card card-dark">
+    <summary class="card-header py-3">
+        <span class="font-weight-bold">Document maintenance</span>
+        <span class="small text-muted ml-2">Optional document-level review controls</span>
+    </summary>
+    <div class="card-body">
         <form method="get" class="form-row align-items-end mb-3">
             <?php if ($client_id) { ?><input type="hidden" name="client_id" value="<?= $client_id ?>"><?php } ?>
             <div class="form-group col-md-4">
@@ -196,12 +198,12 @@ $documentation_current_count = intval($status_counts['Current'] ?? 0);
             </div>
         </div>
 
-        <details class="card mb-0">
-            <summary class="card-header bg-white d-flex justify-content-between align-items-center" style="cursor: pointer;">
+        <section class="mb-0">
+            <div class="d-flex justify-content-between align-items-center mb-3">
                 <span><i class="fas fa-list-check mr-2 text-muted"></i>Document-level details</span>
                 <span class="small text-muted">Open only when a specific record needs attention</span>
-            </summary>
-            <div class="card-body">
+            </div>
+            <div>
         <div class="table-responsive">
             <table class="table table-hover table-sm">
                 <thead><tr><th>Requirement</th><?php if (!$client_id) { ?><th>Client</th><?php } ?><th>Status</th><th>Owner / reviewer</th><th>Review</th><th>Record</th><th class="text-right">Action</th></tr></thead>
@@ -239,8 +241,8 @@ $documentation_current_count = intval($status_counts['Current'] ?? 0);
             </div>
         <?php } ?>
             </div>
-        </details>
+        </section>
     </div>
-</div>
+</details>
 
 <?php require_once '../includes/footer.php'; ?>

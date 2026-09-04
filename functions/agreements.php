@@ -1425,8 +1425,10 @@ function agreementPublishVersion(int $version_id, int $actor_id, string $reason 
         if (!$locked_client || !empty($locked_client['client_archived_at'])) {
             throw new RuntimeException('An agreement must belong to an active client before publication');
         }
-        agreementDbQuery("SELECT contract_id FROM contracts WHERE contract_id = $contract_id LIMIT 1 FOR UPDATE",
-            'Could not lock the agreement for publication');
+        $locked_contract = mysqli_fetch_assoc(agreementDbQuery("SELECT contract_id,
+            contract_published_version_id, contract_review_cadence_months, contract_next_review_at
+            FROM contracts WHERE contract_id = $contract_id LIMIT 1 FOR UPDATE",
+            'Could not lock the agreement for publication'));
         $version = agreementVersionContext($version_id, true);
         if (!$version || intval($version['contract_client_id']) !== $client_id) {
             throw new RuntimeException('Agreement version not found');
@@ -1616,8 +1618,12 @@ function agreementPublishVersion(int $version_id, int $actor_id, string $reason 
         $end_sql = empty($version['agreement_version_effective_until'])
             ? 'NULL' : "'" . mysqli_real_escape_string($mysqli, $version['agreement_version_effective_until']) . "'";
         $cadence = $definition_cadence;
-        $review_anchor = $today;
-        $next_review = agreementShiftCalendarMonths($review_anchor, $cadence);
+        // An unrelated amendment must not keep postponing the client's QBR.
+        $keep_review_date = !empty($locked_contract['contract_published_version_id'])
+            && !empty($locked_contract['contract_next_review_at'])
+            && intval($locked_contract['contract_review_cadence_months']) === $cadence;
+        $next_review = $keep_review_date ? $locked_contract['contract_next_review_at']
+            : agreementShiftCalendarMonths($today, $cadence);
 
         agreementDbQuery("UPDATE contracts SET
             contract_name = '$name', contract_type = '$type', contract_status = 'Active',

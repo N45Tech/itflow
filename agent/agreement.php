@@ -110,7 +110,7 @@ $default_period_start = agreementShiftCalendarMonths(
 
 <div class="card card-dark">
     <div class="card-header py-2">
-        <h3 class="card-title mt-2">Definition v<?= intval($version['agreement_version_number']) ?>
+        <h3 class="card-title mt-2">Agreement terms v<?= intval($version['agreement_version_number']) ?>
             <span class="badge badge-<?= $version_badge ?> ml-2"><?= escapeHtml($version['agreement_version_status']) ?></span>
         </h3>
         <div class="card-tools">
@@ -190,9 +190,9 @@ $default_period_start = agreementShiftCalendarMonths(
 <div class="row">
     <div class="col-lg-7">
         <div class="card card-dark">
-            <div class="card-header"><h3 class="card-title"><i class="fas fa-fw fa-tasks mr-2"></i>Entitlements and Exclusions</h3></div>
+            <div class="card-header"><h3 class="card-title"><i class="fas fa-fw fa-tasks mr-2"></i>Coverage &amp; exclusions</h3></div>
             <div class="card-body">
-                <p class="text-muted small">Ticket classification starts with the selected request-type/SLA rule, then resolves every configured user, device, service, location, and hours scope. Exact record or semantic-key clauses take precedence over broad <code>*</code> clauses; an uncovered configured scope fails closed as excluded, and a broad quantity overage becomes billable.</p>
+                <p class="text-muted small">Coverage determines whether work is included, billable or excluded. Specific records override the baseline for their area. If any applicable area is excluded, the ticket carries no SLA; exceeding an area's quantity limit makes its coverage billable.</p>
                 <div class="table-responsive">
                     <table class="table table-sm table-striped">
                         <thead><tr><th>Scope</th><th>Classification</th><th>Limit</th><th>Notes</th><?php if ($can_edit) { ?><th></th><?php } ?></tr></thead>
@@ -248,9 +248,9 @@ $default_period_start = agreementShiftCalendarMonths(
 
     <div class="col-lg-5">
         <div class="card card-dark">
-            <div class="card-header"><h3 class="card-title"><i class="fas fa-fw fa-stopwatch mr-2"></i>SLA Decision Rules</h3></div>
+            <div class="card-header"><h3 class="card-title"><i class="fas fa-fw fa-stopwatch mr-2"></i>Service levels</h3></div>
             <div class="card-body">
-                <p class="text-muted small">Precedence is exact request + priority, exact request, exact priority, then the <code>* / *</code> default. Targets, calendar, and classification are snapshotted on the rule. Entitlements may make the final classification stricter. Descriptive support-hours text is never parsed.</p>
+                <p class="text-muted small">Each rule keeps the agreed targets and support calendar. These saved values govern ticket deadlines, not later changes to a shared profile. Specific request and priority rules take precedence over defaults. Changing the descriptive support-hours label above does not change these calendars.</p>
                 <div class="alert alert-light small py-2">
                     <strong>Operational matrix v1:</strong>
                     included = SLA eligible / remote / non-billable;
@@ -272,7 +272,16 @@ $default_period_start = agreementShiftCalendarMonths(
                                         <div class="small text-muted">
                                             <?= intval($rule['agreement_sla_rule_response_minutes']) ?>m response /
                                             <?= is_null($rule['agreement_sla_rule_resolution_minutes']) ? 'no resolution target' : intval($rule['agreement_sla_rule_resolution_minutes']) . 'm resolution' ?>;
-                                            <?= escapeHtml($rule['agreement_sla_rule_calendar_mode']) ?>
+                                            <?= $rule['agreement_sla_rule_calendar_mode'] === 'business_hours' ? 'business hours' : escapeHtml($rule['agreement_sla_rule_calendar_mode']) ?>
+                                        </div>
+                                        <div class="small text-muted">
+                                            <?php if ($rule['agreement_sla_rule_calendar_mode'] === 'business_hours') {
+                                                $day_names = [1 => 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                                                $rule_days = array_map(static fn($day) => $day_names[intval($day)] ?? '', explode(',', (string) $rule['agreement_sla_rule_business_days'])); ?>
+                                                <?= escapeHtml(implode(', ', $rule_days)) ?>
+                                                <?= escapeHtml(substr((string) $rule['agreement_sla_rule_business_hours_start'], 0, 5)) ?>-<?= escapeHtml(substr((string) $rule['agreement_sla_rule_business_hours_end'], 0, 5)) ?>;
+                                            <?php } ?>
+                                            <?= escapeHtml($rule['agreement_sla_rule_timezone']) ?>
                                         </div>
                                     <?php } ?>
                                 </td>
@@ -302,7 +311,7 @@ $default_period_start = agreementShiftCalendarMonths(
                     <form action="post.php" method="post">
                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                         <input type="hidden" name="version_id" value="<?= $version_id ?>">
-                        <div class="form-group"><label>Request type key</label><input class="form-control" name="request_type_key" value="*" maxlength="100"><small class="text-muted">Use <code>*</code> for every request type. Goal 7 catalog keys plug in here directly.</small></div>
+                        <div class="form-group"><label>Request type key</label><input class="form-control" name="request_type_key" value="*" maxlength="100"><small class="text-muted">Use <code>*</code> for every request type, or a specific request-catalog key. New rules use the selected profile's targets and the current company calendar.</small></div>
                         <div class="form-row">
                             <div class="form-group col-md-6"><label>Priority</label><select class="form-control" name="priority"><option>*</option><?php foreach (array_keys(ticketPriorityDefinitions()) as $priority) { ?><option><?= $priority ?></option><?php } ?></select></div>
                             <div class="form-group col-md-6"><label>SLA</label><select class="form-control" name="sla_id"><option value="0">None</option><?php mysqli_data_seek($slas, 0); while ($sla = mysqli_fetch_assoc($slas)) { ?><option value="<?= intval($sla['sla_id']) ?>"><?= escapeHtml($sla['sla_name']) ?></option><?php } ?></select></div>

@@ -454,7 +454,7 @@ if (isset($_GET['query'])) {
                                 <tr>
                                     <td><a href="document.php?client_id=<?= $client_id ?>&document_id=<?= $document_id ?>"><?= $document_name ?></a></td>
                                     <td>
-                                        <a href="documents.php?client_id=<?= $client_id ?>"><?= $client_name ?></a>
+                                        <a href="documentation.php?client_id=<?= $client_id ?>"><?= $client_name ?></a>
                                     </td>
                                 </tr>
 
