@@ -190,6 +190,14 @@
     color: var(--n45-ink, #172033);
 }
 
+.ticket-disclosure-toggle i {
+    transition: transform 160ms ease-out;
+}
+
+.ticket-disclosure-toggle[aria-expanded="true"] i {
+    transform: rotate(180deg);
+}
+
 .ticket-task-horizontal-scroll {
     overflow-x: auto;
     overscroll-behavior-inline: contain;
@@ -263,8 +271,8 @@
 .ticket-task-guidance {
     max-width: 70rem;
     padding: .75rem;
-    border-left: 3px solid var(--n45-accent, #167f70);
-    border-radius: 0 .45rem .45rem 0;
+    border: 1px solid color-mix(in srgb, var(--n45-accent, #167f70) 28%, var(--bs-border-color, #dee2e6));
+    border-radius: .45rem;
     background: var(--bs-secondary-bg);
     color: var(--n45-ink, #172033);
 }

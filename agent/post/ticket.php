@@ -3639,14 +3639,38 @@ if (isset($_GET['resolve_ticket'])) {
 
 }
 
+if (isset($_POST['terminal_ticket'])) {
+    $_GET['close_ticket'] = intval($_POST['ticket_id'] ?? 0);
+}
+
 if (isset($_GET['close_ticket'])) {
 
     validateCSRFToken();
 
     enforceUserPermission('module_support', 2);
 
-    $ticket_id = intval($_GET['close_ticket']);
-    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+    $ticket_id = isset($_POST['terminal_ticket']) ? intval($_POST['ticket_id'] ?? 0) : intval($_GET['close_ticket']);
+    $terminal_action = isset($_POST['terminal_ticket']) ? ($_POST['terminal_action'] ?? '') : 'close';
+    $terminal_reason = trim($_POST['terminal_reason'] ?? '');
+    if (!in_array($terminal_action, ['close', 'cancel'], true)) {
+        flashAlert('Unknown ticket action', 'error');
+        redirect();
+    }
+    if (isset($_POST['terminal_ticket']) && $terminal_reason === '') {
+        flashAlert('A closure or cancellation reason is required', 'error');
+        redirect();
+    }
+
+    $is_cancel = $terminal_action === 'cancel';
+    $ticket_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id, ticket_number, ticket_prefix
+        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+    if (!$ticket_row) {
+        flashAlert('Ticket not found', 'error');
+        redirect();
+    }
+    $client_id = intval($ticket_row['ticket_client_id']);
+    $ticket_prefix = escapeSql($ticket_row['ticket_prefix']);
+    $ticket_number = intval($ticket_row['ticket_number']);
 
     // Don't Enforce Client Access if Ticket doesn't have an assigned client
     if ($client_id) {
@@ -3654,38 +3678,47 @@ if (isset($_GET['close_ticket'])) {
     }
 
     $transaction_started = false;
-    $close_error_message = 'The ticket could not be closed because it changed while the request was being processed';
+    $close_error_message = 'The ticket could not be ' . ($is_cancel ? 'cancelled' : 'closed') . ' because it changed while the request was being processed';
     try {
         if (!mysqli_begin_transaction($mysqli)) {
             throw new RuntimeException('Could not begin the ticket close transaction');
         }
         $transaction_started = true;
 
-        // Close is a Resolved -> Closed transition, so lock the resolved row
-        // directly (the open-ticket helper deliberately rejects status 4).
         documentationLockClientTicket($ticket_id, $client_id);
         $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
-        if (!$locked_ticket || intval($locked_ticket['ticket_status']) !== 4 || !empty($locked_ticket['ticket_closed_at'])) {
-            throw new RuntimeException('The ticket is not in the resolved state required for close');
+        if (!$locked_ticket || intval($locked_ticket['ticket_status']) === 5 || !empty($locked_ticket['ticket_closed_at'])) {
+            throw new RuntimeException('The ticket is already closed');
         }
 
-        [$can_close, $close_error] = runbookTicketCanResolve($ticket_id);
-        if (!$can_close) {
-            $close_error_message = $close_error;
-            throw new RuntimeException('The ticket close gate is not satisfied');
+        if (!$is_cancel) {
+            [$can_close, $close_error] = runbookTicketCanResolve($ticket_id);
+            if (!$can_close) {
+                $close_error_message = $close_error;
+                throw new RuntimeException('The ticket close gate is not satisfied');
+            }
         }
 
-        ticketCreationDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW(),
+        $resolved_update = $is_cancel ? '' : ', ticket_resolved_at = COALESCE(ticket_resolved_at, NOW())';
+        ticketCreationDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW()
+            $resolved_update,
             ticket_closed_by = $session_user_id WHERE ticket_id = $ticket_id
-            AND ticket_status = 4 AND ticket_closed_at IS NULL", 'Could not close the ticket');
+            AND ticket_status <> 5 AND ticket_closed_at IS NULL", 'Could not finish the ticket');
         if (mysqli_affected_rows($mysqli) !== 1) {
-            throw new RuntimeException('The ticket was no longer resolved when close was committed');
+            throw new RuntimeException('The ticket was no longer open when the terminal action was committed');
         }
         documentationRecordChangePassport($ticket_id, 5, $session_user_id, true);
         syncTicketSlaClock($ticket_id);
-        setTicketResolutionSlaMet($ticket_id);
+        if (!$is_cancel) {
+            setTicketResolutionSlaMet($ticket_id);
+        }
 
-        ticketCreationDbQuery("INSERT INTO ticket_replies SET ticket_reply = 'Ticket closed.',
+        $terminal_note = $is_cancel ? 'Ticket cancelled.' : 'Ticket closed as completed.';
+        if ($terminal_reason !== '') {
+            $terminal_note .= ' ' . ($is_cancel ? 'Reason: ' : 'Outcome: ') . escapeHtml($terminal_reason);
+        }
+        $terminal_note = escapeSql($terminal_note);
+        ticketCreationDbQuery("INSERT INTO ticket_replies SET ticket_reply = '$terminal_note',
             ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00',
             ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $ticket_id",
             'Could not record the ticket close note');
@@ -3703,10 +3736,14 @@ if (isset($_GET['close_ticket'])) {
         redirect();
     }
 
-    logTicketHistory($ticket_id, "$session_name closed the ticket");
+    $terminal_verb = $is_cancel ? 'cancelled' : 'closed';
+    logTicketHistory($ticket_id, "$session_name $terminal_verb the ticket");
 
-    logAudit("Ticket", "Closed", "$session_name closed ticket ID $ticket_id", $client_id, $ticket_id);
+    logAudit("Ticket", $is_cancel ? "Cancelled" : "Closed", "$session_name $terminal_verb ticket $ticket_prefix$ticket_number (ID: $ticket_id)", $client_id, $ticket_id);
 
+    if (!$is_cancel && intval($locked_ticket['ticket_status']) !== 4) {
+        triggerCustomAction('ticket_resolve', $ticket_id);
+    }
     triggerCustomAction('ticket_close', $ticket_id);
 
     // Client notification email
@@ -3738,8 +3775,12 @@ if (isset($_GET['close_ticket'])) {
         $company_phone = escapeSql(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
 
         // EMAIL
-        $subject = "Ticket closed - [$ticket_prefix$ticket_number] - $ticket_subject | (do not reply)";
-        $body = "Hello $contact_name,<br><br>Your ticket regarding \"$ticket_subject\" has been closed. <br><br> We hope the request/issue was resolved to your satisfaction, please provide your feedback <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>here</a>. <br>If you need further assistance, please raise a new ticket using the below details. Please do not reply to this email. <br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Portal: https://$config_base_url/client/ticket.php?id=$ticket_id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+        $subject = ($is_cancel ? 'Ticket cancelled' : 'Ticket closed') . " - [$ticket_prefix$ticket_number] - $ticket_subject | (do not reply)";
+        if ($is_cancel) {
+            $body = "Hello $contact_name,<br><br>Work on your ticket regarding \"$ticket_subject\" has been cancelled. If this was unexpected, please start a new request or contact support. Please do not reply to this email. <br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Portal: https://$config_base_url/client/ticket.php?id=$ticket_id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+        } else {
+            $body = "Hello $contact_name,<br><br>Your ticket regarding \"$ticket_subject\" has been closed. <br><br> We hope the request/issue was resolved to your satisfaction, please provide your feedback <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>here</a>. <br>If you need further assistance, please raise a new ticket using the below details. Please do not reply to this email. <br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Portal: https://$config_base_url/client/ticket.php?id=$ticket_id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+        }
 
         // Check email valid
         if (filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
@@ -3779,7 +3820,7 @@ if (isset($_GET['close_ticket'])) {
     }
     //End Mail IF
 
-    flashAlert("Ticket Closed, this cannot not be reopened but you may start another one");
+    flashAlert($is_cancel ? 'Ticket cancelled' : 'Ticket closed');
 
     redirect();
 

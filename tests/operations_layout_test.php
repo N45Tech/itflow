@@ -37,6 +37,16 @@ $assertContains(
     $operations,
     'The bounded integration list is not keyboard accessible'
 );
+$assertContains(
+    '.n45-health-row > .n45-system-icon > i,',
+    $css,
+    'Integration health icons do not share the normalized system icon size'
+);
+$assertContains(
+    'font-size: 1rem;',
+    $css,
+    'Integration health icons remain visually smaller than adjacent system icons'
+);
 
 if ($failures) {
     fwrite(STDERR, implode("\n", $failures) . "\n");

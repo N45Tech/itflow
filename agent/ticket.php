@@ -642,7 +642,8 @@ if (isset($_GET['ticket_id'])) {
                                             <i class="fas fa-fw fa-check me-2"></i>Resolve
                                         </a>
                                     <?php } else { ?>
-                                        <a href="post.php?close_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-dark confirm-link" id="ticket_close">
+                                        <a href="#" class="btn btn-dark ajax-modal" id="ticket_close"
+                                           data-modal-url="modals/ticket/ticket_terminal.php?ticket_id=<?= $ticket_id ?>&action=close">
                                             <i class="fas fa-fw fa-gavel me-2"></i>Close
                                         </a>
                                     <?php } ?>
@@ -668,6 +669,15 @@ if (isset($_GET['ticket_id'])) {
                                         <a class="dropdown-item ajax-modal" href="#" id="clientChangeTicketModalLoad" data-modal-url="modals/ticket/ticket_change_client.php?ticket_id=<?= $ticket_id ?>">
                                             <i class="fas fa-fw fa-people-carry me-2"></i>Change Client
                                         </a>
+                                        <?php if (!$ticket_is_closed && !$ticket_is_resolved) { ?>
+                                            <div class="dropdown-divider"></div>
+                                            <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_terminal.php?ticket_id=<?= $ticket_id ?>&action=close">
+                                                <i class="fas fa-fw fa-gavel me-2"></i>Close ticket
+                                            </a>
+                                            <a class="dropdown-item ajax-modal text-danger" href="#" data-modal-url="modals/ticket/ticket_terminal.php?ticket_id=<?= $ticket_id ?>&action=cancel">
+                                                <i class="fas fa-fw fa-ban me-2"></i>Cancel ticket
+                                            </a>
+                                        <?php } ?>
                                         <?php if (lookupUserPermission("module_support") == 3 && empty($ticket_closed_at)) { ?>
                                             <div class="dropdown-divider"></div>
                                             <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?delete_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
@@ -1114,6 +1124,13 @@ if (isset($_GET['ticket_id'])) {
                                                 <?php } ?>
 
                                                 <?php if (!$ticket_is_resolved && $can_edit_ticket) { ?>
+                                                    <?php if (!in_array($task_state, ['Completed','Skipped'], true)) { ?>
+                                                        <a class="btn btn-light text-secondary btn-sm ajax-modal" href="#"
+                                                           data-modal-url="modals/ticket/ticket_task_approver_add.php?id=<?= $task_id ?>"
+                                                           title="Add approval" aria-label="Add approval to <?= $task_name ?>">
+                                                            <i class="fas fa-shield-alt"></i>
+                                                        </a>
+                                                    <?php } ?>
                                                     <div class="dropdown dropstart text-center">
                                                         <button class="btn btn-light text-secondary btn-sm" type="button" data-bs-toggle="dropdown">
                                                             <i class="fas fa-ellipsis-v"></i>
@@ -1130,11 +1147,7 @@ if (isset($_GET['ticket_id'])) {
                                                                     <i class="fas fa-fw fa-hourglass-half mr-2"></i>Waiting / applicability
                                                                 </a>
                                                             <?php } ?>
-                                                            <?php if (intval($task_row['task_runbook_version_task_id']) === 0 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
-                                                                <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_approver_add.php?id=<?= $task_id ?>">
-                                                                    <i class="fas fa-fw fa-shield-alt me-2"></i>Add Approvers
-                                                                </a>
-                                                            <?php } elseif ($task_state === 'Completed') { ?>
+                                                            <?php if ($task_state === 'Completed') { ?>
                                                                 <a class="dropdown-item" href="post.php?undo_complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                                                                     <i class="fas fa-fw fa-arrow-circle-left me-2"></i>Mark incomplete
                                                                 </a>
@@ -1319,17 +1332,18 @@ if (isset($_GET['ticket_id'])) {
                 <?php } ?>
 
                 <!-- The original request stays available without interrupting the work path -->
-                <div class="card card-dark mb-3 collapsed-card" id="ticket-request">
+                <div class="card card-dark mb-3" id="ticket-request">
                     <div class="card-header px-3 py-2">
                         <h5 class="card-title mt-1"><i class="fas fa-fw fa-align-left me-2"></i>Original request</h5>
                         <div class="card-tools">
-                            <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" aria-label="Show original request">
-                                <i class="fas fa-chevron-up"></i>
+                            <button type="button" class="btn btn-tool ticket-disclosure-toggle" data-lte-toggle="card-collapse"
+                                    aria-expanded="true" aria-label="Collapse original request" data-expanded-label="Collapse original request" data-collapsed-label="Show original request">
+                                <i class="fas fa-chevron-down"></i>
                             </button>
                         </div>
                     </div>
 
-                    <div class="card-body p-3 prettyContent" id="ticketDetails" style="display: none;">
+                    <div class="card-body p-3 prettyContent" id="ticketDetails">
                         <?= $ticket_details ?>
 
                         <?php if ($ticket_attachments) { ?>
@@ -1833,8 +1847,9 @@ if (isset($_GET['ticket_id'])) {
                     <div class="card-header px-3 py-2">
                         <h5 class="card-title mt-1"><i class="fas fa-fw fa-history me-2"></i>History</h5>
                         <div class="card-tools">
-                            <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse">
-                                <i class="fas fa-chevron-up"></i>
+                            <button type="button" class="btn btn-tool ticket-disclosure-toggle" data-lte-toggle="card-collapse"
+                                    aria-expanded="false" aria-label="Show history" data-expanded-label="Collapse history" data-collapsed-label="Show history">
+                                <i class="fas fa-chevron-down"></i>
                             </button>
                         </div>
                     </div>

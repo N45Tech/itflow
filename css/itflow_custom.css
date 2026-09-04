@@ -5953,16 +5953,18 @@ label,
     }
 }
 
-/* Normalize integration glyph geometry inside mapping rows. */
+/* Normalize integration glyph geometry inside health and mapping rows. */
+.n45-health-row > .n45-system-icon,
 .n45-mapping-row > .n45-system-icon {
     display: grid;
     place-items: center;
     padding: 0;
 }
 
+.n45-health-row > .n45-system-icon > i,
 .n45-mapping-row > .n45-system-icon > i {
     display: block;
-    font-size: .875rem;
+    font-size: 1rem;
     line-height: 1;
     text-align: center;
     width: 1.25em;
