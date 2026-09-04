@@ -100,10 +100,11 @@ foreach (["ticket_configuration_change = 0", "ticket_documentation_impact = 'Non
     $assertContains($incident_contract, $incident, "Automation incident tickets omit $incident_contract");
 }
 
-// Draft is actionable everywhere, while an empty readiness denominator is not
-// misrepresented as a zero-percent failure.
+// Draft remains actionable in the maintenance view, while documentation is no
+// longer presented to technicians as a separate daily audit queue.
 $assertContains("['Missing', 'Draft', 'Due Soon', 'Stale', 'Exception']", $queue, 'Draft obligations are absent from the owner queue');
-$assertContains("['Missing', 'Draft', 'Due Soon', 'Stale', 'Exception', 'Current']", $queue, 'Draft obligations are absent from queue summary cards');
+$assertContains('Documents are supporting material, not a separate daily queue.', $queue,
+    'Documentation is not anchored to onboarding and service-review work');
 $assertContains('documentationProjectObligationValidity(', $operations, 'The Operations queue trusts stored obligation status');
 foreach ([$global_counts, $client_counts] as $attention_surface) {
     $assertContains('documentationObligationValiditySql(', $attention_surface, 'An attention badge omits canonical validity joins');
@@ -112,7 +113,7 @@ foreach ([$global_counts, $client_counts] as $attention_surface) {
         'An attention badge omits Draft or another actionable projected status');
 }
 $assertContains('$readiness_denominator > 0', $queue, 'Readiness does not distinguish an empty denominator');
-$assertContains('>N/A</span>', $queue, 'Zero-denominator readiness is not rendered as N/A');
+$assertContains('Review at the right moment', $queue, 'The simplified document workspace lacks workflow guidance');
 $assertContains("=== 'Active' ? 'success'", $admin_requirements, 'Active requirements do not receive the active badge');
 
 // Ownership is editable, client-scoped, and delegated to the revision-aware core.
