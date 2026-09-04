@@ -31,7 +31,7 @@ ob_start();
 
 <div class="modal-header bg-dark">
     <h5 class="modal-title"><i class="fa fa-fw fa-shield-alt me-2"></i>Add approval</h5>
-    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
 </div>
 <form action="post.php" method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
@@ -42,7 +42,7 @@ ob_start();
         <p class="text-muted">Require approval before <strong><?= $task_name ?></strong> can be completed and the ticket can be closed.</p>
 
         <div class="mb-3">
-            <label>Approval scope <strong class="text-danger">*</strong></label>
+            <label for="approval_scope">Approval scope <strong class="text-danger">*</strong></label>
             <div class="input-group">
                     <span class="input-group-text"><i class="fa fa-fw fa-layer-group"></i></span>
                 <select class="form-select" name="approval_scope" id="approval_scope" required>
@@ -55,7 +55,7 @@ ob_start();
 
 
         <div class="mb-3 d-none" id="approval_type_wrapper">
-            <label>Who can approve? <strong class="text-danger">*</strong></label>
+            <label for="approval_type">Who can approve? <strong class="text-danger">*</strong></label>
             <div class="input-group">
                     <span class="input-group-text"><i class="fa fa-fw fa-user-check"></i></span>
                 <select class="form-select" name="approval_type" id="approval_type" required>
@@ -66,7 +66,7 @@ ob_start();
 
 
         <div class="mb-3 d-none" id="specific_user_wrapper">
-            <label>Select specific internal approver <strong class="text-danger">*</strong></label>
+            <label for="specific_user_select">Select specific internal approver <strong class="text-danger">*</strong></label>
             <div class="input-group">
                     <span class="input-group-text"><i class="fa fa-fw fa-user-circle"></i></span>
                 <select class="form-select select2" name="approval_required_user_id" id="specific_user_select">

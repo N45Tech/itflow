@@ -25,7 +25,8 @@ $workspace = file_get_contents("$root/agent/documentation.php");
 $assert(strpos($workspace, "require 'includes/inc_client_document_library.php'") < strpos($workspace, 'Document maintenance'),
     'Actual client documents must appear before optional maintenance');
 $assert(!str_contains($workspace, '>Attached</span>'), 'Requirement counts must not be mislabeled as attached documents');
-$assert(str_contains($workspace, '<details class="card card-dark">'), 'Optional maintenance must work without JavaScript');
+$assert(preg_match('/<details\b[^>]*>\s*<summary\b[^>]*>(?:(?!<\/summary>).)*\bDocument maintenance\b(?:(?!<\/summary>).)*<\/summary>/s', $workspace) === 1,
+    'Optional maintenance must use native details and summary elements without requiring JavaScript');
 foreach (['ticket_list.php', 'ticket_kanban.php'] as $file) {
     $source = file_get_contents("$root/agent/$file");
     $assert(str_contains($source, 'Browse all tickets') && str_contains($source, '>New ticket</button>'),

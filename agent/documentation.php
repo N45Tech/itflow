@@ -155,8 +155,9 @@ $documentation_current_count = intval($status_counts['Current'] ?? 0);
 </div>
 
 <?php } ?>
-<details class="card card-dark">
+<details class="card card-dark n45-document-maintenance">
     <summary class="card-header py-3">
+        <span class="n45-document-maintenance-chevron" aria-hidden="true"></span>
         <span class="font-weight-bold">Document maintenance</span>
         <span class="small text-muted ml-2">Optional document-level review controls</span>
     </summary>

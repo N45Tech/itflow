@@ -1990,15 +1990,17 @@ require_once "../includes/footer.php";
 
 <script src="/js/show_modals.js"></script>
 
-<?php if (empty($ticket_closed_at)) { ?>
+<?php if ($can_edit_ticket && $ticket_is_open) { ?>
     <!-- create js variable related to ticket timer setting -->
     <script type="text/javascript">
         var ticketAutoStart = <?= json_encode($config_ticket_timer_autostart) ?>;
     </script>
 
     <!-- Ticket Time Tracking JS -->
-    <script src="js/ticket_time_tracking.js"></script>
+    <script src="js/ticket_time_tracking.js?v=<?= filemtime(__DIR__ . '/js/ticket_time_tracking.js') ?>"></script>
+<?php } ?>
 
+<?php if (empty($ticket_closed_at)) { ?>
     <!-- Ticket collision detect JS (jQuery is called in footer, so collision detection script MUST be below it) -->
     <script src="js/ticket_collision_detection.js"></script>
 <?php } ?>

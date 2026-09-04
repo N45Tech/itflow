@@ -1,5 +1,13 @@
 (function() {
     document.addEventListener("DOMContentLoaded", function() {
+        // Resolved, closed, and read-only tickets have no time-entry form.
+        // Leave any saved timer state untouched when the controls are absent.
+        if (!document.getElementById("hours") ||
+            !document.getElementById("minutes") ||
+            !document.getElementById("seconds")) {
+            return;
+        }
+
         var timerInterval = null;
         var ticketID = getCurrentTicketID();
         var elapsedSecs = getElapsedSeconds();
