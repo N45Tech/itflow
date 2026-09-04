@@ -2,10 +2,10 @@
 
 $root = dirname(__DIR__);
 $reconcile = file_get_contents($root . '/deploy/psa/reconcile_documentation_requirements.php');
-$readme = file_get_contents($root . '/deploy/psa/README.md');
+$public_deployment_note = file_get_contents($root . '/deploy/psa/README.md');
 $failures = [];
 
-if ($reconcile === false || $readme === false) {
+if ($reconcile === false || $public_deployment_note === false) {
     fwrite(STDERR, "Could not read documentation reconciliation files\n");
     exit(1);
 }
@@ -45,11 +45,11 @@ $assertOrdered($reconcile, [
     'documentationBaselineRequirementCatalog()',
     'documentationEvaluateClient(',
 ], 'Reconciliation does not preserve the client-to-requirement lock order');
-$assertContains('reconcile_documentation_requirements.php --dry-run', $readme, 'Deployment instructions omit the documentation dry run');
-$assertContains('reconcile_documentation_requirements.php --apply', $readme, 'Deployment instructions omit explicit documentation apply mode');
-$assertContains('the second pass must report no changed drafts', $readme, 'Deployment instructions omit the idempotent reconciliation canary');
-foreach (['Current', 'Stale', 'Missing', 'Exception', 'Closure'] as $canary) {
-    $assertContains("| $canary |", $readme, "Deployment instructions omit the $canary documentation canary");
+$assertContains('separate private operations repository', $public_deployment_note, 'The public deployment note does not enforce the private operations boundary');
+if (str_contains($public_deployment_note, '/opt/n45/psa')
+    || str_contains($public_deployment_note, 'release-evidence')
+    || str_contains($public_deployment_note, 'n45-psa-deploy')) {
+    $failures[] = 'The public deployment note exposes private production operations';
 }
 
 if ($failures) {
