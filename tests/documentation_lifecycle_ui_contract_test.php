@@ -85,7 +85,7 @@ $assertContains('documentationObligationValiditySql(', $queue, 'The documentatio
 $assertContains('documentationProjectObligationValidity(', $queue, 'The documentation queue trusts stale stored status');
 $assertContains("clientScopeSql('o.documentation_obligation_client_id')", $queue, 'The documentation queue is not client-scoped');
 $assertContains('documentationReadinessForClient(', $queue, 'The client matrix is not wired to the canonical readiness reducer');
-$assertContains('documentation-attention', $operations, 'Operations does not surface documentation exceptions');
+$assertNotContains('documentation-attention', $operations, 'Operations still surfaces retired documentation exceptions');
 $assertContains('documentationProjectObligationValidity(', $operations, 'Operations does not calculate fail-closed gate-time freshness');
 
 $assertContains("enforceUserPermission('module_support')", $obligation_modal, 'Obligation detail is not permission gated');
