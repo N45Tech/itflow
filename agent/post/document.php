@@ -19,33 +19,52 @@ if (isset($_POST['add_document'])) {
 
     enforceClientAccess();
 
-    // Document add query
-    mysqli_query($mysqli,"INSERT INTO documents SET document_name = '$name', document_description = '$description', document_content = '', document_content_raw = '$content_raw', document_folder_id = $folder, document_created_by = $session_user_id, document_client_id = $client_id");
-
-    $document_id = mysqli_insert_id($mysqli);
-
-    $processed_content = mysqli_escape_string(
-        $mysqli,
-        saveBase64Images(
-            $_POST['content'],
-            $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
-            "uploads/documents/",
-            $document_id
-        )
-    );
-
-    // Document update content
-    mysqli_query($mysqli,"UPDATE documents SET document_content = '$processed_content' WHERE document_id = $document_id");
-
-    if ($contact_id) {
-        mysqli_query($mysqli,"INSERT INTO contact_documents SET contact_id = $contact_id, document_id = $document_id");
+    $staging_batch = fileStagingBatchToken();
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document creation transaction');
+        }
+        if (!documentationLockClient($client_id)) {
+            throw new RuntimeException('The document client is unavailable');
+        }
+        if (!mysqli_query($mysqli,"INSERT INTO documents SET document_name = '$name', document_description = '$description', document_content = '', document_content_raw = '$content_raw', document_folder_id = $folder, document_created_by = $session_user_id, document_client_id = $client_id")) {
+            throw new RuntimeException('Could not create the document');
+        }
+        $document_id = intval(mysqli_insert_id($mysqli));
+        $processed_content = mysqli_escape_string(
+            $mysqli,
+            saveBase64Images(
+                $_POST['content'],
+                $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
+                "uploads/documents/",
+                $document_id,
+                $staging_batch,
+                'document'
+            )
+        );
+        if (!mysqli_query($mysqli,"UPDATE documents SET document_content = '$processed_content' WHERE document_id = $document_id")) {
+            throw new RuntimeException('Could not save document content');
+        }
+        if ($contact_id && !mysqli_query($mysqli,"INSERT INTO contact_documents SET contact_id = $contact_id, document_id = $document_id")) {
+            throw new RuntimeException('Could not link the document contact');
+        }
+        if ($asset_id && !mysqli_query($mysqli,"INSERT INTO asset_documents SET asset_id = $asset_id, document_id = $document_id")) {
+            throw new RuntimeException('Could not link the document asset');
+        }
+        if (!logAudit("Document", "Create", "$session_name created document $name", $client_id, $document_id)) {
+            throw new RuntimeException('Could not audit document creation');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit document creation');
+        }
+    } catch (Throwable $error) {
+        mysqli_rollback($mysqli);
+        fileStagingDiscardBatch($staging_batch);
+        logApp('Document', 'error', $error->getMessage());
+        flashAlert('The document could not be created.', 'error');
+        redirect();
     }
-
-    if ($asset_id) {
-        mysqli_query($mysqli,"INSERT INTO asset_documents SET asset_id = $asset_id, document_id = $document_id");
-    }
-
-    logAudit("Document", "Create", "$session_name created document $name", $client_id, $document_id);
+    fileStagingFinalizeCommittedBatch($staging_batch, "Document $document_id creation");
 
     flashAlert("Document <strong>$name</strong> created");
 
@@ -67,70 +86,101 @@ if (isset($_POST['add_document_from_template'])) {
 
     enforceClientAccess();
 
-    // Get template
-    $sql_document = mysqli_query(
-        $mysqli,
-        "SELECT document_template_content, document_template_name FROM document_templates
-         WHERE document_template_id = $document_template_id"
-    );
+    $staging_batch = fileStagingBatchToken();
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the template-document transaction');
+        }
+        $transaction_started = true;
+        if (!documentationLockClient($client_id)) {
+            throw new RuntimeException('The document client is unavailable');
+        }
+        $sql_document = mysqli_query(
+            $mysqli,
+            "SELECT document_template_content, document_template_name FROM document_templates
+             WHERE document_template_id = $document_template_id LIMIT 1 FOR UPDATE"
+        );
+        $row = $sql_document ? mysqli_fetch_assoc($sql_document) : null;
+        if (!$row) {
+            throw new RuntimeException('The document template no longer exists');
+        }
 
-    $row = mysqli_fetch_assoc($sql_document);
+        $document_template_name = escapeSql($row['document_template_name']);
+        $template_content_html = (string) $row['document_template_content'];
+        if (!mysqli_query(
+            $mysqli,
+            "INSERT INTO documents SET
+                document_name        = '$document_name',
+                document_description = '$document_description',
+                document_content     = '',
+                document_content_raw = '',
+                document_folder_id   = $folder,
+                document_created_by  = $session_user_id,
+                document_client_id   = $client_id"
+        )) {
+            throw new RuntimeException('Could not create the document from its template');
+        }
+        $document_id = intval(mysqli_insert_id($mysqli));
 
-    $document_template_name = escapeSql($row['document_template_name']);
-    $template_content_html  = $row['document_template_content']; // raw HTML from template
-
-    // 1) Create the new document with placeholder content to get an ID
-    mysqli_query(
-        $mysqli,
-        "INSERT INTO documents SET
-            document_name        = '$document_name',
-            document_description = '$document_description',
-            document_content     = '',
-            document_content_raw = '',
-            document_folder_id   = $folder,
-            document_created_by  = $session_user_id,
-            document_client_id   = $client_id"
-    );
-
-    $document_id = mysqli_insert_id($mysqli);
-
-    // 2) Copy template images to the document's folder
-    $templateFsPath = $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/" . $document_template_id;
-    $documentFsPath = $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id;
-
-    copyDirectory($templateFsPath, $documentFsPath);
-
-    // 3) Rewrite image paths in the HTML
-    //    /uploads/document_templates/{template_id}/ -> /uploads/documents/{document_id}/
-    $oldPath = "/uploads/document_templates/" . $document_template_id . "/";
-    $newPath = "/uploads/documents/" . $document_id . "/";
-
-    $processed_html = str_replace($oldPath, $newPath, $template_content_html);
-
-    // 4) Prepare content + content_raw
-    $content = mysqli_real_escape_string($mysqli, $processed_html);
-
-    $content_raw = escapeSql(
-        $document_name . " " . str_replace("<", " <", $processed_html)
-    );
-    $content_raw = mysqli_real_escape_string($mysqli, $content_raw);
-
-    // 5) Update the document with final content
-    mysqli_query(
-        $mysqli,
-        "UPDATE documents SET
-            document_content     = '$content',
-            document_content_raw = '$content_raw'
-         WHERE document_id = $document_id"
-    );
-
-    logAudit(
-        "Document",
-        "Create",
-        "$session_name created document $document_name from template $document_template_name",
-        $client_id,
-        $document_id
-    );
+        $template_fs_path = $_SERVER['DOCUMENT_ROOT'] . "/uploads/document_templates/$document_template_id";
+        $staged_files = fileStagingStageDirectory(
+            $template_fs_path,
+            "uploads/documents/$document_id",
+            $staging_batch,
+            'document',
+            $document_id
+        );
+        $old_path = "/uploads/document_templates/$document_template_id/";
+        $new_path = "/uploads/documents/$document_id/";
+        preg_match_all('/<img[^>]+src=["\']([^"\']+)["\']/i', $template_content_html, $image_matches);
+        foreach ($image_matches[1] ?? [] as $image_source) {
+            $image_path = parse_url((string) $image_source, PHP_URL_PATH);
+            if (is_string($image_path) && str_starts_with($image_path, $old_path)) {
+                $relative_image = rawurldecode(substr($image_path, strlen($old_path)));
+                if (!in_array($relative_image, $staged_files, true)) {
+                    throw new RuntimeException('A document-template image is unavailable for durable staging');
+                }
+            }
+        }
+        $processed_html = str_replace($old_path, $new_path, $template_content_html);
+        $content = mysqli_real_escape_string($mysqli, $processed_html);
+        $content_raw = escapeSql(
+            $document_name . " " . str_replace("<", " <", $processed_html)
+        );
+        $content_raw = mysqli_real_escape_string($mysqli, $content_raw);
+        if (!mysqli_query(
+            $mysqli,
+            "UPDATE documents SET
+                document_content     = '$content',
+                document_content_raw = '$content_raw'
+             WHERE document_id = $document_id AND document_client_id = $client_id LIMIT 1"
+        ) || mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('Could not save the document-template content');
+        }
+        if (!logAudit(
+            "Document",
+            "Create",
+            "$session_name created document $document_name from template $document_template_name",
+            $client_id,
+            $document_id
+        )) {
+            throw new RuntimeException('Could not audit the template-document creation');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the template-document creation');
+        }
+        $transaction_started = false;
+    } catch (Throwable $error) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        fileStagingDiscardBatch($staging_batch);
+        logApp('Document', 'error', $error->getMessage());
+        flashAlert('The document could not be created from its template.', 'error');
+        redirect();
+    }
+    fileStagingFinalizeCommittedBatch($staging_batch, "Document $document_id template creation");
 
     flashAlert("Document <strong>$document_name</strong> created from template");
 
@@ -151,91 +201,103 @@ if (isset($_POST['edit_document'])) {
 
     enforceClientAccess();
 
-    // 1) Load the current document to create a version
-    $sql_original_document = mysqli_query(
-        $mysqli,
-        "SELECT document_content, document_created_at, document_created_by, document_description,
-            document_name, document_updated_at, document_updated_by FROM documents
-         WHERE document_client_id = $client_id
-           AND document_id = $document_id"
-    );
-
-    $row = mysqli_fetch_assoc($sql_original_document);
-
-    $original_document_name        = escapeSql($row['document_name']);
-    $original_document_description = escapeSql($row['document_description']);
-    $original_document_content     = mysqli_real_escape_string($mysqli, $row['document_content']);
-    $original_document_created_by  = intval($row['document_created_by']);
-    $original_document_updated_by  = intval($row['document_updated_by']);
-    $original_document_created_at  = escapeSql($row['document_created_at']);
-    $original_document_updated_at  = escapeSql($row['document_updated_at']);
-
-    if ($original_document_updated_at) {
-        $document_version_created_at = $original_document_updated_at;
-    } else {
-        $document_version_created_at = $original_document_created_at;
-    }
-
-    if ($original_document_updated_by) {
-        $document_version_created_by = $original_document_updated_by;
-    } else {
-        $document_version_created_by = $original_document_created_by;
-    }
-
-    // 2) Save the current version into document_versions
-    mysqli_query(
-        $mysqli,
-        "INSERT INTO document_versions SET
-            document_version_name        = '$original_document_name',
-            document_version_description = '$original_document_description',
-            document_version_content     = '$original_document_content',
-            document_version_created_by  = $document_version_created_by,
-            document_version_created_at  = '$document_version_created_at',
-            document_version_document_id = $document_id"
-    );
-
-    $document_version_id = mysqli_insert_id($mysqli);
-
-    // 3) Process the NEW content from the form:
-    //    - convert base64 <img> tags to files under /uploads/documents/<document_id>/
-    //    - rewrite <img src> to file URLs
     $raw_post_content = $_POST['content'];
+    $staging_batch = fileStagingBatchToken();
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document edit transaction');
+        }
+        $transaction_started = true;
 
-    $processed_html = saveBase64Images(
-        $raw_post_content,
-        $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
-        "uploads/documents/",
-        $document_id
-    );
+        // Core owns client -> obligation -> document lock ordering and does not
+        // commit the caller's transaction.
+        documentationInvalidateDocumentLocked(
+            $document_id,
+            $client_id,
+            $session_user_id,
+            'document_changed'
+        );
+        $row = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT
+            document_content, document_created_at, document_created_by,
+            document_description, document_name, document_updated_at,
+            document_updated_by, document_client_id
+            FROM documents WHERE document_id = $document_id LIMIT 1 FOR UPDATE",
+            'Could not lock the document for editing'));
+        if (!$row || intval($row['document_client_id']) !== $client_id) {
+            throw new RuntimeException('The document client changed before it could be edited');
+        }
 
-    // Escape for DB
-    $content = mysqli_real_escape_string($mysqli, $processed_html);
+        $processed_html = saveBase64Images(
+            $raw_post_content,
+            $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/",
+            "uploads/documents/",
+            $document_id,
+            $staging_batch,
+            'document'
+        );
+        $content = mysqli_real_escape_string($mysqli, $processed_html);
+        $content_raw = escapeSql($name . " " . str_replace("<", " <", $processed_html));
+        $content_raw = mysqli_real_escape_string($mysqli, $content_raw);
 
-    // Rebuild content_raw for full-text search
-    $content_raw = escapeSql(
-        $name . " " . str_replace("<", " <", $processed_html)
-    );
-    $content_raw = mysqli_real_escape_string($mysqli, $content_raw);
+        $original_document_name = escapeSql($row['document_name']);
+        $original_document_description = escapeSql($row['document_description']);
+        $original_document_content = mysqli_real_escape_string($mysqli, $row['document_content']);
+        $original_document_created_by = intval($row['document_created_by']);
+        $original_document_updated_by = intval($row['document_updated_by']);
+        $original_document_created_at = escapeSql($row['document_created_at']);
+        $original_document_updated_at = escapeSql($row['document_updated_at']);
+        $document_version_created_at = $original_document_updated_at ?: $original_document_created_at;
+        $document_version_created_by = $original_document_updated_by ?: $original_document_created_by;
 
-    // 4) Update the document with the new content + metadata
-    mysqli_query(
-        $mysqli,
-        "UPDATE documents SET
-            document_name        = '$name',
-            document_description = '$description',
-            document_content     = '$content',
-            document_content_raw = '$content_raw',
-            document_updated_by  = $session_user_id
-         WHERE document_id = $document_id"
-    );
+        documentationLifecycleDbQuery("INSERT INTO document_versions SET
+            document_version_name = '$original_document_name',
+            document_version_description = '$original_document_description',
+            document_version_content = '$original_document_content',
+            document_version_created_by = $document_version_created_by,
+            document_version_created_at = '$document_version_created_at',
+            document_version_document_id = $document_id",
+            'Could not preserve the previous document version');
+        $document_version_id = intval(mysqli_insert_id($mysqli));
 
-    logAudit(
-        "Document",
-        "Edit",
-        "$session_name edited document $name, previous version kept",
-        $client_id,
-        $document_version_id
-    );
+        documentationLifecycleDbQuery("UPDATE documents SET
+            document_name = '$name', document_description = '$description',
+            document_content = '$content', document_content_raw = '$content_raw',
+            document_updated_by = $session_user_id
+            WHERE document_id = $document_id AND document_client_id = $client_id LIMIT 1",
+            'Could not update the document');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The document changed before the edit could be committed');
+        }
+        if (!logAudit(
+            "Document",
+            "Edit",
+            "$session_name edited document $name, previous version kept",
+            $client_id,
+            $document_version_id
+        )) {
+            throw new RuntimeException('Could not audit the document edit');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the document edit');
+        }
+        $transaction_started = false;
+    } catch (Throwable $e) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        fileStagingDiscardBatch($staging_batch);
+        error_log("Document $document_id edit failed safely: " . $e->getMessage());
+        flashAlert('The document could not be edited. Refresh and try again.', 'error');
+        redirect("document.php?client_id=$client_id&document_id=$document_id");
+    }
+    if (fileStagingFinalizeCommittedBatch($staging_batch, "Document $document_id update")) {
+        cleanupUnusedImages(
+            $processed_html,
+            $_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id,
+            "/uploads/documents/" . $document_id
+        );
+    }
 
     flashAlert("Document <strong>$name</strong> edited, previous version kept");
 
@@ -750,26 +812,67 @@ if (isset($_GET['archive_document'])) {
 
     enforceClientAccess();
 
-    mysqli_query($mysqli,"UPDATE documents SET document_archived_at = NOW(), document_updated_at = document_updated_at WHERE document_id = $document_id");
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document archival transaction');
+        }
+        $transaction_started = true;
+        documentationInvalidateDocumentLocked(
+            $document_id,
+            $client_id,
+            $session_user_id,
+            'document_archived'
+        );
+        $locked_document = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT document_client_id,
+            document_archived_at FROM documents WHERE document_id = $document_id LIMIT 1 FOR UPDATE",
+            'Could not lock the document for archival'));
+        if (!$locked_document || intval($locked_document['document_client_id']) !== $client_id) {
+            throw new RuntimeException('The document client changed before it could be archived');
+        }
+        if (documentationDocumentHasObligations($document_id)) {
+            throw new DomainException('The document is a canonical documentation record');
+        }
+        if (documentationEvidenceReferenceInUse('document', $document_id, $client_id)) {
+            throw new DomainException('The document is retained in the Evidence Locker');
+        }
+        $version_references = documentationLifecycleDbQuery("SELECT document_version_id
+            FROM document_versions WHERE document_version_document_id = $document_id
+            ORDER BY document_version_id FOR UPDATE", 'Could not inspect document version evidence');
+        while ($version_reference = mysqli_fetch_assoc($version_references)) {
+            if (documentationEvidenceReferenceInUse(
+                'document-version',
+                intval($version_reference['document_version_id']),
+                $client_id
+            )) {
+                throw new DomainException('A document version is retained in the Evidence Locker');
+            }
+        }
 
-    // Remove Associations
-    // File Association
-    mysqli_query($mysqli,"DELETE FROM document_files WHERE document_id = $document_id");
-
-    // Contact Associations
-    mysqli_query($mysqli,"DELETE FROM contact_documents WHERE document_id = $document_id");
-
-    // Asset Associations
-    mysqli_query($mysqli,"DELETE FROM asset_documents WHERE document_id = $document_id");
-
-    // Software Associations
-    mysqli_query($mysqli,"DELETE FROM software_documents WHERE document_id = $document_id");
-
-    // Vendor Associations
-    mysqli_query($mysqli,"DELETE FROM vendor_documents WHERE document_id = $document_id");
-
-    // Service Associations
-    mysqli_query($mysqli,"DELETE FROM service_documents WHERE document_id = $document_id");
+        documentationLifecycleDbQuery("UPDATE documents SET document_archived_at = NOW(),
+            document_updated_at = document_updated_at WHERE document_id = $document_id
+            AND document_archived_at IS NULL LIMIT 1", 'Could not archive the document');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The document changed before archival');
+        }
+        foreach (['document_files', 'contact_documents', 'asset_documents', 'software_documents', 'vendor_documents', 'service_documents'] as $association_table) {
+            documentationLifecycleDbQuery("DELETE FROM $association_table WHERE document_id = $document_id",
+                'Could not remove a document association');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the document archival');
+        }
+        $transaction_started = false;
+    } catch (Throwable $e) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        error_log("Document $document_id archival failed safely: " . $e->getMessage());
+        flashAlert($e instanceof DomainException
+            ? 'This document or one of its versions is retained by documentation obligations or verification evidence and cannot be archived.'
+            : 'The document could not be archived. Refresh and try again.', 'error');
+        redirect();
+    }
 
     logAudit("Document", "Archive", "$session_name archived document $document_name", $client_id, $document_id);
 
@@ -814,14 +917,61 @@ if (isset($_GET['delete_document_version'])) {
     $document_version_id = intval($_GET['delete_document_version']);
 
     // Get Document
-    $sql = mysqli_query($mysqli,"SELECT document_version_name, document_client_id FROM documents, document_versions WHERE document_version_document_id = document_id AND document_version_id = $document_version_id");
+    $sql = mysqli_query($mysqli,"SELECT document_version_name, document_client_id,
+        document_version_document_id FROM documents, document_versions
+        WHERE document_version_document_id = document_id
+        AND document_version_id = $document_version_id");
     $row = mysqli_fetch_assoc($sql);
     $client_id = intval($row['document_client_id']);
+    $document_id = intval($row['document_version_document_id']);
     $document_version_name = escapeSql($row['document_version_name']);
 
     enforceClientAccess();
 
-    mysqli_query($mysqli,"DELETE FROM document_versions WHERE document_version_id = $document_version_id");
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document version deletion transaction');
+        }
+        $transaction_started = true;
+        documentationLockClient($client_id);
+        $locked_document = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT document_client_id
+            FROM documents WHERE document_id = $document_id LIMIT 1 FOR UPDATE",
+            'Could not lock the document for version deletion'));
+        if (!$locked_document || intval($locked_document['document_client_id']) !== $client_id) {
+            throw new RuntimeException('The document client changed before version deletion');
+        }
+        $locked_version = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT
+            document_version_document_id FROM document_versions
+            WHERE document_version_id = $document_version_id LIMIT 1 FOR UPDATE",
+            'Could not lock the document version for deletion'));
+        if (!$locked_version
+            || intval($locked_version['document_version_document_id']) !== $document_id) {
+            throw new RuntimeException('The document version changed before deletion');
+        }
+        if (documentationDocumentHasObligations($document_id)
+            || documentationEvidenceReferenceInUse('document-version', $document_version_id, $client_id)) {
+            throw new DomainException('The document version is retained by documentation history');
+        }
+        documentationLifecycleDbQuery("DELETE FROM document_versions
+            WHERE document_version_id = $document_version_id LIMIT 1", 'Could not delete the document version');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The document version changed before deletion');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the document version deletion');
+        }
+        $transaction_started = false;
+    } catch (Throwable $e) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        error_log("Document version $document_version_id deletion failed safely: " . $e->getMessage());
+        flashAlert($e instanceof DomainException
+            ? 'This document version is retained by documentation verification history and cannot be deleted.'
+            : 'The document version could not be deleted. Refresh and try again.', 'error');
+        redirect();
+    }
 
     logAudit("Document Version", "Delete", "$session_name deleted document version $document_version_name", $client_id);
 
@@ -847,10 +997,63 @@ if (isset($_GET['delete_document'])) {
 
     enforceClientAccess();
 
-    mysqli_query($mysqli,"DELETE FROM documents WHERE document_id = $document_id");
-
-    // Delete all versions associated with the master document
-    mysqli_query($mysqli,"DELETE FROM document_versions WHERE document_version_document_id = $document_id");
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the document deletion transaction');
+        }
+        $transaction_started = true;
+        documentationInvalidateDocumentLocked(
+            $document_id,
+            $client_id,
+            $session_user_id,
+            'document_deleted'
+        );
+        $locked_document = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT document_client_id
+            FROM documents WHERE document_id = $document_id LIMIT 1 FOR UPDATE",
+            'Could not lock the document for deletion'));
+        if (!$locked_document || intval($locked_document['document_client_id']) !== $client_id) {
+            throw new RuntimeException('The document client changed before it could be deleted');
+        }
+        if (documentationDocumentHasObligations($document_id)) {
+            throw new DomainException('The document is a canonical documentation record');
+        }
+        if (documentationEvidenceReferenceInUse('document', $document_id, $client_id)) {
+            throw new DomainException('The document is retained in the Evidence Locker');
+        }
+        $version_references = documentationLifecycleDbQuery("SELECT document_version_id
+            FROM document_versions WHERE document_version_document_id = $document_id
+            ORDER BY document_version_id FOR UPDATE", 'Could not inspect document version evidence');
+        while ($version_reference = mysqli_fetch_assoc($version_references)) {
+            if (documentationEvidenceReferenceInUse(
+                'document-version',
+                intval($version_reference['document_version_id']),
+                $client_id
+            )) {
+                throw new DomainException('A document version is retained in the Evidence Locker');
+            }
+        }
+        documentationLifecycleDbQuery("DELETE FROM document_versions
+            WHERE document_version_document_id = $document_id", 'Could not delete document versions');
+        documentationLifecycleDbQuery("DELETE FROM documents WHERE document_id = $document_id LIMIT 1",
+            'Could not delete the document');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The document changed before deletion');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the document deletion');
+        }
+        $transaction_started = false;
+    } catch (Throwable $e) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        error_log("Document $document_id deletion failed safely: " . $e->getMessage());
+        flashAlert($e instanceof DomainException
+            ? 'Canonical documentation and Evidence Locker references cannot be deleted. Retain this record for audit history.'
+            : 'The document could not be deleted. Refresh and try again.', 'error');
+        redirect();
+    }
 
     // Delete uploads/document/$document_id if exists
     removeDirectory($_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id);

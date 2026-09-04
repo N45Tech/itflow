@@ -24,10 +24,25 @@ $session_client_id = intval($_SESSION['client_id']);
 $session_contact_id = intval($_SESSION['contact_id']);
 $session_user_id = intval($_SESSION['user_id']);
 
-// Load user session vars
-$sql = mysqli_query($mysqli, "SELECT user_archived_at, user_avatar, user_status, user_type FROM users WHERE users.user_id = $session_user_id");
+// Revalidate the full portal identity on every request. Archiving the client or
+// contact must revoke an already-active session as well as future sign-ins.
+$sql = mysqli_query($mysqli, "SELECT user_archived_at, user_avatar, user_status, user_type
+    FROM users
+    INNER JOIN contacts ON contact_user_id = user_id
+        AND contact_id = $session_contact_id
+        AND contact_client_id = $session_client_id
+        AND contact_archived_at IS NULL
+    INNER JOIN clients ON client_id = contact_client_id
+        AND client_archived_at IS NULL
+    WHERE users.user_id = $session_user_id LIMIT 1");
 
 $row = mysqli_fetch_assoc($sql);
+
+if (!$row) {
+    session_unset();
+    session_destroy();
+    redirect("/login.php");
+}
 
 $session_avatar = $row['user_avatar'];
 $session_user_type = intval($row['user_type']);
@@ -68,6 +83,7 @@ $session_company_logo = $row['company_logo'];
 
 // Load contact session vars
 $contact_sql = mysqli_query($mysqli, "SELECT contact_billing, contact_email, contact_name, contact_photo, contact_pin, contact_primary,
+    contact_portal_asset_scope, contact_portal_manage_contacts, contact_portal_review_access, contact_portal_ticket_scope,
     contact_technical, contact_title FROM contacts WHERE contact_id = $session_contact_id AND contact_client_id = $session_client_id");
 $contact = mysqli_fetch_assoc($contact_sql);
 
@@ -78,6 +94,10 @@ $session_contact_email = escapeSql($contact['contact_email']);
 $session_contact_photo = escapeSql($contact['contact_photo']);
 $session_contact_pin = escapeSql($contact['contact_pin']);
 $session_contact_primary = intval($contact['contact_primary']);
+$session_contact_ticket_scope = $contact['contact_portal_ticket_scope'] === 'client' ? 'client' : 'own';
+$session_contact_asset_scope = $contact['contact_portal_asset_scope'] === 'client' ? 'client' : 'assigned';
+$session_contact_can_manage_contacts = intval($contact['contact_portal_manage_contacts']) === 1;
+$session_contact_can_review_service_reviews = intval($contact['contact_portal_review_access']) === 1;
 
 $session_contact_is_technical_contact = false;
 $session_contact_is_billing_contact = false;

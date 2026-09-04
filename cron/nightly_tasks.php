@@ -382,30 +382,58 @@ if (mysqli_num_rows($sql_recurring_tickets) > 0) {
             $client_uri = '';
         }
 
-        // Atomically increment and get the new ticket number
-        mysqli_query($mysqli, "
-            UPDATE settings
-            SET
-                config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
-                config_ticket_next_number = config_ticket_next_number + 1
-            WHERE company_id = 1
-        ");
+        $ticket_transaction_started = false;
+        try {
+            if (!mysqli_begin_transaction($mysqli)) {
+                throw new RuntimeException('Could not begin the nightly recurring ticket transaction');
+            }
+            $ticket_transaction_started = true;
+            if ($client_id > 0 && !agreementLockClientForAuditRetention($client_id)) {
+                throw new RuntimeException('The nightly recurring ticket client is no longer available');
+            }
 
-        $ticket_number = mysqli_insert_id($mysqli);
+            ticketCreationDbQuery("
+                UPDATE settings
+                SET
+                    config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
+                    config_ticket_next_number = config_ticket_next_number + 1
+                WHERE company_id = 1
+            ", 'Could not allocate a nightly recurring ticket number');
+            $ticket_number = intval(mysqli_insert_id($mysqli));
+            if (!$ticket_number) {
+                throw new RuntimeException('The nightly recurring ticket number allocation returned no number');
+            }
 
-        // Raise the ticket
-        mysqli_query($mysqli, "INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id");
-        $id = mysqli_insert_id($mysqli);
-        applyTicketSla($id);
+            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id", 'Could not create the nightly recurring ticket');
+            $id = intval(mysqli_insert_id($mysqli));
+            if (!$id) {
+                throw new RuntimeException('The nightly recurring ticket did not receive an ID');
+            }
 
-        // Copy Additional Assets from Recurring ticket to new ticket
-        mysqli_query($mysqli, "INSERT INTO ticket_assets (ticket_id, asset_id)
-        SELECT $id, asset_id
-        FROM recurring_ticket_assets
-        WHERE recurring_ticket_id = $recurring_ticket_id");
+            // Entitlement selection must see the complete recurring-ticket device
+            // set before it writes immutable decision evidence.
+            ticketCreationDbQuery("INSERT INTO ticket_assets (ticket_id, asset_id)
+            SELECT $id, recurring_ticket_assets.asset_id
+            FROM recurring_ticket_assets
+            JOIN assets ON assets.asset_id = recurring_ticket_assets.asset_id
+                AND asset_client_id = $client_id AND asset_archived_at IS NULL
+            WHERE recurring_ticket_id = $recurring_ticket_id", 'Could not link the nightly recurring ticket assets');
+            applyTicketSla($id, null, null, true);
 
-        // Copy Tasks from the schedule's own task list
-        addTasksFromRecurringTicket($id, $recurring_ticket_id);
+            // Copy Tasks from the schedule's own task list before publication.
+            addTasksFromRecurringTicket($id, $recurring_ticket_id);
+
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit the nightly recurring ticket and SLA decision');
+            }
+            $ticket_transaction_started = false;
+        } catch (Throwable $exception) {
+            if ($ticket_transaction_started) {
+                mysqli_rollback($mysqli);
+            }
+            logApp('Cron', 'error', "Recurring ticket $recurring_ticket_id failed before SLA publication: " . escapeSql($exception->getMessage()));
+            continue;
+        }
 
         // Logging
         logAudit("Ticket", "Create", "Cron created recurring scheduled $frequency ticket - $subject", $client_id, $id);
@@ -440,17 +468,24 @@ if (mysqli_num_rows($sql_recurring_tickets) > 0) {
         // Notify client by email their ticket has been raised, if general notifications are turned on & there is a valid contact email
         if (!empty($config_smtp_provider) && $config_ticket_client_general_notifications == 1 && filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-            $email_subject = "Ticket created - [$ticket_prefix$ticket_number] - $ticket_subject (scheduled)";
-            $email_body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>A ticket regarding \"$ticket_subject\" has been automatically created for you.<br><br>--------------------------------<br>$ticket_details--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: Open<br>Portal: https://$config_base_url/client/ticket.php?id=$id<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+            $ticket_email = renderN45Email('ticket.created', [
+                'company_name' => $company_name,
+                'contact_name' => $contact_name,
+                'ticket_number' => $ticket_prefix . $ticket_number,
+                'ticket_subject' => $ticket_subject,
+                'ticket_status' => 'Open',
+                'message_html' => $ticket_details . getTicketSlaEmailNotice($id, $company_phone),
+                'action_url' => "https://$config_base_url/client/ticket.php?id=$id",
+                'footer_email' => $config_ticket_from_email,
+                'footer_phone' => $company_phone,
+            ]);
 
-            $email = [
+            $email = array_merge([
                     'from' => $config_ticket_from_email,
                     'from_name' => $config_ticket_from_name,
                     'recipient' => $contact_email,
                     'recipient_name' => $contact_name,
-                    'subject' => $email_subject,
-                    'body' => $email_body
-            ];
+            ], n45EmailQueueFields($ticket_email));
 
             $data[] = $email;
 
@@ -532,15 +567,48 @@ $sql_resolved_tickets_to_close = mysqli_query(
 
 while ($row = mysqli_fetch_assoc($sql_resolved_tickets_to_close)) {
 
-    $ticket_id = $row['ticket_id'];
+    $ticket_id = intval($row['ticket_id']);
     $ticket_prefix = escapeSql($row['ticket_prefix']);
     $ticket_number = intval($row['ticket_number']);
     $ticket_subject = escapeSql($row['ticket_subject']);
     $ticket_status = escapeSql($row['ticket_status']);
-    $ticket_assigned_to = escapeSql($row['ticket_assigned_to']);
+    $ticket_assigned_to = intval($row['ticket_assigned_to']);
     $client_id = intval($row['ticket_client_id']);
 
-    mysqli_query($mysqli,"UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW(), ticket_closed_by = $ticket_assigned_to WHERE ticket_id = $ticket_id");
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the automatic ticket-close transaction');
+        }
+        documentationLockClientTicket($ticket_id, $client_id);
+        $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
+        if (intval($locked_ticket['ticket_status']) !== 4 || empty($locked_ticket['ticket_resolved_at'])) {
+            throw new RuntimeException('The ticket is no longer resolved');
+        }
+        [$can_close, $close_error] = runbookTicketCanResolve($ticket_id);
+        if (!$can_close) {
+            throw new RuntimeException($close_error);
+        }
+
+        $resolved_at = escapeSql($locked_ticket['ticket_resolved_at']);
+        $close_sql = mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 5,
+            ticket_closed_at = NOW(), ticket_closed_by = $ticket_assigned_to
+            WHERE ticket_id = $ticket_id AND ticket_status = 4
+            AND ticket_resolved_at = '$resolved_at' AND ticket_closed_at IS NULL
+            AND ticket_updated_at < NOW() - INTERVAL $config_ticket_autoclose_hours HOUR
+            LIMIT 1");
+        if (!$close_sql || mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The ticket changed before it could be automatically closed');
+        }
+        documentationRecordChangePassport($ticket_id, 5, 0, true);
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the automatic ticket closure');
+        }
+    } catch (Throwable $e) {
+        mysqli_rollback($mysqli);
+        logApp('Cron', 'warning', "Ticket $ticket_id was not automatically closed: " . escapeSql($e->getMessage()));
+        continue;
+    }
+
     syncTicketSlaClock($ticket_id);
 
     //Logging
@@ -633,24 +701,27 @@ if ($config_send_invoice_reminders == 1) {
                 continue;
             }
 
-            $subject = "Overdue Invoice $invoice_prefix$invoice_number";
-
-            // Only show the paid line if a payment has actually been applied
-            $paid_line = $amount_paid > 0 ? "Amount Paid: " . numfmt_format_currency($currency_format, $amount_paid, $invoice_currency_code) . "<br>" : "";
-
-            $body = "Hello $contact_name,<br><br>Our records indicate that we have not yet received payment in full for the invoice $invoice_prefix$invoice_number. We kindly request that you submit your payment as soon as possible. If you have any questions or concerns, please do not hesitate to contact us at $company_email or $company_phone.
-                <br>
-                Kindly review the invoice details mentioned below.<br><br>Invoice: $invoice_prefix$invoice_number<br>Issue Date: $invoice_date<br>Invoice Total: " . numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) . "<br>$paid_line" . "Balance Due: " . numfmt_format_currency($currency_format, $invoice_balance, $invoice_currency_code) . "<br>Due Date: $invoice_due<br>Over Due By: $day Days<br><br><br>To view your invoice, please click <a href=\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key\'>here</a>.<br><br><br>--<br>$company_name - Billing<br>$config_invoice_from_email<br>$company_phone";
+            $overdue_email = renderN45Email('invoice.overdue', [
+                'company_name' => $company_name,
+                'contact_name' => $contact_name,
+                'invoice_number' => $invoice_prefix . $invoice_number,
+                'issue_date' => $invoice_date,
+                'due_date' => $invoice_due,
+                'amount_paid' => $amount_paid > 0 ? numfmt_format_currency($currency_format, $amount_paid, $invoice_currency_code) : '',
+                'balance_due' => numfmt_format_currency($currency_format, $invoice_balance, $invoice_currency_code),
+                'overdue_by' => "$day days",
+                'action_url' => "https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key",
+                'footer_email' => $config_invoice_from_email,
+                'footer_phone' => $company_phone,
+            ]);
 
             $mail = addToMailQueue([
-                [
+                array_merge([
                     'from' => $config_invoice_from_email,
                     'from_name' => $config_invoice_from_name,
                     'recipient' => $contact_email,
                     'recipient_name' => $contact_name,
-                    'subject' => $subject,
-                    'body' => $body
-                ]
+                ], n45EmailQueueFields($overdue_email))
             ]);
 
             if ($mail === true) {
@@ -661,7 +732,7 @@ if ($config_send_invoice_reminders == 1) {
                 appNotify("Mail", "Failed to send email to $contact_email");
 
                 // Logging
-                logApp("Mail", "error", "Failed to send email to $contact_email regarding $subject. $mail");
+                logApp("Mail", "error", "Failed to send email to $contact_email regarding {$overdue_email['subject']}. $mail");
             }
 
         }
@@ -782,18 +853,28 @@ while ($row = mysqli_fetch_assoc($sql_recurring_invoices)) {
 
     if ($config_recurring_auto_send_invoice == 1 && $recurring_invoice_email_notify == 1) {
 
-        $subject = "Invoice $invoice_prefix$invoice_number";
-        $body = "Hello $contact_name,<br><br>An invoice regarding \"$invoice_scope\" has been generated. Please view the details below.<br><br>Invoice: $invoice_prefix$invoice_number<br>Issue Date: $invoice_date<br>Total: " . numfmt_format_currency($currency_format, $invoice_amount, $recurring_invoice_currency_code) . "<br>Due Date: $invoice_due<br><br><br>To view your invoice, please click <a href=\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$new_invoice_id&url_key=$invoice_url_key\'>here</a>.<br><br><br>--<br>$company_name - Billing<br>$config_invoice_from_email<br>$company_phone";
+        $invoice_email_context = [
+            'company_name' => $company_name,
+            'contact_name' => $contact_name,
+            'invoice_number' => $invoice_prefix . $invoice_number,
+            'invoice_scope' => $invoice_scope,
+            'issue_date' => $invoice_date,
+            'due_date' => $invoice_due,
+            'total' => numfmt_format_currency($currency_format, $invoice_amount, $recurring_invoice_currency_code),
+            'balance_due' => numfmt_format_currency($currency_format, $invoice_amount, $recurring_invoice_currency_code),
+            'action_url' => "https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$new_invoice_id&url_key=$invoice_url_key",
+            'footer_email' => $config_invoice_from_email,
+            'footer_phone' => $company_phone,
+        ];
+        $invoice_email = renderN45Email('invoice.issued', $invoice_email_context);
 
         $mail = addToMailQueue([
-            [
+            array_merge([
                 'from' => $config_invoice_from_email,
                 'from_name' => $config_invoice_from_name,
                 'recipient' => $contact_email,
                 'recipient_name' => $contact_name,
-                'subject' => $subject,
-                'body' => $body
-            ]
+            ], n45EmailQueueFields($invoice_email))
         ]);
 
         if ($mail === true) {
@@ -806,7 +887,7 @@ while ($row = mysqli_fetch_assoc($sql_recurring_invoices)) {
             appNotify("Mail", "Failed to send email to $contact_email");
 
             // Logging
-            logApp("Mail", "error", "Failed to send email to $contact_email regarding $subject. $mail");
+            logApp("Mail", "error", "Failed to send email to $contact_email regarding {$invoice_email['subject']}. $mail");
 
         }
 
@@ -820,16 +901,17 @@ while ($row = mysqli_fetch_assoc($sql_recurring_invoices)) {
         while ($billing_contact = mysqli_fetch_assoc($sql_billing_contacts)) {
             $billing_contact_name = escapeSql($billing_contact['contact_name']);
             $billing_contact_email = escapeSql($billing_contact['contact_email']);
+            $billing_email_context = $invoice_email_context;
+            $billing_email_context['contact_name'] = $billing_contact_name;
+            $billing_email = renderN45Email('invoice.issued', $billing_email_context);
 
             $data = [
-                [
+                array_merge([
                     'from' => $config_invoice_from_email,
                     'from_name' => $config_invoice_from_name,
                     'recipient' => $billing_contact_email,
                     'recipient_name' => $billing_contact_name,
-                    'subject' => $subject,
-                    'body' => $body
-                ]
+                ], n45EmailQueueFields($billing_email))
             ];
 
             addToMailQueue($data);
@@ -974,22 +1056,29 @@ while ($row = mysqli_fetch_assoc($sql_recurring_payments)) {
 
                     // RECEIPT EMAIL
                     if (!empty($config_smtp_provider)) {
-                        $subject = "Payment Received - Invoice $invoice_prefix$invoice_number";
-                        $body = "Hello $contact_name<br><br>We have received online payment for the amount of " . numfmt_format_currency($currency_format, $invoice_amount, $recurring_payment_currency_code) . " for invoice <a href=\\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key\\'>$invoice_prefix$invoice_number</a>. Please keep this email as a receipt for your records.<br><br>Amount Paid: " . numfmt_format_currency($currency_format, $invoice_amount, $recurring_payment_currency_code) . "<br><br>Thank you for your business!<br><br><br>--<br>$company_name - Billing Department<br>$config_invoice_from_email<br>$company_phone";
+                        $payment_email = renderN45Email('payment.received', [
+                            'company_name' => $company_name,
+                            'contact_name' => $contact_name,
+                            'invoice_number' => $invoice_prefix . $invoice_number,
+                            'amount_paid' => numfmt_format_currency($currency_format, $invoice_amount, $recurring_payment_currency_code),
+                            'payment_method' => 'Stripe autopay',
+                            'payment_reference' => $pi_id,
+                            'action_url' => "https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key",
+                            'footer_email' => $config_invoice_from_email,
+                            'footer_phone' => $company_phone,
+                        ]);
 
-                        $data = [[
+                        $data = [array_merge([
                             'from' => $config_invoice_from_email,
                             'from_name' => $config_invoice_from_name,
                             'recipient' => $contact_email,
                             'recipient_name' => $contact_name,
-                            'subject' => $subject,
-                            'body' => $body,
-                        ]];
+                        ], n45EmailQueueFields($payment_email))];
 
                         // Internal notification
                         if (!empty($config_invoice_paid_notification_email)) {
                             $subject_int = "Payment Received - $client_name - Invoice $invoice_prefix$invoice_number";
-                            $body_int = "This is a notification that an invoice has been paid in ITFlow. Below is a copy of the receipt sent to the client:-<br><br>--------<br><br>$body";
+                            $body_int = "Invoice $invoice_prefix$invoice_number for $client_name was paid through Stripe autopay.<br><br>Amount received: " . numfmt_format_currency($currency_format, $invoice_amount, $recurring_payment_currency_code) . "<br>Payment reference: $pi_id<br><br>View invoice: https://$config_base_url/agent/invoice.php?invoice_id=$invoice_id";
                             $data[] = [
                                 'from' => $config_invoice_from_email,
                                 'from_name' => $config_invoice_from_name,
@@ -1156,7 +1245,7 @@ while ($row = mysqli_fetch_assoc($sql_invalid_recurring_expenses)) {
 
 if ($config_telemetry > 0 || $config_telemetry == 2) {
 
-    $current_version = exec("git rev-parse HEAD");
+    $current_version = gitCurrentCommit();
 
     // Client Count
     $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('client_id') AS num FROM clients"));
@@ -1403,13 +1492,23 @@ if ($config_telemetry > 0 || $config_telemetry == 2) {
 
 
 // Fetch Updates
-$updates = checkForUpdates();
+/*
+ * The check itself is cron/update_check.php now - read what it stored rather than running a
+ * second git fetch here. Nothing to say until that job has run once, which is the same
+ * position this was in when a fetch failed.
+ */
+if (settingsColumnExists($mysqli, 'config_update_latest_commit')) {
 
-$update_message = $updates->update_message;
+    $update_check_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT config_update_latest_commit FROM settings WHERE company_id = 1"));
 
-if ($updates->current_version !== $updates->latest_version) {
-    // Send Alert to inform Updates Available
-    appNotify("Update", "$update_message", "/admin/update.php");
+    $latest_version = (string) ($update_check_row['config_update_latest_commit'] ?? '');
+    $current_version = gitCurrentCommit();
+
+    if ($latest_version !== '' && $current_version !== '' && $latest_version !== $current_version) {
+        // Send Alert to inform Updates Available
+        appNotify("Update", "New Updates are Available [$latest_version]", "/admin/update.php");
+    }
+
 }
 
 

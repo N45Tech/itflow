@@ -42,15 +42,22 @@ $total_tickets = intval($row['total_tickets']);
 
 ?>
 
-<h3>Tickets</h3>
-<div class="row">
+<header class="n45-page-header">
+    <div>
+        <h1>Tickets &amp; approvals</h1>
+        <p>Review your support history, follow active work, and respond when N45 needs your input.</p>
+    </div>
+    <div class="n45-page-header-actions">
+        <a href="ticket_add.php" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i>New ticket</a>
+    </div>
+</header>
 
-    <div class="col-md-10">
-
-        <table class="table tabled-bordered border border-dark">
-            <thead class="thead-dark">
+<div class="n45-ticket-filter-layout">
+    <div>
+        <table class="table">
+            <thead>
                 <tr>
-                    <th>#</th>
+                    <th>Ticket</th>
                     <th>Subject</th>
                     <th>Status</th>
                 </tr>
@@ -58,55 +65,65 @@ $total_tickets = intval($row['total_tickets']);
             <tbody>
 
             <?php
+            if (mysqli_num_rows($contact_tickets) === 0) { ?>
+                <tr>
+                    <td colspan="3">
+                        <div class="n45-portal-empty-state">
+                            <span class="n45-portal-empty-icon"><i class="far fa-check-circle" aria-hidden="true"></i></span>
+                            <div>
+                                <h3>No <?= strtolower(escapeHtml($status)) ?> tickets</h3>
+                                <p>There is nothing to review in this view right now.</p>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            <?php }
+
             while ($row = mysqli_fetch_assoc($contact_tickets)) {
                 $ticket_id = intval($row['ticket_id']);
                 $ticket_prefix = escapeHtml($row['ticket_prefix']);
                 $ticket_number = intval($row['ticket_number']);
                 $ticket_subject = escapeHtml($row['ticket_subject']);
                 $ticket_status = escapeHtml($row['ticket_status_name']);
+                $ticket_status_key = strtolower((string) $row['ticket_status_name']);
+                $ticket_status_class = 'neutral';
+                if (strpos($ticket_status_key, 'wait') !== false || strpos($ticket_status_key, 'client') !== false) {
+                    $ticket_status_class = 'waiting';
+                } elseif (strpos($ticket_status_key, 'progress') !== false || strpos($ticket_status_key, 'open') !== false) {
+                    $ticket_status_class = 'progress';
+                } elseif (strpos($ticket_status_key, 'new') !== false) {
+                    $ticket_status_class = 'new';
+                } elseif (strpos($ticket_status_key, 'resolved') !== false || strpos($ticket_status_key, 'closed') !== false) {
+                    $ticket_status_class = 'resolved';
+                }
             ?>
 
                 <tr>
-                    <td>
-                        <a href="ticket.php?id=<?= $ticket_id ?>"><?= "$ticket_prefix$ticket_number" ?></a>
-                    </td>
-                    <td>
-                        <a href="ticket.php?id=<?= $ticket_id ?>"><?= $ticket_subject ?></a>
-                    </td>
-                    <td><?= $ticket_status ?></td>
+                    <td><a href="ticket.php?id=<?= $ticket_id ?>"><?= "$ticket_prefix$ticket_number" ?></a></td>
+                    <td><a href="ticket.php?id=<?= $ticket_id ?>"><?= $ticket_subject ?></a></td>
+                    <td><span class="n45-ticket-status n45-ticket-status--<?= $ticket_status_class ?>"><?= $ticket_status ?></span></td>
                 </tr>
-            <?php
-            }
-            ?>
+            <?php } ?>
             </tbody>
         </table>
-
     </div>
 
-    <div class="col-md-2">
-
-        <a href="ticket_add.php" class="btn btn-primary btn-block">New ticket</a>
-
-        <hr>
-
-        <a href="?status=Open" class="btn btn-danger btn-block p-3 mb-3 text-left">My Open tickets | <strong><?= $total_tickets_open ?></strong></a>
-
-        <a href="?status=Closed" class="btn btn-success btn-block p-3 mb-3 text-left">Closed tickets | <strong><?= $total_tickets_closed ?></strong></a>
-
-        <a href="?status=%" class="btn btn-secondary btn-block p-3 mb-3 text-left">All my tickets | <strong><?= $total_tickets ?></strong></a>
-        <?php
-        if ($session_contact_primary == 1 || $session_contact_is_technical_contact) {
-        ?>
-
-        <hr>
-
-        <a href="ticket_view_all.php" class="btn btn-dark btn-block p-2 mb-3">All Tickets</a>
-
-        <?php
-        }
-        ?>
-
-    </div>
+    <aside class="n45-ticket-filters" aria-label="Ticket filters">
+        <a href="?status=Open" class="n45-ticket-filter <?= $status === 'Open' ? 'active' : '' ?>" <?= $status === 'Open' ? 'aria-current="page"' : '' ?>>
+            <span>Open</span><strong><?= $total_tickets_open ?></strong>
+        </a>
+        <a href="?status=Closed" class="n45-ticket-filter <?= $status === 'Closed' ? 'active' : '' ?>" <?= $status === 'Closed' ? 'aria-current="page"' : '' ?>>
+            <span>Closed</span><strong><?= $total_tickets_closed ?></strong>
+        </a>
+        <a href="?status=%" class="n45-ticket-filter <?= $status === '%' ? 'active' : '' ?>" <?= $status === '%' ? 'aria-current="page"' : '' ?>>
+            <span>All mine</span><strong><?= $total_tickets ?></strong>
+        </a>
+        <?php if (contactCan('tickets_all')) { ?>
+            <a href="ticket_view_all.php" class="n45-ticket-filter">
+                <span>Organization tickets</span><i class="fas fa-arrow-right" aria-hidden="true"></i>
+            </a>
+        <?php } ?>
+    </aside>
 </div>
 
 <?php require_once "includes/footer.php";

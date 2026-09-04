@@ -35,6 +35,9 @@
  * Every job here checks config_enable_cron in its own header and stops itself when that
  * switch is off. It is not a dispatcher-level gate - a new job has to make the check
  * itself, and a job that skips it will keep running on an install that thinks cron is off.
+ *
+ * Order matters: the dispatcher works down this list. app_update replaces the files every
+ * job is loaded from, so it stays at the end and ends the cycle behind itself.
  */
 
 function cronJobRegistry(): array
@@ -65,12 +68,77 @@ function cronJobRegistry(): array
             'interval_minutes' => 1,
         ],
         [
+            'name' => 'level_webhook_processor',
+            'label' => 'Level.io Webhooks',
+            'script' => 'level_webhook_processor.php',
+            'description' => 'Processes signed Level device, group, and alert events queued by the public webhook endpoint.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 1,
+        ],
+        [
+            'name' => 'level_sync',
+            'label' => 'Level.io Reconciliation',
+            'script' => 'level_sync.php',
+            'description' => 'Reconciles Level groups, managed devices, and active alerts with ITFlow.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 15,
+        ],
+        [
+            'name' => 'automation_event_processor',
+            'label' => 'Operational Event Queue',
+            'script' => 'automation_event_processor.php',
+            'description' => 'Retries source-neutral operational events and maintains redacted payload retention.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 1,
+        ],
+        [
+            'name' => 'file_staging_recovery',
+            'label' => 'File Staging Recovery',
+            'script' => 'file_staging_recovery.php',
+            'description' => 'Finalizes committed embedded images left pending by interrupted web or API requests.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 1,
+        ],
+        [
+            'name' => 'documentation_evaluator',
+            'label' => 'Documentation Freshness',
+            'script' => 'documentation_evaluator.php',
+            'description' => 'Re-evaluates required documentation, expires exceptions and waivers, and advances follow-up promises.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 60,
+        ],
+        [
+            'name' => 'identity_reconciliation',
+            'label' => 'Endpoint Identity Reconciliation',
+            'script' => 'identity_reconciliation.php',
+            'description' => 'Marks stale endpoint identities, calculates source coverage, and surfaces review or polling gaps.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 60,
+        ],
+        [
+            'name' => 'portal_request_outbox',
+            'label' => 'Portal Request Actions',
+            'script' => 'portal_request_outbox.php',
+            'description' => 'Retries durable custom actions emitted after portal request tickets commit.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 1,
+        ],
+        [
             'name' => 'domain_refresher',
             'label' => 'Domain Refresher',
             'script' => 'domain_refresher.php',
             'description' => 'Refreshes WHOIS and DNS for the domain that was checked longest ago. One domain per run.',
             'schedule' => 'Daily',
             'daily_at' => '04:00',
+        ],
+        [
+            'name' => 'service_reviews',
+            'label' => 'Service Review Drafts',
+            'script' => 'service_reviews.php',
+            'description' => 'Builds traceable draft service reviews for active agreements whose review date is due.',
+            'schedule' => 'Daily',
+            'daily_at' => '05:00',
+            'interval_safe' => false,
         ],
         [
             'name' => 'nightly_tasks',
@@ -98,6 +166,24 @@ function cronJobRegistry(): array
             'description' => 'Re-reads the expiry date and issuer of every SSL certificate on file.',
             'schedule' => 'Daily',
             'daily_at' => '03:30',
+        ],
+        [
+            'name' => 'update_check',
+            'label' => 'Update Check',
+            'script' => 'update_check.php',
+            'description' => 'Asks the git remote whether a newer release exists and stores the answer for Maintenance > Update.',
+            'schedule' => 'Daily',
+            'daily_at' => '02:30',
+        ],
+        [
+            'name' => 'app_update',
+            'label' => 'Application Update',
+            'script' => 'app_update.php',
+            'description' => 'Runs an update queued from Maintenance > Update. Does nothing unless one is queued.',
+            'schedule' => 'Daily',
+            'daily_at' => '05:00',
+            'enabled' => 0,
+            'interval_safe' => false,
         ],
     ];
 }

@@ -14,13 +14,21 @@ $quotes_sql = mysqli_query($mysqli, "SELECT quote_amount, quote_date, quote_id, 
     quote_url_key FROM quotes WHERE quote_client_id = $session_client_id AND quote_status != 'Draft' ORDER BY quote_date DESC");
 ?>
 
-<h3>Quotes</h3>
+<header class="n45-page-header">
+    <div>
+        <h1>Quotes</h1>
+        <p>Review current and historical proposals from N45.</p>
+    </div>
+</header>
 <div class="row">
 
     <div class="col-md-10">
 
-        <table class="table tabled-bordered border border-dark">
-            <thead class="thead-dark">
+        <?php if (mysqli_num_rows($quotes_sql) == 0) { ?>
+            <?= portalEmptyState('There are no quotes on this account yet.') ?>
+        <?php } else { ?>
+        <table class="table table-bordered border border-dark">
+            <thead class="table-dark">
             <tr>
                 <th>#</th>
                 <th>Scope</th>
@@ -49,7 +57,7 @@ $quotes_sql = mysqli_query($mysqli, "SELECT quote_amount, quote_date, quote_id, 
                 }
 
                 if ($quote_status == "Sent") {
-                    $quote_badge_color = "warning text-white";
+                    $quote_badge_color = "warning";
                 } elseif ($quote_status == "Viewed") {
                     $quote_badge_color = "primary";
                 } elseif ($quote_status == "Accepted") {
@@ -70,7 +78,7 @@ $quotes_sql = mysqli_query($mysqli, "SELECT quote_amount, quote_date, quote_id, 
                     <td><?= numfmt_format_currency($currency_format, $quote_amount, $session_company_currency) ?></td>
                     <td><?= $quote_date ?></td>
                     <td>
-                        <span class="p-2 badge badge-<?= $quote_badge_color ?>">
+                        <span class="p-2 badge text-bg-<?= $quote_badge_color ?>">
                             <?= $quote_status ?>
                         </span>
                     </td>
@@ -80,6 +88,7 @@ $quotes_sql = mysqli_query($mysqli, "SELECT quote_amount, quote_date, quote_id, 
 
             </tbody>
         </table>
+        <?php } ?>
 
     </div>
 

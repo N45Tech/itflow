@@ -6,8 +6,9 @@
 
 require_once 'includes/inc_all.php';
 
-// Allow clients to select a related asset when raising a ticket
-$sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FROM assets WHERE asset_contact_id = $session_contact_id AND asset_client_id = $session_client_id AND asset_archived_at IS NULL ORDER BY asset_name ASC");
+// Portal users may select assigned assets; portal managers may select any client asset.
+$asset_contact_scope = contactCan('assets_all') ? '' : "AND asset_contact_id = $session_contact_id";
+$sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FROM assets WHERE asset_client_id = $session_client_id $asset_contact_scope AND asset_archived_at IS NULL ORDER BY asset_name ASC");
 
 ?>
 
@@ -21,48 +22,43 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
         <li class="breadcrumb-item active">New Ticket</li>
     </ol>
 
-    <h3>Raise a new ticket</h3>
-
-    <div class="col-md-8">
+    <div class="n45-form-surface">
+        <div class="n45-form-intro">
+            <h1>How can we help?</h1>
+            <p>Tell us what is happening and include the device or service involved. Your request will go directly to the N45 service desk.</p>
+        </div>
         <form action="post.php" method="post">
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-            <div class="form-group">
-                <label>Subject <strong class="text-danger">*</strong></label>
+            <div class="mb-3">
+                <label for="ticketSubject">Subject <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-tag"></i></span>
-                    </div>
-                    <input type="text" class="form-control" name="subject" placeholder="Subject" required>
+                    <input type="text" class="form-control" id="ticketSubject" name="subject" placeholder="Briefly describe the issue" required>
                 </div>
             </div>
 
             <div class="row">
                 <div class="col">
-                    <div class="form-group">
-                        <label>Priority <strong class="text-danger">*</strong></label>
+                    <div class="mb-3">
+                        <label for="ticketPriority">Priority <strong class="text-danger">*</strong></label>
                         <div class="input-group">
-                            <div class="input-group-prepend">
                                 <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
-                            </div>
-                            <select class="form-control select2" name="priority" required>
-                                <option>Low</option>
-                                <option>Medium</option>
-                                <option>High</option>
-                                <option>Urgent</option>
+                            <select class="form-select select2" id="ticketPriority" name="priority" required>
+                                <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
+                                    <option value="<?= escapeHtml($priority) ?>" <?= $priority === 'Medium' ? 'selected' : '' ?>><?= escapeHtml("$priority — " . $definition['short']) ?></option>
+                                <?php } ?>
                             </select>
                         </div>
                     </div>
                 </div>
 
                 <div class="col">
-                    <div class="form-group">
-                    <label>Category</label>
+                    <div class="mb-3">
+                    <label for="ticketCategory">Category</label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-layer-group"></i></span>
-                        </div>
-                        <select class="form-control select2" name="category">
+                        <select class="form-select select2" id="ticketCategory" name="category">
                             <option value="0">- No Category -</option>
                             <?php
                             $sql_categories = mysqli_query($mysqli, "SELECT category_id, category_name FROM categories WHERE category_type = 'Ticket' AND category_archived_at IS NULL");
@@ -81,13 +77,11 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
             </div>
 
             <?php if (mysqli_num_rows($sql_assets) > 0) { ?>
-                <div class="form-group">
-                    <label>Asset</label>
+                <div class="mb-3">
+                    <label for="ticketAsset">Affected device</label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-desktop"></i></span>
-                        </div>
-                        <select class="form-control select2" name="asset">
+                        <select class="form-select select2" id="ticketAsset" name="asset">
                             <option value="0">- None -</option>
                             <?php
 
@@ -106,12 +100,15 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
             <?php } ?>
 
 
-            <div class="form-group">
-                <label>Details <strong class="text-danger">*</strong></label>
-                <textarea class="form-control tinymce" name="details"></textarea>
+            <div class="mb-3">
+                <label for="ticketDetails">Details <strong class="text-danger">*</strong></label>
+                <textarea class="form-control tinymce" id="ticketDetails" name="details"></textarea>
             </div>
 
-            <button class="btn btn-primary" name="add_ticket">Raise ticket</button>
+            <div class="n45-form-actions">
+                <button class="btn btn-primary" name="add_ticket"><i class="far fa-paper-plane" aria-hidden="true"></i>Send request</button>
+                <a class="btn btn-secondary" href="tickets.php">Cancel</a>
+            </div>
 
         </form>
     </div>

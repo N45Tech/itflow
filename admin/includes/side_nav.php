@@ -1,19 +1,17 @@
 <!-- Main Sidebar Container -->
-<aside class="main-sidebar sidebar-dark-<?= escapeHtml($config_theme) ?> d-print-none">
-    <a class="brand-link pb-1 mt-1" href="/agent/<?= $config_start_page ?>">
-        <p class="h6">
-            <i class="nav-icon fas fa-arrow-left ml-3 mr-2"></i>
-            <span class="brand-text">
-                Back | <strong>Administration</strong>
-            </span>
-        </p>
-    </a>
+<aside class="app-sidebar shadow d-print-none" data-bs-theme="dark">
+    <div class="sidebar-brand">
+        <a class="brand-link" href="/agent/<?= $config_start_page ?>">
+            <i class="fas fa-arrow-left me-2"></i>
+            <span class="brand-text h6 mb-0">Back | <strong>Administration</strong></span>
+        </a>
+    </div>
 
     <!-- Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar-wrapper">
         <!-- Sidebar Menu -->
         <nav>
-            <ul class="nav nav-pills nav-sidebar flex-column mt-2" data-widget="treeview" data-accordion="false">
+            <ul class="nav nav-pills sidebar-menu flex-column mt-2" data-lte-toggle="treeview" data-accordion="false">
                 <li class="nav-header">ACCESS</li>
                 <li class="nav-item">
                     <a href="/admin/users.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "users.php") {echo "active";} ?>">
@@ -84,6 +82,12 @@
                             <p>SLAs</p>
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a href="/admin/agreement_governance.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'agreement_governance.php' ? 'active' : '') ?>">
+                            <i class="nav-icon fas fa-file-contract"></i>
+                            <p>Agreement Governance</p>
+                        </a>
+                    </li>
                 <?php } ?>
 
                 <li class="nav-header">INTEGRATIONS</li>
@@ -126,6 +130,18 @@
                             <p>Ticket Templates</p>
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a href="/admin/portal_request_catalog.php" class="nav-link <?= (in_array(basename($_SERVER['PHP_SELF']), ['portal_request_catalog.php', 'portal_request_catalog_item.php']) ? 'active' : '') ?>">
+                            <i class="nav-icon fas fa-clipboard-list"></i>
+                            <p>Request Catalog</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/admin/canned_responses.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'canned_responses.php' ? 'active' : '') ?>">
+                            <i class="nav-icon fas fa-comment-dots"></i>
+                            <p>Canned Responses</p>
+                        </a>
+                    </li>
                 <?php } ?>
                 <?php if ($config_module_enable_itdoc) { ?>
                     <!-- 2025-11-16 JQ - Hide Contracts not yet ready
@@ -155,6 +171,12 @@
                         <a href="/admin/document_templates.php" class="nav-link <?= (in_array(basename($_SERVER['PHP_SELF']), ['document_templates.php', 'document_template.php']) ? 'active' : '') ?>">
                             <i class="nav-icon fas fa-file-alt"></i>
                             <p>Document Templates</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/admin/documentation_requirements.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'documentation_requirements.php' ? 'active' : '') ?>">
+                            <i class="nav-icon fas fa-book-medical"></i>
+                            <p>Documentation Requirements</p>
                         </a>
                     </li>
                 <?php } ?>
@@ -211,7 +233,7 @@
                 </li>
 
                 <!-- SETTINGS Section -->
-                <li class="nav-item has-treeview mt-2 <?= (in_array(basename($_SERVER['PHP_SELF']), ['settings_company.php', 'settings_localization.php', 'settings_theme.php', 'settings_security.php', 'settings_mail.php', 'settings_notification.php', 'settings_default.php', 'settings_invoice.php', 'settings_quote.php', 'settings_online_payment.php', 'settings_online_payment_clients.php', 'settings_project.php', 'settings_ticket.php', 'settings_ai.php', 'identity_providers.php', 'settings_telemetry.php', 'settings_module.php']) ? 'menu-open' : '') ?>">
+                <li class="nav-item mt-2 <?= (in_array(basename($_SERVER['PHP_SELF']), ['settings_company.php', 'settings_localization.php', 'settings_theme.php', 'settings_security.php', 'settings_mail.php', 'settings_notification.php', 'settings_default.php', 'settings_invoice.php', 'settings_quote.php', 'settings_online_payment.php', 'settings_online_payment_clients.php', 'settings_project.php', 'settings_ticket.php', 'settings_ai.php', 'integration_automation.php', 'integration_level.php', 'identity_providers.php', 'settings_telemetry.php', 'settings_module.php']) ? 'menu-open' : '') ?>">
                     <a href="#" class="nav-link">
                         <p>
                             SETTINGS
@@ -289,7 +311,18 @@
                                 </a>
                             </li>
                         <?php } ?>
-                        <!-- Currently the only integration is the client portal SSO -->
+                        <li class="nav-item">
+                            <a href="/admin/integration_automation.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'integration_automation.php' ? 'active' : '') ?>">
+                                <i class="nav-icon fas fa-stream"></i>
+                                <p>Event Ingestion</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="/admin/integration_level.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'integration_level.php' ? 'active' : '') ?>">
+                                <i class="nav-icon fas fa-satellite"></i>
+                                <p>Level.io</p>
+                            </a>
+                        </li>
                         <?php if ($config_client_portal_enable) { ?>
                             <li class="nav-item">
                                 <a href="/admin/identity_providers.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'identity_providers.php' ? 'active' : '') ?>">
@@ -336,7 +369,7 @@
                     <a href="<?= $custom_link_uri ?>" <?= $target ?> class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == basename($custom_link_uri)) { echo "active"; } ?>">
                         <i class="fas fa-<?= $custom_link_icon ?> nav-icon"></i>
                         <p><?= $custom_link_name ?></p>
-                        <i class="fas fa-angle-right nav-icon float-right"></i>
+                        <i class="fas fa-angle-right nav-icon float-end"></i>
                     </a>
                 </li>
 

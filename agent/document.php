@@ -46,6 +46,23 @@ $document_archived_at = escapeHtml($row['document_archived_at']);
 $document_folder_id = intval($row['document_folder_id']);
 $document_client_visible = intval($row['document_client_visible']);
 
+$document_obligations = [];
+$documentation_validity = documentationObligationValiditySql('o');
+$sql_document_obligations = mysqli_query($mysqli, "SELECT o.*,
+    {$documentation_validity['select']}
+    FROM client_documentation_obligations o
+    {$documentation_validity['joins']}
+    WHERE o.documentation_obligation_document_id = $document_id
+    AND o.documentation_obligation_client_id = $client_id
+    ORDER BY documentation_current_requirement_version_name");
+while ($document_obligation = mysqli_fetch_assoc($sql_document_obligations)) {
+    $document_obligation = documentationApplyCurrentRequirementMetadata($document_obligation);
+    $projection = documentationProjectObligationValidity($document_obligation);
+    $document_obligation['effective_status'] = $projection['effective_status'];
+    $document_obligations[] = $document_obligation;
+}
+$document_has_obligations = !empty($document_obligations);
+
 // Override Tab Title // No Sanitizing needed as this var will opnly be used in the tab title
 $page_title = $row['document_name'];
 
@@ -87,7 +104,7 @@ $page_title = $row['document_name'];
         ?>
         <li class="breadcrumb-item">
             <a href="files.php?client_id=<?= $client_id ?>&folder_id=<?= $bread_crumb_folder_id ?>">
-                <i class="fas fa-fw fa-folder-open mr-2"></i><?= $bread_crumb_folder_name ?>
+                <i class="fas fa-fw fa-folder-open me-2"></i><?= $bread_crumb_folder_name ?>
             </a>
         </li>
         <?php
@@ -96,7 +113,7 @@ $page_title = $row['document_name'];
     <li class="breadcrumb-item active">
         <i class="fas fa-file"></i> <?= $document_name ?>
         <?php if (!empty($document_archived_at)) {
-            echo "<span class='text-danger ml-2'>(ARCHIVED on $document_archived_at)</span>";
+            echo "<span class='text-danger ms-2'>(ARCHIVED on $document_archived_at)</span>";
         } ?>
     </li>
 </ol>
@@ -114,7 +131,7 @@ $page_title = $row['document_name'];
                         <?php } ?>
                     </div>
                     <div class="col">
-                        <div class="float-right">
+                        <div class="float-end">
                             <div>
                                 Date:
                                 <strong><?= date('Y-m-d', strtotime($document_updated_at)); ?></strong>
@@ -135,7 +152,7 @@ $page_title = $row['document_name'];
                 <h4>Documentation Revision History</h4>
 
                 <table class="table table-sm">
-                    <thead class="thead-light">
+                    <thead class="table-light">
                         <th>Version</th>
                         <th>Date</th>
                         <th>Name</th>
@@ -186,25 +203,39 @@ $page_title = $row['document_name'];
     <div class="col-md-3 d-print-none">
         <div class="row">
             <div class="col-12 mb-3">
-                <button type="button" class="btn btn-primary ajax-modal mr-1"
+                <button type="button" class="btn btn-primary ajax-modal me-1"
                     data-modal-size="lg"
                     data-modal-url="modals/document/document_edit.php?id=<?= $document_id ?>">
                     <i class="fas fa-fw fa-edit" title="Edit"></i>
                 </button>
-                <button type="button" class="btn btn-secondary mr-1" data-toggle="modal" data-target="#shareModal"
+                <button type="button" class="btn btn-secondary me-1" data-bs-toggle="modal" data-bs-target="#shareModal"
                     onclick="populateShareModal(<?= "$client_id, 'Document', $document_id"; ?>)">
                     <i class="fas fa-fw fa-share" title="Share"></i>
                 </button>
-                <a class="btn btn-success mr-1" href="post.php?export_document=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class='fas fa-fw fa-file-pdf' title="PDF Export"></i></a>
-                <button type="button" class="btn btn-secondary mr-4" onclick="window.print();"><i class="fas fa-fw fa-print" title="Print"></i></button>
-                <a class="btn btn-warning mr-1 confirm-link" href="post.php?archive_document=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" title="Archive"><i class='fas fa-fw fa-archive'></i></a>
-                <a class="btn btn-danger confirm-link" href="post.php?delete_document=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>&from=document_details" title="Delete"><i class='fas fa-fw fa-trash-alt'></i></a>
+                <a class="btn btn-success me-1" href="post.php?export_document=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class='fas fa-fw fa-file-pdf' title="PDF Export"></i></a>
+                <button type="button" class="btn btn-secondary me-4" onclick="window.print();"><i class="fas fa-fw fa-print" title="Print"></i></button>
+                <a class="btn btn-warning me-1 confirm-link <?= $document_has_obligations ? 'disabled' : '' ?>" href="<?= $document_has_obligations ? '#' : "post.php?archive_document=$document_id&csrf_token=" . urlencode($_SESSION['csrf_token']) ?>" title="<?= $document_has_obligations ? 'Relink documentation obligations before archiving' : 'Archive' ?>" <?= $document_has_obligations ? 'onclick="return false;" aria-disabled="true"' : '' ?>><i class='fas fa-fw fa-archive'></i></a>
+                <a class="btn btn-danger confirm-link <?= $document_has_obligations ? 'disabled' : '' ?>" href="<?= $document_has_obligations ? '#' : "post.php?delete_document=$document_id&csrf_token=" . urlencode($_SESSION['csrf_token']) . '&from=document_details' ?>" title="<?= $document_has_obligations ? 'Canonical documentation evidence cannot be deleted' : 'Delete' ?>" <?= $document_has_obligations ? 'onclick="return false;" aria-disabled="true"' : '' ?>><i class='fas fa-fw fa-trash-alt'></i></a>
             </div>
         </div>
-        <div class="card card-body bg-light">
-            <h5 class="mb-3"><i class="fas fa-tags mr-2"></i>Related Items</h5>
+        <?php if ($document_obligations) { ?>
+            <div class="card card-outline card-primary">
+                <div class="card-header py-2"><h5 class="card-title mt-1"><i class="fas fa-book-medical me-2"></i>Readiness obligations</h5></div>
+                <div class="card-body p-3">
+                    <?php foreach ($document_obligations as $obligation) { ?>
+                        <a href="#" class="d-flex justify-content-between align-items-start mb-2 ajax-modal" data-modal-size="lg" data-modal-url="modals/documentation/obligation.php?id=<?= intval($obligation['documentation_obligation_id']) ?>">
+                            <span><?= escapeHtml($obligation['documentation_requirement_version_name']) ?><span class="small text-muted d-block"><code><?= escapeHtml($obligation['documentation_requirement_version_key']) ?></code></span></span>
+                            <span class="badge badge-<?= documentationLifecycleStatusBadge($obligation['effective_status']) ?> ms-2"><?= escapeHtml($obligation['effective_status']) ?></span>
+                        </a>
+                    <?php } ?>
+                    <div class="small text-muted mt-2"><i class="fas fa-lock me-1"></i>Relink these obligations before archiving or deleting this canonical record.</div>
+                </div>
+            </div>
+        <?php } ?>
+        <div class="card card-body bg-light mb-3">
+            <h5 class="mb-3"><i class="fas fa-tags me-2"></i>Related Items</h5>
             <h6>
-                <i class="fas fa-fw fa-paperclip text-secondary mr-2"></i>Files
+                <i class="fas fa-fw fa-paperclip text-secondary me-2"></i>Files
                 <button type="button" class="btn btn-link btn-sm ajax-modal"
                     data-modal-url="modals/document/document_link_file.php?document_id=<?= $document_id ?>">
                     <i class="fas fa-fw fa-plus"></i>
@@ -227,17 +258,17 @@ $page_title = $row['document_name'];
                 $linked_files[] = $file_id;
 
                 ?>
-                <div class="ml-2">
+                <div class="ms-2">
                     <a href="file.php?file_id=<?= $file_id ?>&action=view" target="_blank"><?= $file_name ?></a>
                     <a class="confirm-link" href="post.php?unlink_file_from_document&file_id=<?= $file_id ?>&document_id=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                        <i class="fas fa-fw fa-unlink text-secondary float-right" title="Unlink File"></i>
+                        <i class="fas fa-fw fa-unlink text-secondary float-end" title="Unlink File"></i>
                     </a>
                 </div>
                 <?php
                 }
                 ?>
             <h6>
-                <i class="fas fa-fw fa-users text-secondary mt-3 mr-2"></i>Contacts
+                <i class="fas fa-fw fa-users text-secondary mt-3 me-2"></i>Contacts
                 <button type="button" class="btn btn-link btn-sm ajax-modal"
                     data-modal-url="modals/document/document_link_contact.php?document_id=<?= $document_id ?>">
                     <i class="fas fa-fw fa-plus"></i>
@@ -259,12 +290,12 @@ $page_title = $row['document_name'];
                 $linked_contacts[] = $contact_id;
 
                 ?>
-                <div class="ml-2">
+                <div class="ms-2">
                     <a class="ajax-modal" href="#"
                         data-modal-size="lg"
                         data-modal-url="modals/contact/contact.php?id=<?= $contact_id ?>">
                         <?= $contact_name ?></a>
-                    <a class="confirm-link float-right" href="post.php?unlink_contact_from_document&contact_id=<?= $contact_id ?>&document_id=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                    <a class="confirm-link float-end" href="post.php?unlink_contact_from_document&contact_id=<?= $contact_id ?>&document_id=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                         <i class="fas fa-fw fa-unlink text-secondary" title="Unlink Contact"></i>
                     </a>
                 </div>
@@ -272,7 +303,7 @@ $page_title = $row['document_name'];
                 }
                 ?>
             <h6>
-                <i class="fas fa-fw fa-laptop text-secondary mr-2 mt-3"></i>Assets
+                <i class="fas fa-fw fa-laptop text-secondary me-2 mt-3"></i>Assets
                 <button type="button" class="btn btn-link btn-sm ajax-modal" data-modal-url="modals/document/document_link_asset.php?document_id=<?= $document_id ?>">
                     <i class="fas fa-fw fa-plus"></i>
                 </button>
@@ -293,13 +324,13 @@ $page_title = $row['document_name'];
                 $linked_assets[] = $asset_id;
 
                 ?>
-                <div class="ml-2">
+                <div class="ms-2">
                     <a class="ajax-modal" href="#"
                         data-modal-size="lg"
                         data-modal-url="modals/asset/asset.php?id=<?= $asset_id ?>">
                         <?= $asset_name ?>
                     </a>
-                    <a class="confirm-link float-right" href="post.php?unlink_asset_from_document&asset_id=<?= $asset_id ?>&document_id=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                    <a class="confirm-link float-end" href="post.php?unlink_asset_from_document&asset_id=<?= $asset_id ?>&document_id=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                         <i class="fas fa-fw fa-unlink text-secondary" title="Unlink Asset"></i>
                     </a>
                 </div>
@@ -307,7 +338,7 @@ $page_title = $row['document_name'];
             }
             ?>
             <h6>
-                <i class="fas fa-fw fa-cube text-secondary mr-2 mt-3"></i>Licenses
+                <i class="fas fa-fw fa-cube text-secondary me-2 mt-3"></i>Licenses
                 <button type="button" class="btn btn-link btn-sm ajax-modal"
                     data-modal-url="modals/document/document_link_software.php?document_id=<?= $document_id ?>">
                     <i class="fas fa-fw fa-plus"></i>
@@ -329,9 +360,9 @@ $page_title = $row['document_name'];
                 $linked_software[] = $software_id;
 
                 ?>
-                <div class="ml-2">
+                <div class="ms-2">
                     <a href="software.php?client_id=<?= $client_id ?>&q=<?= $software_name ?>" target="_blank"><?= $software_name ?></a>
-                    <a class="confirm-link float-right" href="post.php?unlink_software_from_document&software_id=<?= $software_id ?>&document_id=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                    <a class="confirm-link float-end" href="post.php?unlink_software_from_document&software_id=<?= $software_id ?>&document_id=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                         <i class="fas fa-fw fa-unlink text-secondary" title="Unlink License"></i>
                     </a>
                 </div>
@@ -339,7 +370,7 @@ $page_title = $row['document_name'];
                 }
                 ?>
             <h6>
-                <i class="fas fa-fw fa-building text-secondary mr-2 mt-3"></i>Vendors
+                <i class="fas fa-fw fa-building text-secondary me-2 mt-3"></i>Vendors
                 <button type="button" class="btn btn-link btn-sm ajax-modal"
                     data-modal-url="modals/document/document_link_vendor.php?document_id=<?= $document_id ?>">
                     <i class="fas fa-fw fa-plus"></i>
@@ -361,11 +392,11 @@ $page_title = $row['document_name'];
                 $associated_vendors[] = $vendor_id;
 
                 ?>
-                <div class="ml-2">
+                <div class="ms-2">
                     <a class="ajax-modal" href="#" data-modal-url="modals/vendor/vendor.php?id=<?= $vendor_id ?>">
                         <?= $vendor_name ?>
                     </a>
-                    <a class="confirm-link float-right" href="post.php?unlink_vendor_from_document&vendor_id=<?= $vendor_id ?>&document_id=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                    <a class="confirm-link float-end" href="post.php?unlink_vendor_from_document&vendor_id=<?= $vendor_id ?>&document_id=<?= $document_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                         <i class="fas fa-fw fa-unlink text-secondary" title="Unlink Vendor"></i>
                     </a>
                 </div>
@@ -375,10 +406,10 @@ $page_title = $row['document_name'];
         </div>
 
         <?php if ($config_client_portal_enable) { ?>
-            <div class="card card-body bg-light">
-                <h6><i class="fas fa-handshake mr-2"></i>Portal Collaboration</h6>
+            <div class="card card-body bg-light mb-3">
+                <h6><i class="fas fa-handshake me-2"></i>Portal Collaboration</h6>
                 <div class="mt-1">
-                    <i class="fa fa-fw fa-eye<?php if (!$document_client_visible) { echo '-slash'; } ?> text-secondary mr-2"></i>Document is
+                    <i class="fa fa-fw fa-eye<?php if (!$document_client_visible) { echo '-slash'; } ?> text-secondary me-2"></i>Document is
                     <a class="ajax-modal" href="#"
                         data-modal-url="modals/document/document_edit_visibility.php?document_id=<?= $document_id ?>">
                         <?php
@@ -394,7 +425,7 @@ $page_title = $row['document_name'];
         <?php } ?>
 
         <div class="card card-body bg-light">
-            <h6><i class="fas fa-history mr-2"></i>Revisions</h6>
+            <h6><i class="fas fa-history me-2"></i>Revisions</h6>
             <?php
 
             $sql_document_versions = mysqli_query($mysqli, "SELECT document_version_created_at, document_version_description, document_version_id,
@@ -413,13 +444,13 @@ $page_title = $row['document_name'];
 
                 ?>
                 <div class="mt-1 <?php if($document_id === $document_version_id){ echo "text-bold"; } ?>">
-                    <i class="fas fa-fw fa-history text-secondary mr-2"></i>
+                    <i class="fas fa-fw fa-history text-secondary me-2"></i>
                     <a class="ajax-modal" href="#"
                         data-modal-size="lg"
                         data-modal-url="modals/document/document_version_view.php?id=<?= $document_version_id ?>">
                         <?= "$document_version_created_date | $document_version_author" ?>
                     </a>
-                    <a class="confirm-link float-right" href="post.php?delete_document_version=<?= $document_version_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                    <a class="confirm-link float-end" href="post.php?delete_document_version=<?= $document_version_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
                         <i class="fas fa-fw fa-trash-alt text-secondary"></i>
                     </a>
                 </div>

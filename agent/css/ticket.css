@@ -25,14 +25,14 @@
 .ticket-field-label {
     font-size: 0.72rem;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #8a94a0;
+    letter-spacing: 0;
+    color: var(--n45-muted, #586579);
     margin-bottom: 0.2rem;
     white-space: nowrap;
 }
 
 .ticket-field-value {
+    color: var(--n45-ink, #172033);
     font-size: 0.95rem;
     line-height: 1.4;
 }
@@ -51,7 +51,8 @@
 
 /* The subject is the page's real heading, so let it breathe */
 .ticket-subject {
-    font-weight: 600;
+    color: var(--n45-ink, #172033);
+    font-weight: 650;
     word-break: break-word;
 }
 
@@ -63,7 +64,7 @@
 
 .ticket-meta {
     font-size: 0.85rem;
-    color: #6c757d;
+    color: var(--n45-muted, #586579);
     word-break: break-word;
 }
 
@@ -71,4 +72,277 @@
     .ticket-field {
         min-width: 45%;
     }
+}
+
+/*
+ * Bootstrap cancels hover on any .btn following a .btn-check (twbs #31149 / PR #37026):
+ * a checked outline toggle and an unchecked one looked identical while hovered, so you
+ * could not read the control's state without moving the pointer away. Correct, but the
+ * selector also catches the UNCHECKED buttons, and with nothing preselected here that
+ * leaves the whole strip with no feedback at all.
+ *
+ * Give the unchecked ones a NEUTRAL tint - not the variant fill, which is what checked
+ * looks like and would reintroduce exactly the ambiguity #31149 was about. Upstream's
+ * color and border-color still apply, so only the background moves.
+ */
+#replyTypePicker .btn-check:not(:checked) + .btn:hover {
+    background-color: var(--bs-secondary-bg);
+}
+
+/* Keep the lifecycle legible without turning it into another large dashboard. */
+.ticket-lifecycle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.ticket-lifecycle-steps {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ticket-lifecycle-step {
+    position: relative;
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: .45rem;
+    color: var(--n45-muted, #586579);
+    font-size: .78rem;
+    font-weight: 600;
+}
+
+.ticket-lifecycle-step:not(:last-child)::after {
+    content: "";
+    height: 2px;
+    flex: 1 1 auto;
+    margin-right: .45rem;
+    background: var(--bs-border-color, #dee2e6);
+}
+
+.ticket-lifecycle-step.is-complete:not(:last-child)::after {
+    background: var(--n45-accent, #167f70);
+}
+
+.ticket-lifecycle-dot {
+    display: inline-grid;
+    width: 1.6rem;
+    height: 1.6rem;
+    flex: 0 0 1.6rem;
+    place-items: center;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 999px;
+    background: var(--bs-body-bg, #fff);
+    font-size: .7rem;
+}
+
+.ticket-lifecycle-step.is-current {
+    color: var(--n45-ink, #172033);
+}
+
+.ticket-lifecycle-step.is-current .ticket-lifecycle-dot,
+.ticket-lifecycle-step.is-complete .ticket-lifecycle-dot {
+    border-color: var(--n45-accent, #167f70);
+    background: var(--n45-accent, #167f70);
+    color: #fff;
+}
+
+.ticket-next-action {
+    display: flex;
+    min-width: 14rem;
+    flex-direction: column;
+    padding: .6rem .8rem;
+    border-radius: .65rem;
+    background: color-mix(in srgb, var(--n45-accent, #167f70) 10%, transparent);
+    color: var(--n45-ink, #172033);
+    text-decoration: none;
+}
+
+.ticket-workspace-nav {
+    display: flex;
+    gap: .25rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.ticket-workspace-nav a {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .4rem .65rem;
+    border-radius: 999px;
+    color: var(--n45-muted, #586579);
+    font-size: .78rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.ticket-workspace-nav a:hover,
+.ticket-workspace-nav a:focus {
+    background: var(--bs-secondary-bg);
+    color: var(--n45-ink, #172033);
+}
+
+.ticket-task-horizontal-scroll {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+    padding: .75rem;
+    scrollbar-gutter: stable;
+}
+
+.ticket-task-horizontal-scroll #tasks {
+    display: block;
+    width: max-content;
+    min-width: 100%;
+}
+
+.ticket-task-horizontal-scroll #tasks tbody {
+    display: flex;
+    align-items: stretch;
+    gap: .75rem;
+    padding-bottom: .25rem;
+}
+
+.ticket-task-horizontal-scroll #tasks tr {
+    display: flex;
+    flex: 0 0 clamp(16rem, 24vw, 20rem);
+    scroll-snap-align: start;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: .5rem;
+    background: var(--bs-body-bg, #fff);
+    overflow: hidden;
+}
+
+.ticket-task-horizontal-scroll #tasks td:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ticket-task-horizontal-scroll #tasks td:last-child {
+    flex: 0 0 auto;
+}
+
+.ticket-task-current {
+    padding: 1rem;
+}
+
+.ticket-task-current #tasks tbody,
+.ticket-task-current #tasks tr {
+    display: flex;
+    width: 100%;
+}
+
+.ticket-task-current #tasks tr {
+    align-items: flex-start;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-left: .3rem solid var(--n45-accent, #167f70);
+    border-radius: .65rem;
+    background: var(--bs-body-bg, #fff);
+    overflow: hidden;
+}
+
+.ticket-task-current #tasks td:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 1rem !important;
+}
+
+.ticket-task-current #tasks td:last-child {
+    flex: 0 0 auto;
+    padding: 1rem .75rem !important;
+}
+
+.ticket-task-guidance {
+    max-width: 70rem;
+    padding: .75rem;
+    border-left: 3px solid var(--n45-accent, #167f70);
+    border-radius: 0 .45rem .45rem 0;
+    background: var(--bs-secondary-bg);
+    color: var(--n45-ink, #172033);
+}
+
+.ticket-update-card {
+    border-top: 3px solid var(--n45-accent, #167f70);
+}
+
+.ticket-context-rail > .card:last-child {
+    margin-bottom: 0;
+}
+
+@media (max-width: 991.98px) {
+    .ticket-lifecycle {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .ticket-next-action {
+        min-width: 0;
+    }
+
+    .ticket-context-column {
+        overflow: hidden;
+    }
+
+    .ticket-context-rail {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(17rem, 84vw);
+        gap: .75rem;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        scroll-snap-type: x proximity;
+        padding-bottom: .5rem;
+    }
+
+    .ticket-context-rail > .card {
+        margin-bottom: 0;
+        scroll-snap-align: start;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .ticket-lifecycle-step > span:last-child {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+    }
+
+    .ticket-task-horizontal-scroll #tasks tr {
+        flex-basis: 82vw;
+    }
+
+    #replyTypePicker {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    #replyTypePicker .btn {
+        border-radius: .35rem;
+    }
+}
+
+/* Preserve readable contrast for the resolved-ticket close action. */
+#ticket_close,
+#ticket_close:hover,
+#ticket_close:focus,
+#ticket_close:active,
+#ticket_close.disabled,
+#ticket_close:disabled {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff;
+}
+
+#ticket_close i,
+#ticket_close svg {
+    color: currentColor !important;
 }

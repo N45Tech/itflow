@@ -5,7 +5,7 @@ require_once 'includes/inc_all_guest.php';
 DEFINE("WORDING_PAYMENT_FAILED", "<br><h2>There was an error verifying your payment. Please contact us for more information before attempting payment again.</h2>");
 
 // --- Get Stripe config from payment_providers table ---
-$stripe_provider = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT payment_provider_account, payment_provider_private_key, payment_provider_public_key FROM payment_providers"));
+$stripe_provider = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT payment_provider_account, payment_provider_private_key, payment_provider_public_key FROM payment_providers WHERE payment_provider_name = 'Stripe' LIMIT 1"));
 
 
 $stripe_publishable      = escapeHtml($stripe_provider['payment_provider_public_key']);
@@ -72,21 +72,20 @@ if (isset($_GET['invoice_id'], $_GET['url_key']) && !isset($_GET['payment_intent
 
     <!-- Stripe & jQuery -->
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="../libs/jquery/jquery.min.js"></script>
 
-    <div class="row pt-5">
+    <div class="row py-5">
         <div class="col-sm">
-            <div class="card">
+            <div class="card mb-3">
                 <div class="card-header">
                     <h3 class="card-title">Payment for Invoice: <strong><?= "$invoice_prefix$invoice_number" ?></strong></h3>
                 </div>
                 <div class="table-responsive">
-                    <table class="table">
+                    <table class="table mb-0">
                         <thead>
                         <tr>
                             <th>Product</th>
                             <th class="text-center">Qty</th>
-                            <th class="text-right">Total</th>
+                            <th class="text-end">Total</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -99,11 +98,11 @@ if (isset($_GET['invoice_id'], $_GET['url_key']) && !isset($_GET['payment_intent
                             <tr>
                                 <td><?= $item_name ?></td>
                                 <td class="text-center"><?= $item_quantity ?></td>
-                                <td class="text-right"><?= numfmt_format_currency($currency_format, $item_total, $invoice_currency_code) ?></td>
+                                <td class="text-end"><?= numfmt_format_currency($currency_format, $item_total, $invoice_currency_code) ?></td>
                             </tr>
                         <?php } ?>
                         <?php if ($invoice_discount > 0) { ?>
-                            <tr class="text-right">
+                            <tr class="text-end">
                                 <td colspan="2">Discount</td>
                                 <td>
                                     <?= numfmt_format_currency($currency_format, $invoice_discount, $invoice_currency_code) ?>
@@ -111,7 +110,7 @@ if (isset($_GET['invoice_id'], $_GET['url_key']) && !isset($_GET['payment_intent
                             </tr>
                         <?php } ?>
                         <?php if (intval($amount_paid) > 0) { ?>
-                            <tr class="text-right">
+                            <tr class="text-end">
                                 <td colspan="2">Paid</td>
                                 <td>
                                     <?= numfmt_format_currency($currency_format, $amount_paid, $invoice_currency_code) ?>
@@ -136,11 +135,11 @@ if (isset($_GET['invoice_id'], $_GET['url_key']) && !isset($_GET['payment_intent
                         <input type="hidden" id="url_key" value="<?= $invoice_url_key ?>">
                         <div id="payment-element"></div>
                         <br>
-                        <button type="submit" id="submit" class="btn btn-primary btn-lg btn-block text-bold" hidden="hidden">
+                        <button type="submit" id="submit" class="btn btn-primary btn-lg w-100 text-bold" hidden="hidden">
                             <div class="spinner hidden" id="spinner"></div>
-                            <span id="button-text"><i class="fas fa-check mr-2"></i>Pay Invoice</span>
+                            <span id="button-text"><i class="fas fa-check me-2"></i>Pay Invoice</span>
                         </button>
-                        <div id="payment-message" class="hidden"></div>
+                        <div id="payment-message" class="d-none"></div>
                     </form>
                 </div>
             </div>
@@ -264,23 +263,30 @@ if (isset($_GET['invoice_id'], $_GET['url_key']) && !isset($_GET['payment_intent
     $config_invoice_paid_notification_email = escapeSql($settings['config_invoice_paid_notification_email']);
 
     if (!empty($config_smtp_host)) {
-        $subject = "Payment Received - Invoice $invoice_prefix$invoice_number";
-        $body = "Hello $contact_name,<br><br>We have received online payment for the amount of " . $pi_currency . $pi_amount_paid . " for invoice <a href=\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key\'>$invoice_prefix$invoice_number</a>. Please keep this email as a receipt for your records.<br><br>Amount: " . numfmt_format_currency($currency_format, $pi_amount_paid, $invoice_currency_code) . "<br><br>Thank you for your business!<br><br><br>~<br>$company_name - Billing<br>$config_invoice_from_email<br>$company_phone";
+        $payment_email = renderN45Email('payment.received', [
+            'company_name' => $company_name,
+            'contact_name' => $contact_name,
+            'invoice_number' => $invoice_prefix . $invoice_number,
+            'amount_paid' => numfmt_format_currency($currency_format, $pi_amount_paid, $invoice_currency_code),
+            'payment_method' => 'Stripe',
+            'payment_reference' => $pi_id,
+            'action_url' => "https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$invoice_id&url_key=$invoice_url_key",
+            'footer_email' => $config_invoice_from_email,
+            'footer_phone' => $company_phone,
+        ]);
 
         $data = [
-            [
+            array_merge([
                 'from' => $config_invoice_from_email,
                 'from_name' => $config_invoice_from_name,
                 'recipient' => $contact_email,
                 'recipient_name' => $contact_name,
-                'subject' => $subject,
-                'body' => $body,
-            ]
+            ], n45EmailQueueFields($payment_email))
         ];
         // Internal notification
         if (!empty($config_invoice_paid_notification_email)) {
             $subject_internal = "Payment Received - $client_name - Invoice $invoice_prefix$invoice_number";
-            $body_internal = "This is a notification that an invoice has been paid in ITFlow. Below is a copy of the receipt sent to the client:-<br><br>--------<br><br>$body";
+            $body_internal = "Invoice $invoice_prefix$invoice_number for $client_name was paid through Stripe.<br><br>Amount received: " . numfmt_format_currency($currency_format, $pi_amount_paid, $invoice_currency_code) . "<br>Payment reference: $pi_id<br><br>View invoice: https://$config_base_url/agent/invoice.php?invoice_id=$invoice_id";
             $data[] = [
                 'from' => $config_invoice_from_email,
                 'from_name' => $config_invoice_from_name,

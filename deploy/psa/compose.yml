@@ -1,0 +1,74 @@
+name: psa
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: itflow
+      MARIADB_USER: itflow
+      MARIADB_PASSWORD: ${ITFLOW_DB_PASSWORD:?Set ITFLOW_DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${ITFLOW_DB_ROOT_PASSWORD:?Set ITFLOW_DB_ROOT_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -uroot -p$${MARIADB_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - backend
+
+  web:
+    image: n45-itflow:${ITFLOW_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: deploy/psa/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      N45_FEATURE_LEVEL: ${N45_FEATURE_LEVEL:-1}
+      N45_FEATURE_AUTOMATION: ${N45_FEATURE_AUTOMATION:-1}
+    volumes:
+      - app_data:/var/lib/itflow
+    ports:
+      - 127.0.0.1:8088:80
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+
+  cron:
+    image: n45-itflow:${ITFLOW_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      N45_FEATURE_LEVEL: ${N45_FEATURE_LEVEL:-1}
+      N45_FEATURE_AUTOMATION: ${N45_FEATURE_AUTOMATION:-1}
+    volumes:
+      - app_data:/var/lib/itflow
+    command:
+      - sh
+      - -c
+      - while true; do php /var/www/html/cron/cron.php; sleep 60; done
+    networks:
+      - backend
+
+volumes:
+  app_data:
+  db_data:
+
+networks:
+  backend:

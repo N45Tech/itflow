@@ -14,7 +14,7 @@ $purifier = new HTMLPurifier($purifier_config);
 
 $sql = mysqli_query($mysqli, "SELECT email_attempts, email_content, email_failed_at, email_from, email_from_name,
     email_queued_at, email_recipient, email_recipient_name, email_sent_at, email_status,
-    email_subject FROM email_queue WHERE email_id = $email_id LIMIT 1");
+    email_subject, email_template_key FROM email_queue WHERE email_id = $email_id LIMIT 1");
 $row = mysqli_fetch_assoc($sql);
 
 $email_from = escapeHtml($row['email_from']);
@@ -22,6 +22,7 @@ $email_from_name = escapeHtml($row['email_from_name']);
 $email_recipient = escapeHtml($row['email_recipient']);
 $email_recipient_name = escapeHtml($row['email_recipient_name']);
 $email_subject = escapeHtml($row['email_subject']);
+$email_template_key = escapeHtml($row['email_template_key']);
 $email_content = $purifier->purify($row['email_content']);
 $email_attempts = intval($row['email_attempts']);
 $email_queued_at = escapeHtml($row['email_queued_at']);
@@ -42,10 +43,8 @@ if ($email_status == 0) {
 ob_start();
 ?>
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class='fas fa-fw fa-envelope-open mr-2'></i><strong><?= $email_subject ?></strong></h5>
-    <button type="button" class="close text-light" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title"><i class='fas fa-fw fa-envelope-open me-2'></i><strong><?= $email_subject ?></strong></h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <div class="modal-body">
     <div class="row">
@@ -66,6 +65,17 @@ ob_start();
         </div>
     </div>
     <hr class="my-2">
+    <?php if ($email_template_key !== '') { ?>
+        <div class="row">
+            <div class="col-md-1">
+                <span class="text-secondary">Template:</span>
+            </div>
+            <div class="col-md-10">
+                <code><?= $email_template_key ?></code>
+            </div>
+        </div>
+        <hr class="my-2">
+    <?php } ?>
     <div class="prettyContent">
         <?php if ($email_status == 3 && $email_content === '') { ?>
             <em class="text-secondary">Message content was cleared on delivery.</em>

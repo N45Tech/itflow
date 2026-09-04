@@ -18,15 +18,15 @@ if (isset($_POST['add_contract_template'])) {
     $support_hours = escapeSql($_POST['support_hours']);
     $details = mysqli_escape_string($mysqli, $_POST['details']);
 
-    // Numeric fields cast to integer
+    // SLA and payment terms are whole numbers; rates may include cents.
     $sla_low_resp = intval($_POST['sla_low_response_time']);
     $sla_med_resp = intval($_POST['sla_medium_response_time']);
     $sla_high_resp = intval($_POST['sla_high_response_time']);
     $sla_low_res = intval($_POST['sla_low_resolution_time']);
     $sla_med_res = intval($_POST['sla_medium_resolution_time']);
     $sla_high_res = intval($_POST['sla_high_resolution_time']);
-    $rate_standard = intval($_POST['rate_standard']);
-    $rate_after_hours = intval($_POST['hourly_rate_after_hours']);
+    $rate_standard = floatval($_POST['rate_standard']);
+    $rate_after_hours = floatval($_POST['rate_after_hours']);
     $net_terms = intval($_POST['net_terms']);
 
     // Insert into database (numbers not quoted)
@@ -78,8 +78,8 @@ if (isset($_POST['edit_contract_template'])) {
     $sla_low_res   = intval($_POST['sla_low_resolution_time']);
     $sla_med_res   = intval($_POST['sla_medium_resolution_time']);
     $sla_high_res  = intval($_POST['sla_high_resolution_time']);
-    $rate_standard   = intval($_POST['rate_standard']);
-    $rate_after_hours = intval($_POST['rate_after_hours']);
+    $rate_standard   = floatval($_POST['rate_standard']);
+    $rate_after_hours = floatval($_POST['rate_after_hours']);
     $net_terms     = intval($_POST['net_terms']);
 
     mysqli_query($mysqli, "

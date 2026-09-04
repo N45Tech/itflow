@@ -1,7 +1,8 @@
 <?php
 
 // Query Settings
-$sql_settings = mysqli_query($mysqli, "SELECT config_azure_client_id, config_azure_client_secret, config_client_portal_enable,
+$sql_settings = mysqli_query($mysqli, "SELECT config_azure_agent_sso_enable, config_azure_client_id,
+    config_azure_client_secret, config_azure_tenant_id, config_client_portal_enable,
     config_current_database_version, config_default_calendar, config_default_expense_account,
     config_default_expense_payment_method, config_default_hourly_rate,
     config_default_net_terms, config_default_payment_account, config_default_payment_method,
@@ -12,8 +13,11 @@ $sql_settings = mysqli_query($mysqli, "SELECT config_azure_client_id, config_azu
     config_invoice_from_email, config_invoice_from_name, config_invoice_late_fee_enable,
     config_invoice_late_fee_percent, config_invoice_next_number,
     config_invoice_paid_notification_email, config_invoice_prefix, config_invoice_show_tax_id,
+    config_internal_client_id,
     config_log_retention, config_login_key_required, config_login_key_secret,
-    config_login_message, config_login_remember_me_expire, config_mail_from_email,
+    config_level_alert_assigned_to, config_level_alert_ticket_enable, config_level_api_key,
+    config_level_enable, config_level_webhook_secret, config_login_message,
+    config_login_remember_me_expire, config_mail_from_email,
     config_mail_from_name, config_mail_oauth_access_token,
     config_mail_oauth_access_token_expires_at, config_mail_oauth_client_id,
     config_mail_oauth_client_secret, config_mail_oauth_refresh_token,
@@ -40,6 +44,15 @@ DEFINE("CURRENT_DATABASE_VERSION", $row['config_current_database_version']);
 // Microsoft OAuth
 $config_azure_client_id = $row['config_azure_client_id'];
 $config_azure_client_secret = $row['config_azure_client_secret'];
+$config_azure_tenant_id = $row['config_azure_tenant_id'];
+$config_azure_agent_sso_enable = intval($row['config_azure_agent_sso_enable']);
+
+// Level.io RMM
+$config_level_enable = intval($row['config_level_enable']);
+$config_level_api_key = $row['config_level_api_key'];
+$config_level_webhook_secret = $row['config_level_webhook_secret'];
+$config_level_alert_ticket_enable = intval($row['config_level_alert_ticket_enable']);
+$config_level_alert_assigned_to = intval($row['config_level_alert_assigned_to']);
 
 // Mail - SMTP
 $config_smtp_provider = $row['config_smtp_provider'];
@@ -135,6 +148,9 @@ $config_module_enable_itdoc = intval($row['config_module_enable_itdoc']);
 $config_module_enable_ticketing = intval($row['config_module_enable_ticketing']);
 $config_module_enable_accounting = intval($row['config_module_enable_accounting']);
 $config_client_portal_enable = intval($row['config_client_portal_enable']);
+
+// The client record that represents this MSP's own company, or 0 for none
+$config_internal_client_id = intval($row['config_internal_client_id']);
 
 // Login
 $config_login_message = $row['config_login_message'];

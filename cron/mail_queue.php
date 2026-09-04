@@ -189,6 +189,7 @@ function sendQueueEmail(
     string $to_name,
     string $subject,
     string $html_body,
+    string $text_body,
     string $ics_str,
     string $attachments_json,
     string $oauth_client_id,
@@ -273,6 +274,7 @@ function sendQueueEmail(
     $mail->isHTML(true);
     $mail->Subject = $subject;
     $mail->Body = $html_body;
+    $mail->AltBody = $text_body !== '' ? $text_body : n45EmailHtmlToText($html_body);
 
     if (!empty($ics_str)) {
         $mail->addStringAttachment($ics_str, 'Scheduled_ticket.ics', 'base64', 'text/calendar');
@@ -332,7 +334,7 @@ if ($orphaned_emails > 0) {
 /** =======================================================================
  *  SEND: status = 0 (Queued)
  * ======================================================================= */
-$sql_queue = mysqli_query($mysqli, "SELECT email_attachments, email_cal_str, email_content, email_from, email_from_name, email_id,
+$sql_queue = mysqli_query($mysqli, "SELECT email_attachments, email_cal_str, email_content, email_content_plain, email_from, email_from_name, email_id,
     email_recipient, email_recipient_name, email_subject FROM email_queue WHERE email_status = 0 AND email_queued_at <= NOW()");
 
 if (mysqli_num_rows($sql_queue) > 0) {
@@ -344,6 +346,7 @@ if (mysqli_num_rows($sql_queue) > 0) {
         $email_recipient_name = $rowq['email_recipient_name'];
         $email_subject        = $rowq['email_subject'];
         $email_content        = $rowq['email_content'];
+        $email_content_plain  = $rowq['email_content_plain'];
         $email_ics_str        = $rowq['email_cal_str'];
         $email_attachments    = $rowq['email_attachments'];
 
@@ -398,6 +401,7 @@ if (mysqli_num_rows($sql_queue) > 0) {
                 (string)$email_recipient_name,
                 (string)$email_subject,
                 (string)$email_content,
+                (string)$email_content_plain,
                 (string)$email_ics_str,
                 (string)$email_attachments,
                 (string)$config_mail_oauth_client_id,
@@ -409,7 +413,7 @@ if (mysqli_num_rows($sql_queue) > 0) {
             );
 
             // Scrub the body on delivery - it can carry share decryption keys and temporary passwords
-            mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = 1, email_content = '', email_cal_str = '', email_attachments = '' WHERE email_id = $email_id");
+            mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = 1, email_content = '', email_content_plain = '', email_cal_str = '', email_attachments = '' WHERE email_id = $email_id");
 
         } catch (Exception $e) {
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 2, email_failed_at = NOW(), email_attempts = 1 WHERE email_id = $email_id");
@@ -431,7 +435,7 @@ if (mysqli_num_rows($sql_queue) > 0) {
  */
 $sql_failed_queue = mysqli_query(
     $mysqli,
-    "SELECT email_attachments, email_attempts, email_cal_str, email_content, email_from,
+    "SELECT email_attachments, email_attempts, email_cal_str, email_content, email_content_plain, email_from,
         email_from_name, email_id, email_recipient, email_recipient_name, email_subject FROM email_queue
      WHERE email_status = 2
        AND email_attempts < 4
@@ -447,6 +451,7 @@ if (mysqli_num_rows($sql_failed_queue) > 0) {
         $email_recipient_name = $rowf['email_recipient_name'];
         $email_subject        = $rowf['email_subject'];
         $email_content        = $rowf['email_content'];
+        $email_content_plain  = $rowf['email_content_plain'];
         $email_ics_str        = $rowf['email_cal_str'];
         $email_attachments    = $rowf['email_attachments'];
         $email_attempts       = (int)$rowf['email_attempts'] + 1;
@@ -476,6 +481,7 @@ if (mysqli_num_rows($sql_failed_queue) > 0) {
                 (string)$email_recipient_name,
                 (string)$email_subject,
                 (string)$email_content,
+                (string)$email_content_plain,
                 (string)$email_ics_str,
                 (string)$email_attachments,
                 (string)$config_mail_oauth_client_id,
@@ -487,7 +493,7 @@ if (mysqli_num_rows($sql_failed_queue) > 0) {
             );
 
             // Scrub the body on delivery - it can carry share decryption keys and temporary passwords
-            mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = $email_attempts, email_content = '', email_cal_str = '', email_attachments = '' WHERE email_id = $email_id");
+            mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = $email_attempts, email_content = '', email_content_plain = '', email_cal_str = '', email_attachments = '' WHERE email_id = $email_id");
 
         } catch (Exception $e) {
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 2, email_failed_at = NOW(), email_attempts = $email_attempts WHERE email_id = $email_id");

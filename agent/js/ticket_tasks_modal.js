@@ -6,7 +6,7 @@
 //
 // Wrapped in an IIFE because a modal can be opened, closed and opened again in one
 // page load, which re-runs this file - top-level const/let would throw on the
-// second run. Delegated handlers are namespaced and unbound first for the same
+// second run. Delegated handlers are stored on document and replaced for the same
 // reason, otherwise "Add Task" would add one row per time the modal was opened.
 
 (function () {
@@ -16,7 +16,7 @@
     function buildTaskRow(taskName, taskEstimate) {
 
         const row = document.createElement("div");
-        row.className = "form-row mb-2 ticket-task-row";
+        row.className = "row g-2 mb-2 ticket-task-row";
 
         const nameColumn = document.createElement("div");
         nameColumn.className = "col-7";
@@ -47,7 +47,7 @@
 
         const removeButton = document.createElement("button");
         removeButton.type = "button";
-        removeButton.className = "btn btn-secondary btn-block ticket-task-remove";
+        removeButton.className = "btn btn-secondary w-100 ticket-task-remove";
         removeButton.title = "Remove task";
         removeButton.innerHTML = '<i class="fa fa-fw fa-trash"></i>';
         removeColumn.appendChild(removeButton);
@@ -86,11 +86,11 @@
         });
     }
 
-    // jQuery parses a data-tasks attribute holding JSON into an array on its own,
-    // but hand it a string and it stays a string - so handle both
-    function readTemplateTasks($option) {
+    // dataset always gives a string; jQuery used to auto-parse JSON here, so
+    // parse it explicitly and still tolerate an already-parsed value
+    function readTemplateTasks(option) {
 
-        const tasks = $option.data('tasks');
+        const tasks = option.dataset.tasks;
 
         if (!tasks) {
             return [];
@@ -107,42 +107,100 @@
         return tasks;
     }
 
-    $(document).off('click.ticketTasks').on('click.ticketTasks', '#ticketTaskAdd', function () {
-        addTaskRow('', '');
-    });
+    function setWorkflowLock(versionId) {
 
-    $(document).off('click.ticketTaskRemove').on('click.ticketTaskRemove', '.ticket-task-remove', function () {
-        $(this).closest('.ticket-task-row').remove();
-    });
-
-    // Ticket template picker - fills in the subject, details and task rows
-    $(document).off('change.ticketTemplate').on('change.ticketTemplate', '#ticket_template_select', function () {
-
-        const $option = $(this).find(':selected');
-
-        // Selecting "- No Template -" only unlinks the template - it must not wipe
-        // whatever the user has already written or added
-        if (!parseInt($option.val(), 10)) {
+        const hidden = document.getElementById('selectedRunbookVersion');
+        if (!hidden) {
             return;
         }
 
-        const templateSubject = $option.data('subject') || '';
-        const templateDetails = $option.data('details') || '';
+        const locked = parseInt(versionId || 0, 10) > 0;
+        hidden.value = locked ? parseInt(versionId, 10) : 0;
+        document.getElementById('runbookWorkflowLock')?.classList.toggle('d-none', !locked);
+        const addButton = document.getElementById('ticketTaskAdd');
+        if (addButton) {
+            addButton.disabled = locked;
+            addButton.classList.toggle('d-none', locked);
+        }
+        document.querySelectorAll('#ticketTasksContainer input').forEach(input => {
+            input.readOnly = locked;
+        });
+        document.querySelectorAll('#ticketTasksContainer .ticket-task-remove').forEach(button => {
+            button.disabled = locked;
+            button.classList.toggle('d-none', locked);
+        });
+    }
 
-        $('#subjectInput').val(templateSubject);
+    function handleTicketTaskClick(event) {
+
+        if (event.target.closest('#ticketTaskAdd')) {
+            addTaskRow('', '');
+            return;
+        }
+
+        const removeButton = event.target.closest('.ticket-task-remove');
+        if (removeButton) {
+            removeButton.closest('.ticket-task-row')?.remove();
+        }
+    }
+
+    // Ticket template picker - fills in the subject, details and task rows
+    function handleTicketTemplateChange(event) {
+
+        if (!event.target.matches('#ticket_template_select')) {
+            return;
+        }
+
+        const select = event.target;
+        const option = select.options[select.selectedIndex];
+
+        // Selecting "- No Template -" only unlinks the template - it must not wipe
+        // whatever the user has already written or added
+        if (!parseInt(option.value, 10)) {
+            setWorkflowLock(0);
+            return;
+        }
+
+        const templateSubject = option.dataset.subject || '';
+        const templateDetails = option.dataset.details || '';
+
+        document.getElementById('subjectInput').value = templateSubject;
 
         if (window.tinymce) {
             const editor = tinymce.get('detailsInput');
             if (editor) {
                 editor.setContent(templateDetails);
             } else {
-                $('#detailsInput').val(templateDetails);
+                document.getElementById('detailsInput').value = templateDetails;
             }
         } else {
-            $('#detailsInput').val(templateDetails);
+            document.getElementById('detailsInput').value = templateDetails;
         }
 
-        setTaskRows(readTemplateTasks($option));
-    });
+        setTaskRows(readTemplateTasks(option));
+        setWorkflowLock(option.dataset.runbookVersion || 0);
+    }
+
+    // AJAX modals can be opened more than once without reloading the page. Keep
+    // the delegated listeners native and replace the previous instance whenever
+    // this script runs so the modal does not depend on jQuery or double-bind.
+    const handlerRegistryKey = '__n45TicketTasksModalHandlers';
+    const previousHandlers = document[handlerRegistryKey];
+    if (previousHandlers) {
+        document.removeEventListener('click', previousHandlers.click);
+        document.removeEventListener('change', previousHandlers.change);
+    }
+
+    document[handlerRegistryKey] = {
+        click: handleTicketTaskClick,
+        change: handleTicketTemplateChange
+    };
+    document.addEventListener('click', handleTicketTaskClick);
+    document.addEventListener('change', handleTicketTemplateChange);
+
+    const templateSelect = document.getElementById('ticket_template_select');
+    if (templateSelect && templateSelect.selectedIndex >= 0) {
+        setWorkflowLock(templateSelect.options[templateSelect.selectedIndex].dataset.runbookVersion || 0);
+    }
 
 })();
