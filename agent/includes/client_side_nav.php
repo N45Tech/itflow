@@ -243,7 +243,7 @@
                         </li>
 
                         <li class="nav-item">
-                            <a href="/agent/reports/service_reviews.php?client_id=<?= $client_id ?>" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "service_reviews.php") { echo "active"; } ?>">
+                            <a href="/agent/business_reviews.php?client_id=<?= $client_id ?>" class="nav-link <?php if (in_array(basename($_SERVER["PHP_SELF"]), ["business_reviews.php", "service_review.php"], true)) { echo "active"; } ?>">
                                 <i class="nav-icon fas fa-chart-line"></i>
                                 <p>Business Reviews</p>
                             </a>
