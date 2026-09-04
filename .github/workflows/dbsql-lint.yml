@@ -68,9 +68,6 @@ jobs:
         run: |
           bash -n tests/n45_release_database_test.sh
           bash -n tests/n45_lock_order_database_test.sh
-          bash -n deploy/psa/deploy-production.sh
-          bash -n deploy/psa/n45-psa-deploy-wrapper
-          sh -n deploy/psa/install-github-deployer.sh
 
       - name: Validate generated n8n workflows
         run: |
