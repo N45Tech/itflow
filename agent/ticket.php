@@ -653,7 +653,7 @@ if (isset($_GET['ticket_id'])) {
                             <?php } ?>
 
                             <div class="dropdown dropstart mb-1">
-                                    <button class="btn btn-secondary" type="button" data-bs-toggle="dropdown" title="More actions">
+                                    <button class="btn btn-secondary" type="button" data-bs-toggle="dropdown" title="More actions" aria-label="More ticket actions">
                                         <i class="fas fa-ellipsis-v"></i>
                                     </button>
                                     <div class="dropdown-menu">
@@ -797,20 +797,70 @@ if (isset($_GET['ticket_id'])) {
 
                 </div>
 
+                <?php
+                $ticket_lifecycle_stage = $ticket_is_closed ? 3 : ($ticket_is_resolved ? 2 : ($ticket_status === 1 ? 0 : 1));
+                $ticket_lifecycle_steps = ['Request', 'Work', 'Resolve', 'Close'];
+                if ($ticket_is_closed) {
+                    $ticket_next_action = 'Closed';
+                    $ticket_next_action_icon = 'fa-check-circle';
+                    $ticket_next_action_href = '#ticket-activity';
+                } elseif ($ticket_is_resolved) {
+                    $ticket_next_action = 'Review outcome and close';
+                    $ticket_next_action_icon = 'fa-gavel';
+                    $ticket_next_action_href = '#ticket-activity';
+                } elseif (!$ticket_assigned_to) {
+                    $ticket_next_action = 'Assign an owner';
+                    $ticket_next_action_icon = 'fa-user-plus';
+                    $ticket_next_action_href = '#ticket-context';
+                } elseif ($tasks_block_resolve) {
+                    $ticket_next_action = 'Complete the current task';
+                    $ticket_next_action_icon = 'fa-tasks';
+                    $ticket_next_action_href = '#ticket-work';
+                } else {
+                    $ticket_next_action = 'Post an update or resolve';
+                    $ticket_next_action_icon = 'fa-reply';
+                    $ticket_next_action_href = '#ticket-update';
+                }
+                ?>
+                <div class="ticket-lifecycle border-top mt-3 pt-3">
+                    <ol class="ticket-lifecycle-steps" aria-label="Ticket lifecycle">
+                        <?php foreach ($ticket_lifecycle_steps as $index => $step) {
+                            $step_state = $index < $ticket_lifecycle_stage ? 'complete' : ($index === $ticket_lifecycle_stage ? 'current' : 'upcoming');
+                            ?>
+                            <li class="ticket-lifecycle-step is-<?= $step_state ?>"<?= $step_state === 'current' ? ' aria-current="step"' : '' ?>>
+                                <span class="ticket-lifecycle-dot"><?= $index < $ticket_lifecycle_stage ? '<i class="fas fa-check"></i>' : $index + 1 ?></span>
+                                <span><?= $step ?></span>
+                            </li>
+                        <?php } ?>
+                    </ol>
+                    <a class="ticket-next-action" href="<?= $ticket_next_action_href ?>">
+                        <span class="small text-muted">Next action</span>
+                        <strong><i class="fas <?= $ticket_next_action_icon ?> me-1"></i><?= $ticket_next_action ?></strong>
+                    </a>
+                </div>
+
+                <nav class="ticket-workspace-nav mt-3" aria-label="Ticket workspace">
+                    <?php if (!$ticket_is_resolved || $task_total_count) { ?><a href="#ticket-work"><i class="fas fa-tasks"></i>Work</a><?php } ?>
+                    <?php if ($can_edit_ticket && $ticket_is_open) { ?><a href="#ticket-update"><i class="fas fa-reply"></i>Update</a><?php } ?>
+                    <a href="#ticket-activity"><i class="fas fa-comments"></i>Activity</a>
+                    <a href="#ticket-request"><i class="fas fa-align-left"></i>Request</a>
+                    <a href="#ticket-context"><i class="fas fa-link"></i>Context</a>
+                </nav>
+
             </div>
         </div>
 
                 <!-- Tasks -->
                 <?php if (!$ticket_is_resolved || $task_total_count) { ?>
-                    <div class="card mb-3 ticket-task-workspace">
+                    <div class="card mb-3 ticket-task-workspace" id="ticket-work">
                         <div class="card-header px-3 py-2">
                             <h5 class="card-title mt-1">
-                                <i class="fas fa-fw fa-tasks me-2"></i>Tasks
+                                <i class="fas fa-fw fa-tasks me-2"></i><?= $task_view === 'all' ? 'Runbook' : 'Current task' ?>
                             </h5>
                             <div class="card-tools">
                                 <?php if (!$ticket_is_resolved && $can_edit_ticket && $task_total_count) { ?>
                                     <div class="dropdown dropstart d-inline-block">
-                                        <button class="btn btn-tool" type="button" data-bs-toggle="dropdown">
+                                        <button class="btn btn-tool" type="button" data-bs-toggle="dropdown" aria-label="Task actions">
                                             <i class="fas fa-ellipsis-v"></i>
                                         </button>
                                         <div class="dropdown-menu">
@@ -823,7 +873,7 @@ if (isset($_GET['ticket_id'])) {
                                         </div>
                                     </div>
                                 <?php } ?>
-                                <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse">
+                                <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" aria-label="Collapse tasks">
                                     <i class="fas fa-chevron-down"></i>
                                 </button>
                             </div>
@@ -854,28 +904,35 @@ if (isset($_GET['ticket_id'])) {
                             <?php } ?>
 
                             <?php if (!$ticket_is_resolved && $can_edit_ticket) { ?>
-                                <form action="post.php" method="post" autocomplete="off">
-                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                    <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
-                                    <div class="mb-3 px-3 pt-3 mb-2">
+                                <div class="px-3 pt-3">
+                                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#ticketTaskAddForm" aria-expanded="false" aria-controls="ticketTaskAddForm">
+                                        <i class="fas fa-plus me-1"></i>Add a task
+                                    </button>
+                                </div>
+                                <div class="collapse" id="ticketTaskAddForm">
+                                    <form action="post.php" method="post" autocomplete="off">
+                                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                        <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
+                                        <div class="mb-3 px-3 pt-2 mb-2">
                                         <div class="input-group input-group-sm">
                                             <input type="text" class="form-control" name="name" placeholder="Add a task" required maxlength="255">
                                                 <button type="submit" name="add_task" class="btn btn-outline-primary">
                                                     <i class="fas fa-plus"></i>
                                                 </button>
                                         </div>
-                                    </div>
-                                </form>
+                                        </div>
+                                    </form>
+                                </div>
                             <?php } ?>
 
                             <?php if ($task_total_count) { ?>
                                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-bottom bg-light">
                                     <div class="btn-group btn-group-sm" role="group" aria-label="Task view">
                                         <a class="btn btn-<?= $task_view === 'active' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_view_url('active')) ?>">
-                                            Current <span class="badge badge-light ml-1"><?= $task_active_count ?> remaining</span>
+                                            Current task
                                         </a>
                                         <a class="btn btn-<?= $task_view === 'all' ? 'primary' : 'outline-secondary' ?>" href="<?= escapeHtml($task_view_url('all')) ?>">
-                                            Runbook <span class="badge badge-light ml-1"><?= $task_total_count ?></span>
+                                            All steps <span class="badge badge-light ml-1"><?= $task_total_count ?></span>
                                         </a>
                                     </div>
                                     <span class="small text-muted"><?= $task_view === 'active' ? 'The next unfinished step is shown automatically' : 'Scroll sideways to review every step' ?></span>
@@ -888,71 +945,6 @@ if (isset($_GET['ticket_id'])) {
                                 </div>
                             <?php } ?>
 
-                            <style>
-                                .ticket-task-horizontal-scroll {
-                                    overflow-x: auto;
-                                    overscroll-behavior-inline: contain;
-                                    scroll-snap-type: x proximity;
-                                    padding: .75rem;
-                                    scrollbar-gutter: stable;
-                                }
-                                .ticket-task-horizontal-scroll #tasks {
-                                    display: block;
-                                    width: max-content;
-                                    min-width: 100%;
-                                }
-                                .ticket-task-horizontal-scroll #tasks tbody {
-                                    display: flex;
-                                    align-items: stretch;
-                                    gap: .75rem;
-                                    padding-bottom: .25rem;
-                                }
-                                .ticket-task-horizontal-scroll #tasks tr {
-                                    display: flex;
-                                    flex: 0 0 clamp(16rem, 24vw, 20rem);
-                                    scroll-snap-align: start;
-                                    border: 1px solid var(--bs-border-color, #dee2e6);
-                                    border-radius: .5rem;
-                                    background: var(--bs-body-bg, #fff);
-                                    overflow: hidden;
-                                }
-                                .ticket-task-horizontal-scroll #tasks td:first-child {
-                                    flex: 1 1 auto;
-                                    min-width: 0;
-                                }
-                                .ticket-task-horizontal-scroll #tasks td:last-child {
-                                    flex: 0 0 auto;
-                                }
-                                .ticket-task-current {
-                                    padding: 1rem;
-                                }
-                                .ticket-task-current #tasks tbody,
-                                .ticket-task-current #tasks tr {
-                                    display: flex;
-                                    width: 100%;
-                                }
-                                .ticket-task-current #tasks tr {
-                                    align-items: flex-start;
-                                    border: 1px solid var(--bs-border-color, #dee2e6);
-                                    border-left: .3rem solid var(--bs-primary, #0d6efd);
-                                    border-radius: .65rem;
-                                    background: var(--bs-body-bg, #fff);
-                                    overflow: hidden;
-                                }
-                                .ticket-task-current #tasks td:first-child {
-                                    flex: 1 1 auto;
-                                    min-width: 0;
-                                    padding: 1rem !important;
-                                }
-                                .ticket-task-current #tasks td:last-child {
-                                    flex: 0 0 auto;
-                                    padding: 1rem .75rem !important;
-                                }
-                                @media (max-width: 767.98px) {
-                                    .ticket-task-horizontal-scroll #tasks tr {
-                                        flex-basis: 82vw;
-                                    }
-                                }                            </style>
                             <div class="<?= $task_view === 'all' ? 'ticket-task-horizontal-scroll' : 'ticket-task-current' ?>"<?= $task_view === 'all' ? ' role="region" aria-label="All ticket tasks" tabindex="0"' : ' aria-label="Current ticket task"' ?>>
                             <table class="table table-sm mb-0" id="tasks">
                                 <tbody>
@@ -1067,9 +1059,15 @@ if (isset($_GET['ticket_id'])) {
                                                 <?php } elseif (!$task_evidence_satisfied) { ?>
                                                     <i class="fas fa-paperclip text-danger" title="Required <?= escapeHtml($task_evidence_required) ?> evidence is missing"></i>
                                                 <?php } else { ?>
-                                                    <a href="post.php?complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" title="Mark complete">
-                                                        <i class="far fa-square text-dark"></i>
-                                                    </a>
+                                                    <?php if ($task_view === 'active') { ?>
+                                                        <a class="btn btn-sm btn-primary" href="post.php?complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                                                            <i class="fas fa-check me-1"></i>Complete
+                                                        </a>
+                                                    <?php } else { ?>
+                                                        <a href="post.php?complete_task=<?= $task_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" title="Mark complete">
+                                                            <i class="far fa-square text-dark"></i>
+                                                        </a>
+                                                    <?php } ?>
                                                 <?php } ?>
 
                                             <?php } ?>
@@ -1096,7 +1094,12 @@ if (isset($_GET['ticket_id'])) {
                                                     <?= escapeHtml(implode(', ', array_map(static fn($dependency) => $dependency['task_name'], array_filter($task_dependencies_list, static fn($dependency) => empty($dependency['task_completed_at']) && $dependency['task_state'] !== 'Skipped')))) ?>
                                                 </div>
                                             <?php } ?>
-                                            <?php if ($task_instructions || ($task_evidence_prompt && !$task_evidence_satisfied)) { ?>
+                                            <?php if ($task_view === 'active' && ($task_instructions || ($task_evidence_prompt && !$task_evidence_satisfied))) { ?>
+                                                <div class="ticket-task-guidance ms-4 mt-2 small">
+                                                    <?php if ($task_instructions) { ?><div><?= $task_instructions ?></div><?php } ?>
+                                                    <?php if ($task_evidence_prompt && !$task_evidence_satisfied) { ?><div class="text-danger mt-2"><i class="fas fa-paperclip me-1"></i><?= $task_evidence_prompt ?></div><?php } ?>
+                                                </div>
+                                            <?php } elseif ($task_instructions || ($task_evidence_prompt && !$task_evidence_satisfied)) { ?>
                                                 <details class="ticket-task-details ms-4 mt-1 small">
                                                     <summary class="text-primary"><?= $task_evidence_prompt && !$task_evidence_satisfied ? 'Instructions and evidence' : 'Instructions' ?></summary>
                                                     <?php if ($task_instructions) { ?><div class="text-muted mt-2"><?= $task_instructions ?></div><?php } ?>
@@ -1168,48 +1171,18 @@ if (isset($_GET['ticket_id'])) {
 
             <div class="col-lg-9">
 
-                <!-- The original request -->
-                <div class="card card-dark mb-3">
-                    <div class="card-header px-3 py-2">
-                        <h5 class="card-title mt-1"><i class="fas fa-fw fa-align-left me-2"></i>Description</h5>
-                        <div class="card-tools">
-                            <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse">
-                                <i class="fas fa-chevron-down"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="card-body p-3 prettyContent" id="ticketDetails">
-                        <?= $ticket_details ?>
-
-                        <?php if ($ticket_attachments) { ?>
-                            <div class="mt-3 pt-2 border-top">
-                                <?php foreach ($ticket_attachments as $ticket_attachment) {
-                                    $ticket_attachment_id = intval($ticket_attachment['ticket_attachment_id']);
-                                    $ticket_attachment_name = escapeHtml($ticket_attachment['ticket_attachment_name']);
-                                    ?>
-                                    <div class="mt-1">
-                                        <i class="fas fa-fw fa-paperclip text-secondary me-1"></i><?= $ticket_attachment_name ?>
-                                        <a target="_blank" class="ms-2 small" href="ticket_attachment.php?attachment_id=<?= $ticket_attachment_id ?>&action=view">View</a>
-                                        <a class="ms-2 small" href="ticket_attachment.php?attachment_id=<?= $ticket_attachment_id ?>">Download</a>
-                                        <?php if (lookupUserPermission("module_support") >= 3) { ?>
-                                            <a class="confirm-link ms-2 small text-danger" href="post.php?delete_ticket_attachment=<?= $ticket_attachment_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">Delete</a>
-                                        <?php } ?>
-                                    </div>
-                                <?php } ?>
-                            </div>
-                        <?php } ?>
-                    </div>
-                </div>
-
                 <!-- Reply composer - only while the ticket is still being worked -->
                 <?php if ($can_edit_ticket && $ticket_is_open) { ?>
 
-                    <form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off">
+                    <form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off" id="ticket-update">
                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                         <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
 
-                        <div class="card mb-3">
+                        <div class="card mb-3 ticket-update-card">
+                            <div class="card-header px-3 py-2">
+                                <h5 class="card-title mt-1"><i class="fas fa-fw fa-reply me-2"></i>Update ticket</h5>
+                                <span class="small text-muted float-end">Choose who should see the update</span>
+                            </div>
                             <div class="card-body p-3 d-print-none">
 
                                 <!--
@@ -1345,10 +1318,45 @@ if (isset($_GET['ticket_id'])) {
 
                 <?php } ?>
 
+                <!-- The original request stays available without interrupting the work path -->
+                <div class="card card-dark mb-3 collapsed-card" id="ticket-request">
+                    <div class="card-header px-3 py-2">
+                        <h5 class="card-title mt-1"><i class="fas fa-fw fa-align-left me-2"></i>Original request</h5>
+                        <div class="card-tools">
+                            <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" aria-label="Show original request">
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card-body p-3 prettyContent" id="ticketDetails" style="display: none;">
+                        <?= $ticket_details ?>
+
+                        <?php if ($ticket_attachments) { ?>
+                            <div class="mt-3 pt-2 border-top">
+                                <?php foreach ($ticket_attachments as $ticket_attachment) {
+                                    $ticket_attachment_id = intval($ticket_attachment['ticket_attachment_id']);
+                                    $ticket_attachment_name = escapeHtml($ticket_attachment['ticket_attachment_name']);
+                                    ?>
+                                    <div class="mt-1">
+                                        <i class="fas fa-fw fa-paperclip text-secondary me-1"></i><?= $ticket_attachment_name ?>
+                                        <a target="_blank" class="ms-2 small" href="ticket_attachment.php?attachment_id=<?= $ticket_attachment_id ?>&action=view">View</a>
+                                        <a class="ms-2 small" href="ticket_attachment.php?attachment_id=<?= $ticket_attachment_id ?>">Download</a>
+                                        <?php if (lookupUserPermission("module_support") >= 3) { ?>
+                                            <a class="confirm-link ms-2 small text-danger" href="post.php?delete_ticket_attachment=<?= $ticket_attachment_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">Delete</a>
+                                        <?php } ?>
+                                    </div>
+                                <?php } ?>
+                            </div>
+                        <?php } ?>
+                    </div>
+                </div>
+
                 <!-- Conversation -->
+                <section id="ticket-activity" aria-labelledby="ticket-activity-heading">
                 <?php if ($reply_counts['total']) { ?>
                     <div class="d-flex flex-wrap align-items-center mb-2 d-print-none">
-                        <h6 class="mb-0 me-3"><i class="fas fa-fw fa-comments me-2"></i>Conversation</h6>
+                        <h6 class="mb-0 me-3" id="ticket-activity-heading"><i class="fas fa-fw fa-comments me-2"></i>Recent activity</h6>
                         <div class="btn-group btn-group-sm" id="replyFilter">
                             <button type="button" class="btn btn-dark active" data-reply-filter="all">All <?= $reply_counts['total'] ?></button>
                             <button type="button" class="btn btn-outline-dark" data-reply-filter="public">Public <?= $reply_counts['public'] ?></button>
@@ -1359,6 +1367,7 @@ if (isset($_GET['ticket_id'])) {
 
                 <?php
 
+                $ticket_reply_render_index = 0;
                 while ($reply_row = mysqli_fetch_assoc($sql_ticket_replies)) {
                     $ticket_reply_id = intval($reply_row['ticket_reply_id']);
                     $ticket_reply = $purifier->purify($reply_row['ticket_reply']);
@@ -1401,7 +1410,7 @@ if (isset($_GET['ticket_id'])) {
                     ?>
 
                     <!-- Begin ticket reply card -->
-                    <div class="card ticket-reply border-start border-<?= $reply_border ?> mb-3" style="border-start-width: 6px !important;" data-reply-group="<?= $reply_group ?>">
+                    <div class="card ticket-reply border-start border-<?= $reply_border ?> mb-3<?= $ticket_reply_render_index >= 4 ? ' ticket-reply-older' : '' ?>" style="border-start-width: 6px !important;" data-reply-group="<?= $reply_group ?>"<?= $ticket_reply_render_index >= 4 ? ' hidden' : '' ?>>
                         <div class="card-header px-3 py-2">
                             <div class="d-flex justify-content-between align-items-start w-100">
 
@@ -1483,13 +1492,23 @@ if (isset($_GET['ticket_id'])) {
 
                     <?php
 
+                    $ticket_reply_render_index++;
+
                 }
 
                 ?>
 
+                <?php if ($reply_counts['total'] > 4) { ?>
+                    <button type="button" class="btn btn-light btn-sm mb-3" id="ticketActivityToggle" aria-expanded="false">
+                        <i class="fas fa-history me-1"></i>Show <?= $reply_counts['total'] - 4 ?> earlier update<?= $reply_counts['total'] - 4 === 1 ? '' : 's' ?>
+                    </button>
+                <?php } ?>
+                </section>
+
             </div>
 
-            <div class="col-lg-3">
+            <div class="col-lg-3 ticket-context-column">
+                <div class="ticket-context-rail" id="ticket-context" role="region" aria-label="Ticket context" tabindex="0">
 
                 <?php if ($level_alert_link) {
                     $level_alert_id = escapeHtml($level_alert_link['level_alert_id']);
@@ -1940,6 +1959,8 @@ if (isset($_GET['ticket_id'])) {
                     </div>
                 </div>
 
+                </div>
+
             </div> <!-- End col -->
 
         </div> <!-- End row -->
@@ -1968,6 +1989,8 @@ require_once "../includes/footer.php";
 <?php } ?>
 
 <script src="/js/pretty_content.js"></script>
+
+<script src="js/ticket_workspace.js?v=<?= filemtime(__DIR__ . '/js/ticket_workspace.js') ?>"></script>
 
 <script src="/libs/SortableJS/Sortable.min.js"></script>
 <script>

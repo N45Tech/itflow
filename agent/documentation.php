@@ -134,40 +134,31 @@ $documentation_current_count = intval($status_counts['Current'] ?? 0);
 
 <div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
     <div>
-        <h1 class="h3 mb-1"><i class="fas fa-folder-open text-primary mr-2"></i>Documentation overview</h1>
-        <p class="text-muted mb-0"><?= $client_id ? 'Keep the client document set useful, current, and easy to review.' : 'A simple view of documentation readiness across authorized clients.' ?></p>
+        <h1 class="h3 mb-1"><i class="fas fa-folder-open text-primary mr-2"></i>Client documents</h1>
+        <p class="text-muted mb-0">Attach the records needed to deliver service. Review the set during onboarding and each client service review.</p>
     </div>
-    <?php if ($client_id) { ?>
-        <div class="text-right">
-            <span class="text-muted small text-uppercase d-block">Readiness index</span>
-            <?php if ($readiness_score === null) { ?>
-                <span class="h2 mb-0 text-muted">N/A</span>
-                <span class="small text-muted d-block">No readiness-blocking requirements</span>
-            <?php } else { ?>
-                <span class="h2 mb-0 text-<?= $readiness_score >= 90 ? 'success' : ($readiness_score >= 70 ? 'warning' : 'danger') ?>"><?= $readiness_score ?>%</span>
-            <?php } ?>
-        </div>
-    <?php } ?>
 </div>
 
-<div class="row mb-3">
-    <?php foreach (['Missing', 'Draft', 'Due Soon', 'Stale', 'Exception', 'Current'] as $status) { ?>
-        <div class="col-6 col-md mb-2">
-            <a class="card card-outline card-<?= documentationLifecycleStatusBadge($status) ?> h-100 text-dark" href="?<?= $client_id ? 'client_id=' . $client_id . '&' : '' ?>owner=<?= urlencode($selected_owner) ?>&status=<?= urlencode($status) ?>">
-                <div class="card-body py-3">
-                    <div class="text-muted small text-uppercase"><?= escapeHtml($status) ?></div>
-                    <div class="h3 mb-0"><?= intval($status_counts[$status] ?? 0) ?></div>
-                </div>
-            </a>
+<div class="card mb-3">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+            <strong>Review at the right moment</strong>
+            <div class="small text-muted">Documents are supporting material, not a separate daily queue.</div>
         </div>
-    <?php } ?>
+        <div class="d-flex gap-4 text-center">
+            <div><strong class="d-block h4 mb-0 text-warning"><?= $documentation_attention_count ?></strong><span class="small text-muted">Review</span></div>
+            <div><strong class="d-block h4 mb-0 text-success"><?= $documentation_current_count ?></strong><span class="small text-muted">Current</span></div>
+            <div><strong class="d-block h4 mb-0"><?= array_sum($status_counts) ?></strong><span class="small text-muted">Attached</span></div>
+        </div>
+    </div>
 </div>
 
-<div class="card card-dark">
+<div class="card card-dark collapsed-card">
     <div class="card-header py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-clipboard-check mr-2"></i><?= $client_id ? 'Coverage matrix' : 'Owner queue' ?></h3>
+        <h3 class="card-title mt-2"><i class="fas fa-sliders-h mr-2"></i>Document maintenance</h3>
+        <div class="card-tools"><button class="btn btn-tool" type="button" data-lte-toggle="card-collapse" aria-label="Show document maintenance"><i class="fas fa-chevron-up"></i></button></div>
     </div>
-    <div class="card-body">
+    <div class="card-body" style="display: none;">
         <form method="get" class="form-row align-items-end mb-3">
             <?php if ($client_id) { ?><input type="hidden" name="client_id" value="<?= $client_id ?>"><?php } ?>
             <div class="form-group col-md-4">
