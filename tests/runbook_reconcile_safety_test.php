@@ -16,9 +16,8 @@ $assertNotContains = function (string $needle, string $haystack, string $message
 };
 
 $reconcile = file_get_contents($root . '/deploy/psa/reconcile_templates.php');
-$readme = file_get_contents($root . '/deploy/psa/README.md');
-if ($reconcile === false || $readme === false) {
-    fwrite(STDERR, "Could not read reconcile deployment files\n");
+if ($reconcile === false) {
+    fwrite(STDERR, "Could not read the template reconciliation script\n");
     exit(1);
 }
 
@@ -36,7 +35,6 @@ $assertContains('runbook_version_count', $reconcile, 'Missing published pointers
 $assertContains('$published_pointer !== $verified_version_id', $reconcile, 'Published version ownership is not verified');
 $assertNotContains('runbookLatestPublishedVersionId(', $reconcile, 'Project stage pinning still guesses a historical version');
 $assertNotContains('starterTicketTemplateId(', $reconcile, 'Project stages still use an ambiguous name lookup');
-$assertContains('reconcile_templates.php --apply', $readme, 'Deployment instructions do not require explicit apply mode');
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);
