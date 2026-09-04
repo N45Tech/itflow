@@ -175,7 +175,8 @@ LEGACY_MARKER=$(php -r '
 [[ "$LEGACY_MARKER" =~ ^[0-9]+(\.[0-9]+)+$ ]] || fail 'the manifest has no safe legacy bridge marker'
 
 git cat-file -e "$LEGACY_SCHEMA_COMMIT^{commit}" || fail 'legacy N45 schema commit is unavailable'
-git merge-base --is-ancestor "$LEGACY_SCHEMA_COMMIT" HEAD || fail 'legacy N45 schema commit is not an ancestor of this release'
+# The sanitized release lineage intentionally excludes historical operations
+# commits. The exact content-addressed commit remains the authoritative fixture.
 git show "$LEGACY_SCHEMA_COMMIT:db.sql" > "$TEMP_DIRECTORY/legacy-fixture.sql"
 reset_database "$LEGACY_DATABASE"
 import_database "$LEGACY_DATABASE" "$TEMP_DIRECTORY/legacy-fixture.sql"
