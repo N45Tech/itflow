@@ -2696,6 +2696,40 @@ label,
     z-index: var(--n45-z-modal-popup);
 }
 
+/* Native disclosure state remains available to keyboards and screen readers. */
+.n45-document-maintenance > summary.card-header {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    list-style: none;
+}
+
+.n45-document-maintenance > summary::-webkit-details-marker {
+    display: none;
+}
+
+.n45-document-maintenance > summary:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -3px;
+}
+
+.n45-document-maintenance-chevron {
+    border-bottom: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    display: inline-block;
+    flex: 0 0 .5rem;
+    height: .5rem;
+    margin-inline-end: .25rem;
+    transform: rotate(-45deg);
+    width: .5rem;
+}
+
+.n45-document-maintenance[open] > summary > .n45-document-maintenance-chevron {
+    transform: rotate(45deg);
+}
+
 .modal-content {
     border: 1px solid var(--n45-border);
     border-radius: var(--n45-radius-lg);

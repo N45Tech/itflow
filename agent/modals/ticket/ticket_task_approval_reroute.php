@@ -64,7 +64,7 @@ ob_start();
 
 <div class="modal-header bg-dark">
     <h5 class="modal-title"><i class="fas fa-fw fa-route mr-2"></i>Manage approval</h5>
-    <button type="button" class="close text-white" data-bs-dismiss="modal"><span>&times;</span></button>
+    <button type="button" class="close text-white" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
 </div>
 <div class="modal-body">
     <p><strong><?= $task_name ?></strong></p>
@@ -82,7 +82,7 @@ ob_start();
         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
         <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
         <div class="form-group">
-            <label>New approval route</label>
+            <label for="approval_route_<?= $approval_id ?>">New approval route</label>
             <select class="form-control" name="approval_route" id="approval_route_<?= $approval_id ?>" required>
                 <option value="internal:specific" <?= $current_route === 'internal:specific' ? 'selected' : '' ?>>Specific internal approver</option>
                 <option value="internal:any" <?= $current_route === 'internal:any' ? 'selected' : '' ?>>Any other internal user</option>
@@ -92,8 +92,8 @@ ob_start();
             </select>
         </div>
         <div class="form-group" id="approval_user_wrapper_<?= $approval_id ?>">
-            <label>Specific internal approver</label>
-            <select class="form-control select2" name="approval_required_user_id">
+            <label for="approval_user_<?= $approval_id ?>">Specific internal approver</label>
+            <select class="form-control select2" name="approval_required_user_id" id="approval_user_<?= $approval_id ?>">
                 <option value="0">Select an active user</option>
                 <?php while ($user = mysqli_fetch_assoc($active_users)) { ?>
                     <option value="<?= intval($user['user_id']) ?>" <?= intval($user['user_id']) === $current_user_id ? 'selected' : '' ?>><?= escapeHtml($user['user_name']) ?></option>
@@ -101,8 +101,8 @@ ob_start();
             </select>
         </div>
         <div class="form-group">
-            <label>Reroute reason</label>
-            <input type="text" class="form-control" name="approval_reason" maxlength="255" required
+            <label for="approval_reroute_reason_<?= $approval_id ?>">Reroute reason</label>
+            <input type="text" class="form-control" name="approval_reason" id="approval_reroute_reason_<?= $approval_id ?>" maxlength="255" required
                    placeholder="Approver left, contact unavailable, role changed…">
         </div>
         <button type="submit" name="reroute_ticket_task_approval" class="btn btn-primary btn-block">
@@ -116,8 +116,8 @@ ob_start();
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
             <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
             <div class="form-group">
-                <label>Re-request reason</label>
-                <input type="text" class="form-control" name="approval_reason" maxlength="255" required
+                <label for="approval_retry_reason_<?= $approval_id ?>">Re-request reason</label>
+                <input type="text" class="form-control" name="approval_reason" id="approval_retry_reason_<?= $approval_id ?>" maxlength="255" required
                        placeholder="Why a new decision is needed">
             </div>
             <button type="submit" name="retry_ticket_task_approval" class="btn btn-outline-secondary btn-block">

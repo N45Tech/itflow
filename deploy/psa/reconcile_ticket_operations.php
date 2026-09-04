@@ -13,6 +13,8 @@ $app_root = dirname(__DIR__, 2);
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 require $app_root . '/config.php';
 require $app_root . '/includes/db.php';
+// Match web requests before generating PHP dates or writing SQL timestamps.
+require $app_root . '/includes/inc_set_timezone.php';
 require $app_root . '/functions/sanitize.php';
 require $app_root . '/functions/sla.php';
 require $app_root . '/admin/post/starter_content_model.php';
@@ -225,7 +227,8 @@ try {
     // on a clean installation and preserves completed/archived history.
     $open_tickets = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_closed_at IS NULL AND ticket_archived_at IS NULL");
     while ($ticket = mysqli_fetch_assoc($open_tickets)) {
-        applyTicketSla(intval($ticket['ticket_id']));
+        // Keep SLA/history writes inside this reconciliation's dry-run boundary.
+        applyTicketSla(intval($ticket['ticket_id']), null, null, true);
         $counts['restamped_tickets']++;
     }
 
