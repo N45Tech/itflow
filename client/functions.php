@@ -10,7 +10,7 @@
 function verifyContactTicketAccess($requested_ticket_id, $expected_ticket_state) {
 
     // Access the global variables
-    global $mysqli, $session_contact_id, $session_contact_primary, $session_contact_is_technical_contact, $session_client_id;
+    global $mysqli, $session_contact_id, $session_client_id;
 
     // Setup
     if ($expected_ticket_state == "Closed") {
@@ -26,8 +26,8 @@ function verifyContactTicketAccess($requested_ticket_id, $expected_ticket_state)
     if ($row) {
         $ticket_id = $row['ticket_id'];
 
-        if (intval($ticket_id) && ($session_contact_id == $row['ticket_contact_id'] || $session_contact_primary == 1 || $session_contact_is_technical_contact)) {
-            // Client is ticket owner, primary contact, or a technical contact
+        if (intval($ticket_id) && ($session_contact_id == $row['ticket_contact_id'] || contactCan('tickets_all'))) {
+            // Client is the ticket owner or has organization-wide ticket access.
             return true;
         }
     }
@@ -39,11 +39,13 @@ function verifyContactTicketAccess($requested_ticket_id, $expected_ticket_state)
 
 /*
  * Portal access control - single source of truth for what a logged-in contact can do.
- * Primary contacts have full access; others are gated by their billing / technical flags.
+ * Primary contacts have full access; all other capabilities are independent.
  * Capabilities are named by area so the rule for one can change without touching callers.
  */
 function contactCan($capability) {
-    global $session_contact_primary, $session_contact_is_billing_contact, $session_contact_is_technical_contact;
+    global $session_contact_primary, $session_contact_is_billing_contact, $session_contact_is_technical_contact,
+        $session_contact_ticket_scope, $session_contact_asset_scope, $session_contact_can_manage_contacts,
+        $session_contact_can_review_service_reviews;
 
     // Primary contacts can do everything in the portal
     if ($session_contact_primary == 1) {
@@ -54,13 +56,51 @@ function contactCan($capability) {
         case 'accounting':   // invoices, quotes, recurring invoices, saved payment methods
             return (bool) $session_contact_is_billing_contact;
 
-        case 'itdoc':        // assets, certificates, domains, documents, files
-        case 'contacts':     // view / manage contacts
+        case 'tickets_all':  // all tickets for the client organization
+            return ($session_contact_ticket_scope ?? 'own') === 'client';
+
+        case 'assets_all':   // all assets for the client organization
+            return ($session_contact_asset_scope ?? 'assigned') === 'client';
+
+        case 'assets':       // every portal contact may view their permitted asset inventory
+            return true;
+
+        case 'itdoc':        // certificates, domains, documents, files
             return (bool) $session_contact_is_technical_contact;
+
+        case 'contacts':     // view / manage client contacts
+            return (bool) ($session_contact_can_manage_contacts ?? false);
+
+        case 'service_reviews': // client-wide, explicitly authorized business-review participation
+            return ($session_contact_ticket_scope ?? 'own') === 'client'
+                && ($session_contact_asset_scope ?? 'assigned') === 'client'
+                && (bool) ($session_contact_can_review_service_reviews ?? false);
 
         default:             // unknown capability -> deny (fail closed)
             return false;
     }
+}
+
+/*
+ * Normalize the two simple portal roles exposed in contact forms. The database
+ * stores ticket and asset scopes separately so they can evolve independently.
+ */
+function portalAccessScopesFromRole($role) {
+    if ($role === 'manager') {
+        return [
+            'ticket_scope' => 'client',
+            'asset_scope' => 'client',
+        ];
+    }
+
+    return [
+        'ticket_scope' => 'own',
+        'asset_scope' => 'assigned',
+    ];
+}
+
+function portalAccessRoleFromScopes($ticket_scope, $asset_scope) {
+    return $ticket_scope === 'client' && $asset_scope === 'client' ? 'manager' : 'user';
 }
 
 /*
@@ -73,33 +113,83 @@ function enforceContactCan($capability) {
 }
 
 /*
- * Returns appropriate FontAwesome icon for file extension
+ * Confirms the person at the keyboard is the account holder, before a change
+ * that would let someone who hijacked a session take the account over or
+ * defeat phone verification.
+ *
+ * Returns true for SSO contacts without checking anything: there is no local
+ * password to compare against, and the identity provider has already done this
+ * work. Gating them on a password they do not have would just lock them out.
  */
-function getFileIcon($file_extension) {
-    $file_extension = strtolower($file_extension);
+function portalReauthenticate($current_password) {
+    global $mysqli, $session_user_id;
 
-    // Document icons
-    if (in_array($file_extension, ['pdf'])) {
-        return 'file-pdf';
-    } elseif (in_array($file_extension, ['doc', 'docx'])) {
-        return 'file-word';
-    } elseif (in_array($file_extension, ['xls', 'xlsx'])) {
-        return 'file-excel';
-    } elseif (in_array($file_extension, ['ppt', 'pptx'])) {
-        return 'file-powerpoint';
-    } elseif (in_array($file_extension, ['txt', 'md', 'rtf'])) {
-        return 'file-alt';
-    } elseif (in_array($file_extension, ['zip', 'rar', '7z', 'tar', 'gz'])) {
-        return 'file-archive';
-    } elseif (in_array($file_extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'])) {
-        return 'file-image';
-    } elseif (in_array($file_extension, ['mp4', 'avi', 'mov', 'wmv', 'flv'])) {
-        return 'file-video';
-    } elseif (in_array($file_extension, ['mp3', 'wav', 'ogg', 'flac'])) {
-        return 'file-audio';
-    } elseif (in_array($file_extension, ['html', 'htm', 'css', 'js', 'php', 'py', 'java'])) {
-        return 'file-code';
-    } else {
-        return 'file';
+    if (($_SESSION['login_method'] ?? 'local') !== 'local') {
+        return true;
     }
+
+    if (empty($current_password)) {
+        return false;
+    }
+
+    $sql = mysqli_query($mysqli, "SELECT user_password FROM users WHERE user_id = $session_user_id LIMIT 1");
+    $row = mysqli_fetch_assoc($sql);
+
+    if (!$row || empty($row['user_password'])) {
+        return false;
+    }
+
+    return password_verify($current_password, $row['user_password']);
+}
+
+/*
+ * A timestamp a person can read, in the company's configured date and time
+ * format rather than the raw DATETIME the database hands back.
+ *
+ * Today and yesterday are named instead of dated, because on an activity list
+ * the recent rows are the ones being scanned and "Today at 4:12 PM" answers
+ * "was that just now?" faster than a date does. Anything older gets the full
+ * date, since by then the date is the useful part.
+ *
+ * Returns HTML-escaped output - callers print it directly.
+ */
+function portalDateTime($datetime) {
+    global $config_date_format, $config_time_format;
+
+    if (empty($datetime)) {
+        return '';
+    }
+
+    $timestamp = strtotime($datetime);
+    if ($timestamp === false) {
+        return escapeHtml($datetime);
+    }
+
+    $time = date($config_time_format, $timestamp);
+    $day = date('Y-m-d', $timestamp);
+
+    if ($day === date('Y-m-d')) {
+        return escapeHtml("Today at $time");
+    }
+
+    if ($day === date('Y-m-d', strtotime('-1 day'))) {
+        return escapeHtml("Yesterday at $time");
+    }
+
+    return escapeHtml(date($config_date_format, $timestamp) . " at $time");
+}
+
+/*
+ * The empty state for the portal's list pages.
+ *
+ * Every list page here renders a header row and then a while loop, so a client
+ * with no assets, no quotes or no documents used to get a table with nothing
+ * under it - indistinguishable from a page that failed to load. This says so
+ * instead.
+ *
+ * Default is neutral, for a list that simply has nothing in it yet. Pass
+ * 'success' where empty is genuinely good news (nothing owed, nothing unpaid).
+ */
+function portalEmptyState($message, $icon = 'fa-inbox', $type = 'secondary') {
+    return '<div class="alert alert-' . $type . '"><i class="fa fa-fw ' . $icon . ' me-2"></i>' . $message . '</div>';
 }

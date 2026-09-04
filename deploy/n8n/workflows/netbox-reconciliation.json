@@ -1,0 +1,217 @@
+{
+  "name": "N45 - NetBox Entity Reconciliation",
+  "nodes": [
+    {
+      "id": "6c97a446-33e3-4f0b-95ae-e3aa88bf65db",
+      "name": "Daily Reconciliation",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -860,
+        -160
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 3 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "de063a68-7a3b-4fbd-a7fc-4b44b2657afd",
+      "name": "Manual Reconciliation",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -860,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "46c6aeca-d9ea-4435-a91f-a8b53c571fc9",
+      "name": "Fetch NetBox Devices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -600,
+        -80
+      ],
+      "parameters": {
+        "url": "https://netbox.n45tech.com/api/dcim/devices/?limit=1000",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-netbox-api",
+          "name": "N45 NetBox API"
+        }
+      }
+    },
+    {
+      "id": "39e78e42-fe42-40d6-a313-2738e6d2a2b1",
+      "name": "Normalize NetBox Devices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -340,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst devices = response.results || response.data?.results || [];\nconst DEFAULT_CLIENT = 'N45 Technology Solutions';\nconst CREATE_CLIENTS_FROM_TENANTS = true;\nif (!Array.isArray(devices)) throw new Error('NetBox did not return a device results array.');\nreturn devices.map((device) => {\n  const site = device.site || {};\n  const tenant = device.tenant || site.tenant || {};\n  const clientName = device.custom_fields?.itflow_client || tenant.name || DEFAULT_CLIENT;\n  const primaryIp = String(device.primary_ip?.address || '').split('/')[0];\n  return { json: {\n    source: 'netbox',\n    entity_type: 'device',\n    external_id: String(device.id),\n    external_name: device.name || device.display || ('NetBox device ' + device.id),\n    client: { name: clientName, entity_type: 'tenant', external_id: tenant.id ? String(tenant.id) : '' },\n    location: {\n      name: site.name || '',\n      entity_type: 'site',\n      external_id: site.id ? String(site.id) : '',\n      description: site.description || '',\n      address: site.physical_address || site.shipping_address || '',\n    },\n    asset: {\n      name: device.name || device.display,\n      description: device.description || '',\n      type: device.role?.name || device.device_role?.name || 'Network',\n      make: device.device_type?.manufacturer?.name || 'Unknown',\n      model: device.device_type?.model || '',\n      serial: device.serial || '',\n      os: device.platform?.name || '',\n      ip: primaryIp,\n      status: device.status?.label || device.status?.value || 'Active',\n      uri: 'https://netbox.n45tech.com/dcim/devices/' + device.id + '/',\n      notes: 'Managed in NetBox. ITFlow retains client ownership and service context.',\n    },\n    options: {\n      create_client: CREATE_CLIENTS_FROM_TENANTS && clientName !== '',\n      create_location: site.name !== '',\n      create_asset: true,\n    },\n    metadata: { netbox_last_updated: device.last_updated || '', tenant_id: tenant.id || 0, site_id: site.id || 0 },\n  } };\n});"
+      }
+    },
+    {
+      "id": "3847ee06-6643-4710-94b9-70c121192887",
+      "name": "NetBox Event Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -600,
+        160
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "n45-netbox-events",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-webhook-auth",
+          "name": "N45 Integration Webhook"
+        }
+      }
+    },
+    {
+      "id": "9a272fb6-8a85-42d4-b371-bbbc6ed3a230",
+      "name": "Normalize NetBox Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -340,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body || input;\nconst device = body.data || {};\nconst model = String(body.model || body.object_type || '').toLowerCase();\nif (!model.includes('device') && !device.device_type) return [];\nconst site = device.site || {};\nconst tenant = device.tenant || site.tenant || {};\nconst clientName = device.custom_fields?.itflow_client || tenant.name || 'N45 Technology Solutions';\nconst primaryIp = String(device.primary_ip?.address || '').split('/')[0];\nreturn [{ json: {\n  source: 'netbox', entity_type: 'device', external_id: String(device.id),\n  external_name: device.name || device.display || ('NetBox device ' + device.id),\n  client: { name: clientName, entity_type: 'tenant', external_id: tenant.id ? String(tenant.id) : '' },\n  location: { name: site.name || '', entity_type: 'site', external_id: site.id ? String(site.id) : '', description: site.description || '', address: site.physical_address || '' },\n  asset: {\n    name: device.name || device.display, description: device.description || '',\n    type: device.role?.name || device.device_role?.name || 'Network',\n    make: device.device_type?.manufacturer?.name || 'Unknown', model: device.device_type?.model || '',\n    serial: device.serial || '', os: device.platform?.name || '', ip: primaryIp,\n    status: device.status?.label || device.status?.value || 'Active',\n    uri: 'https://netbox.n45tech.com/dcim/devices/' + device.id + '/',\n  },\n  options: { create_client: clientName !== '', create_location: site.name !== '', create_asset: true },\n  metadata: { netbox_event: body.event || '', netbox_request_id: body.request_id || '' },\n} }];"
+      }
+    },
+    {
+      "id": "0d4e728c-e61f-43a9-acb9-44b334337686",
+      "name": "Resolve in ITFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://psa.n45tech.com/api/v1/integrations/automation/resolve.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 20,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-itflow-api",
+          "name": "N45 ITFlow API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Fetch NetBox Devices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Fetch NetBox Devices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch NetBox Devices": {
+      "main": [
+        [
+          {
+            "node": "Normalize NetBox Devices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize NetBox Devices": {
+      "main": [
+        [
+          {
+            "node": "Resolve in ITFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NetBox Event Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize NetBox Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize NetBox Event": {
+      "main": [
+        [
+          {
+            "node": "Resolve in ITFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "active": false,
+  "tags": []
+}

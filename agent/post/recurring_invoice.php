@@ -252,7 +252,7 @@ if (isset($_POST['add_recurring_invoice_item'])) {
 
     logAudit("Recurring Invoice", "Edit", "$session_name added item $name to recurring invoice $recurring_invoice_prefix$recurring_invoice_number", $client_id, $recurring_invoice_id);
 
-    flashAlert("Item <srrong>$name</strong> added to Recurring Invoice");
+    flashAlert("Item <strong>$name</strong> added to Recurring Invoice");
 
     redirect();
 
@@ -314,34 +314,6 @@ if (isset($_POST['edit_recurring_invoice_item'])) {
     logAudit("Recurring Invoice", "Edit", "$session_name edited item $name on recurring invoice $recurring_invoice_prefix$recurring_invoice_number", $client_id, $recurring_invoice_id);
 
     flashAlert("Item <strong>$name</strong> updated");
-
-    redirect();
-
-}
-
-if (isset($_POST['recurring_invoice_note'])) {
-
-    validateCSRFToken();
-
-    enforceUserPermission('module_sales', 2);
-
-    $recurring_invoice_id = intval($_POST['recurring_invoice_id']);
-    $note = escapeSql($_POST['note']);
-
-    // Get Recurring details for logging
-    $sql = mysqli_query($mysqli,"SELECT recurring_invoice_prefix, recurring_invoice_number, recurring_invoice_client_id FROM recurring_invoices WHERE recurring_invoice_id = $recurring_invoice_id");
-    $row = mysqli_fetch_assoc($sql);
-    $recurring_invoice_prefix = escapeSql($row['recurring_invoice_prefix']);
-    $recurring_invoice_number = intval($row['recurring_invoice_number']);
-    $client_id = intval($row['recurring_invoice_client_id']);
-
-    enforceClientAccess();
-
-    mysqli_query($mysqli,"UPDATE recurring_invoices SET recurring_invoice_note = '$note' WHERE recurring_invoice_id = $recurring_invoice_id");
-
-    logAudit("Recurring Invoice", "Edit", "$session_name added note to recurring invoice $recurring_invoice_prefix$recurring_invoice_number", $client_id, $recurring_invoice_id);
-
-    flashAlert("Notes added");
 
     redirect();
 
@@ -494,6 +466,7 @@ if (isset($_GET['force_recurring'])) {
         $invoice_due = escapeSql($row['invoice_due']);
         $invoice_amount = floatval($row['invoice_amount']);
         $invoice_url_key = escapeSql($row['invoice_url_key']);
+        $invoice_currency_code = escapeSql($row['invoice_currency_code']);
         $client_id = intval($row['client_id']);
         $client_name = escapeSql($row['client_name']);
         $contact_name = escapeSql($row['contact_name']);
@@ -515,20 +488,27 @@ if (isset($_GET['force_recurring'])) {
 
         // Email to client
 
-        $subject = "Invoice $invoice_prefix$invoice_number";
-        $body = "Hello $contact_name,<br><br>An invoice regarding \"$invoice_scope\" has been generated. Please view the details below.<br><br>Invoice: $invoice_prefix$invoice_number<br>Issue Date: $invoice_date<br>Total: $$invoice_amount<br>Due Date: $invoice_due<br><br><br>To view your invoice, please click <a href=\'https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$new_invoice_id&url_key=$invoice_url_key\'>here</a>.<br><br><br>--<br>$company_name - Billing<br>$company_phone";
+        $invoice_email = renderN45Email('invoice.issued', [
+            'company_name' => $company_name,
+            'contact_name' => $contact_name,
+            'invoice_number' => $invoice_prefix . $invoice_number,
+            'invoice_scope' => $invoice_scope,
+            'issue_date' => $invoice_date,
+            'due_date' => $invoice_due,
+            'total' => numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code),
+            'balance_due' => numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code),
+            'action_url' => "https://$config_base_url/guest/guest_view_invoice.php?invoice_id=$new_invoice_id&url_key=$invoice_url_key",
+            'footer_email' => $config_invoice_from_email,
+            'footer_phone' => $company_phone,
+        ]);
 
 
-        $data = [
-            [
+        $data = [array_merge([
                 'from' => $config_invoice_from_email,
                 'from_name' => $config_invoice_from_name,
                 'recipient' => $contact_email,
                 'recipient_name' => $contact_name,
-                'subject' => $subject,
-                'body' => $body
-            ]
-        ];
+        ], n45EmailQueueFields($invoice_email))];
         $mail = addToMailQueue($data);
 
         if ($mail === true) {
@@ -542,7 +522,7 @@ if (isset($_GET['force_recurring'])) {
             // Error reporting
             appNotify("Mail", "Failed to send email to $contact_email");
 
-            logAudit("Mail", "Error", "Failed to send email to $contact_email regarding $subject. $mail");
+            logAudit("Mail", "Error", "Failed to send email to $contact_email regarding {$invoice_email['subject']}. $mail");
 
         }
 

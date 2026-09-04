@@ -70,30 +70,33 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
             mysqli_query($mysqli, "INSERT INTO logs SET log_type = 'Contact', log_action = 'Modify', log_description = 'Sent a portal password reset e-mail for $email.', log_ip = '$ip', log_user_agent = '$user_agent', log_client_id = $client");
 
             // Send reset email
-            $subject = "Password reset for $company_name Client Portal";
-            $body = "Hello $name,<br><br>Someone (probably you) has requested a new password for your account on $company_name\'s Client Portal. <br><br><b>Please <a href=\'$url\'>click here</a> to reset your password.</b> <br><br>Alternatively, copy and paste this URL into your browser:<br> $url<br><br><i>If you didn\'t request this change, you can safely ignore this email.</i><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+            $reset_email = renderN45Email('portal.password_reset', [
+                'company_name' => $company_name,
+                'contact_name' => $name,
+                'action_url' => $url,
+                'footer_email' => $config_ticket_from_email,
+                'footer_phone' => $company_phone,
+            ]);
 
             $data = [
-                [
+                array_merge([
                     'from' => $config_mail_from_email,
                     'from_name' => $config_mail_from_name,
                     'recipient' => $email,
                     'recipient_name' => $name,
-                    'subject' => $subject,
-                    'body' => $body
-                ]
+                ], n45EmailQueueFields($reset_email))
             ];
             $mail = addToMailQueue($data);
 
             // Error handling
             if ($mail !== true) {
                 mysqli_query($mysqli, "INSERT INTO notifications SET notification_type = 'Mail', notification = 'Failed to send email to $email'");
-                mysqli_query($mysqli, "INSERT INTO logs SET log_type = 'Mail', log_action = 'Error', log_description = 'Failed to send email to $email regarding $subject. $mail'");
+                mysqli_query($mysqli, "INSERT INTO logs SET log_type = 'Mail', log_action = 'Error', log_description = 'Failed to send email to $email regarding {$reset_email['subject']}. $mail'");
             }
             //End Mail IF
         }
 
-        $_SESSION['login_message'] = "If your account exists, a reset link is on it's way! Please allow a few minutes for it to reach you.";
+        $_SESSION['login_message'] = "If your account exists, a reset link is on its way. Please allow a few minutes for it to reach you.";
 
     /*
      * Link is being used - Perform password reset
@@ -124,19 +127,22 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
             mysqli_query($mysqli, "INSERT INTO logs SET log_type = 'Contact User', log_action = 'Modify', log_description = 'Reset portal password for $email.', log_ip = '$ip', log_user_agent = '$user_agent', log_client_id = $client, log_user_id = $user_id");
 
             // Send confirmation email
-            $subject = "Password reset confirmation for $company_name Client Portal";
-            $body = "Hello $name,<br><br>Your password for your account on $company_name\'s Client Portal was successfully reset. You should be all set! <br><br><b>If you didn\'t reset your password, please get in touch ASAP.</b><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+            $reset_confirmation_email = renderN45Email('portal.password_reset_confirmation', [
+                'company_name' => $company_name,
+                'contact_name' => $name,
+                'action_url' => "https://$config_base_url/login.php",
+                'footer_email' => $config_ticket_from_email,
+                'footer_phone' => $company_phone,
+            ]);
 
 
             $data = [
-                [
+                array_merge([
                     'from' => $config_mail_from_email,
                     'from_name' => $config_mail_from_name,
                     'recipient' => $email,
                     'recipient_name' => $name,
-                    'subject' => $subject,
-                    'body' => $body
-                ]
+                ], n45EmailQueueFields($reset_confirmation_email))
             ];
 
             $mail = addToMailQueue($data);
@@ -144,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
             // Error handling
             if ($mail !== true) {
                 mysqli_query($mysqli, "INSERT INTO notifications SET notification_type = 'Mail', notification = 'Failed to send email to $email'");
-                mysqli_query($mysqli, "INSERT INTO logs SET log_type = 'Mail', log_action = 'Error', log_description = 'Failed to send email to $email regarding $subject. $mail'");
+                mysqli_query($mysqli, "INSERT INTO logs SET log_type = 'Mail', log_action = 'Error', log_description = 'Failed to send email to $email regarding {$reset_confirmation_email['subject']}. $mail'");
             }
 
             // Redirect to login page
@@ -163,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="en" data-bs-theme="light" data-lte-color-mode="off">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -186,14 +192,23 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
 
     <!-- Theme style -->
     <link rel="stylesheet" href="../libs/adminlte/css/adminlte.min.css">
+    <link rel="stylesheet" href="../css/itflow_custom.css">
 
 </head>
 
-<body class="hold-transition login-page">
-<div class="login-box">
-    <div class="login-logo"><b><?= escapeHtml($company_name_display) ?></b> <br>Password Reset</h2></div>
+<body class="hold-transition login-page n45-auth-page">
+<main class="login-box n45-auth-shell">
+    <div class="login-logo n45-auth-brand">
+        <span class="n45-auth-mark" aria-hidden="true"><i class="fas fa-layer-group"></i></span>
+        <span><?= escapeHtml($company_name_display) ?></span>
+    </div>
     <div class="card">
         <div class="card-body login-card-body">
+
+            <div class="n45-auth-heading">
+                <h1>Reset your password</h1>
+                <p>Use the email address connected to your client portal account.</p>
+            </div>
 
             <form method="post">
 
@@ -214,11 +229,10 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
                     if (sha1($user_row['user_password_reset_token']) == sha1($token)) { ?>
 
                         <div class="input-group mb-3">
-                            <input type="password" class="form-control" placeholder="New Password" name="new_password" required minlength="8">
-                            <div class="input-group-append">
-                                <div class="input-group-text">
-                                    <span class="fas fa-lock"></span>
-                                </div>
+                            <label class="sr-only" for="new-password">New password</label>
+                            <input type="password" class="form-control" id="new-password" placeholder="New password" name="new_password" autocomplete="new-password" required minlength="8">
+                            <div class="input-group-text">
+                                <span class="fas fa-lock"></span>
                             </div>
                         </div>
 
@@ -226,7 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
                         <input type="hidden" name="email" value="<?= $email ?>">
                         <input type="hidden" name="client" value="<?= $client ?>">
 
-                        <button type="submit" class="btn btn-success btn-block mb-3" name="password_reset_set_password">Reset password</button>
+                        <button type="submit" class="btn btn-success w-100 mb-3" name="password_reset_set_password">Reset password</button>
 
 
                     <?php } else {
@@ -242,15 +256,14 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
                 } else { ?>
 
                     <div class="input-group mb-3">
-                        <input type="email" class="form-control" placeholder="Registered Client Email" name="email" required autofocus>
-                        <div class="input-group-append">
-                            <div class="input-group-text">
-                                <span class="fas fa-envelope"></span>
-                            </div>
+                        <label class="sr-only" for="reset-email">Registered client email</label>
+                        <input type="email" class="form-control" id="reset-email" placeholder="Registered client email" name="email" autocomplete="email" required autofocus>
+                        <div class="input-group-text">
+                            <span class="fas fa-envelope"></span>
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-success btn-block mb-3" name="password_reset_email_request">Reset my password</button>
+                    <button type="submit" class="btn btn-success w-100 mb-3" name="password_reset_email_request">Reset my password</button>
 
                 <?php }
                 ?>
@@ -276,11 +289,10 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
     </div>
     <!-- /.div.card -->
 
-</div>
+</main>
 <!-- /.login-box -->
 
 <!-- jQuery -->
-<script src="../libs/jquery/jquery.min.js"></script>
 
 <!-- Bootstrap 4 -->
 <script src="../libs/bootstrap/js/bootstrap.bundle.min.js"></script>

@@ -30,8 +30,22 @@ if (isset($_GET['project_template_id'])) {
     // Get Associated Ticket Templates
     $sql_ticket_templates = mysqli_query($mysqli, "SELECT ticket_template_created_at, ticket_template_description,
         project_template_ticket_templates.ticket_template_id, ticket_template_name,
-        ticket_template_order, ticket_template_subject, ticket_template_updated_at FROM ticket_templates, project_template_ticket_templates
-        WHERE ticket_templates.ticket_template_id = project_template_ticket_templates.ticket_template_id
+        ticket_template_order,
+        COALESCE(pinned.runbook_version_subject, ticket_template_subject) AS ticket_template_subject,
+        ticket_template_updated_at, ticket_template_runbook_version_id,
+        pinned.runbook_version_number AS pinned_version_number,
+        current_version.runbook_version_id AS current_version_id,
+        current_version.runbook_version_number AS current_version_number
+        FROM ticket_templates
+        INNER JOIN project_template_ticket_templates
+            ON ticket_templates.ticket_template_id = project_template_ticket_templates.ticket_template_id
+        LEFT JOIN runbook_versions pinned
+            ON pinned.runbook_version_id = ticket_template_runbook_version_id
+            AND pinned.runbook_version_ticket_template_id = ticket_templates.ticket_template_id
+        LEFT JOIN runbook_versions current_version
+            ON current_version.runbook_version_id = ticket_template_published_version_id
+            AND current_version.runbook_version_ticket_template_id = ticket_templates.ticket_template_id
+        WHERE 1=1
         AND project_template_ticket_templates.project_template_id = $project_template_id
         ORDER BY ticket_template_order ASC, ticket_template_name ASC");
     $ticket_template_count = mysqli_num_rows($sql_ticket_templates);
@@ -60,22 +74,22 @@ if (isset($_GET['project_template_id'])) {
 </ol>
 
 <!-- Project Header -->
-<div class="card card-body">
+<div class="card card-body mb-3">
     <div class="row">
         <div class="col-sm-4">
-            <div class="media">
-                <i class="fa fa-fw fa-2x fa-project-diagram text-secondary mr-3"></i>
-                <div class="media-body">
-                    <h3 class="mb-0"><?= $project_template_name ?><span class='badge badge-pill badge-info ml-2'>Template</span></h3>
+            <div class="d-flex">
+                <i class="fa fa-fw fa-2x fa-project-diagram text-secondary me-3"></i>
+                <div class="flex-grow-1">
+                    <h3 class="mb-0"><?= $project_template_name ?><span class='badge rounded-pill bg-info ms-2'>Template</span></h3>
                     <div><small class="text-secondary"><?= $project_template_description ?></small></div>
                 </div>
             </div>
         </div>
 
         <div class="col-sm-3">
-            <div class="media">
-                <i class="fa fa-fw fa-2x fa-life-ring text-secondary mr-3"></i>
-                <div class="media-body">
+            <div class="d-flex">
+                <i class="fa fa-fw fa-2x fa-life-ring text-secondary me-3"></i>
+                <div class="flex-grow-1">
                     <div>Ticket Templates</div>
                     <h3 class="mb-0"><?= $ticket_template_count ?></h3>
                 </div>
@@ -83,9 +97,9 @@ if (isset($_GET['project_template_id'])) {
         </div>
 
         <div class="col-sm-3">
-            <div class="media">
-                <i class="fa fa-fw fa-2x fa-tasks text-secondary mr-3"></i>
-                <div class="media-body">
+            <div class="d-flex">
+                <i class="fa fa-fw fa-2x fa-tasks text-secondary me-3"></i>
+                <div class="flex-grow-1">
                     <div>Task Templates</div>
                     <h3 class="mb-0"><?= $task_template_count ?></h3>
                 </div>
@@ -93,28 +107,28 @@ if (isset($_GET['project_template_id'])) {
         </div>
 
         <div class="col-sm-2">
-            <div class="btn-group float-right">
+            <div class="btn-group float-end">
                 <button type="button" class="btn btn-primary btn-sm ajax-modal" href="#" data-modal-url="modals/project_template/project_template_ticket_template_add.php?project_template_id=<?= $project_template_id ?>">
-                    <i class="fas fa-fw fa-plus mr-2"></i>Add Ticket Template
+                    <i class="fas fa-fw fa-plus me-2"></i>Add Ticket Template
                 </button>
-                <div class="dropdown dropleft text-center ml-3">
-                    <button class="btn btn-secondary btn-sm" type="button" id="dropdownMenuButton" data-toggle="dropdown">
+                <div class="dropdown dropstart text-center ms-3">
+                    <button class="btn btn-secondary btn-sm" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown">
                         <i class="fas fa-fw fa-ellipsis-v"></i>
                     </button>
                     <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
                         <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/project_template/project_template_edit.php?project_template_id=<?= $project_template_id ?>">
-                            <i class="fas fa-fw fa-edit mr-2"></i>Edit Template
+                            <i class="fas fa-fw fa-edit me-2"></i>Edit Template
                         </a>
                         <?php if ($session_user_role == 3) { ?>
                             <div class="dropdown-divider"></div>
                             <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?archive_project_template=<?= $project_template_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                <i class="fas fa-fw fa-archive mr-2"></i>Archive (not yet implemented)
+                                <i class="fas fa-fw fa-archive me-2"></i>Archive (not yet implemented)
                             </a>
                         <?php } ?>
                         <?php if ($session_user_role == 3) { ?>
                             <div class="dropdown-divider"></div>
                             <a class="dropdown-item text-danger confirm-link" href="post.php?delete_project_template=<?= $project_template_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                <i class="fas fa-fw fa-trash mr-2"></i>Delete
+                                <i class="fas fa-fw fa-trash me-2"></i>Delete
                             </a>
                         <?php } ?>
                     </div>
@@ -131,7 +145,7 @@ if (isset($_GET['project_template_id'])) {
         <?php if (mysqli_num_rows($sql_ticket_templates) > 0) { ?>
             <div class="card card-body card-outline card-dark mb-3">
 
-                <h5 class="text-secondary"><i class="fa fa-fw fa-life-ring mr-2"></i>Project Ticket Templates</h5>
+                <h5 class="text-secondary"><i class="fa fa-fw fa-life-ring me-2"></i>Project Ticket Templates</h5>
                 <div class="table-responsive-sm">
                     <table class="table table-striped table-borderless table-hover" id="ticket_templates">
                         <thead class="text-dark">
@@ -139,6 +153,7 @@ if (isset($_GET['project_template_id'])) {
                             <th>Template Name</th>
                             <th>Description</th>
                             <th>Ticket Subject</th>
+                            <th>Runbook</th>
                             <th>Action</th>
                         </tr>
                         </thead>
@@ -153,18 +168,41 @@ if (isset($_GET['project_template_id'])) {
                             $ticket_template_subject = escapeHtml($row['ticket_template_subject']);
                             $ticket_template_created_at = escapeHtml($row['ticket_template_created_at']);
                             $ticket_template_updated_at = escapeHtml($row['ticket_template_updated_at']);
+                            $pinned_version_id = intval($row['ticket_template_runbook_version_id']);
+                            $pinned_version_number = intval($row['pinned_version_number']);
+                            $current_version_id = intval($row['current_version_id']);
+                            $current_version_number = intval($row['current_version_number']);
 
                             ?>
 
                             <tr data-task-id="<?= $ticket_template_id ?>">
                                 <td>
-                                    <a href="#" class="drag-handle"><i class="fas fa-bars text-muted mr-2"></i></a>
+                                    <a href="#" class="drag-handle"><i class="fas fa-bars text-muted me-2"></i></a>
                                     <a href="ticket_template.php?ticket_template_id=<?= $ticket_template_id ?>">
                                         <?= $ticket_template_name ?>
                                     </a>
                                 </td>
                                 <td><?= $ticket_template_description ?></td>
                                 <td><?= $ticket_template_subject ?></td>
+                                <td class="text-nowrap">
+                                    <?php if ($pinned_version_number) { ?>
+                                        <span class="badge badge-primary">v<?= $pinned_version_number ?></span>
+                                    <?php } elseif ($current_version_number) { ?>
+                                        <span class="badge badge-warning">Unpinned</span>
+                                    <?php } else { ?>
+                                        <span class="badge badge-light">Legacy draft</span>
+                                    <?php } ?>
+                                    <?php if ($current_version_id && $current_version_id !== $pinned_version_id) { ?>
+                                        <form action="post.php" method="post" class="d-inline" autocomplete="off">
+                                            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                            <input type="hidden" name="project_template_id" value="<?= $project_template_id ?>">
+                                            <input type="hidden" name="ticket_template_id" value="<?= $ticket_template_id ?>">
+                                            <button type="submit" class="btn btn-link btn-sm p-0 ml-1 confirm-link" name="update_project_template_runbook_version" title="Pin this stage to current v<?= $current_version_number ?>">
+                                                Use v<?= $current_version_number ?>
+                                            </button>
+                                        </form>
+                                    <?php } ?>
+                                </td>
                                 <td>
                                     <form action="post.php" method="post" autocomplete="off">
                                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
@@ -192,7 +230,7 @@ if (isset($_GET['project_template_id'])) {
         <!-- Task Templates Card -->
         <?php if (mysqli_num_rows($sql_task_templates) > 0) { ?>
         <div class="card card-body card-outline card-dark">
-            <h5 class="text-secondary"><i class="fas fa-fw fa-tasks mr-2"></i>Project Task Templates</h5>
+            <h5 class="text-secondary"><i class="fas fa-fw fa-tasks me-2"></i>Project Task Templates</h5>
             <table class="table">
                 <?php
                 while($row = mysqli_fetch_assoc($sql_task_templates)){
@@ -201,7 +239,7 @@ if (isset($_GET['project_template_id'])) {
                 ?>
                     <tr>
                         <td>
-                            <i class="far fa-fw fa-check-square text-primary mr-3"></i>
+                            <i class="far fa-fw fa-check-square text-primary me-3"></i>
                             <?= $task_template_name ?>
                         </td>
                     </tr>
@@ -217,7 +255,9 @@ if (isset($_GET['project_template_id'])) {
 
 <script src="../libs/SortableJS/Sortable.min.js"></script>
 <script>
-new Sortable(document.querySelector('table#ticket_templates tbody'), {
+const projectTemplateRows = document.querySelector('table#ticket_templates tbody');
+if (projectTemplateRows) {
+new Sortable(projectTemplateRows, {
     handle: '.drag-handle',
     animation: 150,
     onEnd: function (evt) {
@@ -227,7 +267,7 @@ new Sortable(document.querySelector('table#ticket_templates tbody'), {
             order: index
         }));
 
-        $.post('/agent/ajax.php', {
+        itflowPostForm('/agent/ajax.php', {
             update_project_template_ticket_order: true,
             csrf_token: '<?= $_SESSION['csrf_token'] ?>',
             project_template_id: <?= $project_template_id ?>,
@@ -235,6 +275,7 @@ new Sortable(document.querySelector('table#ticket_templates tbody'), {
         });
     }
 });
+}
 </script>
 
 <?php
@@ -245,4 +286,4 @@ require_once "../includes/footer.php";
 
 ?>
 
-<script src="js/pretty_content.js"></script>
+<script src="../js/pretty_content.js"></script>

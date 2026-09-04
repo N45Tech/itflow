@@ -1,0 +1,201 @@
+{
+  "name": "N45 - Microsoft Intune Device Reconciliation",
+  "nodes": [
+    {
+      "id": "43f14cb4-e9f4-4f78-a6c1-84acef63f001",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -760,
+        -120
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "10 */6 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "43f14cb4-e9f4-4f78-a6c1-84acef63f002",
+      "name": "Manual Intune Reconciliation",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -760,
+        40
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "43f14cb4-e9f4-4f78-a6c1-84acef63f003",
+      "name": "Load Intune Tenant Map",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const text = (value) => value === undefined || value === null ? '' : String(value).trim();\nconst integer = (value, fallback = 0) => Number.isInteger(Number(value)) ? Math.max(0, Number(value)) : fallback;\nconst bool = (value, fallback = false) => value === undefined || value === null || value === ''\n  ? fallback : value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\nconst parseMappings = (source) => {\n  const raw = text($vars.N45_DEVICE_SOURCE_MAP_JSON);\n  if (!raw) throw new Error('N45_DEVICE_SOURCE_MAP_JSON is required.');\n  let document;\n  try { document = JSON.parse(raw); } catch { throw new Error('N45_DEVICE_SOURCE_MAP_JSON is not valid JSON.'); }\n  const entries = document && Array.isArray(document[source]) ? document[source] : [];\n  if (!entries.length) throw new Error('No mappings are configured for ' + source + '.');\n  const scopes = entries.map((entry, index) => {\n    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(source + ' mapping ' + index + ' is not an object.');\n    const scopeId = text(entry.scope_id || entry.tenant_filter || entry.site_id);\n    const clientId = integer(entry.client_id);\n    if (!scopeId || !clientId) throw new Error(source + ' mapping ' + index + ' requires scope_id and client_id.');\n    return {\n      source,\n      scope_id: scopeId,\n      scope_name: text(entry.scope_name || entry.tenant_name || entry.site_name || scopeId),\n      tenant_filter: text(entry.tenant_filter || scopeId),\n      site_id: text(entry.site_id || scopeId),\n      client_id: clientId,\n      location_id: integer(entry.location_id),\n      create_asset: bool(entry.create_asset, false),\n      retirement_guard_percent: Math.max(0, Math.min(100, integer(entry.retirement_guard_percent, 50))),\n      allow_empty: bool(entry.allow_empty, false),\n    };\n  });\n  const duplicates = scopes.filter((scope, index) => scopes.findIndex((other) => other.scope_id.toLowerCase() === scope.scope_id.toLowerCase()) !== index);\n  if (duplicates.length) throw new Error('Duplicate ' + source + ' scope_id: ' + duplicates[0].scope_id);\n  return scopes;\n};\nconst httpsBase = (value, label) => {\n  const base = text(value).replace(/\\/+$/, '');\n  const match = base.match(/^https:\\/\\/([^/?#\\s]+)(\\/[^?#\\s]*)?$/i);\n  if (!match || match[1].includes('@')) {\n    throw new Error(label + ' must be an HTTPS origin or base path without credentials or query parameters.');\n  }\n  return base;\n};\nconst queryString = (parameters) => Object.entries(parameters)\n  .map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(text(value)))\n  .join('&');\nconst SOURCE = 'intune';\nconst base = httpsBase($vars.N45_CIPP_BASE_URL, 'N45_CIPP_BASE_URL');\nreturn parseMappings(SOURCE).map((scope) => {\n  const query = queryString({\n    TenantFilter: scope.tenant_filter,\n    Endpoint: 'deviceManagement/managedDevices',\n    Version: 'v1.0',\n    manualPagination: 'true',\n    '$top': '999',\n    '$select': 'id,deviceName,managedDeviceName,managementState,lastSyncDateTime,operatingSystem,complianceState,osVersion,azureADDeviceId,isEncrypted,userId,userDisplayName,userPrincipalName,emailAddress,model,manufacturer,serialNumber,wiFiMacAddress,ethernetMacAddress,deviceHealthAttestationState',\n  });\n  return { json: { ...scope, request_url: base + '/api/ListGraphRequest?' + query } };\n});"
+      }
+    },
+    {
+      "id": "43f14cb4-e9f4-4f78-a6c1-84acef63f004",
+      "name": "Fetch Intune Pages Through CIPP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -220,
+        -40
+      ],
+      "parameters": {
+        "url": "={{ $json.request_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body.Metadata && $response.body.Metadata.nextLink ? $request.url.split('&nextLink=')[0] + '&nextLink=' + encodeURIComponent($response.body.Metadata.nextLink) : $request.url.split('&nextLink=')[0] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.Metadata || !$response.body.Metadata.nextLink }}",
+              "requestInterval": 250
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "replace-n45-cipp-api",
+          "name": "N45 CIPP API"
+        }
+      }
+    },
+    {
+      "id": "43f14cb4-e9f4-4f78-a6c1-84acef63f005",
+      "name": "Normalize Intune Devices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        60,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const text = (value) => value === undefined || value === null ? '' : String(value).trim();\nconst integer = (value, fallback = 0) => Number.isInteger(Number(value)) ? Math.max(0, Number(value)) : fallback;\nconst bool = (value, fallback = false) => value === undefined || value === null || value === ''\n  ? fallback : value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\nconst parseMappings = (source) => {\n  const raw = text($vars.N45_DEVICE_SOURCE_MAP_JSON);\n  if (!raw) throw new Error('N45_DEVICE_SOURCE_MAP_JSON is required.');\n  let document;\n  try { document = JSON.parse(raw); } catch { throw new Error('N45_DEVICE_SOURCE_MAP_JSON is not valid JSON.'); }\n  const entries = document && Array.isArray(document[source]) ? document[source] : [];\n  if (!entries.length) throw new Error('No mappings are configured for ' + source + '.');\n  const scopes = entries.map((entry, index) => {\n    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(source + ' mapping ' + index + ' is not an object.');\n    const scopeId = text(entry.scope_id || entry.tenant_filter || entry.site_id);\n    const clientId = integer(entry.client_id);\n    if (!scopeId || !clientId) throw new Error(source + ' mapping ' + index + ' requires scope_id and client_id.');\n    return {\n      source,\n      scope_id: scopeId,\n      scope_name: text(entry.scope_name || entry.tenant_name || entry.site_name || scopeId),\n      tenant_filter: text(entry.tenant_filter || scopeId),\n      site_id: text(entry.site_id || scopeId),\n      client_id: clientId,\n      location_id: integer(entry.location_id),\n      create_asset: bool(entry.create_asset, false),\n      retirement_guard_percent: Math.max(0, Math.min(100, integer(entry.retirement_guard_percent, 50))),\n      allow_empty: bool(entry.allow_empty, false),\n    };\n  });\n  const duplicates = scopes.filter((scope, index) => scopes.findIndex((other) => other.scope_id.toLowerCase() === scope.scope_id.toLowerCase()) !== index);\n  if (duplicates.length) throw new Error('Duplicate ' + source + ' scope_id: ' + duplicates[0].scope_id);\n  return scopes;\n};\nconst httpsBase = (value, label) => {\n  const base = text(value).replace(/\\/+$/, '');\n  const match = base.match(/^https:\\/\\/([^/?#\\s]+)(\\/[^?#\\s]*)?$/i);\n  if (!match || match[1].includes('@')) {\n    throw new Error(label + ' must be an HTTPS origin or base path without credentials or query parameters.');\n  }\n  return base;\n};\nconst queryString = (parameters) => Object.entries(parameters)\n  .map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(text(value)))\n  .join('&');\nconst SOURCE = 'intune';\nconst cycleStartedAt = new Date().toISOString();\nconst cycleId = SOURCE + ':' + cycleStartedAt.replace(/[^0-9TZ]/g, '') + ':' + Math.random().toString(36).slice(2, 10);\nconst clean = (value, length = 255) => text(value).slice(0, length);\nconst iso = (value) => {\n  if (!value) return '';\n  const date = new Date(value);\n  return Number.isNaN(date.getTime()) ? '' : date.toISOString();\n};\nconst completion = (scope, count) => ({ json: {\n  action: 'complete', source: SOURCE, scope_id: scope.scope_id, scope_name: scope.scope_name,\n  cycle_id: cycleId, cycle_started_at: cycleStartedAt, client_id: scope.client_id,\n  reported_count: count, retirement_guard_percent: scope.retirement_guard_percent,\n  allow_empty: scope.allow_empty,\n} });\nconst scopes = parseMappings(SOURCE);\nconst byTenant = new Map(scopes.map((scope) => [scope.tenant_filter.toLowerCase(), scope]));\nconst seenTenants = new Set();\nconst devices = new Map();\nfor (const item of $input.all()) {\n  const response = item.json;\n  if (!response || typeof response !== 'object' || Array.isArray(response) || !Array.isArray(response.Results)) {\n    throw new Error('CIPP Intune response must contain a Results array.');\n  }\n  const tenant = text(response.Metadata?.TenantFilter || response.Metadata?.tenantFilter).toLowerCase();\n  const scope = byTenant.get(tenant);\n  if (!scope) throw new Error('CIPP returned an unmapped Intune tenant: ' + (tenant || '(missing)'));\n  seenTenants.add(tenant);\n  for (const device of response.Results) {\n    const externalId = text(device?.id);\n    if (!externalId) throw new Error('An Intune managed device is missing id.');\n    devices.set(scope.scope_id + '\\u0000' + externalId, { scope, device });\n  }\n}\nfor (const scope of scopes) {\n  if (!seenTenants.has(scope.tenant_filter.toLowerCase())) throw new Error('CIPP returned no Intune page for ' + scope.tenant_filter + '.');\n}\nconst output = [];\nconst counts = new Map(scopes.map((scope) => [scope.scope_id, 0]));\nfor (const { scope, device } of devices.values()) {\n  const management = text(device.managementState).toLowerCase();\n  const sourceStatus = /(pending|issued|failed|unhealthy)/.test(management) ? 'stale' : 'active';\n  const healthAttestation = device.deviceHealthAttestationState && typeof device.deviceHealthAttestationState === 'object'\n    ? device.deviceHealthAttestationState : {};\n  const secureBootRaw = text(healthAttestation.secureBoot).toLowerCase();\n  const secureBoot = ['true', 'enabled', 'on', '1'].includes(secureBootRaw)\n    ? 'enabled' : (['false', 'disabled', 'off', '0'].includes(secureBootRaw) ? 'disabled' : 'unknown');\n  const os = clean(device.operatingSystem || '');\n  const osLower = os.toLowerCase();\n  const type = /(windows|macos|linux)/.test(osLower) ? 'Computer'\n    : (/(ios|android)/.test(osLower) ? 'Mobile Device' : 'Other');\n  const interfaces = [];\n  if (text(device.wiFiMacAddress)) interfaces.push({ key: 'wifi', name: 'Wi-Fi', type: 'Wireless', mac: device.wiFiMacAddress });\n  if (text(device.ethernetMacAddress)) interfaces.push({ key: 'ethernet', name: 'Ethernet', type: 'Ethernet', mac: device.ethernetMacAddress });\n  output.push({ json: {\n    action: 'publish', source: SOURCE, scope_id: scope.scope_id, scope_name: scope.scope_name,\n    cycle_id: cycleId, cycle_started_at: cycleStartedAt, client_id: scope.client_id,\n    location_id: scope.location_id, create_asset: scope.create_asset,\n    external_id: clean(device.id), external_name: clean(device.deviceName || device.managedDeviceName || device.id),\n    status: sourceStatus, observed_at: cycleStartedAt,\n    asset: {\n      name: clean(device.deviceName || device.managedDeviceName || device.id),\n      description: 'Managed by Microsoft Intune.', type,\n      make: clean(device.manufacturer || 'Unknown'), model: clean(device.model || ''),\n      serial: clean(device.serialNumber || ''), os, status: 'Active',\n    },\n    facts: {\n      assigned_user: {\n        id: clean(device.userId || ''), name: clean(device.userDisplayName || ''),\n        email: clean(device.userPrincipalName || device.emailAddress || '', 320).toLowerCase(),\n      },\n      entra_device_id: clean(device.azureADDeviceId || device.azureAdDeviceId || ''),\n      intune_device_id: clean(device.id), health_state: 'unknown',\n      compliance_state: clean(device.complianceState || 'unknown'),\n      is_encrypted: device.isEncrypted,\n      secure_boot_state: secureBoot,\n      operating_system: os, os_version: clean(device.osVersion || '', 100),\n      lifecycle_state: 'active', last_seen_at: iso(device.lastSyncDateTime),\n      details: { management_state: clean(device.managementState || ''), platform: os },\n    },\n    network_interfaces: interfaces,\n    metadata: {\n      scope_kind: 'tenant', tenant_id: scope.scope_id, tenant_name: scope.scope_name,\n      source_status: sourceStatus, management_state: clean(device.managementState || ''),\n    },\n  } });\n  counts.set(scope.scope_id, (counts.get(scope.scope_id) || 0) + 1);\n}\nfor (const scope of scopes) output.push(completion(scope, counts.get(scope.scope_id) || 0));\nreturn output;"
+      }
+    },
+    {
+      "id": "43f14cb4-e9f4-4f78-a6c1-84acef63f006",
+      "name": "Publish Intune Cycle to ITFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        340,
+        -40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://psa.n45tech.com/api/v1/integrations/device_source/update.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 100
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-itflow-api",
+          "name": "N45 ITFlow API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Load Intune Tenant Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Intune Reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Load Intune Tenant Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Intune Tenant Map": {
+      "main": [
+        [
+          {
+            "node": "Fetch Intune Pages Through CIPP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Intune Pages Through CIPP": {
+      "main": [
+        [
+          {
+            "node": "Normalize Intune Devices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Intune Devices": {
+      "main": [
+        [
+          {
+            "node": "Publish Intune Cycle to ITFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "executionTimeout": 7200,
+    "timezone": "UTC"
+  },
+  "active": false,
+  "tags": []
+}

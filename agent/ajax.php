@@ -59,6 +59,83 @@ if (isset($_POST['client_set_notes'])) {
 
 }
 
+/*
+ * Inline notes for sales documents.
+ *
+ * These replace the invoice/quote/recurring-invoice note modals, which posted
+ * to post.php and reloaded the page. Same permission, client-access and audit
+ * behaviour as those handlers had - only the delivery changed.
+ */
+
+if (isset($_POST['invoice_set_notes'])) {
+
+    validateCSRFToken();
+
+    enforceUserPermission('module_sales', 2);
+
+    $invoice_id = intval($_POST['invoice_id']);
+    $note = escapeSql($_POST['note']);
+
+    $sql = mysqli_query($mysqli, "SELECT invoice_client_id, invoice_number, invoice_prefix FROM invoices WHERE invoice_id = $invoice_id");
+    $row = mysqli_fetch_assoc($sql);
+    $invoice_prefix = escapeSql($row['invoice_prefix']);
+    $invoice_number = intval($row['invoice_number']);
+    $client_id = intval($row['invoice_client_id']);
+
+    enforceClientAccess();
+
+    mysqli_query($mysqli, "UPDATE invoices SET invoice_note = '$note' WHERE invoice_id = $invoice_id");
+
+    logAudit("Invoice", "Edit", "$session_name edited notes on invoice $invoice_prefix$invoice_number", $client_id, $invoice_id);
+
+}
+
+if (isset($_POST['quote_set_notes'])) {
+
+    validateCSRFToken();
+
+    enforceUserPermission('module_sales', 2);
+
+    $quote_id = intval($_POST['quote_id']);
+    $note = escapeSql($_POST['note']);
+
+    $sql = mysqli_query($mysqli, "SELECT quote_client_id, quote_number, quote_prefix FROM quotes WHERE quote_id = $quote_id");
+    $row = mysqli_fetch_assoc($sql);
+    $quote_prefix = escapeSql($row['quote_prefix']);
+    $quote_number = intval($row['quote_number']);
+    $client_id = intval($row['quote_client_id']);
+
+    enforceClientAccess();
+
+    mysqli_query($mysqli, "UPDATE quotes SET quote_note = '$note' WHERE quote_id = $quote_id");
+
+    logAudit("Quote", "Edit", "$session_name edited notes on quote $quote_prefix$quote_number", $client_id, $quote_id);
+
+}
+
+if (isset($_POST['recurring_invoice_set_notes'])) {
+
+    validateCSRFToken();
+
+    enforceUserPermission('module_sales', 2);
+
+    $recurring_invoice_id = intval($_POST['recurring_invoice_id']);
+    $note = escapeSql($_POST['note']);
+
+    $sql = mysqli_query($mysqli, "SELECT recurring_invoice_prefix, recurring_invoice_number, recurring_invoice_client_id FROM recurring_invoices WHERE recurring_invoice_id = $recurring_invoice_id");
+    $row = mysqli_fetch_assoc($sql);
+    $recurring_invoice_prefix = escapeSql($row['recurring_invoice_prefix']);
+    $recurring_invoice_number = intval($row['recurring_invoice_number']);
+    $client_id = intval($row['recurring_invoice_client_id']);
+
+    enforceClientAccess();
+
+    mysqli_query($mysqli, "UPDATE recurring_invoices SET recurring_invoice_note = '$note' WHERE recurring_invoice_id = $recurring_invoice_id");
+
+    logAudit("Recurring Invoice", "Edit", "$session_name edited notes on recurring invoice $recurring_invoice_prefix$recurring_invoice_number", $client_id, $recurring_invoice_id);
+
+}
+
 if (isset($_POST['contact_set_notes'])) {
 
     validateCSRFToken();
@@ -141,10 +218,10 @@ if (isset($_GET['ticket_query_views'])) {
         $users = array_unique($users);
         if (count($users) > 1) {
             // Multiple viewers
-            $response['message'] = "<i class='fas fa-fw fa-eye mr-2'></i>" . escapeHtml(implode(", ", $users) . " are viewing this ticket.");
+            $response['message'] = "<i class='fas fa-fw fa-eye me-2'></i>" . escapeHtml(implode(", ", $users) . " are viewing this ticket.");
         } else {
             // Single viewer
-            $response['message'] = "<i class='fas fa-fw fa-eye mr-2'></i>" . escapeHtml(implode("", $users) . " is viewing this ticket.");
+            $response['message'] = "<i class='fas fa-fw fa-eye me-2'></i>" . escapeHtml(implode("", $users) . " is viewing this ticket.");
         }
     } else {
         // No viewers
@@ -303,6 +380,85 @@ if (isset($_GET['get_active_clients'])) {
     }
 
     echo json_encode($response);
+}
+
+/*
+ * Returns the body of one canned response, for the picker on the ticket reply form.
+ * Fetched on demand rather than rendered into every ticket page, because the bodies are
+ * full HTML replies and an install can have a lot of them.
+ */
+if (isset($_GET['get_canned_response'])) {
+    enforceUserPermission('module_support');
+
+    $canned_response_id = intval($_GET['get_canned_response']);
+
+    $canned_sql = mysqli_query($mysqli, "SELECT canned_response_body FROM canned_responses
+        WHERE canned_response_id = $canned_response_id AND canned_response_archived_at IS NULL LIMIT 1");
+
+    $canned_row = mysqli_fetch_assoc($canned_sql);
+
+    // Purified here rather than at save time, the same way ticket replies and ticket
+    // template details are - what lands in the editor is what would have been rendered
+    require_once "../libs/htmlpurifier/HTMLPurifier.standalone.php";
+
+    $canned_purifier_config = HTMLPurifier_Config::createDefault();
+    $canned_purifier_config->set('Cache.DefinitionImpl', null);
+    $canned_purifier_config->set('URI.AllowedSchemes', ['data' => true, 'src' => true, 'http' => true, 'https' => true]);
+    $canned_purifier = new HTMLPurifier($canned_purifier_config);
+
+    $response = [];
+    $response['body'] = $canned_row ? $canned_purifier->purify($canned_row['canned_response_body']) : '';
+
+    echo json_encode($response);
+
+}
+
+/*
+ * Returns a document's rendered content for the file previewer on agent/files.php.
+ *
+ * The previewer shows files by pointing an iframe at file.php, but a document is
+ * rows in a table, not bytes on disk. Rather than embedding every document's
+ * HTML in the page payload - a folder of long documents would be megabytes of
+ * JSON on a page that shows two dozen tiles - it is fetched when the document is
+ * actually opened.
+ *
+ * Purified here rather than at save time, the same way canned responses above
+ * and agent/document.php do it.
+ */
+if (isset($_GET['get_document_content'])) {
+    enforceUserPermission('module_support');
+
+    $document_id = intval($_GET['get_document_content']);
+
+    $document_sql = mysqli_query($mysqli, "SELECT document_client_id, document_content, document_name
+        FROM documents WHERE document_id = $document_id LIMIT 1");
+
+    $document_row = mysqli_fetch_assoc($document_sql);
+
+    $response = [];
+
+    if ($document_row) {
+        // Scope the fetch to the client the document belongs to - this endpoint
+        // takes an id straight from the query string
+        $client_id = intval($document_row['document_client_id']);
+        enforceClientAccess();
+
+        require_once "../libs/htmlpurifier/HTMLPurifier.standalone.php";
+
+        $document_purifier_config = HTMLPurifier_Config::createDefault();
+        $document_purifier_config->set('Cache.DefinitionImpl', null);
+        $document_purifier_config->set('URI.AllowedSchemes', ['data' => true, 'src' => true, 'http' => true, 'https' => true]);
+        $document_purifier = new HTMLPurifier($document_purifier_config);
+
+        $response['name'] = $document_row['document_name'];
+        $response['content'] = $document_purifier->purify($document_row['document_content']);
+    } else {
+        $response['name'] = '';
+        $response['content'] = '';
+    }
+
+    echo json_encode($response);
+
 }
 
 /*
@@ -483,7 +639,7 @@ if (isset($_GET['get_totp_token_via_id'])) {
 }
 
 if (isset($_GET['get_readable_pass'])) {
-    echo json_encode(GenerateReadablePassword(1));
+    echo json_encode(generateReadablePassword());
 }
 
 /*
@@ -491,6 +647,8 @@ if (isset($_GET['get_readable_pass'])) {
  */
 if (isset($_POST['update_kanban_status_position'])) {
     // Update multiple ticket status kanban orders
+    validateCSRFToken();
+
     enforceUserPermission('module_support', 2);
 
     $positions = $_POST['positions'];
@@ -509,6 +667,8 @@ if (isset($_POST['update_kanban_status_position'])) {
 
 if (isset($_POST['update_kanban_ticket'])) {
     // Update ticket kanban order and status
+    validateCSRFToken();
+
     enforceUserPermission('module_support', 2);
 
     // all tickets on the column
@@ -524,33 +684,107 @@ if (isset($_POST['update_kanban_ticket'])) {
 
         $kanban = intval($position['ticket_order']); // ticket kanban position
         $status = intval($position['ticket_status']); // ticket statuses
-        $oldStatus = intval($position['ticket_oldStatus']); // ticket old status if moved
+        $old_status_value = $position['ticket_oldStatus'] ?? false;
+        $oldStatus = in_array($old_status_value, [false, null, '', 'false'], true)
+            ? false
+            : intval($old_status_value); // ticket old status if moved
 
         $statuses['Closed'] = 5;
         $statuses['Resolved'] = 4;
 
         // Continue if status is null / Closed
-        if ($status === null || $status === $statuses['Closed']) {
+        if ($status < 1 || $status === $statuses['Closed']) {
             continue;
         }
 
 
         if ($oldStatus === false) {
-            // if ticket was not moved, just uptdate the order on kanban
-            mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban WHERE ticket_id = $ticket_id");
+            // If the ticket was not moved, just update its order on the kanban.
+            mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban
+                WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id");
             triggerCustomAction('ticket_update', $ticket_id);
         } else {
-            // If the ticket was moved from a resolved status to another status, we need to update ticket_resolved_at
-            if ($oldStatus === $statuses['Resolved']) {
-                mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban, ticket_status = $status, ticket_resolved_at = NULL WHERE ticket_id = $ticket_id");
+            $status_changed = false;
+            try {
+                if (!mysqli_begin_transaction($mysqli)) {
+                    throw new RuntimeException('Could not begin the kanban ticket transaction');
+                }
+
+                // Nonterminal moves may reopen a resolved ticket. Use the
+                // project-aware lock so a completed project cannot regain an
+                // open child ticket; resolved-column moves only need the
+                // ordinary lifecycle lock.
+                if ($status === $statuses['Resolved']) {
+                    documentationLockClientTicket($ticket_id, $client_id);
+                }
+                $locked_ticket = $status === $statuses['Resolved']
+                    ? runbookLockTicketForTransition($ticket_id, true)
+                    : runbookLockTicketForReopen($ticket_id);
+                if (intval($locked_ticket['ticket_client_id']) !== $client_id) {
+                    throw new RuntimeException('The ticket client changed before the kanban move');
+                }
+                $actual_old_status = intval($locked_ticket['ticket_status']);
+                $was_resolved = $actual_old_status === $statuses['Resolved']
+                    || !empty($locked_ticket['ticket_resolved_at']);
+
+                if ($status === $statuses['Resolved'] && $actual_old_status !== $statuses['Resolved']) {
+                    $locked_ticket = runbookLockOpenTicket($ticket_id);
+                    [$can_resolve, $resolve_error] = runbookTicketCanResolve($ticket_id);
+                    if (!$can_resolve) {
+                        throw new RuntimeException($resolve_error);
+                    }
+                }
+
+                $resolved_at_predicate = empty($locked_ticket['ticket_resolved_at'])
+                    ? 'ticket_resolved_at IS NULL'
+                    : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
+                $closed_at_predicate = empty($locked_ticket['ticket_closed_at'])
+                    ? 'ticket_closed_at IS NULL'
+                    : "ticket_closed_at = '" . escapeSql($locked_ticket['ticket_closed_at']) . "'";
+                $status_set = "ticket_order = $kanban";
+                if ($actual_old_status !== $status) {
+                    $status_set .= ", ticket_status = $status";
+                    if ($status === $statuses['Resolved']) {
+                        $status_set .= ', ticket_resolved_at = NOW()';
+                    } elseif ($was_resolved) {
+                        $status_set .= ', ticket_resolved_at = NULL';
+                    }
+                } elseif ($status !== $statuses['Resolved'] && $was_resolved) {
+                    $status_set .= ', ticket_resolved_at = NULL';
+                }
+
+                $update_sql = mysqli_query($mysqli, "UPDATE tickets SET $status_set
+                    WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+                    AND ticket_status = $actual_old_status
+                    AND $resolved_at_predicate AND $closed_at_predicate LIMIT 1");
+                if (!$update_sql || mysqli_affected_rows($mysqli) !== 1) {
+                    throw new RuntimeException('The ticket changed before the kanban move could be saved');
+                }
+                if ($actual_old_status !== $status && in_array($status, [4, 5], true)) {
+                    documentationRecordChangePassport($ticket_id, $status, $session_user_id, true);
+                }
+                $status_changed = $actual_old_status !== $status
+                    || ($status !== $statuses['Resolved'] && $was_resolved);
+                if (!mysqli_commit($mysqli)) {
+                    throw new RuntimeException('Could not commit the kanban ticket move');
+                }
+            } catch (Throwable $e) {
+                mysqli_rollback($mysqli);
+                http_response_code(409);
+                echo escapeHtml($e->getMessage());
+                exit;
+            }
+
+            if (!$status_changed) {
+                triggerCustomAction('ticket_update', $ticket_id);
+            // If the ticket was moved from a resolved status to another status, reset its resolution clock.
+            } elseif ($was_resolved) {
                 resetTicketResolutionSla($ticket_id);
                 syncTicketSlaClock($ticket_id);
                 $new_status_name = escapeSql(getTicketStatusName($status));
                 logTicketHistory($ticket_id, "$session_name reopened the ticket to $new_status_name from the kanban");
                 triggerCustomAction('ticket_update', $ticket_id);
             } elseif ($status === $statuses['Resolved']) {
-                // If the ticket was moved to a resolved status, we need to update ticket_resolved_at
-                mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban, ticket_status = $status, ticket_resolved_at = NOW() WHERE ticket_id = $ticket_id");
                 // An agent resolving the ticket counts as a response, same as
                 // resolving from the ticket itself does
                 setTicketFirstResponse($ticket_id);
@@ -592,42 +826,49 @@ if (isset($_POST['update_kanban_ticket'])) {
                     $company_phone = escapeSql(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
 
                     // EMAIL
-                    $subject = "Ticket resolved - [$ticket_prefix$ticket_number] - $ticket_subject | (pending closure)";
-                    $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Your ticket regarding $ticket_subject has been marked as solved and is pending closure.<br><br>If your request/issue is resolved, you can simply ignore this email. If you need further assistance, please reply or <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>re-open</a> to let us know! <br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status<br>Portal: <a href=\'https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+                    $ticket_email_context = [
+                        'company_name' => $company_name,
+                        'contact_name' => $contact_name,
+                        'ticket_number' => $ticket_prefix . $ticket_number,
+                        'ticket_subject' => $ticket_subject,
+                        'ticket_status' => $ticket_status,
+                        'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
+                        'footer_email' => $config_ticket_from_email,
+                        'footer_phone' => $company_phone,
+                    ];
+                    $ticket_email = renderN45Email('ticket.resolved', $ticket_email_context);
+                    $data = [];
 
                     // Check email valid
                     if (filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-                        $data = [];
-
                         // Email Ticket Contact
                         // Queue Mail
 
-                        $data[] = [
+                        $data[] = array_merge([
                             'from' => $config_ticket_from_email,
                             'from_name' => $config_ticket_from_name,
                             'recipient' => $contact_email,
                             'recipient_name' => $contact_name,
-                            'subject' => $subject,
-                            'body' => $body
-                        ];
+                        ], n45EmailQueueFields($ticket_email));
                     }
 
                     // Also Email all the watchers
                     $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
-                    $body .= "<br><br>----------------------------------------<br>YOU ARE A COLLABORATOR ON THIS TICKET";
                     while ($row = mysqli_fetch_assoc($sql_watchers)) {
                         $watcher_email = escapeSql($row['watcher_email']);
+                        $watcher_email_context = $ticket_email_context;
+                        $watcher_email_context['contact_name'] = '';
+                        $watcher_email_context['recipient_role'] = 'collaborator';
+                        $watcher_message = renderN45Email('ticket.resolved', $watcher_email_context);
 
                         // Queue Mail
-                        $data[] = [
+                        $data[] = array_merge([
                             'from' => $config_ticket_from_email,
                             'from_name' => $config_ticket_from_name,
                             'recipient' => $watcher_email,
                             'recipient_name' => $watcher_email,
-                            'subject' => $subject,
-                            'body' => $body
-                        ];
+                        ], n45EmailQueueFields($watcher_message));
                     }
                     addToMailQueue($data);
                 }
@@ -635,7 +876,6 @@ if (isset($_POST['update_kanban_ticket'])) {
 
             } else {
                 // If the ticket was moved from any status to another status
-                mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban, ticket_status = $status WHERE ticket_id = $ticket_id");
                 syncTicketSlaClock($ticket_id);
                 $new_status_name = escapeSql(getTicketStatusName($status));
                 logTicketHistory($ticket_id, "$session_name set the status to $new_status_name from the kanban");
@@ -659,12 +899,20 @@ if (isset($_POST['update_ticket_tasks_order'])) {
 
     $positions = $_POST['positions'];
     $ticket_id = intval($_POST['ticket_id']);
+    $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+    if ($client_id) {
+        enforceClientAccess();
+    }
 
     foreach ($positions as $position) {
         $id = intval($position['id']);
         $order = intval($position['order']);
 
-        mysqli_query($mysqli, "UPDATE tasks SET task_order = $order WHERE task_ticket_id = $ticket_id AND task_id = $id");
+        // Published runbook ordering is part of the immutable execution
+        // definition. Legacy ticket tasks remain freely reorderable.
+        mysqli_query($mysqli, "UPDATE tasks SET task_order = $order
+            WHERE task_ticket_id = $ticket_id AND task_id = $id
+            AND task_runbook_version_task_id = 0");
     }
 
     // return a response
@@ -677,7 +925,7 @@ if (isset($_POST['update_task_templates_order'])) {
 
     validateCSRFToken();
 
-    enforceUserPermission('module_support', 2);
+    enforceAdminPermission();
 
     $positions = $_POST['positions'];
     $ticket_template_id = intval($_POST['ticket_template_id']);
@@ -698,7 +946,7 @@ if (isset($_POST['update_project_template_ticket_order'])) {
 
     validateCSRFToken();
 
-    enforceUserPermission('module_support', 2);
+    enforceAdminPermission();
 
     $positions = $_POST['positions'];
     $project_template_id = intval($_POST['project_template_id']);
@@ -797,9 +1045,50 @@ if (isset($_GET['client_duplicate_check'])) {
 
         if (mysqli_num_rows($sql_clients) > 0) {
             while ($row = mysqli_fetch_assoc($sql_clients)) {
-                $response['message'] = "<i class='fas fa-fw fa-copy mr-2'></i> Potential duplicate: <i>" . escapeHtml($row['client_name']) . "</i> already exists.";
+                $response['message'] = "<i class='fas fa-fw fa-copy me-2'></i> Potential duplicate: <i>" . escapeHtml($row['client_name']) . "</i> already exists.";
             }
         }
+    }
+
+    echo json_encode($response);
+}
+
+/*
+ * Live check behind the IP address field on the add/edit network IP modals.
+ *
+ * Runs the exact same checkIpForNetwork() the POST handler runs, so what the
+ * field says while you type is what the save will do - no second copy of the
+ * rules to drift. It's advisory only; the handler still checks on submit.
+ */
+if (isset($_GET['network_ip_check'])) {
+    enforceUserPermission('module_support', 2);
+
+    $network_id = intval($_GET['network_id'] ?? 0);
+    $ip_id = intval($_GET['ip_id'] ?? 0);
+
+    $client_id = intval(getFieldById('networks', $network_id, 'network_client_id'));
+
+    enforceClientAccess();
+
+    $ip = $_GET['ip'] ?? '';
+
+    $response = ['ok' => false, 'ip' => '', 'message' => ''];
+
+    if (trim($ip) !== '') {
+
+        $ip_error = checkIpForNetwork($ip, $network_id, $ip_id);
+
+        if ($ip_error === '') {
+            $response['ok'] = true;
+            $response['ip'] = $ip;
+            $response['message'] = "<i class='fas fa-fw fa-check me-2'></i>" . escapeHtml($ip) . " is available";
+        } else {
+            // checkIpForNetwork() builds its message for flashAlert(), which
+            // escapes at render - this lands in innerHTML instead, so it has
+            // to be escaped here
+            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle me-2'></i>" . alertMessageHtml($ip_error);
+        }
+
     }
 
     echo json_encode($response);
@@ -819,13 +1108,13 @@ if (isset($_GET['contact_email_check'])) {
         $sql_contacts = mysqli_query($mysqli, "SELECT contact_email FROM contacts WHERE contact_email = '$email' LIMIT 1");
         if (mysqli_num_rows($sql_contacts) > 0) {
             while ($row = mysqli_fetch_assoc($sql_contacts)) {
-                $response['message'] = "<i class='fas fa-fw fa-copy mr-2'></i> Potential duplicate: <i>" . escapeHtml($row['contact_email']) . "</i> already exists.";
+                $response['message'] = "<i class='fas fa-fw fa-copy me-2'></i> Potential duplicate: <i>" . escapeHtml($row['contact_email']) . "</i> already exists.";
             }
         }
 
         // 2. MX record check
         if (!checkdnsrr($domain, 'MX')) {
-            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle mr-2'></i> E-mail domain invalid.";
+            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle me-2'></i> E-mail domain invalid.";
         }
 
     }
@@ -1035,7 +1324,7 @@ if (isset($_GET['apex_domain_check'])) {
         // SOA record check
         //  This isn't 100%, as sub-domains can have their own SOA but will capture 99%
         if (!checkdnsrr($domain, 'SOA')) {
-            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle mr-2'></i> Domain name is invalid.";
+            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle me-2'></i> Domain name is invalid.";
         }
 
     }

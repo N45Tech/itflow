@@ -8,25 +8,32 @@ header("Content-Security-Policy: default-src 'self'");
 
 require_once "includes/inc_all.php";
 
-enforceContactCan('itdoc');
+if (!$config_module_enable_itdoc) {
+    redirect('index.php');
+}
 
+$asset_contact_scope = contactCan('assets_all') ? '' : "AND asset_contact_id = $session_contact_id";
 $assets_sql = mysqli_query($mysqli, "SELECT asset_description, asset_id, asset_make, asset_model, asset_name, asset_purchase_date,
     asset_serial, asset_status, asset_type, asset_uri_client, asset_warranty_expire,
-    contact_name FROM assets LEFT JOIN contacts ON asset_contact_id = contact_id WHERE asset_client_id = $session_client_id AND asset_archived_at IS NULL ORDER BY asset_type ASC, asset_name ASC");
+    contact_name FROM assets LEFT JOIN contacts ON asset_contact_id = contact_id WHERE asset_client_id = $session_client_id $asset_contact_scope AND asset_archived_at IS NULL ORDER BY asset_type ASC, asset_name ASC");
 ?>
 
-    <div class="row">
-        <div class="col">
-            <h3>Assets</h3>
+    <header class="n45-page-header">
+        <div>
+            <h1>Technology assets</h1>
+            <p><?= contactCan('assets_all') ? 'Review the devices and systems N45 has documented for your organization.' : 'Review the devices and systems assigned to you.' ?></p>
         </div>
-    </div>
+    </header>
 
     <div class="row">
 
         <div class="col-md-12">
 
-            <table class="table tabled-bordered border border-dark">
-                <thead class="thead-dark">
+            <?php if (mysqli_num_rows($assets_sql) == 0) { ?>
+                <?= portalEmptyState('There are no assets on this account yet.') ?>
+            <?php } else { ?>
+            <table class="table table-bordered border border-dark">
+                <thead class="table-dark">
                 <tr>
                     <th>Name</th>
                     <th>Type</th>
@@ -60,7 +67,7 @@ $assets_sql = mysqli_query($mysqli, "SELECT asset_description, asset_id, asset_m
 
                     <tr>
                         <td>
-                            <a href="#"><?= $asset_name ?></a>
+                            <strong><?= $asset_name ?></strong>
                             <br>
                             <small class="text-secondary"><?= $asset_description ?></small>
                         </td>
@@ -73,7 +80,7 @@ $assets_sql = mysqli_query($mysqli, "SELECT asset_description, asset_id, asset_m
                         <td><?= $asset_status ?></td>
                         <td>
                             <?php if ($asset_uri_client) { ?>
-                            <i class="fa fa-fw fa-link text-secondary mr-1"></i><a href="<?= $asset_uri_client ?>" target="_blank" title="<?= $asset_uri_client ?>"><?= truncate($asset_uri_client, 40) ?></a>
+                            <i class="fa fa-fw fa-link text-secondary me-1"></i><a href="<?= $asset_uri_client ?>" target="_blank" title="<?= $asset_uri_client ?>"><?= truncate($asset_uri_client, 40) ?></a>
                             <?php } else { ?>
                             -
                         <?php } ?>
@@ -84,6 +91,7 @@ $assets_sql = mysqli_query($mysqli, "SELECT asset_description, asset_id, asset_m
 
                 </tbody>
             </table>
+            <?php } ?>
 
         </div>
 

@@ -32,27 +32,51 @@ if (!empty($subject)) {
         $contact = intval($row['contact_id']);
     }
 
-    // Atomically increment and get the new ticket number
-    mysqli_query($mysqli, "
-        UPDATE settings
-        SET
-            config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
-            config_ticket_next_number = config_ticket_next_number + 1
-        WHERE company_id = 1
-    ");
+    $ticket_transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the API ticket transaction');
+        }
+        $ticket_transaction_started = true;
+        if ($client_id > 0 && !agreementLockClientForAuditRetention($client_id)) {
+            throw new RuntimeException('The API ticket client is no longer available');
+        }
 
-    $ticket_number = mysqli_insert_id($mysqli);
+        ticketCreationDbQuery("
+            UPDATE settings
+            SET
+                config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
+                config_ticket_next_number = config_ticket_next_number + 1
+            WHERE company_id = 1
+        ", 'Could not allocate an API ticket number');
+        $ticket_number = intval(mysqli_insert_id($mysqli));
+        if (!$ticket_number) {
+            throw new RuntimeException('The API ticket number allocation returned no number');
+        }
 
-    // Insert ticket
-    $url_key = randomString(32);
-    $insert_sql = mysqli_query($mysqli,"INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'API', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = 1, ticket_billable = $billable, ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_created_by = 0, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $client_id");
+        // Insert ticket
+        $url_key = randomString(32);
+        $insert_sql = ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'API', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = 1, ticket_billable = $billable, ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_created_by = 0, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $client_id", 'Could not create the API ticket');
+        $insert_id = intval(mysqli_insert_id($mysqli));
+        if (!$insert_id) {
+            throw new RuntimeException('The API ticket did not receive an ID');
+        }
+        applyTicketSla($insert_id, null, null, true);
 
-    // Check insert & get insert ID
-    if ($insert_sql) {
-        $insert_id = mysqli_insert_id($mysqli);
-        applyTicketSla($insert_id);
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the API ticket and SLA decision');
+        }
+        $ticket_transaction_started = false;
+    } catch (Throwable $exception) {
+        if ($ticket_transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        $insert_id = false;
+        error_log('API ticket creation failed before publication: ' . $exception->getMessage());
+    }
 
-        // Logging
+    if ($insert_id !== false) {
+        // Logging only sees a ticket whose SLA decision committed.
         logAudit("Ticket", "Create", "Created ticket $config_ticket_prefix$ticket_number $subject via API ($api_key_name)", $client_id, $insert_id);
         logAudit("API", "Success", "Created ticket $config_ticket_prefix$ticket_number $subject via API ($api_key_name)", $client_id);
     }

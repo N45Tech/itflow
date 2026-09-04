@@ -166,12 +166,31 @@ if (isset($_GET['reopen_ticket'], $_GET['url_key'])) {
     $ticket_id = intval($_GET['ticket_id']);
     $url_key = escapeSql($_GET['url_key']);
 
-    // Select only the necessary fields
-    $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key' AND ticket_resolved_at IS NOT NULL AND ticket_closed_at IS NULL");
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the ticket reopen transaction');
+        }
+        $locked_ticket = runbookLockTicketForReopen($ticket_id);
+        $key_row = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_url_key FROM tickets
+            WHERE ticket_id = $ticket_id LIMIT 1", 'Could not verify the guest ticket link'));
+        if (!$key_row || !hash_equals((string) $key_row['ticket_url_key'], (string) $_GET['url_key'])) {
+            throw new RuntimeException('Invalid or expired ticket link');
+        }
+        if (intval($locked_ticket['ticket_status']) !== 4
+            || empty($locked_ticket['ticket_resolved_at'])) {
+            throw new RuntimeException('Only a resolved ticket can be reopened');
+        }
+        runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
+            WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
+            AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
+            AND ticket_closed_at IS NULL LIMIT 1", 'Could not reopen the ticket');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The ticket is no longer resolved');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the ticket reopen');
+        }
 
-    if (mysqli_num_rows($sql) == 1) {
-        // Update the ticket
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'");
         logTicketHistory($ticket_id, "The client reopened the ticket from the guest link");
 
         // Add reply
@@ -182,9 +201,10 @@ if (isset($_GET['reopen_ticket'], $_GET['url_key'])) {
         flashAlert("Ticket reopened");
 
         redirect();
-
-    } else {
-        echo "Invalid!!";
+    } catch (Throwable $exception) {
+        mysqli_rollback($mysqli);
+        flashAlert(escapeHtml($exception->getMessage()), 'error');
+        redirect();
     }
 
 }
@@ -194,13 +214,37 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
     $ticket_id = intval($_GET['ticket_id']);
     $url_key = escapeSql($_GET['url_key']);
 
-    // Select only the necessary fields
-    $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key' AND ticket_resolved_at IS NOT NULL AND ticket_closed_at IS NULL");
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the ticket close transaction');
+        }
+        documentationLockClientTicket($ticket_id);
+        $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
+        $key_row = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_url_key FROM tickets
+            WHERE ticket_id = $ticket_id LIMIT 1", 'Could not verify the guest ticket link'));
+        if (!$key_row || !hash_equals((string) $key_row['ticket_url_key'], (string) $_GET['url_key'])) {
+            throw new RuntimeException('Invalid or expired ticket link');
+        }
+        if (intval($locked_ticket['ticket_status']) !== 4
+            || empty($locked_ticket['ticket_resolved_at'])) {
+            throw new RuntimeException('Only a resolved ticket can be closed');
+        }
+        [$can_close, $close_error] = runbookTicketCanResolve($ticket_id);
+        if (!$can_close) {
+            throw new RuntimeException('This ticket cannot be closed yet: ' . $close_error);
+        }
+        runbookDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW()
+            WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
+            AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
+            AND ticket_closed_at IS NULL LIMIT 1", 'Could not close the ticket');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The ticket is no longer resolved and awaiting close');
+        }
+        documentationRecordChangePassport($ticket_id, 5, 0, true);
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the ticket close');
+        }
 
-    if (mysqli_num_rows($sql) == 1) {
-
-        // Update the ticket
-        mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW() WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'");
         logTicketHistory($ticket_id, "The client closed the ticket from the guest link");
 
         // Add reply
@@ -211,9 +255,11 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
         flashAlert("Ticket closed");
 
         redirect();
-
-    } else {
-        echo "Invalid!!";
+    } catch (Throwable $exception) {
+        mysqli_rollback($mysqli);
+        error_log("Guest ticket $ticket_id close failed safely: " . $exception->getMessage());
+        flashAlert('The ticket could not be closed. Please contact support if the problem continues.', 'error');
+        redirect();
     }
 }
 
@@ -251,38 +297,164 @@ if (isset($_GET['add_ticket_feedback'], $_GET['url_key'])) {
 
 }
 
+// Compatibility for old direct-action links: display the confirmation page,
+// but never change approval state from a bearer-token GET request.
 if (isset($_GET['approve_ticket_task'])) {
-
-    $task_id = intval($_GET['approve_ticket_task']);
-    $approval_id = intval($_GET['approval_id']);
-    $url_key = escapeSql($_GET['approval_url_key']);
-
-    $approval_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT approval_created_by, approval_required_user_id, approval_scope, approval_type, task_name,
-        task_ticket_id FROM task_approvals LEFT JOIN tasks on task_id = approval_task_id WHERE approval_id = $approval_id AND approval_task_id = $task_id AND approval_url_key = '$url_key' AND approval_status = 'pending'"));
-
-    $task_name = escapeHtml($approval_row['task_name']);
-    $scope = escapeHtml($approval_row['approval_scope']);
-    $type = escapeHtml($approval_row['approval_type']);
-    $required_user = intval($approval_row['approval_required_user_id']);
-    $created_by = intval($approval_row['approval_created_by']);
-    $ticket_id = intval($approval_row['task_ticket_id']);
-
-    if (!$approval_row) {
-        exit("Cannot find/approve that task");
+    if (isset($_GET['approval_id'], $_GET['approval_url_key'])
+        && is_string($_GET['approval_url_key'])) {
+        $approval_id = intval($_GET['approval_id']);
+        $url_key = $_GET['approval_url_key'];
+        redirect("guest_approve_ticket_task.php?task_approval_id=$approval_id&url_key=" . rawurlencode($url_key));
     }
 
-    // Approve
-    mysqli_query($mysqli, "UPDATE task_approvals SET approval_status = 'approved', approval_approved_by = $required_user WHERE approval_id = $approval_id AND approval_task_id = $task_id AND approval_url_key = '$url_key' AND approval_status = 'pending'");
+    flashAlert('Invalid approval request', 'error');
+    redirect('index.php');
+}
 
-    // Notify tech
-    mysqli_query($mysqli, "INSERT INTO notifications SET notification_type = 'Ticket', notification = 'Guest approved ticket task $task_name', notification_action = 'ticket.php?ticket_id=$ticket_id', notification_user_id = $created_by");
+if (isset($_POST['decide_ticket_task_approval'])) {
 
-    // Logging
-    logAudit("Task", "Edit", "Guest user approved task $task_name via link (approval $approval_id)", 0, $task_id);
+    $approval_id = intval($_POST['task_approval_id'] ?? 0);
+    $url_key = isset($_POST['approval_url_key']) && is_string($_POST['approval_url_key'])
+        ? $_POST['approval_url_key'] : '';
+    $decision = isset($_POST['decision']) && is_string($_POST['decision'])
+        ? $_POST['decision'] : '';
+    $return_url = "guest_approve_ticket_task.php?task_approval_id=$approval_id&url_key=" . rawurlencode($url_key);
 
-    flashAlert("Task Approved");
-    redirect();
+    if ($approval_id < 1 || $url_key === '' || strlen($url_key) > 200
+        || !in_array($decision, ['approved', 'declined'], true)) {
+        flashAlert('Invalid approval request', 'error');
+        redirect($return_url);
+    }
 
+    // Fetch by the public identifier only, then compare the bearer credential in
+    // constant time. Internal approvals can never be decided through this route.
+    $approval_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
+        approval_url_key, approval_url_expires_at, approval_created_by,
+        task_id, task_name, task_state, task_ticket_id,
+        ticket_client_id
+        FROM task_approvals
+        INNER JOIN tasks ON task_id = approval_task_id
+        INNER JOIN tickets ON ticket_id = task_ticket_id
+        WHERE approval_id = $approval_id
+        AND approval_scope = 'client'
+        AND approval_status = 'pending'
+        LIMIT 1"));
+
+    if (!$approval_row || !runbookApprovalTokenMatches($approval_row['approval_url_key'], $url_key)
+        || (!empty($approval_row['approval_url_expires_at'])
+            && strtotime($approval_row['approval_url_expires_at']) <= time())) {
+        flashAlert('This approval request is invalid or is no longer pending', 'error');
+        redirect($return_url);
+    }
+
+    $task_id = intval($approval_row['task_id']);
+    $ticket_id = intval($approval_row['task_ticket_id']);
+    $client_id = intval($approval_row['ticket_client_id']);
+    $created_by = intval($approval_row['approval_created_by']);
+    $decision_sql = escapeSql($decision);
+    if (!mysqli_begin_transaction($mysqli)) {
+        flashAlert('This approval request could not be locked', 'error');
+        redirect($return_url);
+    }
+    try {
+        $locked_ticket = runbookLockOpenTicket($ticket_id);
+        runbookRequireLockedTicketClient($locked_ticket, $client_id);
+        $locked_approval = mysqli_fetch_assoc(runbookDbQuery("SELECT approval_scope,
+            approval_type, approval_required_user_id, approval_status,
+            approval_url_key, approval_url_expires_at, task_state, task_ticket_id
+            FROM task_approvals
+            INNER JOIN tasks ON task_id = approval_task_id
+            WHERE approval_id = $approval_id AND approval_task_id = $task_id
+            LIMIT 1 FOR UPDATE", 'Could not lock the guest task approval'));
+        if (!$locked_approval || $locked_approval['approval_scope'] !== 'client'
+            || $locked_approval['approval_status'] !== 'pending'
+            || intval($locked_approval['task_ticket_id']) !== intval($locked_ticket['ticket_id'])
+            || in_array($locked_approval['task_state'], ['Completed', 'Skipped'], true)
+            || !runbookApprovalTokenMatches($locked_approval['approval_url_key'], $url_key)
+            || (!empty($locked_approval['approval_url_expires_at'])
+                && strtotime($locked_approval['approval_url_expires_at']) <= time())) {
+            throw new RuntimeException('The guest approval is no longer actionable');
+        }
+        $stored_token_sql = escapeSql($locked_approval['approval_url_key']);
+        runbookDbQuery("UPDATE task_approvals
+            INNER JOIN tasks ON task_id = approval_task_id
+            SET approval_status = '$decision_sql',
+                approval_approved_by = 'Unverified guest bearer',
+                approval_decided_at = NOW(),
+                approval_url_key = '',
+                approval_url_expires_at = NULL
+            WHERE approval_id = $approval_id
+            AND approval_task_id = $task_id
+            AND approval_scope = 'client'
+            AND approval_status = 'pending'
+            AND approval_url_key = '$stored_token_sql'
+            AND (approval_url_expires_at IS NULL OR approval_url_expires_at > NOW())
+            AND task_state NOT IN ('Completed','Skipped')", 'Could not decide the guest task approval');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The guest approval was already decided or expired');
+        }
+        runbookRecordApprovalEvent(
+            $approval_id,
+            $task_id,
+            $decision,
+            [
+                'status' => 'pending',
+                'scope' => $locked_approval['approval_scope'],
+                'type' => $locked_approval['approval_type'],
+                'required_user_id' => intval($locked_approval['approval_required_user_id']),
+            ],
+            [
+                'status' => $decision,
+                'scope' => $locked_approval['approval_scope'],
+                'type' => $locked_approval['approval_type'],
+                'required_user_id' => intval($locked_approval['approval_required_user_id']),
+            ],
+            'guest',
+            0,
+            'Unverified guest bearer'
+        );
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the guest approval decision');
+        }
+    } catch (Throwable $exception) {
+        mysqli_rollback($mysqli);
+        flashAlert('This approval request is no longer pending', 'error');
+        redirect($return_url);
+    }
+
+    // The bearer token is invalidated in the committed transaction. A short,
+    // same-session receipt permits exactly the redirect confirmation page to
+    // render without keeping the credential or exposing decided ticket details
+    // to someone who only guesses an approval ID.
+    $_SESSION['guest_task_approval_receipt'] = [
+        'approval_id' => $approval_id,
+        'decision' => $decision,
+        'expires_at' => time() + 300,
+    ];
+
+    $task_name = (string) $approval_row['task_name'];
+    $task_name_sql = escapeSql($task_name);
+    $decision_label = $decision === 'approved' ? 'approved' : 'declined';
+
+    // Notify the request creator and leave both the ticket-local and global
+    // audit trails. The bearer credential is deliberately excluded.
+    mysqli_query($mysqli, "INSERT INTO notifications SET
+        notification_type = 'Ticket',
+        notification = 'Guest $decision_label ticket task $task_name_sql',
+        notification_action = 'ticket.php?ticket_id=$ticket_id',
+        notification_client_id = $client_id,
+        notification_user_id = $created_by");
+    logTicketHistory($ticket_id, escapeSql("Client $decision_label task approval $approval_id for $task_name"));
+    logAudit(
+        'Task',
+        'Edit',
+        escapeSql("Guest link $decision_label client approval $approval_id for task $task_name"),
+        $client_id,
+        $task_id
+    );
+
+    flashAlert('Task approval ' . $decision_label);
+    redirect($return_url);
 }
 
 if (isset($_GET['export_quote_pdf'])) {
@@ -823,4 +995,120 @@ if (isset($_POST['guest_quote_upload_file'])) {
         echo "Invalid!!";
     }
 
+}
+
+if (isset($_POST['create_stripe_customer'])) {
+
+    $invoice_url_key = escapeSql($_POST['url_key']);
+    $invoice_id      = intval($_POST['invoice_id']);
+    $name = escapeSql($_POST['name']);
+    $email = escapeSql($_POST['email']);
+
+    // Query invoice details
+    $sql = mysqli_query(
+        $mysqli,
+        "SELECT client_id, client_name, invoice_amount, invoice_currency_code, invoice_date,
+            invoice_discount_amount, invoice_due, invoice_id, invoice_number, invoice_prefix,
+            invoice_status FROM invoices
+         LEFT JOIN clients ON invoice_client_id = client_id
+         WHERE invoice_id = $invoice_id
+         AND invoice_url_key = '$invoice_url_key'
+         AND invoice_status NOT IN ('Draft', 'Paid', 'Cancelled')
+         LIMIT 1"
+    );
+
+    // Ensure valid invoice
+    if (!$sql || mysqli_num_rows($sql) !== 1) {
+        echo "<br><h2>Oops, something went wrong! Please ensure you have the correct URL and have not already paid this invoice.</h2>";
+        require_once 'includes/guest_footer.php';
+        error_log("Stripe payment error - Invoice with ID $invoice_id not found or not eligible.");
+        exit();
+    }
+
+    $row = mysqli_fetch_assoc($sql);
+    $invoice_id            = intval($row['invoice_id']);
+    $invoice_prefix        = escapeHtml($row['invoice_prefix']);
+    $invoice_number        = intval($row['invoice_number']);
+    $client_id             = intval($row['client_id']);
+    $client_name           = escapeHtml($row['client_name']);
+
+    // Get Stripe provider config
+    $stripe_provider_result = mysqli_query($mysqli, "
+        SELECT payment_provider_id, payment_provider_private_key
+        FROM payment_providers
+        WHERE payment_provider_name = 'Stripe'
+        AND payment_provider_active = 1
+        LIMIT 1
+    ");
+
+    $stripe_provider = mysqli_fetch_assoc($stripe_provider_result);
+    if (!$stripe_provider) {
+        flashAlert("Stripe provider is not configured in the system.", 'danger');
+        redirect("saved_payment_methods.php");
+    }
+
+    $stripe_provider_id = intval($stripe_provider['payment_provider_id']);
+    $stripe_secret_key = escapeHtml($stripe_provider['payment_provider_private_key']);
+
+    if (empty($stripe_secret_key)) {
+        flashAlert("Stripe credentials missing. Please contact support.", 'danger');
+        redirect("saved_payment_methods.php");
+    }
+
+    // Check if client already has a Stripe customer
+    $existing_customer = mysqli_fetch_assoc(mysqli_query($mysqli, "
+        SELECT payment_provider_client
+        FROM client_payment_provider
+        WHERE client_id = $client_id
+        AND payment_provider_id = $stripe_provider_id
+        LIMIT 1
+    "));
+
+    if (!$existing_customer) {
+        try {
+            // Initialize Stripe
+            require_once '../includes/stripe_init.php';
+            $stripe = new \Stripe\StripeClient($stripe_secret_key);
+
+            // Create new customer in Stripe
+            $customer = $stripe->customers->create([
+                'name' => $client_name,
+                'email' => $email,
+                'metadata' => [
+                    'itflow_client_id' => $client_id,
+                    'consent_by' => $name,
+                ]
+            ]);
+
+            $stripe_customer_id = escapeSql($customer->id);
+
+            // Insert customer into client_payment_provider
+            mysqli_query($mysqli, "
+                INSERT INTO client_payment_provider
+                SET client_id = $client_id,
+                    payment_provider_id = $stripe_provider_id,
+                    payment_provider_client = '$stripe_customer_id',
+                    client_payment_provider_created_at = NOW()
+            ");
+
+            logAudit("Stripe", "Create", "Guest $name created Stripe customer for $client_name as $stripe_customer_id and authorized future automatic payments", $client_id);
+
+            flashAlert("Stripe customer created. Thank you for your consent.");
+
+        } catch (Exception $e) {
+            $error = $e->getMessage();
+
+            error_log("Stripe error while creating customer for $client_name: $error");
+
+            logApp("Stripe", "error", "Failed to create Stripe customer for $client_name: $error");
+
+            flashAlert("An error occurred while creating your Stripe customer. Please try again.", 'danger');
+
+        }
+
+    } else {
+        flashAlert("Stripe customer already exists for your account.", 'danger');
+    }
+
+    redirect('guest_view_invoice.php?invoice_id=' . $invoice_id . '&url_key=' . urlencode($invoice_url_key));
 }

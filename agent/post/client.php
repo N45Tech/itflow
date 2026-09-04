@@ -113,7 +113,7 @@ if (isset($_POST['add_client'])) {
 
     // Ticket SLA assignments (fields only rendered when active SLAs exist)
     if (isset($_POST['client_sla_low'])) {
-        foreach (['Low', 'Medium', 'High', 'Urgent'] as $sla_priority) {
+        foreach (array_keys(ticketPriorityDefinitions()) as $sla_priority) {
             $sla_value = strval($_POST['client_sla_' . strtolower($sla_priority)] ?? 'default');
             if ($sla_value !== 'default') {
                 $client_sla_id = intval($sla_value);
@@ -173,7 +173,7 @@ if (isset($_POST['edit_client'])) {
         }
 
         $sla_assignments_changed = false;
-        foreach (['Low', 'Medium', 'High', 'Urgent'] as $sla_priority) {
+        foreach (array_keys(ticketPriorityDefinitions()) as $sla_priority) {
             $sla_value = strval($_POST['client_sla_' . strtolower($sla_priority)] ?? 'default');
             $sla_current = $current_sla_assignments[$sla_priority] ?? 'default';
             if ($sla_value === $sla_current) {
@@ -262,91 +262,141 @@ if (isset($_GET['delete_client'])) {
     enforceUserPermission('module_client', 3);
 
     $client_id = intval($_GET['delete_client']);
+    enforceClientAccess($client_id);
 
-    // Get Client Name
-    $client_name = escapeSql(getFieldById('clients', $client_id, 'client_name'));
+    $client_name = '';
+    $client_delete_transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not start the client deletion transaction');
+        }
+        $client_delete_transaction_started = true;
 
-    // Delete Associations
-    // Delete Client Data
-    mysqli_query($mysqli, "DELETE FROM certificates WHERE certificate_client_id = $client_id");
-    mysqli_query($mysqli, "DELETE FROM documents WHERE document_client_id = $client_id");
+        // All writers that create immutable client history lock this row first.
+        // Holding it through the final delete closes the check/delete race.
+        $locked_client = portalRequestLockClientForAuditRetention($client_id);
+        if (!$locked_client) {
+            throw new RuntimeException('The client no longer exists');
+        }
+        $client_name = escapeSql($locked_client['client_name']);
 
-    // Delete Contacts
-    mysqli_query($mysqli, "DELETE FROM contacts WHERE contact_client_id = $client_id");
+        // Lock the ticket range before checking immutable runbook and
+        // documentation history or enumerating dependent ticket records.
+        $ticket_ids = [];
+        $sql = automationDbQuery(
+            "SELECT ticket_id FROM tickets WHERE ticket_client_id = $client_id FOR UPDATE",
+            'Could not lock client tickets for deletion'
+        );
+        while ($row = mysqli_fetch_assoc($sql)) {
+            $ticket_ids[] = intval($row['ticket_id']);
+        }
 
-    // Delete Assets
-    mysqli_query($mysqli, "DELETE FROM assets WHERE asset_client_id = $client_id");
+        $runbook_execution_count = intval(mysqli_fetch_row(automationDbQuery(
+            "SELECT COUNT(*) FROM runbook_executions
+                INNER JOIN tickets ON ticket_id = runbook_execution_ticket_id
+                WHERE ticket_client_id = $client_id",
+            'Could not inspect client runbook history'
+        ))[0] ?? 0);
+        if ($runbook_execution_count > 0) {
+            throw new DomainException('The client has immutable runbook history');
+        }
+        if (documentationClientHasAuditRecords($client_id)) {
+            throw new DomainException('The client has immutable documentation or evidence history');
+        }
+        if (portalRequestClientHasAuditHistory($client_id)) {
+            throw new DomainException('The client has immutable portal request or approval history');
+        }
+        if (agreementClientHasAuditHistory($client_id)) {
+            throw new DomainException('The client has immutable agreement, SLA, or service-review history');
+        }
 
-    // Delete Domains and associated records
-    mysqli_query($mysqli, "DELETE FROM domains WHERE domain_client_id = $client_id");
+        // Delete every database association inside the same transaction. Each
+        // query throws on failure so a partial client teardown is rolled back.
+        automationDbQuery("DELETE FROM certificates WHERE certificate_client_id = $client_id", 'Could not delete client certificates');
+        automationDbQuery("DELETE FROM documents WHERE document_client_id = $client_id", 'Could not delete client documents');
+        automationDbQuery("DELETE FROM contacts WHERE contact_client_id = $client_id", 'Could not delete client contacts');
+        automationDbQuery("DELETE FROM assets WHERE asset_client_id = $client_id", 'Could not delete client assets');
+        automationDbQuery("DELETE FROM domains WHERE domain_client_id = $client_id", 'Could not delete client domains');
+        automationDbQuery("DELETE FROM calendar_events WHERE event_client_id = $client_id", 'Could not delete client calendar events');
+        automationDbQuery("DELETE FROM files WHERE file_client_id = $client_id", 'Could not delete client files');
+        automationDbQuery("DELETE FROM folders WHERE folder_client_id = $client_id", 'Could not delete client folders');
 
-    mysqli_query($mysqli, "DELETE FROM calendar_events WHERE event_client_id = $client_id");
-    mysqli_query($mysqli, "DELETE FROM files WHERE file_client_id = $client_id");
-    mysqli_query($mysqli, "DELETE FROM folders WHERE folder_client_id = $client_id");
+        $sql = automationDbQuery(
+            "SELECT invoice_id FROM invoices WHERE invoice_client_id = $client_id FOR UPDATE",
+            'Could not enumerate client invoices'
+        );
+        while ($row = mysqli_fetch_assoc($sql)) {
+            $invoice_id = intval($row['invoice_id']);
+            automationDbQuery("DELETE FROM invoice_items WHERE item_invoice_id = $invoice_id", 'Could not delete client invoice items');
+            automationDbQuery("DELETE FROM payments WHERE payment_invoice_id = $invoice_id", 'Could not delete client invoice payments');
+            automationDbQuery("DELETE FROM history WHERE history_invoice_id = $invoice_id", 'Could not delete client invoice history');
+        }
+        automationDbQuery("DELETE FROM invoices WHERE invoice_client_id = $client_id", 'Could not delete client invoices');
 
-    //Delete Invoices and Invoice Referencing data
-    $sql = mysqli_query($mysqli, "SELECT invoice_id FROM invoices WHERE invoice_client_id = $client_id");
-    while($row = mysqli_fetch_assoc($sql)) {
-        $invoice_id = $row['invoice_id'];
-        mysqli_query($mysqli, "DELETE FROM invoice_items WHERE item_invoice_id = $invoice_id");
-        mysqli_query($mysqli, "DELETE FROM payments WHERE payment_invoice_id = $invoice_id");
-        mysqli_query($mysqli, "DELETE FROM history WHERE history_invoice_id = $invoice_id");
+        automationDbQuery("DELETE FROM locations WHERE location_client_id = $client_id", 'Could not delete client locations');
+        automationDbQuery("DELETE FROM credentials WHERE credential_client_id = $client_id", 'Could not delete client credentials');
+        automationDbQuery("DELETE FROM logs WHERE log_client_id = $client_id", 'Could not delete client logs');
+        automationDbQuery("DELETE FROM networks WHERE network_client_id = $client_id", 'Could not delete client networks');
+        automationDbQuery("DELETE FROM notifications WHERE notification_client_id = $client_id", 'Could not delete client notifications');
+
+        $sql = automationDbQuery(
+            "SELECT quote_id FROM quotes WHERE quote_client_id = $client_id FOR UPDATE",
+            'Could not enumerate client quotes'
+        );
+        while ($row = mysqli_fetch_assoc($sql)) {
+            $quote_id = intval($row['quote_id']);
+            automationDbQuery("DELETE FROM quote_items WHERE item_quote_id = $quote_id", 'Could not delete client quote items');
+        }
+        automationDbQuery("DELETE FROM quotes WHERE quote_client_id = $client_id", 'Could not delete client quotes');
+
+        $sql = automationDbQuery(
+            "SELECT recurring_invoice_id FROM recurring_invoices WHERE recurring_invoice_client_id = $client_id FOR UPDATE",
+            'Could not enumerate client recurring invoices'
+        );
+        while ($row = mysqli_fetch_assoc($sql)) {
+            $recurring_invoice_id = intval($row['recurring_invoice_id']);
+            automationDbQuery("DELETE FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id", 'Could not delete client recurring invoice items');
+        }
+        automationDbQuery("DELETE FROM recurring_invoices WHERE recurring_invoice_client_id = $client_id", 'Could not delete client recurring invoices');
+
+        automationDbQuery("DELETE FROM revenues WHERE revenue_client_id = $client_id", 'Could not delete client revenues');
+        automationDbQuery("DELETE FROM recurring_tickets WHERE recurring_ticket_client_id = $client_id", 'Could not delete client recurring tickets');
+        automationDbQuery("DELETE FROM services WHERE service_client_id = $client_id", 'Could not delete client services');
+        automationDbQuery("DELETE FROM shared_items WHERE item_client_id = $client_id", 'Could not delete client shared items');
+        automationDbQuery("DELETE FROM software WHERE software_client_id = $client_id", 'Could not delete client software');
+
+        foreach ($ticket_ids as $ticket_id) {
+            automationDeleteTicketOperations($ticket_id);
+            automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id", 'Could not delete client ticket replies');
+            automationDbQuery("DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id", 'Could not delete client ticket views');
+            automationDbQuery("DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id", 'Could not delete client ticket watchers');
+            automationDbQuery("DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id", 'Could not delete client ticket attachments');
+        }
+        automationDbQuery("DELETE FROM tickets WHERE ticket_client_id = $client_id", 'Could not delete client tickets');
+        automationDbQuery("DELETE FROM trips WHERE trip_client_id = $client_id", 'Could not delete client trips');
+        automationDbQuery("DELETE FROM vendors WHERE vendor_client_id = $client_id", 'Could not delete client vendors');
+        automationDbQuery("DELETE FROM clients WHERE client_id = $client_id", 'Could not delete the client');
+
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the client deletion transaction');
+        }
+        $client_delete_transaction_started = false;
+    } catch (Throwable $e) {
+        if ($client_delete_transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        error_log("Client $client_id deletion failed: " . $e->getMessage());
+        flashAlert(
+            $e instanceof DomainException
+                ? 'This client has immutable runbook, documentation, portal request, agreement, SLA, service-review, approval, or evidence history and cannot be permanently deleted. Archive the client to preserve its audit trail.'
+                : 'The client could not be deleted. No database records or uploaded files were removed.',
+            'error'
+        );
+        redirect();
     }
-    mysqli_query($mysqli, "DELETE FROM invoices WHERE invoice_client_id = $client_id");
 
-    // Delete Locations and location tags
-    mysqli_query($mysqli, "DELETE FROM locations WHERE location_client_id = $client_id");
-
-    mysqli_query($mysqli, "DELETE FROM credentials WHERE credential_client_id = $client_id");
-    mysqli_query($mysqli, "DELETE FROM logs WHERE log_client_id = $client_id");
-    mysqli_query($mysqli, "DELETE FROM networks WHERE network_client_id = $client_id");
-    mysqli_query($mysqli, "DELETE FROM notifications WHERE notification_client_id = $client_id");
-
-    //Delete Quote and related items
-    $sql = mysqli_query($mysqli, "SELECT quote_id FROM quotes WHERE quote_client_id = $client_id");
-    while($row = mysqli_fetch_assoc($sql)) {
-        $quote_id = $row['quote_id'];
-
-        mysqli_query($mysqli, "DELETE FROM quote_items WHERE item_quote_id = $quote_id");
-    }
-    mysqli_query($mysqli, "DELETE FROM quotes WHERE quote_client_id = $client_id");
-
-    // Delete Recurring Invoices and associated items
-    $sql = mysqli_query($mysqli, "SELECT recurring_invoice_id FROM recurring_invoices WHERE recurring_invoice_client_id = $client_id");
-    while($row = mysqli_fetch_assoc($sql)) {
-        $recurring_invoice_id = $row['recurring_invoice_id'];
-        mysqli_query($mysqli, "DELETE FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id");
-    }
-    mysqli_query($mysqli, "DELETE FROM recurring_invoices WHERE recurring_invoice_client_id = $client_id");
-
-    mysqli_query($mysqli, "DELETE FROM revenues WHERE revenue_client_id = $client_id");
-    mysqli_query($mysqli, "DELETE FROM recurring_tickets WHERE recurring_ticket_client_id = $client_id");
-
-    // Delete Services
-    mysqli_query($mysqli, "DELETE FROM services WHERE service_client_id = $client_id");
-
-    // Delete Shared Items
-    mysqli_query($mysqli, "DELETE FROM shared_items WHERE item_client_id = $client_id");
-
-    // Delete Software
-    mysqli_query($mysqli, "DELETE FROM software WHERE software_client_id = $client_id");
-
-    // Delete tickets and related data
-    $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_client_id = $client_id");
-    while($row = mysqli_fetch_assoc($sql)) {
-        $ticket_id = $row['ticket_id'];
-        mysqli_query($mysqli, "DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id");
-        mysqli_query($mysqli, "DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id");
-    }
-    mysqli_query($mysqli, "DELETE FROM tickets WHERE ticket_client_id = $client_id");
-    mysqli_query($mysqli, "DELETE FROM trips WHERE trip_client_id = $client_id");
-    mysqli_query($mysqli, "DELETE FROM vendors WHERE vendor_client_id = $client_id");
-
-    //Delete Client Files
+    // Delete files only after every database delete has succeeded.
     removeDirectory("../uploads/clients/$client_id");
-
-    //Finally Remove the Client
-    mysqli_query($mysqli, "DELETE FROM clients WHERE client_id = $client_id");
 
     logAudit("Client", "Deleted", "$session_name deleted Client $client_name and all associated data");
 
@@ -724,107 +774,233 @@ if (isset($_POST['bulk_add_client_ticket'])) {
 
     enforceUserPermission('module_support', 2);
 
-    $assigned_to = intval($_POST['bulk_assigned_to']);
+    $assigned_to = intval($_POST['bulk_assigned_to'] ?? 0);
     if ($assigned_to == 0) {
         $ticket_status = 1;
     } else {
         $ticket_status = 2;
     }
-    $subject = escapeSql($_POST['bulk_subject']);
-    $priority = escapeSql($_POST['bulk_priority']);
-    $category_id = intval($_POST['bulk_category']);
-    $details = mysqli_real_escape_string($mysqli, $_POST['bulk_details']);
-    $project_id = intval($_POST['bulk_project']);
-    $use_primary_contact = intval($_POST['use_primary_contact']);
-    $ticket_template_id = intval($_POST['bulk_ticket_template_id']);
+    $subject_raw = trim((string) ($_POST['bulk_subject'] ?? ''));
+    $priority = escapeSql($_POST['bulk_priority'] ?? 'Low');
+    $category_id = intval($_POST['bulk_category'] ?? 0);
+    $details = mysqli_real_escape_string($mysqli, $_POST['bulk_details'] ?? '');
+    $project_id = intval($_POST['bulk_project'] ?? 0);
+    $use_primary_contact = intval($_POST['use_primary_contact'] ?? 0);
+    $ticket_template_id = intval($_POST['bulk_ticket_template_id'] ?? 0);
     $billable = intval($_POST['bulk_billable'] ?? 0);
+    $runbook_version_id = 0;
+    if (!$ticket_template_id && $subject_raw === '') {
+        flashAlert('A subject is required when no ticket template is selected', 'error');
+        redirect();
+    }
+    $subject = escapeSql($subject_raw);
 
-    // Check to see if adding a ticket by template
-    if($ticket_template_id) {
-        $sql = mysqli_query($mysqli, "SELECT ticket_template_details, ticket_template_subject FROM ticket_templates WHERE ticket_template_id = $ticket_template_id");
-        $row = mysqli_fetch_assoc($sql);
-
-        // Override Template Subject
-        if(empty($subject)) {
-            $subject = escapeSql($row['ticket_template_subject']);
-        }
-        $details = mysqli_escape_string($mysqli, $row['ticket_template_details']);
-
-        // Get Associated Tasks from the ticket template
-        $sql_task_templates = mysqli_query($mysqli, "SELECT task_template_name, task_template_order FROM task_templates WHERE task_template_ticket_template_id = $ticket_template_id");
-
+    if ($assigned_to && !mysqli_fetch_assoc(ticketCreationDbQuery("SELECT user_id FROM users
+        WHERE user_id = $assigned_to AND user_type = 1 AND user_status = 1
+        AND user_archived_at IS NULL LIMIT 1", 'Could not validate the bulk ticket assignee'))) {
+        flashAlert('The selected assignee is unavailable', 'error');
+        redirect();
+    }
+    if ($category_id && !mysqli_fetch_assoc(ticketCreationDbQuery("SELECT category_id FROM categories
+        WHERE category_id = $category_id AND category_type = 'Ticket'
+        AND category_archived_at IS NULL LIMIT 1", 'Could not validate the bulk ticket category'))) {
+        flashAlert('The selected ticket category is unavailable', 'error');
+        redirect();
     }
 
-    // Create ticket for each selected asset
-    if (isset($_POST['client_ids'])) {
+    $project_client_id = 0;
+    if ($project_id) {
+        $project = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT project_client_id FROM projects
+            WHERE project_id = $project_id AND project_archived_at IS NULL
+            AND project_completed_at IS NULL LIMIT 1", 'Could not validate the bulk ticket project'));
+        if (!$project) {
+            flashAlert('The selected project is unavailable or closed', 'error');
+            redirect();
+        }
+        $project_client_id = intval($project['project_client_id']);
+    }
 
-        // Get a Asset Count
-        $client_count = count($_POST['client_ids']);
+    // Check to see if adding a ticket by template
+    if ($ticket_template_id) {
+        $sql = ticketCreationDbQuery("SELECT
+            ticket_template_details, ticket_template_subject,
+            ticket_template_published_version_id, runbook_version_id,
+            runbook_version_details, runbook_version_subject,
+            (SELECT COUNT(*) FROM runbook_versions history
+                WHERE history.runbook_version_ticket_template_id = ticket_template_id) AS runbook_version_count
+            FROM ticket_templates
+            LEFT JOIN runbook_versions
+                ON runbook_version_id = ticket_template_published_version_id
+                AND runbook_version_ticket_template_id = ticket_template_id
+            WHERE ticket_template_id = $ticket_template_id
+            AND ticket_template_archived_at IS NULL LIMIT 1", 'Could not validate the bulk ticket template');
+        $row = mysqli_fetch_assoc($sql);
+        if (!$row) {
+            flashAlert('The selected ticket template is unavailable or archived', 'error');
+            redirect();
+        }
+        $runbook_version_id = intval($row['ticket_template_published_version_id']);
+        if ($runbook_version_id) {
+            if (intval($row['runbook_version_id']) !== $runbook_version_id) {
+                flashAlert('The published runbook for this template is unavailable', 'error');
+                redirect();
+            }
+            // Published content is immutable. Ignore editable bulk payloads.
+            $subject = escapeSql($row['runbook_version_subject']);
+            $details = mysqli_real_escape_string($mysqli, $row['runbook_version_details']);
+        } elseif (intval($row['runbook_version_count']) > 0) {
+            flashAlert('This template has runbook history but no valid published release. Republish it before bulk use.', 'error');
+            redirect();
+        } else {
+            if (empty($subject)) {
+                $subject = escapeSql($row['ticket_template_subject']);
+            }
+            $details = mysqli_real_escape_string($mysqli, $row['ticket_template_details']);
+        }
+    }
 
-        foreach ($_POST['client_ids'] as $client_id) {
-            $client_id = intval($client_id);
+    if (trim((string) $subject) === '') {
+        flashAlert('The selected ticket template does not provide a ticket subject', 'error');
+        redirect();
+    }
 
-            $sql = mysqli_query($mysqli, "SELECT client_name FROM clients WHERE client_id = $client_id");
-            $row = mysqli_fetch_assoc($sql);
+    $requested_client_ids = array_values(array_unique(array_map('intval', (array) ($_POST['client_ids'] ?? []))));
+    $requested_count = count($requested_client_ids);
+    $skipped_count = 0;
+    $failed_count = 0;
+    $created_count = 0;
+    $eligible_clients = [];
 
-            $client_name = escapeSql($row['client_name']);
+    // Validate every posted client and all access rules before creating the
+    // first ticket, so an access rejection cannot leave a partial bulk batch.
+    foreach ($requested_client_ids as $requested_client_id) {
+        if (!$requested_client_id) {
+            $skipped_count++;
+            continue;
+        }
+        $client_row = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT client_id, client_name FROM clients
+            WHERE client_id = $requested_client_id AND client_lead = 0
+            AND client_archived_at IS NULL LIMIT 1", 'Could not validate a bulk ticket client'));
+        if (!$client_row) {
+            $skipped_count++;
+            continue;
+        }
+        enforceClientAccess($requested_client_id);
+        if ($project_id && $project_client_id !== $requested_client_id) {
+            $skipped_count++;
+            continue;
+        }
+        $contact_id = 0;
+        if ($use_primary_contact) {
+            $primary = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT contact_id FROM contacts
+                WHERE contact_client_id = $requested_client_id AND contact_primary = 1
+                AND contact_archived_at IS NULL ORDER BY contact_id LIMIT 1", 'Could not validate a primary contact'));
+            $contact_id = intval($primary['contact_id'] ?? 0);
+            if (!$contact_id) {
+                $skipped_count++;
+                continue;
+            }
+        }
+        $client_row['contact_id'] = $contact_id;
+        $eligible_clients[] = $client_row;
+    }
 
-            // Atomically increment and get the new ticket number
-            mysqli_query($mysqli, "
+    $config_ticket_prefix = escapeSql($config_ticket_prefix);
+
+    foreach ($eligible_clients as $client_row) {
+        $client_id = intval($client_row['client_id']);
+        $contact_id = intval($client_row['contact_id']);
+        $url_key = randomString(32);
+        $transaction_started = false;
+
+        try {
+            if (!mysqli_begin_transaction($mysqli)) {
+                throw new RuntimeException('Could not begin a bulk ticket transaction');
+            }
+            $transaction_started = true;
+
+            if ($project_id) {
+                $locked_project = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT project_client_id,
+                    project_completed_at, project_archived_at FROM projects
+                    WHERE project_id = $project_id FOR UPDATE", 'Could not lock the bulk client ticket project'));
+                if (!$locked_project || intval($locked_project['project_client_id']) !== $client_id
+                    || !empty($locked_project['project_completed_at']) || !empty($locked_project['project_archived_at'])) {
+                    throw new RuntimeException('The selected project is no longer active for the client');
+                }
+            }
+
+            // The batch preflight prevents partial creation on an access denial,
+            // while these locks protect each item from a later archive or
+            // contact reassignment before its ticket is inserted.
+            $locked_client = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT client_id FROM clients
+                WHERE client_id = $client_id AND client_lead = 0
+                AND client_archived_at IS NULL " . clientScopeSql('clients.client_id') . "
+                LIMIT 1 FOR UPDATE", 'Could not lock the bulk ticket client'));
+            if (!$locked_client) {
+                throw new RuntimeException('The client is no longer active or accessible');
+            }
+            if ($contact_id) {
+                $locked_contact = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT contact_id FROM contacts
+                    WHERE contact_id = $contact_id AND contact_client_id = $client_id
+                    AND contact_primary = 1 AND contact_archived_at IS NULL
+                    LIMIT 1 FOR UPDATE", 'Could not lock the bulk ticket contact'));
+                if (!$locked_contact) {
+                    throw new RuntimeException('The selected primary contact is no longer active for the client');
+                }
+            }
+
+            ticketCreationDbQuery("
                 UPDATE settings
                 SET
                     config_ticket_next_number = LAST_INSERT_ID(config_ticket_next_number),
                     config_ticket_next_number = config_ticket_next_number + 1
                 WHERE company_id = 1
-            ");
+            ", 'Could not allocate a bulk ticket number');
+            $ticket_number = intval(mysqli_insert_id($mysqli));
+            if (!$ticket_number) {
+                throw new RuntimeException('The bulk ticket number allocation returned no number');
+            }
 
-            $ticket_number = mysqli_insert_id($mysqli);
+            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Agent Bulk', ticket_category = $category_id, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_billable = $billable, ticket_status = $ticket_status, ticket_created_by = $session_user_id, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id, ticket_project_id = $project_id", 'Could not create a bulk client ticket');
+            $ticket_id = intval(mysqli_insert_id($mysqli));
+            if (!$ticket_id) {
+                throw new RuntimeException('The bulk client ticket did not receive an ID');
+            }
+            applyTicketSla($ticket_id, null, null, true);
 
-            // Sanitize Config Vars from get_settings.php and Session Vars from check_login.php
-            $config_ticket_prefix = escapeSql($config_ticket_prefix);
-            $config_ticket_from_name = escapeSql($config_ticket_from_name);
-            $config_ticket_from_email = escapeSql($config_ticket_from_email);
-            $config_base_url = escapeSql($config_base_url);
-
-            //Generate a unique URL key for clients to access
-            $url_key = randomString(32);
-
-            mysqli_query($mysqli, "INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_category = $category_id, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_billable = $billable, ticket_status = $ticket_status, ticket_created_by = $session_user_id, ticket_assigned_to = $assigned_to, ticket_url_key = '$url_key', ticket_client_id = $client_id, ticket_project_id = $project_id");
-
-            $ticket_id = mysqli_insert_id($mysqli);
-            applyTicketSla($ticket_id);
-
-            // Add Tasks
-            if (!empty($_POST['tasks'])) {
+            // Legacy bulk task payloads remain supported, but a published
+            // runbook can only use its immutable versioned task definition.
+            if (!$runbook_version_id && !empty($_POST['tasks']) && is_array($_POST['tasks'])) {
                 foreach ($_POST['tasks'] as $task) {
                     $task_name = escapeSql($task);
-                    // Check that task_name is not-empty (For some reason the !empty on the array doesnt work here like in watchers)
                     if (!empty($task_name)) {
-                        mysqli_query($mysqli,"INSERT INTO tasks SET task_name = '$task_name', task_ticket_id = $ticket_id");
+                        ticketCreationDbQuery("INSERT INTO tasks SET task_name = '$task_name', task_ticket_id = $ticket_id", 'Could not create a submitted bulk task');
                     }
                 }
             }
+            addTasksFromTicketTemplate($ticket_id, $ticket_template_id, $runbook_version_id, true);
 
-            // Add Tasks from Template if Template was selected
-            if($ticket_template_id) {
-                if (mysqli_num_rows($sql_task_templates) > 0) {
-                    while ($row = mysqli_fetch_assoc($sql_task_templates)) {
-                        $task_order = intval($row['task_template_order']);
-                        $task_name = escapeSql($row['task_template_name']);
-
-                        mysqli_query($mysqli,"INSERT INTO tasks SET task_name = '$task_name', task_order = $task_order, task_ticket_id = $ticket_id");
-                    }
-                }
+            if (!mysqli_commit($mysqli)) {
+                throw new RuntimeException('Could not commit a bulk client ticket and its workflow');
             }
+            $transaction_started = false;
+            $created_count++;
 
-            // Custom action/notif handler
+            // Notifications and custom actions only see fully committed tickets.
             triggerCustomAction('ticket_create', $ticket_id);
+        } catch (Throwable $exception) {
+            if ($transaction_started) {
+                mysqli_rollback($mysqli);
+            }
+            $failed_count++;
+            error_log("Bulk client ticket creation failed for client $client_id: " . $exception->getMessage());
         }
+    }
 
-        logAudit("Ticket", "Bulk Create", "$session_name created $client_count tickets for $client_name");
-
-        flashAlert("<strong>$client_count</strong> tickets created for selected clients");
-
+    logAudit("Ticket", "Bulk Create", "$session_name created $created_count of $requested_count requested client ticket(s); $skipped_count skipped and $failed_count failed");
+    flashAlert("Created <strong>$created_count</strong> of <strong>$requested_count</strong> requested client ticket(s)");
+    if ($skipped_count || $failed_count) {
+        flashAlert("Skipped <strong>$skipped_count</strong> invalid, archived, inaccessible-project, or no-contact selection(s); <strong>$failed_count</strong> ticket(s) failed safe workflow creation", 'info');
     }
 
     redirect();

@@ -55,21 +55,27 @@ if (!$stripe_public_key || !$stripe_secret_key) {
 }
 ?>
 
-<h3>Saved Payment Methods</h3>
-<hr>
-<div class="row">
+<header class="n45-page-header">
+    <div>
+        <h1>Saved payment methods</h1>
+        <p>Securely manage the payment methods available for automatic billing.</p>
+    </div>
+</header>
+<div class="row n45-payment-layout">
     <div class="col-md-6">
 
         <?php if (!$stripe_customer_id) { ?>
-            In order to set up automatic payments, you must create a customer record in Stripe.
-            First, you must authorize Stripe to store your card details for the purpose of automatic payment.
-            <br><br>
+            In order to set up automatic payments, you must create a Stripe customer record.
+            <br>
+            By saving your card details, you grant consent for automatic payments.
+            <small class="text-muted d-block mt-2">Stripe processes your information in accordance with its Privacy Policy and Terms.</small>
+            <br>
 
             <form action="post.php" method="POST">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-                <div class="form-group">
-                    <button type="submit" class="btn btn-success" name="create_stripe_customer"><strong><i class="fas fa-check mr-2"></i>I grant consent for automatic payments</strong></button>
+                <div class="mb-3">
+                    <button type="submit" class="btn btn-success" name="create_stripe_customer"><strong><i class="fas fa-check me-2"></i>Continue</strong></button>
                 </div>
             </form>
 
@@ -80,7 +86,7 @@ if (!$stripe_public_key || !$stripe_secret_key) {
             <?php if (empty($saved_methods)) { ?>
                 <p>You currently have no saved payment methods. Please add one below.</p>
             <?php } else { ?>
-                <ul class="list-unstyled">
+                <ul class="n45-payment-method-list">
                     <?php
                     try {
                         $stripe = new \Stripe\StripeClient($stripe_secret_key);
@@ -105,7 +111,7 @@ if (!$stripe_public_key || !$stripe_secret_key) {
                             $exp_month = escapeHtml($pm->card->exp_month);
                             $exp_year = escapeHtml($pm->card->exp_year);
 
-                            echo "<li><i class='$payment_icon fa-2x mr-2'></i>$brand x<strong>$last4</strong> | Exp. $exp_month/$exp_year";
+                            echo "<li><i class='$payment_icon fa-2x me-2'></i>$brand x<strong>$last4</strong> | Exp. $exp_month/$exp_year";
                             echo " – <a class='text-danger' href='post.php?delete_saved_payment={$method['saved_payment_id']}&csrf_token={$_SESSION['csrf_token']}'>Remove</a></li>";
                         }
                     } catch (Exception $e) {
@@ -119,7 +125,9 @@ if (!$stripe_public_key || !$stripe_secret_key) {
             <?php } ?>
         </div>
         <div class="col-md-6">
-            <b>Add a new payment method</b><br><br>
+            <b>Add a new payment method</b>
+            <p>If you save payment details, you grant consent for automatic payments.</p>
+            <br><br>
 
             <input type="hidden" id="stripe_publishable_key" value="<?= $stripe_public_key ?>">
             <script src="https://js.stripe.com/v3/"></script>

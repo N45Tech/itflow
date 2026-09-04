@@ -1,25 +1,45 @@
 name: SQL Syntax Check for db.sql
 
 on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'codex/**'
   pull_request:
     paths:
       - 'db.sql'
+      - 'admin/database_updates/**'
+      - 'includes/database_version.php'
+      - 'functions/n45_schema.php'
+      - 'n45/**'
+      - 'scripts/update_cli.php'
+      - 'setup/seed_data.php'
+      - 'tests/n45_*'
+      - 'deploy/n8n/**'
+      - '.github/workflows/dbsql-lint.yml'
+
+permissions:
+  contents: read
 
 jobs:
   syntax_check:
     name: Check db.sql SQL Syntax
     runs-on: ubuntu-latest
 
+    env:
+      N45_CI_DB_HOST: 127.0.0.1
+      N45_CI_DB_PORT: '3306'
+      N45_CI_DB_USER: root
+      N45_CI_DB_PASSWORD: n45-ci-root-password
+
     services:
       mariadb:
-        image: mariadb:latest
+        image: mariadb:11.4
         ports:
         - "3306:3306"
         env:
-          MYSQL_RANDOM_ROOT_PASSWORD: "yes"
-          MARIADB_USER: user
-          MARIADB_PASSWORD: password
-          MARIADB_DATABASE: itfsyntaxdb
+          MARIADB_ROOT_PASSWORD: n45-ci-root-password
         options: >-
           --health-cmd="healthcheck.sh --connect --innodb_initialized"
           --health-interval=10s
@@ -28,10 +48,54 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Import & Lint db.sql
-        run: mysql --host 127.0.0.1 -uuser -ppassword itfsyntaxdb < db.sql
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mysqli
+          coverage: none
 
-      - name: Show imported tables
-        run: mysql --host 127.0.0.1 -uuser -ppassword itfsyntaxdb -e "show tables;"
+      - name: Install MariaDB client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes mariadb-client
+
+      - name: Check release harness syntax
+        run: |
+          bash -n tests/n45_release_database_test.sh
+          bash -n tests/n45_lock_order_database_test.sh
+
+      - name: Validate generated n8n workflows
+        run: |
+          node deploy/n8n/build-workflows.mjs
+          node deploy/n8n/test-workflows.mjs
+          git diff --exit-code -- deploy/n8n/workflows
+
+      - name: Check PHP syntax errors
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' php_file; do
+            php -l "$php_file" > /dev/null
+          done < <(git ls-files -z '*.php')
+
+      - name: Run PHP regression tests
+        run: |
+          set -euo pipefail
+          for test_file in tests/*_test.php; do
+            echo "Running ${test_file}"
+            php "${test_file}"
+          done
+
+      - name: Validate final schema and N45 upgrade path
+        env:
+          MYSQL_PWD: n45-ci-root-password
+        run: bash tests/n45_release_database_test.sh
+
+      - name: Exercise canonical database lock order
+        env:
+          MYSQL_PWD: n45-ci-root-password
+        run: bash tests/n45_lock_order_database_test.sh

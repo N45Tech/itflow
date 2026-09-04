@@ -127,8 +127,11 @@ function getOptionOrPrompt($key, $promptMessage, $required = false, $default = '
     if (isset($options[$key])) {
         return $options[$key];
     } else {
-        if ($non_interactive && $required) {
-            die("Missing required argument: --$key\n");
+        if ($non_interactive) {
+            if ($required) {
+                die("Missing required argument: --$key\n");
+            }
+            return $default;
         }
         $val = prompt($promptMessage . (strlen($default) ? " [$default]" : ''));
         if (empty($val) && !empty($default)) {

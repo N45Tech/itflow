@@ -1,0 +1,271 @@
+{
+  "name": "N45 - SentinelOne Agent Reconciliation",
+  "nodes": [
+    {
+      "id": "64ddad76-fec6-4bca-8831-a2b0e9b15001",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -980,
+        -120
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "55 */6 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "64ddad76-fec6-4bca-8831-a2b0e9b15002",
+      "name": "Manual SentinelOne Reconciliation",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -980,
+        40
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "64ddad76-fec6-4bca-8831-a2b0e9b15003",
+      "name": "Load SentinelOne Site Map",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const text = (value) => value === undefined || value === null ? '' : String(value).trim();\nconst integer = (value, fallback = 0) => Number.isInteger(Number(value)) ? Math.max(0, Number(value)) : fallback;\nconst bool = (value, fallback = false) => value === undefined || value === null || value === ''\n  ? fallback : value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\nconst parseMappings = (source) => {\n  const raw = text($vars.N45_DEVICE_SOURCE_MAP_JSON);\n  if (!raw) throw new Error('N45_DEVICE_SOURCE_MAP_JSON is required.');\n  let document;\n  try { document = JSON.parse(raw); } catch { throw new Error('N45_DEVICE_SOURCE_MAP_JSON is not valid JSON.'); }\n  const entries = document && Array.isArray(document[source]) ? document[source] : [];\n  if (!entries.length) throw new Error('No mappings are configured for ' + source + '.');\n  const scopes = entries.map((entry, index) => {\n    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(source + ' mapping ' + index + ' is not an object.');\n    const scopeId = text(entry.scope_id || entry.tenant_filter || entry.site_id);\n    const clientId = integer(entry.client_id);\n    if (!scopeId || !clientId) throw new Error(source + ' mapping ' + index + ' requires scope_id and client_id.');\n    return {\n      source,\n      scope_id: scopeId,\n      scope_name: text(entry.scope_name || entry.tenant_name || entry.site_name || scopeId),\n      tenant_filter: text(entry.tenant_filter || scopeId),\n      site_id: text(entry.site_id || scopeId),\n      client_id: clientId,\n      location_id: integer(entry.location_id),\n      create_asset: bool(entry.create_asset, false),\n      retirement_guard_percent: Math.max(0, Math.min(100, integer(entry.retirement_guard_percent, 50))),\n      allow_empty: bool(entry.allow_empty, false),\n    };\n  });\n  const duplicates = scopes.filter((scope, index) => scopes.findIndex((other) => other.scope_id.toLowerCase() === scope.scope_id.toLowerCase()) !== index);\n  if (duplicates.length) throw new Error('Duplicate ' + source + ' scope_id: ' + duplicates[0].scope_id);\n  return scopes;\n};\nconst httpsBase = (value, label) => {\n  const base = text(value).replace(/\\/+$/, '');\n  const match = base.match(/^https:\\/\\/([^/?#\\s]+)(\\/[^?#\\s]*)?$/i);\n  if (!match || match[1].includes('@')) {\n    throw new Error(label + ' must be an HTTPS origin or base path without credentials or query parameters.');\n  }\n  return base;\n};\nconst queryString = (parameters) => Object.entries(parameters)\n  .map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(text(value)))\n  .join('&');\nconst SOURCE = 'sentinelone';\nconst base = httpsBase($vars.N45_SENTINELONE_BASE_URL, 'N45_SENTINELONE_BASE_URL');\nconst scopes = parseMappings(SOURCE);\nconst siteIds = scopes.map((scope) => scope.site_id);\nconst query = queryString({ limit: '1000', siteIds: siteIds.join(',') });\nreturn [{ json: {\n  source: SOURCE, site_ids: siteIds, site_ids_csv: siteIds.join(','),\n  sites_url: base + '/web/api/v2.1/sites?' + query,\n  agents_url: base + '/web/api/v2.1/agents?' + queryString({\n    limit: '1000', siteIds: siteIds.join(','), isDecommissioned: 'false',\n  }),\n} }];"
+      }
+    },
+    {
+      "id": "64ddad76-fec6-4bca-8831-a2b0e9b15004",
+      "name": "Fetch SentinelOne Sites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -460,
+        -40
+      ],
+      "parameters": {
+        "url": "={{ $json.sites_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body.pagination && $response.body.pagination.nextCursor ? $request.url.split('&cursor=')[0] + '&cursor=' + encodeURIComponent($response.body.pagination.nextCursor) : $request.url.split('&cursor=')[0] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.pagination || !$response.body.pagination.nextCursor }}",
+              "requestInterval": 500
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-sentinelone-api",
+          "name": "N45 SentinelOne API"
+        }
+      }
+    },
+    {
+      "id": "64ddad76-fec6-4bca-8831-a2b0e9b15005",
+      "name": "Validate SentinelOne Sites",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const text = (value) => value === undefined || value === null ? '' : String(value).trim();\nconst integer = (value, fallback = 0) => Number.isInteger(Number(value)) ? Math.max(0, Number(value)) : fallback;\nconst bool = (value, fallback = false) => value === undefined || value === null || value === ''\n  ? fallback : value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\nconst parseMappings = (source) => {\n  const raw = text($vars.N45_DEVICE_SOURCE_MAP_JSON);\n  if (!raw) throw new Error('N45_DEVICE_SOURCE_MAP_JSON is required.');\n  let document;\n  try { document = JSON.parse(raw); } catch { throw new Error('N45_DEVICE_SOURCE_MAP_JSON is not valid JSON.'); }\n  const entries = document && Array.isArray(document[source]) ? document[source] : [];\n  if (!entries.length) throw new Error('No mappings are configured for ' + source + '.');\n  const scopes = entries.map((entry, index) => {\n    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(source + ' mapping ' + index + ' is not an object.');\n    const scopeId = text(entry.scope_id || entry.tenant_filter || entry.site_id);\n    const clientId = integer(entry.client_id);\n    if (!scopeId || !clientId) throw new Error(source + ' mapping ' + index + ' requires scope_id and client_id.');\n    return {\n      source,\n      scope_id: scopeId,\n      scope_name: text(entry.scope_name || entry.tenant_name || entry.site_name || scopeId),\n      tenant_filter: text(entry.tenant_filter || scopeId),\n      site_id: text(entry.site_id || scopeId),\n      client_id: clientId,\n      location_id: integer(entry.location_id),\n      create_asset: bool(entry.create_asset, false),\n      retirement_guard_percent: Math.max(0, Math.min(100, integer(entry.retirement_guard_percent, 50))),\n      allow_empty: bool(entry.allow_empty, false),\n    };\n  });\n  const duplicates = scopes.filter((scope, index) => scopes.findIndex((other) => other.scope_id.toLowerCase() === scope.scope_id.toLowerCase()) !== index);\n  if (duplicates.length) throw new Error('Duplicate ' + source + ' scope_id: ' + duplicates[0].scope_id);\n  return scopes;\n};\nconst httpsBase = (value, label) => {\n  const base = text(value).replace(/\\/+$/, '');\n  const match = base.match(/^https:\\/\\/([^/?#\\s]+)(\\/[^?#\\s]*)?$/i);\n  if (!match || match[1].includes('@')) {\n    throw new Error(label + ' must be an HTTPS origin or base path without credentials or query parameters.');\n  }\n  return base;\n};\nconst queryString = (parameters) => Object.entries(parameters)\n  .map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(text(value)))\n  .join('&');\nconst SOURCE = 'sentinelone';\nconst scopes = parseMappings(SOURCE);\nconst expected = new Set(scopes.map((scope) => scope.site_id));\nconst observed = new Map();\nfor (const item of $input.all()) {\n  const response = item.json;\n  if (!response || typeof response !== 'object' || Array.isArray(response)) throw new Error('SentinelOne sites response is invalid.');\n  const sites = Array.isArray(response.data?.sites) ? response.data.sites\n    : (Array.isArray(response.data) ? response.data : (Array.isArray(response.results) ? response.results : []));\n  for (const site of sites) {\n    const id = text(site?.id || site?.siteId);\n    if (id) observed.set(id, text(site.name || site.siteName || id));\n  }\n}\nfor (const scope of scopes) {\n  if (!observed.has(scope.site_id)) throw new Error('SentinelOne did not return configured site ' + scope.site_id + '.');\n}\nconst base = httpsBase($vars.N45_SENTINELONE_BASE_URL, 'N45_SENTINELONE_BASE_URL');\nconst siteIds = [...expected];\nreturn [{ json: {\n  source: SOURCE, site_ids: siteIds, observed_sites: Object.fromEntries(observed),\n  agents_url: base + '/web/api/v2.1/agents?' + queryString({\n    limit: '1000', siteIds: siteIds.join(','), isDecommissioned: 'false',\n  }),\n} }];"
+      }
+    },
+    {
+      "id": "64ddad76-fec6-4bca-8831-a2b0e9b15006",
+      "name": "Fetch SentinelOne Agent Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        60,
+        -40
+      ],
+      "parameters": {
+        "url": "={{ $json.agents_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body.pagination && $response.body.pagination.nextCursor ? $request.url.split('&cursor=')[0] + '&cursor=' + encodeURIComponent($response.body.pagination.nextCursor) : $request.url.split('&cursor=')[0] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.pagination || !$response.body.pagination.nextCursor }}",
+              "requestInterval": 500
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-sentinelone-api",
+          "name": "N45 SentinelOne API"
+        }
+      }
+    },
+    {
+      "id": "64ddad76-fec6-4bca-8831-a2b0e9b15007",
+      "name": "Normalize SentinelOne Agents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const text = (value) => value === undefined || value === null ? '' : String(value).trim();\nconst integer = (value, fallback = 0) => Number.isInteger(Number(value)) ? Math.max(0, Number(value)) : fallback;\nconst bool = (value, fallback = false) => value === undefined || value === null || value === ''\n  ? fallback : value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\nconst parseMappings = (source) => {\n  const raw = text($vars.N45_DEVICE_SOURCE_MAP_JSON);\n  if (!raw) throw new Error('N45_DEVICE_SOURCE_MAP_JSON is required.');\n  let document;\n  try { document = JSON.parse(raw); } catch { throw new Error('N45_DEVICE_SOURCE_MAP_JSON is not valid JSON.'); }\n  const entries = document && Array.isArray(document[source]) ? document[source] : [];\n  if (!entries.length) throw new Error('No mappings are configured for ' + source + '.');\n  const scopes = entries.map((entry, index) => {\n    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(source + ' mapping ' + index + ' is not an object.');\n    const scopeId = text(entry.scope_id || entry.tenant_filter || entry.site_id);\n    const clientId = integer(entry.client_id);\n    if (!scopeId || !clientId) throw new Error(source + ' mapping ' + index + ' requires scope_id and client_id.');\n    return {\n      source,\n      scope_id: scopeId,\n      scope_name: text(entry.scope_name || entry.tenant_name || entry.site_name || scopeId),\n      tenant_filter: text(entry.tenant_filter || scopeId),\n      site_id: text(entry.site_id || scopeId),\n      client_id: clientId,\n      location_id: integer(entry.location_id),\n      create_asset: bool(entry.create_asset, false),\n      retirement_guard_percent: Math.max(0, Math.min(100, integer(entry.retirement_guard_percent, 50))),\n      allow_empty: bool(entry.allow_empty, false),\n    };\n  });\n  const duplicates = scopes.filter((scope, index) => scopes.findIndex((other) => other.scope_id.toLowerCase() === scope.scope_id.toLowerCase()) !== index);\n  if (duplicates.length) throw new Error('Duplicate ' + source + ' scope_id: ' + duplicates[0].scope_id);\n  return scopes;\n};\nconst httpsBase = (value, label) => {\n  const base = text(value).replace(/\\/+$/, '');\n  const match = base.match(/^https:\\/\\/([^/?#\\s]+)(\\/[^?#\\s]*)?$/i);\n  if (!match || match[1].includes('@')) {\n    throw new Error(label + ' must be an HTTPS origin or base path without credentials or query parameters.');\n  }\n  return base;\n};\nconst queryString = (parameters) => Object.entries(parameters)\n  .map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(text(value)))\n  .join('&');\nconst SOURCE = 'sentinelone';\nconst cycleStartedAt = new Date().toISOString();\nconst cycleId = SOURCE + ':' + cycleStartedAt.replace(/[^0-9TZ]/g, '') + ':' + Math.random().toString(36).slice(2, 10);\nconst clean = (value, length = 255) => text(value).slice(0, length);\nconst iso = (value) => {\n  if (!value) return '';\n  const date = new Date(value);\n  return Number.isNaN(date.getTime()) ? '' : date.toISOString();\n};\nconst completion = (scope, count) => ({ json: {\n  action: 'complete', source: SOURCE, scope_id: scope.scope_id, scope_name: scope.scope_name,\n  cycle_id: cycleId, cycle_started_at: cycleStartedAt, client_id: scope.client_id,\n  reported_count: count, retirement_guard_percent: scope.retirement_guard_percent,\n  allow_empty: scope.allow_empty,\n} });\nconst scopes = parseMappings(SOURCE);\nconst bySite = new Map(scopes.map((scope) => [scope.site_id, scope]));\nconst agents = new Map();\nfor (const item of $input.all()) {\n  const response = item.json;\n  if (!response || typeof response !== 'object' || Array.isArray(response)) throw new Error('SentinelOne agents response is invalid.');\n  const page = Array.isArray(response.data?.agents) ? response.data.agents\n    : (Array.isArray(response.data) ? response.data : (Array.isArray(response.results) ? response.results : []));\n  for (const agent of page) {\n    const externalId = text(agent?.id || agent?.agentId);\n    const siteId = text(agent?.siteId || agent?.site?.id || agent?.site?.siteId);\n    if (!externalId) throw new Error('A SentinelOne agent is missing id.');\n    const scope = bySite.get(siteId) || (scopes.length === 1 ? scopes[0] : null);\n    if (!scope) throw new Error('SentinelOne returned agent ' + externalId + ' for unmapped site ' + (siteId || '(missing)') + '.');\n    agents.set(scope.scope_id + '\\u0000' + externalId, { scope, agent });\n  }\n}\nconst output = [];\nconst counts = new Map(scopes.map((scope) => [scope.scope_id, 0]));\nfor (const { scope, agent } of agents.values()) {\n  const threats = integer(agent.activeThreats ?? agent.activeThreatsCount ?? agent.threatCount);\n  const active = agent.isActive !== false;\n  const infected = agent.infected === true || threats > 0;\n  const decommissioned = agent.isDecommissioned === true;\n  const health = infected ? 'critical' : (active ? 'healthy' : 'offline');\n  const interfaces = [];\n  const rawInterfaces = Array.isArray(agent.networkInterfaces) ? agent.networkInterfaces : [];\n  for (let index = 0; index < rawInterfaces.length; index += 1) {\n    const nic = rawInterfaces[index] || {};\n    const addresses = [\n      ...(Array.isArray(nic.inet) ? nic.inet : []),\n      ...(Array.isArray(nic.inet6) ? nic.inet6 : []),\n      ...(Array.isArray(nic.ipAddresses) ? nic.ipAddresses : []),\n    ].map((value) => text(value)).filter(Boolean);\n    interfaces.push({\n      key: clean(nic.id || nic.name || ('interface-' + index)),\n      name: clean(nic.name || nic.id || ('Interface ' + (index + 1))),\n      type: clean(nic.type || ''), mac: clean(nic.physical || nic.macAddress || ''),\n      ip_addresses: addresses,\n    });\n  }\n  const os = clean(agent.osName || agent.osType || '');\n  output.push({ json: {\n    action: 'publish', source: SOURCE, scope_id: scope.scope_id, scope_name: scope.scope_name,\n    cycle_id: cycleId, cycle_started_at: cycleStartedAt, client_id: scope.client_id,\n    location_id: scope.location_id, create_asset: scope.create_asset,\n    external_id: clean(agent.id || agent.agentId), external_name: clean(agent.computerName || agent.id),\n    status: decommissioned ? 'retired' : 'active', observed_at: cycleStartedAt,\n    asset: {\n      name: clean(agent.computerName || agent.id), description: 'Protected by SentinelOne.',\n      type: 'Computer', make: clean(agent.manufacturer || 'Unknown'), model: clean(agent.modelName || ''),\n      serial: clean(agent.serialNumber || ''), os, status: 'Active',\n    },\n    facts: {\n      health_state: health, operating_system: os,\n      os_version: clean(agent.osRevision || agent.osVersion || '', 100),\n      agent_version: clean(agent.agentVersion || '', 100), lifecycle_state: decommissioned ? 'retired' : 'active',\n      last_seen_at: iso(agent.lastActiveDate || agent.updatedAt),\n      details: {\n        agent_version: clean(agent.agentVersion || '', 100), edr_state: health,\n        firewall_state: agent.firewallEnabled === true ? 'enabled' : (agent.firewallEnabled === false ? 'disabled' : 'unknown'),\n        platform: os, threat_count: threats,\n      },\n    },\n    network_interfaces: interfaces,\n    metadata: {\n      scope_kind: 'site', site_id: scope.scope_id, site_name: scope.scope_name,\n      source_status: decommissioned ? 'retired' : 'active',\n    },\n  } });\n  if (!decommissioned) counts.set(scope.scope_id, (counts.get(scope.scope_id) || 0) + 1);\n}\nfor (const scope of scopes) output.push(completion(scope, counts.get(scope.scope_id) || 0));\nreturn output;"
+      }
+    },
+    {
+      "id": "64ddad76-fec6-4bca-8831-a2b0e9b15008",
+      "name": "Publish SentinelOne Cycle to ITFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        580,
+        -40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://psa.n45tech.com/api/v1/integrations/device_source/update.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 100
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-itflow-api",
+          "name": "N45 ITFlow API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Load SentinelOne Site Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual SentinelOne Reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Load SentinelOne Site Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load SentinelOne Site Map": {
+      "main": [
+        [
+          {
+            "node": "Fetch SentinelOne Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch SentinelOne Sites": {
+      "main": [
+        [
+          {
+            "node": "Validate SentinelOne Sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate SentinelOne Sites": {
+      "main": [
+        [
+          {
+            "node": "Fetch SentinelOne Agent Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch SentinelOne Agent Pages": {
+      "main": [
+        [
+          {
+            "node": "Normalize SentinelOne Agents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize SentinelOne Agents": {
+      "main": [
+        [
+          {
+            "node": "Publish SentinelOne Cycle to ITFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "executionTimeout": 7200,
+    "timezone": "UTC"
+  },
+  "active": false,
+  "tags": []
+}

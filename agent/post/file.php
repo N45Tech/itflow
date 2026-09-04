@@ -6,6 +6,160 @@
 
 defined('FROM_POST_HANDLER') || die("Direct file access is not allowed");
 
+$documentation_document_evidence_in_use = static function ($document_id, $client_id) use ($mysqli) {
+    $document_id = intval($document_id);
+    $client_id = intval($client_id);
+    if (documentationEvidenceReferenceInUse('document', $document_id, $client_id)) {
+        return true;
+    }
+    $versions = documentationLifecycleDbQuery("SELECT document_version_id FROM document_versions
+        WHERE document_version_document_id = $document_id ORDER BY document_version_id FOR UPDATE",
+        'Could not inspect document version evidence');
+    while ($version = mysqli_fetch_assoc($versions)) {
+        if (documentationEvidenceReferenceInUse(
+            'document-version',
+            intval($version['document_version_id']),
+            $client_id
+        )) {
+            return true;
+        }
+    }
+    return false;
+};
+
+$documentation_mutate_file = static function ($file_id, $client_id, $operation) use ($mysqli) {
+    $file_id = intval($file_id);
+    $client_id = intval($client_id);
+    if (!$file_id || !$client_id || !in_array($operation, ['archive', 'delete'], true)) {
+        throw new InvalidArgumentException('A valid file mutation is required');
+    }
+
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the file mutation transaction');
+        }
+        $transaction_started = true;
+
+        // Verification locks this same client before its referenced file. Holding
+        // both rows makes the Evidence Locker recheck authoritative for this write.
+        documentationLockClient($client_id);
+        $file = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT file_client_id,
+            file_name, file_reference_name, file_has_thumbnail, file_has_preview,
+            file_archived_at FROM files WHERE file_id = $file_id LIMIT 1 FOR UPDATE",
+            'Could not lock the file mutation'));
+        if (!$file || intval($file['file_client_id']) !== $client_id) {
+            throw new RuntimeException('The file client changed before the mutation');
+        }
+        if (documentationEvidenceReferenceInUse('file', $file_id, $client_id)) {
+            throw new DomainException('The file is retained in the Evidence Locker');
+        }
+
+        if ($operation === 'archive') {
+            documentationLifecycleDbQuery("UPDATE files SET file_archived_at = NOW()
+                WHERE file_id = $file_id AND file_client_id = $client_id
+                AND file_archived_at IS NULL LIMIT 1", 'Could not archive the file');
+        } else {
+            documentationLifecycleDbQuery("DELETE FROM files WHERE file_id = $file_id
+                AND file_client_id = $client_id LIMIT 1", 'Could not delete the file');
+        }
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The file changed before the mutation');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the file mutation');
+        }
+        $transaction_started = false;
+        return $file;
+    } catch (Throwable $e) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        throw $e;
+    }
+};
+
+$documentation_delete_file_uploads = static function ($file) {
+    $client_id = intval($file['file_client_id'] ?? 0);
+    $reference_name = (string) ($file['file_reference_name'] ?? '');
+    if (!$client_id || $reference_name === '' || basename($reference_name) !== $reference_name) {
+        error_log('Committed file deletion left an invalid upload reference for cleanup');
+        return;
+    }
+
+    $paths = ["../uploads/clients/$client_id/$reference_name"];
+    if (intval($file['file_has_thumbnail'] ?? 0) === 1) {
+        $paths[] = "../uploads/clients/$client_id/thumbnail_$reference_name";
+    }
+    if (intval($file['file_has_preview'] ?? 0) === 1) {
+        $paths[] = "../uploads/clients/$client_id/preview_$reference_name";
+    }
+    foreach ($paths as $path) {
+        if (is_file($path) && !unlink($path)) {
+            error_log("Committed file deletion could not remove upload $path");
+        }
+    }
+};
+
+$documentation_mutate_document = static function (
+    $document_id,
+    $client_id,
+    $actor_id,
+    $operation
+) use ($mysqli, $documentation_document_evidence_in_use) {
+    $document_id = intval($document_id);
+    $client_id = intval($client_id);
+    $actor_id = intval($actor_id);
+    if (!in_array($operation, ['archive', 'delete'], true)) {
+        throw new InvalidArgumentException('Unsupported bulk document mutation');
+    }
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the bulk document transaction');
+        }
+        $transaction_started = true;
+        documentationInvalidateDocumentLocked(
+            $document_id,
+            $client_id,
+            $actor_id,
+            $operation === 'archive' ? 'document_archived' : 'document_deleted'
+        );
+        $document = mysqli_fetch_assoc(documentationLifecycleDbQuery("SELECT document_client_id,
+            document_archived_at FROM documents WHERE document_id = $document_id LIMIT 1 FOR UPDATE",
+            'Could not lock the bulk document mutation'));
+        if (!$document || intval($document['document_client_id']) !== $client_id) {
+            throw new RuntimeException('The document client changed before the bulk mutation');
+        }
+        if (documentationDocumentHasObligations($document_id)
+            || $documentation_document_evidence_in_use($document_id, $client_id)) {
+            throw new DomainException('The document is retained by documentation history');
+        }
+        if ($operation === 'archive') {
+            documentationLifecycleDbQuery("UPDATE documents SET document_archived_at = NOW(),
+                document_updated_at = document_updated_at WHERE document_id = $document_id
+                AND document_archived_at IS NULL LIMIT 1", 'Could not archive the bulk document');
+        } else {
+            documentationLifecycleDbQuery("DELETE FROM document_versions
+                WHERE document_version_document_id = $document_id", 'Could not delete bulk document versions');
+            documentationLifecycleDbQuery("DELETE FROM documents WHERE document_id = $document_id LIMIT 1",
+                'Could not delete the bulk document');
+        }
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The document changed before the bulk mutation');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the bulk document mutation');
+        }
+        $transaction_started = false;
+    } catch (Throwable $e) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        throw $e;
+    }
+};
+
 if (isset($_POST['upload_files'])) {
 
     validateCSRFToken();
@@ -178,7 +332,16 @@ if (isset($_GET['archive_file'])) {
 
     enforceClientAccess();
 
-    mysqli_query($mysqli,"UPDATE files SET file_archived_at = NOW() WHERE file_id = $file_id");
+    try {
+        $locked_file = $documentation_mutate_file($file_id, $client_id, 'archive');
+        $file_name = escapeSql($locked_file['file_name']);
+    } catch (Throwable $e) {
+        error_log("File $file_id archival failed safely: " . $e->getMessage());
+        flashAlert($e instanceof DomainException
+            ? 'This file is retained in the documentation Evidence Locker and cannot be archived.'
+            : 'The file could not be archived. Refresh and try again.', 'error');
+        redirect();
+    }
 
     logAudit("File", "Archive", "$session_name archived file $file_name", $client_id, $file_id);
 
@@ -226,22 +389,21 @@ if (isset($_POST['delete_file'])) {
     $row = mysqli_fetch_assoc($sql_file);
     $client_id = intval($row['file_client_id']);
     $file_name = escapeSql($row['file_name']);
-    $file_reference_name = escapeSql($row['file_reference_name']);
-    $file_has_thumbnail = intval($row['file_has_thumbnail']);
-    $file_has_preview = intval($row['file_has_preview']);
-
     enforceClientAccess();
 
-    unlink("../uploads/clients/$client_id/$file_reference_name");
-
-    if ($file_has_thumbnail == 1) {
-        unlink("../uploads/clients/$client_id/thumbnail_$file_reference_name");
+    try {
+        $locked_file = $documentation_mutate_file($file_id, $client_id, 'delete');
+        $file_name = escapeSql($locked_file['file_name']);
+    } catch (Throwable $e) {
+        error_log("File $file_id deletion failed safely: " . $e->getMessage());
+        flashAlert($e instanceof DomainException
+            ? 'This file is retained in the documentation Evidence Locker and cannot be deleted.'
+            : 'The file could not be deleted. Refresh and try again.', 'error');
+        redirect();
     }
-    if ($file_has_preview == 1) {
-        unlink("../uploads/clients/$client_id/preview_$file_reference_name");
-    }
 
-    mysqli_query($mysqli,"DELETE FROM files WHERE file_id = $file_id");
+    // Database deletion commits before its non-transactional filesystem cleanup.
+    $documentation_delete_file_uploads($locked_file);
 
     logAudit("File", "Delete", "$session_name deleted file $file_name", $client_id);
 
@@ -257,12 +419,15 @@ if (isset($_POST['bulk_archive_files'])) {
 
     enforceUserPermission('module_support', 2);
 
+    $file_count = 0;
+    $document_count = 0;
+    $skipped_count = 0;
+    $client_id = 0;
+
     // Archive file loop
     if (isset($_POST['file_ids'])) {
 
         // Get selected file Count
-        $file_count = count($_POST['file_ids']);
-
         foreach($_POST['file_ids'] as $file_id) {
 
             $file_id = intval($file_id);
@@ -274,7 +439,15 @@ if (isset($_POST['bulk_archive_files'])) {
 
             enforceClientAccess();
 
-            mysqli_query($mysqli,"UPDATE files SET file_archived_at = NOW() WHERE file_id = $file_id");
+            try {
+                $locked_file = $documentation_mutate_file($file_id, $client_id, 'archive');
+                $file_name = escapeSql($locked_file['file_name']);
+            } catch (Throwable $e) {
+                error_log("File $file_id bulk archival failed safely: " . $e->getMessage());
+                $skipped_count++;
+                continue;
+            }
+            $file_count++;
 
             logAudit("File", "Archive", "$session_name archived file $file_name", $client_id, $file_id);
         }
@@ -285,8 +458,6 @@ if (isset($_POST['bulk_archive_files'])) {
     if (isset($_POST['document_ids'])) {
 
         // Get selected document count
-        $document_count = count($_POST['document_ids']);
-
         // Delete document loop
         foreach($_POST['document_ids'] as $document_id) {
             $document_id = intval($document_id);
@@ -298,7 +469,19 @@ if (isset($_POST['bulk_archive_files'])) {
 
             enforceClientAccess();
 
-            mysqli_query($mysqli,"UPDATE documents SET document_archived_at = NOW(), document_updated_at = document_updated_at WHERE document_id = $document_id");
+            try {
+                $documentation_mutate_document(
+                    $document_id,
+                    $client_id,
+                    $session_user_id,
+                    'archive'
+                );
+            } catch (Throwable $e) {
+                error_log("Document $document_id bulk archival failed safely: " . $e->getMessage());
+                $skipped_count++;
+                continue;
+            }
+            $document_count++;
 
             logAudit("Document", "Archive", "$session_name archived document $document_name", $client_id, $document_id);
 
@@ -309,6 +492,9 @@ if (isset($_POST['bulk_archive_files'])) {
     logAudit("File", "Bulk Archive", "$session_name archived $document_count document(s) and $file_count file(s)", $client_id);
 
     flashAlert("Archived <strong>$document_count</strong> Documents and <strong>$file_count</strong> files", 'error');
+    if ($skipped_count) {
+        flashAlert("Skipped <strong>$skipped_count</strong> protected or changed documentation record(s).", 'info');
+    }
 
     redirect();
 
@@ -320,12 +506,15 @@ if (isset($_POST['bulk_delete_files'])) {
 
     enforceUserPermission('module_support', 3);
 
+    $file_count = 0;
+    $document_count = 0;
+    $skipped_count = 0;
+    $client_id = 0;
+
     // Delete file loop
     if (isset($_POST['file_ids'])) {
 
         // Get selected file Count
-        $file_count = count($_POST['file_ids']);
-
         foreach($_POST['file_ids'] as $file_id) {
 
             $file_id = intval($file_id);
@@ -334,22 +523,20 @@ if (isset($_POST['bulk_delete_files'])) {
             $row = mysqli_fetch_assoc($sql_file);
             $client_id = intval($row['file_client_id']);
             $file_name = escapeSql($row['file_name']);
-            $file_reference_name = escapeSql($row['file_reference_name']);
-            $file_has_thumbnail = intval($row['file_has_thumbnail']);
-            $file_has_preview = intval($row['file_has_preview']);
-
             enforceClientAccess();
 
-            unlink("../uploads/clients/$client_id/$file_reference_name");
-
-            if ($file_has_thumbnail == 1) {
-                unlink("../uploads/clients/$client_id/thumbnail_$file_reference_name");
+            try {
+                $locked_file = $documentation_mutate_file($file_id, $client_id, 'delete');
+                $file_name = escapeSql($locked_file['file_name']);
+            } catch (Throwable $e) {
+                error_log("File $file_id bulk deletion failed safely: " . $e->getMessage());
+                $skipped_count++;
+                continue;
             }
-            if ($file_has_preview == 1) {
-                unlink("../uploads/clients/$client_id/preview_$file_reference_name");
-            }
 
-            mysqli_query($mysqli,"DELETE FROM files WHERE file_id = $file_id");
+            // Database deletion commits before its non-transactional filesystem cleanup.
+            $documentation_delete_file_uploads($locked_file);
+            $file_count++;
 
             logAudit("File", "Delete", "$session_name deleted file $file_name", $client_id);
         }
@@ -360,8 +547,6 @@ if (isset($_POST['bulk_delete_files'])) {
     if (isset($_POST['document_ids'])) {
 
         // Get selected document count
-        $document_count = count($_POST['document_ids']);
-
         // Delete document loop
         foreach($_POST['document_ids'] as $document_id) {
             $document_id = intval($document_id);
@@ -373,13 +558,22 @@ if (isset($_POST['bulk_delete_files'])) {
 
             enforceClientAccess();
 
-            mysqli_query($mysqli,"DELETE FROM documents WHERE document_id = $document_id");
-
-            // Delete all versions associated with the master document
-            mysqli_query($mysqli,"DELETE FROM document_versions WHERE document_version_document_id = $document_id");
+            try {
+                $documentation_mutate_document(
+                    $document_id,
+                    $client_id,
+                    $session_user_id,
+                    'delete'
+                );
+            } catch (Throwable $e) {
+                error_log("Document $document_id bulk deletion failed safely: " . $e->getMessage());
+                $skipped_count++;
+                continue;
+            }
 
             // Delete uploads/document/$document_id if exists
             removeDirectory($_SERVER['DOCUMENT_ROOT'] . "/uploads/documents/" . $document_id);
+            $document_count++;
 
             logAudit("Document", "Delete", "$session_name deleted document $document_name and all versions", $client_id);
 
@@ -390,6 +584,9 @@ if (isset($_POST['bulk_delete_files'])) {
     logAudit("File", "Bulk Delete", "$session_name deleted $document_count document(s) and $file_count file(s)", $client_id);
 
     flashAlert("Deleted <strong>$document_count</strong> Documents and <strong>$file_count</strong> files", 'error');
+    if ($skipped_count) {
+        flashAlert("Skipped <strong>$skipped_count</strong> protected or changed documentation record(s).", 'info');
+    }
 
     redirect();
 

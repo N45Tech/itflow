@@ -1,0 +1,38 @@
+{
+  "intune": [
+    {
+      "scope_id": "contoso.onmicrosoft.com",
+      "scope_name": "Contoso",
+      "tenant_filter": "contoso.onmicrosoft.com",
+      "client_id": 42,
+      "location_id": 7,
+      "create_asset": false,
+      "retirement_guard_percent": 50,
+      "allow_empty": false
+    }
+  ],
+  "entra": [
+    {
+      "scope_id": "contoso.onmicrosoft.com",
+      "scope_name": "Contoso",
+      "tenant_filter": "contoso.onmicrosoft.com",
+      "client_id": 42,
+      "location_id": 7,
+      "create_asset": false,
+      "retirement_guard_percent": 50,
+      "allow_empty": false
+    }
+  ],
+  "sentinelone": [
+    {
+      "scope_id": "1234567890123456789",
+      "scope_name": "Contoso HQ",
+      "site_id": "1234567890123456789",
+      "client_id": 42,
+      "location_id": 7,
+      "create_asset": false,
+      "retirement_guard_percent": 50,
+      "allow_empty": false
+    }
+  ]
+}

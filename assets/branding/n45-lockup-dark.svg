@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 590 150" role="img" aria-labelledby="title desc">
+  <title id="title">N45 Technology Solutions</title>
+  <desc id="desc">N45 Technology Solutions.</desc>
+  <g transform="translate(8 7)">
+    <rect width="136" height="136" rx="29" fill="#0a2423"/>
+    <path d="M34 98V40M88 98V40" fill="none" stroke="#f4f0e8" stroke-width="11" stroke-linecap="round"/>
+    <path d="M34 40l54 58" fill="none" stroke="#49c8b1" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="105" cy="29" r="7" fill="#f2a65a"/>
+  </g>
+  <text x="370" y="66" fill="#0a2423" font-family="Manrope, Segoe UI, sans-serif" font-size="56" font-weight="800" letter-spacing="-2" text-anchor="middle">N45</text>
+  <text x="370" y="105" fill="#0a2423" font-family="Manrope, Segoe UI, sans-serif" font-size="31" font-weight="700" text-anchor="middle">Technology Solutions</text>
+</svg>
