@@ -748,10 +748,6 @@ if (isset($_POST['add_ticket_task_approver'])) {
         flashAlert('Task not found', 'error');
         redirect();
     }
-    if (intval($tt_row['task_runbook_version_task_id']) > 0) {
-        flashAlert('Published runbook approval gates come only from the pinned version and cannot be changed at runtime.', 'error');
-        redirect();
-    }
     if (in_array($tt_row['task_state'], ['Completed', 'Skipped'], true)) {
         flashAlert('Approvals cannot be added to a completed or skipped task.', 'error');
         redirect();
@@ -792,8 +788,7 @@ if (isset($_POST['add_ticket_task_approver'])) {
         $locked_task = mysqli_fetch_assoc(runbookDbQuery("SELECT task_name, task_state,
             task_ticket_id, task_runbook_version_task_id FROM tasks
             WHERE task_id = $task_id FOR UPDATE", 'Could not lock the approval task'));
-        if (!$locked_task || intval($locked_task['task_runbook_version_task_id']) > 0
-            || intval($locked_task['task_ticket_id']) !== $ticket_id
+        if (!$locked_task || intval($locked_task['task_ticket_id']) !== $ticket_id
             || in_array($locked_task['task_state'], ['Completed', 'Skipped'], true)) {
             throw new RuntimeException('The task no longer accepts manual approvals');
         }

@@ -13,8 +13,7 @@ $sql = mysqli_query($mysqli, "SELECT task_name, task_state, task_runbook_version
 );
 
 $row = mysqli_fetch_assoc($sql);
-if (!$row || intval($row['task_runbook_version_task_id']) > 0
-    || in_array($row['task_state'], ['Completed', 'Skipped'], true)) {
+if (!$row || in_array($row['task_state'], ['Completed', 'Skipped'], true)) {
     http_response_code(409);
     echo json_encode(['error' => 'This task does not accept manual approval gates']);
     exit;
@@ -31,7 +30,7 @@ ob_start();
 ?>
 
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fa fa-fw fa-shield-alt me-2"></i>New approver for task <?=$task_name?></h5>
+    <h5 class="modal-title"><i class="fa fa-fw fa-shield-alt me-2"></i>Add approval</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <form action="post.php" method="post" autocomplete="off">
@@ -39,6 +38,8 @@ ob_start();
     <input type="hidden" name="task_id" value="<?= $task_id ?>">
 
     <div class="modal-body">
+
+        <p class="text-muted">Require approval before <strong><?= $task_name ?></strong> can be completed and the ticket can be closed.</p>
 
         <div class="mb-3">
             <label>Approval scope <strong class="text-danger">*</strong></label>
