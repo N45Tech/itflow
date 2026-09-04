@@ -74,8 +74,8 @@ $contracts = [
         'name' => 'Managed Care Onboarding',
         'type' => 'onboarding',
         'prefix' => 'ONB',
-        'last' => 80,
-        'count' => 8,
+        'last' => 50,
+        'count' => 5,
     ],
     'client-offboarding' => [
         'name' => 'Client Offboarding',

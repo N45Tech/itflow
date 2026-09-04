@@ -41,13 +41,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'markdown') {
     exit;
 }
 
-require_once __DIR__ . '/../includes/page_title.php';
-require_once __DIR__ . '/../includes/header.php';
-require_once __DIR__ . '/../includes/top_nav.php';
-require_once __DIR__ . '/includes/get_side_nav_counts.php';
-require_once __DIR__ . '/includes/side_nav.php';
-require_once __DIR__ . '/../includes/inc_wrapper.php';
-require_once __DIR__ . '/../includes/inc_alert_feedback.php';
+$_GET['client_id'] = $client_id;
+require_once __DIR__ . '/includes/inc_all_client.php';
 
 $tickets = $snapshot['tickets'] ?? [];
 $coverage = $snapshot['coverage'] ?? [];
@@ -141,7 +136,8 @@ $review_item_state = static function (bool $complete): string {
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
     <div>
-        <h1 class="h3 mb-1"><i class="fas fa-fw fa-chart-line mr-2"></i>Client service review</h1>
+        <a class="small d-inline-block mb-2" href="business_reviews.php?client_id=<?= $client_id ?>"><i class="fas fa-arrow-left mr-1"></i>Business reviews</a>
+        <h1 class="h3 mb-1"><i class="fas fa-fw fa-chart-line mr-2"></i>Business review</h1>
         <div class="text-muted">
             <?= escapeHtml($snapshot_client_name) ?> ·
             <?= escapeHtml($review['service_review_period_start']) ?> through <?= escapeHtml($review['service_review_period_end']) ?>
