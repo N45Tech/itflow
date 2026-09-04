@@ -15,6 +15,7 @@ $reviews = file_get_contents(__DIR__ . '/../client/reviews.php');
 $review = file_get_contents(__DIR__ . '/../client/review.php');
 $post = file_get_contents(__DIR__ . '/../client/post.php');
 $agent_review = file_get_contents(__DIR__ . '/../agent/service_review.php');
+$agent_reviews = file_get_contents(__DIR__ . '/../agent/reports/service_reviews.php');
 $client_nav = file_get_contents(__DIR__ . '/../agent/includes/client_side_nav.php');
 
 $assertContains('contact_portal_review_access', $schema, 'The baseline schema is missing the review permission');
@@ -30,6 +31,7 @@ $assertContains("enforceContactCan('service_reviews')", $post, 'Portal comments 
 $assertContains("service_review_event_action = 'ClientComment'", $post, 'Portal comments are not recorded append-only');
 $assertContains('service_review_client_id = $session_client_id', $post, 'Portal comments are not client scoped');
 $assertContains('Client discussion', $agent_review, 'Technicians cannot see portal review comments');
+$assertContains('SELECT client_id, client_name FROM clients', $agent_reviews, 'Clients without a prior review disappear from the business-review filter');
 $assertContains('/agent/documentation.php?client_id=', $client_nav, 'Client documents are not available from client navigation');
 $assertContains('/agent/reports/service_reviews.php?client_id=', $client_nav, 'Business reviews are not available from client navigation');
 

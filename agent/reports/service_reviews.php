@@ -9,9 +9,8 @@ $client_where = $client_filter > 0 ? "AND service_review_client_id = $client_fil
 $years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(service_review_period_end) AS review_year
     FROM service_reviews WHERE 1 = 1 " . clientScopeSql('service_review_client_id') . "
     ORDER BY review_year DESC");
-$clients = mysqli_query($mysqli, "SELECT DISTINCT client_id, client_name FROM service_reviews
-    JOIN clients ON client_id = service_review_client_id
-    WHERE client_archived_at IS NULL " . clientScopeSql('service_review_client_id') . "
+$clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients
+    WHERE client_archived_at IS NULL " . clientScopeSql('client_id') . "
     ORDER BY client_name");
 $reviews = mysqli_query($mysqli, "SELECT service_review_id, service_review_period_start,
     service_review_period_end, service_review_status, service_review_summary,
