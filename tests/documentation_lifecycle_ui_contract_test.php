@@ -30,6 +30,7 @@ $assertNotContains = static function ($needle, $contents, $message) use (&$failu
 $runbooks = $read('functions/runbooks.php');
 $lifecycle = $read('functions/documentation_lifecycle.php');
 $ticket_page = $read('agent/ticket.php');
+$ticket_css = $read('agent/css/ticket.css');
 $ticket_post = $read('agent/post/ticket.php');
 $documentation_post = $read('agent/post/documentation.php');
 $document_post = $read('agent/post/document.php');
@@ -97,13 +98,13 @@ $assertContains("require_once '../../../includes/modal_footer.php';", $ticket_mo
 $assertContains('ticket-task-workspace', $ticket_page, 'Tasks are not promoted to a full-width ticket workspace');
 $assertContains('$task_page_size = $task_view === \'all\' ? max(1, $task_total_count) : 1', $ticket_page, 'Ticket task list does not focus on one current task');
 $assertContains("['active', 'all']", $ticket_page, 'Ticket task list does not separate active work from full history');
-$assertContains('Current <span class="badge badge-light ml-1">', $ticket_page, 'Ticket task list does not label its focused workflow');
-$assertContains('Runbook <span class="badge badge-light ml-1">', $ticket_page, 'Ticket task list does not expose the complete runbook on demand');
+$assertContains('Current task', $ticket_page, 'Ticket task list does not label its focused workflow');
+$assertContains('All steps <span class="badge badge-light ml-1">', $ticket_page, 'Ticket task list does not expose the complete runbook on demand');
 $assertContains('LIMIT $task_page_size OFFSET $task_page_start', $ticket_page, 'Ticket task query is not paginated at the database');
 $assertContains('ticket-task-horizontal-scroll', $ticket_page, 'Complete runbooks are not presented horizontally');
 $assertContains('aria-label="All ticket tasks"', $ticket_page, 'Horizontal runbook overview is not accessible');
 $assertContains('aria-label="Current ticket task"', $ticket_page, 'Current task focus is not accessible');
-$assertContains('scroll-snap-type: x proximity', $ticket_page, 'Large runbooks do not use a scalable horizontal progress rail');
+$assertContains('scroll-snap-type: x proximity', $ticket_css, 'Large runbooks do not use a scalable horizontal progress rail');
 $assertNotContains('modals/ticket/ticket_documentation.php?ticket_id=', $ticket_page, 'Per-ticket documentation audit remains in the primary ticket UI');
 $assertNotContains('ticket_task_page', $ticket_page, 'Ticket task list still exposes obsolete pagination controls');
 $assertContains('<details class="ticket-task-details', $ticket_page, 'Verbose task instructions are always expanded');
