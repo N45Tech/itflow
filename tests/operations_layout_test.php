@@ -13,9 +13,9 @@ $assertContains = static function (string $needle, string $haystack, string $mes
 };
 
 $assertContains(
-    'grid-template-columns: repeat(6, minmax(0, 1fr));',
+    'grid-template-columns: repeat(5, minmax(0, 1fr));',
     $css,
-    'The six Operations KPI cards do not share one desktop row'
+    'The five Operations KPI cards do not share one desktop row'
 );
 $assertContains(
     '.n45-health-list {',
