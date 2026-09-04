@@ -23,11 +23,18 @@ be weakened ad hoc.
 
 ## Production authorization
 
-Passing tests does not authorize an infra01 change. The release owner must be
-shown the exact immutable commit SHA and the completed pre-GO phase of
-[the release checklist](release-checklist.md), including exact-SHA CI,
-parity/security review, recovery readiness and the production execution/canary
-plan. Production work starts only after an explicit final **GO** for that exact
-SHA; any SHA change invalidates the approval. Fresh off-host snapshots, restore
-proof, migrations, reconciler idempotency, health checks and production canaries
-are then mandatory maintenance-window gates before traffic is reopened.
+For the automated path, merging a reviewed pull request into protected `main`
+is the production authorization. Deployment begins only when PHPLint, N45
+Upstream Parity, and SQL Syntax Check for db.sql all report success for the exact
+current main-branch SHA. The workflow and infra01 wrapper independently verify
+that SHA and serialize production changes. A manual workflow rerun is subject
+to the same current-main and exact-SHA test requirements.
+
+The host deployment still performs the mandatory maintenance gates from
+[the release checklist](release-checklist.md): verified database and application
+data snapshots, database restore proof, migrations, reconciler idempotency,
+safe-mode web health checks, restoration of the prior integration state, and a
+controlled cron cycle. A post-migration failure never triggers an automatic
+database restore; it leaves web in safe mode and cron stopped for reviewed
+recovery. Emergency and exceptional releases outside protected `main` retain
+the explicit final **GO** requirement for their exact immutable SHA.

@@ -19,6 +19,45 @@ The first administrator's generated local/vault password is written once to `/ho
 
 The application is image-managed. Deploy updates by checking out the reviewed branch, rebuilding, and recreating the web and cron containers. Do not use ITFlow's in-app Git updater in this deployment.
 
+## Automated main-branch deployment
+
+`.github/workflows/deploy-production.yml` deploys the exact current `main`
+commit after the SQL release workflow succeeds and the same commit also has
+successful PHPLint and N45 Upstream Parity push runs. The workflow uses the
+GitHub `production` environment, serializes deployments, pins the SSH host key,
+and can only invoke the root-owned deployment wrapper with a full commit SHA.
+
+Install the restricted host command once from a trusted checkout on `infra01`:
+
+```bash
+sudo sh /opt/n45/psa/app/deploy/psa/install-github-deployer.sh n45admin
+```
+
+Give the deployment-only SSH public key to `n45admin`, then configure these
+GitHub `production` environment secrets:
+
+- `INFRA01_SSH_HOST`: the SSH hostname or address for `infra01`.
+- `INFRA01_SSH_USER`: `n45admin` unless the deployment account changes.
+- `INFRA01_SSH_PORT`: optional; blank uses port 22.
+- `INFRA01_SSH_PRIVATE_KEY`: the deployment-only private key.
+- `INFRA01_SSH_KNOWN_HOSTS`: a reviewed `known_hosts` entry for the exact host.
+
+Protect `main` so changes arrive through reviewed pull requests and require
+PHPLint, N45 Upstream Parity, and SQL Syntax Check for db.sql. Merging into that
+protected branch is the production authorization. Leave the `production`
+environment without required reviewers for fully automatic deployment; adding
+a reviewer turns the same workflow into a one-click approval gate.
+
+The host script independently confirms that the requested SHA is the tip of
+`origin/main`, refuses a dirty checkout or concurrent deployment, verifies both
+backups by reading them, proves the SQL dump with a temporary restore, applies
+database updates twice, runs every reconciler through dry-run/apply/dry-run,
+starts a web-only safe-mode canary, restores the prior feature-flag and cron
+state, and observes one cron cycle. A failure before database work restores the
+previous image. A later failure leaves the new web image available with Level
+and automation disabled and cron stopped; it never performs an automatic
+database rollback that could discard production writes.
+
 Create the deployment-ticket record from the
 [exact-SHA release checklist](../../docs/n45/release-checklist.md). Complete its
 pre-GO phase before requesting authorization to change `infra01`, then use its

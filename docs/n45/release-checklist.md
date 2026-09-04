@@ -22,6 +22,13 @@ This checklist covers active Goals 1–5, 7, 8, and 11.
 
 ## Phase A — pre-GO release freeze
 
+For the automated production path, merging a reviewed pull request into
+protected `main` is the exact-SHA GO. The deployment workflow records the main
+commit and independently requires successful PHPLint, N45 Upstream Parity, and
+SQL Syntax Check for db.sql push runs for that same SHA. The explicit human GO
+below remains mandatory for emergency or exceptional releases outside the
+protected-main workflow.
+
 All items in this phase must be complete before requesting permission to change
 `infra01`. Production backups, migrations, and canaries occur only after that
 explicit GO and before traffic is reopened.

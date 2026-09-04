@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [ "$EUID" -ne 0 ]; then
+    echo "Run this deployment wrapper through sudo." >&2
+    exit 1
+fi
+
+if [ "$#" -ne 1 ] || [[ ! "$1" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "Usage: n45-psa-deploy <40-character-main-commit-sha>" >&2
+    exit 1
+fi
+
+TARGET_SHA="$1"
+APP=/opt/n45/psa/app
+LOCK_FILE=/run/lock/n45-psa-deploy.lock
+
+for command_name in flock git mktemp sudo; do
+    command -v "$command_name" >/dev/null || {
+        echo "Required command is unavailable: $command_name" >&2
+        exit 1
+    }
+done
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo "Another PSA production deployment is already running." >&2
+    exit 1
+fi
+
+test -d "$APP/.git"
+REPO_OWNER="$(stat -c '%U' "$APP/.git")"
+
+if [ -n "$(sudo -u "$REPO_OWNER" git -c safe.directory="$APP" -C "$APP" status --porcelain)" ]; then
+    echo "The production checkout has uncommitted changes; refusing deployment." >&2
+    exit 1
+fi
+
+sudo -u "$REPO_OWNER" git -c safe.directory="$APP" -C "$APP" fetch --no-tags origin main
+REMOTE_SHA="$(sudo -u "$REPO_OWNER" git -c safe.directory="$APP" -C "$APP" rev-parse FETCH_HEAD)"
+if [ "$REMOTE_SHA" != "$TARGET_SHA" ]; then
+    echo "Refusing to deploy $TARGET_SHA because origin/main is $REMOTE_SHA." >&2
+    exit 1
+fi
+
+SCRIPT_COPY="$(mktemp /tmp/n45-psa-release.XXXXXX)"
+cleanup() {
+    rm -f "$SCRIPT_COPY"
+}
+trap cleanup EXIT
+
+sudo -u "$REPO_OWNER" git -c safe.directory="$APP" -C "$APP" \
+    show "${TARGET_SHA}:deploy/psa/deploy-production.sh" > "$SCRIPT_COPY"
+chmod 0500 "$SCRIPT_COPY"
+export N45_DEPLOY_LOCK_HELD=1
+"$SCRIPT_COPY" "$TARGET_SHA"

@@ -1,0 +1,149 @@
+name: Deploy PSA Production
+
+on:
+  workflow_run:
+    workflows:
+      - SQL Syntax Check for db.sql
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact main-branch commit to redeploy; defaults to current main
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: psa-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production
+      url: https://psa.n45tech.com
+
+    steps:
+      - name: Resolve exact main-branch release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTOMATIC_SHA: ${{ github.event.workflow_run.head_sha }}
+          MANUAL_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          target_sha="${AUTOMATIC_SHA:-${MANUAL_SHA:-}}"
+          if [ -z "$target_sha" ]; then
+            target_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          fi
+          if [[ ! "$target_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "The deployment target is not a full commit SHA." >&2
+            exit 1
+          fi
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$target_sha" != "$main_sha" ]; then
+            echo "Refusing to deploy $target_sha because origin/main is $main_sha." >&2
+            exit 1
+          fi
+          echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying exact main commit: $target_sha" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require every release workflow for the exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          required=(
+            "PHPLint"
+            "N45 Upstream Parity"
+            "SQL Syntax Check for db.sql"
+          )
+          deadline=$((SECONDS + 600))
+
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            payload="$(gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/runs" \
+              -f branch=main -f head_sha="$TARGET_SHA" -f per_page=100)"
+            waiting=0
+
+            for workflow_name in "${required[@]}"; do
+              result="$(jq -r --arg name "$workflow_name" '
+                [.workflow_runs[] | select(.name == $name and .event == "push")]
+                | sort_by(.created_at, .run_attempt) | reverse | .[0]
+                | if . == null then "missing\t" else [.status, (.conclusion // "")] | @tsv end
+              ' <<< "$payload")"
+              IFS=$'\t' read -r status conclusion <<< "$result"
+
+              if [ "$status" = completed ] && [ "$conclusion" = success ]; then
+                echo "$workflow_name: success"
+              elif [ "$status" = completed ]; then
+                echo "$workflow_name: ${conclusion:-failed}" >&2
+                exit 1
+              else
+                echo "$workflow_name: ${status:-missing}; waiting"
+                waiting=1
+              fi
+            done
+
+            if [ "$waiting" -eq 0 ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Timed out waiting for exact-SHA release workflows." >&2
+          exit 1
+
+      - name: Deploy through the restricted infra01 command
+        env:
+          TARGET_SHA: ${{ steps.release.outputs.sha }}
+          SSH_HOST: ${{ secrets.INFRA01_SSH_HOST }}
+          SSH_USER: ${{ secrets.INFRA01_SSH_USER }}
+          SSH_PORT: ${{ secrets.INFRA01_SSH_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.INFRA01_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.INFRA01_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?Missing INFRA01_SSH_HOST}"
+          : "${SSH_USER:?Missing INFRA01_SSH_USER}"
+          : "${SSH_PRIVATE_KEY:?Missing INFRA01_SSH_PRIVATE_KEY}"
+          : "${SSH_KNOWN_HOSTS:?Missing INFRA01_SSH_KNOWN_HOSTS}"
+          ssh_port="${SSH_PORT:-22}"
+
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/infra01_deploy"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/infra01_deploy" "$HOME/.ssh/known_hosts"
+          trap 'rm -f "$HOME/.ssh/infra01_deploy"' EXIT
+
+          ssh -p "$ssh_port" \
+            -i "$HOME/.ssh/infra01_deploy" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" \
+            "sudo /usr/local/sbin/n45-psa-deploy '$TARGET_SHA'" \
+            | tee deployment-output.log
+
+          {
+            echo '## Production deployment'
+            echo
+            echo "Deployed \`$TARGET_SHA\` to infra01."
+            echo
+            echo '```text'
+            tail -n 30 deployment-output.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
