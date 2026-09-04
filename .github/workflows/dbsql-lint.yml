@@ -7,17 +7,6 @@ on:
       - main
       - 'codex/**'
   pull_request:
-    paths:
-      - 'db.sql'
-      - 'admin/database_updates/**'
-      - 'includes/database_version.php'
-      - 'functions/n45_schema.php'
-      - 'n45/**'
-      - 'scripts/update_cli.php'
-      - 'setup/seed_data.php'
-      - 'tests/n45_*'
-      - 'deploy/n8n/**'
-      - '.github/workflows/dbsql-lint.yml'
 
 permissions:
   contents: read
