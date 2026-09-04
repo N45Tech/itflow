@@ -3639,7 +3639,11 @@ if (isset($_GET['resolve_ticket'])) {
 
 }
 
-if (isset($_GET['close_ticket']) || isset($_POST['terminal_ticket'])) {
+if (isset($_POST['terminal_ticket'])) {
+    $_GET['close_ticket'] = intval($_POST['ticket_id'] ?? 0);
+}
+
+if (isset($_GET['close_ticket'])) {
 
     validateCSRFToken();
 
