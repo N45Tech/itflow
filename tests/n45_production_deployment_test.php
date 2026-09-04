@@ -44,6 +44,10 @@ $assertContains('name: production', $deployment_workflow, 'Production secrets ar
 $assertContains('INFRA01_SSH_KNOWN_HOSTS', $deployment_workflow, 'The workflow does not pin the infra01 SSH host key');
 $assertTrue(!str_contains($deployment_workflow, 'ssh-keyscan'), 'The workflow trusts a live SSH key scan instead of a reviewed host key');
 $assertContains('/usr/local/sbin/n45-psa-deploy', $deployment_workflow, 'The workflow bypasses the restricted host command');
+$assertContains('[ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]', $parity_workflow, 'Protected-main parity does not bind approval to the push event');
+$assertContains('reviewed_base_sha="$(git rev-parse upstream/master)"', $parity_workflow, 'Protected-main parity does not bind review to the fetched upstream commit');
+$assertContains('reviewed_head_sha="$GITHUB_SHA"', $parity_workflow, 'Protected-main parity does not bind review to the exact merged commit');
+$assertContains('CONFIGURED_REVIEWED_HEAD_SHA', $parity_workflow, 'Non-main parity events lost their explicit reviewed-SHA gate');
 
 $assertContains('^[0-9a-f]{40}$', $wrapper, 'The host wrapper does not require a full immutable SHA');
 $assertContains('fetch --no-tags origin main', $wrapper, 'The host wrapper does not refresh origin/main');

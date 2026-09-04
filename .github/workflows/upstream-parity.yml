@@ -55,9 +55,25 @@ jobs:
       - name: Generate upstream parity report
         if: always()
         env:
-          N45_REVIEWED_BASE_SHA: ${{ inputs.reviewed_base_sha || vars.N45_REVIEWED_BASE_SHA }}
-          N45_REVIEWED_HEAD_SHA: ${{ inputs.reviewed_head_sha || vars.N45_REVIEWED_HEAD_SHA }}
-        run: bash scripts/n45-upstream-review.sh upstream/master HEAD upstream-parity-report.md
+          CONFIGURED_REVIEWED_BASE_SHA: ${{ inputs.reviewed_base_sha || vars.N45_REVIEWED_BASE_SHA }}
+          CONFIGURED_REVIEWED_HEAD_SHA: ${{ inputs.reviewed_head_sha || vars.N45_REVIEWED_HEAD_SHA }}
+        run: |
+          set -euo pipefail
+          reviewed_base_sha="$CONFIGURED_REVIEWED_BASE_SHA"
+          reviewed_head_sha="$CONFIGURED_REVIEWED_HEAD_SHA"
+
+          # A merge into protected main is the production review decision. Bind
+          # that decision to the exact pushed commit and freshly fetched
+          # authoritative upstream state; every other event keeps the explicit
+          # reviewed-SHA gate above.
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            reviewed_base_sha="$(git rev-parse upstream/master)"
+            reviewed_head_sha="$GITHUB_SHA"
+          fi
+
+          N45_REVIEWED_BASE_SHA="$reviewed_base_sha" \
+          N45_REVIEWED_HEAD_SHA="$reviewed_head_sha" \
+            bash scripts/n45-upstream-review.sh upstream/master HEAD upstream-parity-report.md
 
       - name: Publish job summary
         if: always()
