@@ -76,7 +76,7 @@
                 <i class="fas fa-user-circle me-1"></i>
                 <?php }else{ ?>
                 <img src="<?= "/uploads/users/$session_user_id/$session_avatar" ?>"
-                    class="user-image rounded-circle">
+                    class="user-image rounded-circle" alt="">
                 <?php } ?>
                 <span class="d-none d-md-inline dropdown-toggle"><?= stripslashes(escapeHtml($session_name)) ?></span>
             </a>
@@ -87,7 +87,7 @@
                     <i class="fas fa-user-circle fa-6x"></i>
                     <?php }else{ ?>
 
-                    <img src="<?= "/uploads/users/$session_user_id/$session_avatar" ?>" class="rounded-circle">
+                    <img src="<?= "/uploads/users/$session_user_id/$session_avatar" ?>" class="rounded-circle" alt="">
                     <?php } ?>
                     <p>
                         <?= stripslashes(escapeHtml($session_name)) ?>

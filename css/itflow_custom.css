@@ -1569,9 +1569,24 @@ html {
     color: var(--bs-body-color);
 }
 
+.client-context-bar .card-header {
+    min-height: 3rem;
+}
+
+.client-context-title {
+    font-size: 1.2rem;
+    line-height: 1.3;
+    margin: 0;
+}
+
+.client-context-rail > .client-context-panel h5 {
+    font-size: .9rem;
+    margin-bottom: .65rem;
+}
+
 /* N45 global product theme
    Technicians use these dense records in mixed office light. Cool neutral surfaces
-   and one operational blue keep the interface calm while semantic color carries state. */
+   and N45 action teal keep the interface calm while semantic color carries state. */
 :root {
     color-scheme: light;
     --n45-surface: #ffffff;
@@ -1587,12 +1602,12 @@ html {
     --n45-sidebar-ink: #263346;
     --n45-sidebar-muted: #526174;
     --n45-sidebar-border: #c1ccd7;
-    --n45-sidebar-hover: #e8f2fb;
+    --n45-sidebar-hover: #e4f3ef;
     --n45-sidebar-badge: #c5cfda;
-    --n45-sidebar-active: #1769aa;
-    --n45-accent: #1769aa;
-    --n45-accent-hover: #12578e;
-    --n45-accent-soft: #e8f2fb;
+    --n45-sidebar-active: #167f70;
+    --n45-accent: #167f70;
+    --n45-accent-hover: #0f655a;
+    --n45-accent-soft: #e4f3ef;
     --n45-success: #157347;
     --n45-success-soft: #e8f5ee;
     --n45-warning: #8a5d00;
@@ -1631,10 +1646,10 @@ body.dark-mode {
     --n45-sidebar-border: #29323d;
     --n45-sidebar-hover: #1c2a38;
     --n45-sidebar-badge: #253342;
-    --n45-sidebar-active: #1769aa;
-    --n45-accent: #69b7f0;
-    --n45-accent-hover: #8bc8f4;
-    --n45-accent-soft: #263d50;
+    --n45-sidebar-active: #167f70;
+    --n45-accent: #49c8b1;
+    --n45-accent-hover: #7cdac9;
+    --n45-accent-soft: #173a35;
     --n45-success: #69d19b;
     --n45-success-soft: #203a30;
     --n45-warning: #ffd166;
@@ -2005,6 +2020,23 @@ body [tabindex]:focus-visible {
     border-color: var(--n45-border);
 }
 
+.table > thead > tr > th {
+    background: var(--n45-surface-subtle);
+    border-bottom-color: var(--n45-border-strong);
+    color: var(--n45-ink);
+    font-weight: 650;
+}
+
+@media (hover: hover) {
+    .table > tbody > tr {
+        transition: background-color var(--n45-ease);
+    }
+
+    .table > tbody > tr:hover > * {
+        background-color: color-mix(in srgb, var(--n45-accent) 5%, var(--n45-surface));
+    }
+}
+
 /* Typography and supporting copy */
 h1,
 h2,
@@ -2162,6 +2194,11 @@ label,
 .btn-primary:not(:disabled):not(.disabled):active {
     background: var(--n45-accent-hover) !important;
     border-color: var(--n45-accent-hover) !important;
+}
+
+.dark-mode .btn-primary,
+.dark-mode .bg-primary {
+    color: #0a2423 !important;
 }
 
 .btn-default,
@@ -5221,7 +5258,7 @@ label,
     border: 1px solid var(--n45-border);
     border-radius: 12px;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     margin-bottom: 1rem;
     overflow: hidden;
 }
@@ -5713,6 +5750,39 @@ label,
 }
 
 @media (max-width: 767.98px) {
+    .client-context-bar {
+        margin-bottom: .65rem !important;
+    }
+
+    .client-context-bar .card-header {
+        min-height: 2.8rem;
+        padding: .65rem .8rem;
+    }
+
+    .client-context-title {
+        font-size: 1.05rem;
+    }
+
+    #clientHeader .client-context-rail {
+        display: grid;
+        gap: .6rem;
+        grid-auto-columns: minmax(16.5rem, 84vw);
+        grid-auto-flow: column;
+        margin-bottom: .75rem !important;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        padding: 0 .1rem .35rem;
+        scroll-snap-type: x proximity;
+    }
+
+    #clientHeader .client-context-panel {
+        border: 1px solid var(--n45-border);
+        border-radius: var(--n45-radius);
+        margin: 0;
+        min-height: 8rem;
+        scroll-snap-align: start;
+    }
+
     .card-header {
         align-items: flex-start;
         flex-wrap: wrap;
@@ -5816,23 +5886,44 @@ label,
         flex: 1 1 calc(50% - .5rem);
     }
 
-    .n45-kpi-strip,
+    .n45-kpi-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .n45-tech-pulse-grid {
         grid-template-columns: 1fr;
     }
 
     .n45-kpi-strip > a,
     .n45-kpi-strip > a:nth-child(3),
-    .n45-kpi-strip > a:nth-child(even),
     .n45-tech-pulse-grid a,
     .n45-tech-pulse-grid a:nth-child(even) {
         border-bottom: 1px solid var(--n45-border);
+    }
+
+    .n45-kpi-strip > a {
+        border-right: 1px solid var(--n45-border);
+        min-height: 5.75rem;
+        padding: .8rem;
+    }
+
+    .n45-kpi-strip > a:nth-child(even) {
+        border-right: 0;
+    }
+
+    .n45-tech-pulse-grid a,
+    .n45-tech-pulse-grid a:nth-child(even) {
         border-right: 0;
     }
 
     .n45-kpi-strip > a:last-child,
     .n45-tech-pulse-grid a:last-child {
         border-bottom: 0;
+    }
+
+    .n45-kpi-strip > a:last-child:nth-child(odd) {
+        border-right: 0;
+        grid-column: 1 / -1;
     }
 
     .n45-panel-heading {

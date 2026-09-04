@@ -338,7 +338,7 @@ if ($date_filter_active) {
                     <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/ticket/ticket_add.php?<?= $client_url ?>" data-modal-size="lg">
                         <i class="fas fa-plus"></i><span class="d-none d-lg-inline ms-2">New Ticket</span>
                     </button>
-                    <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
+                    <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-label="More ticket actions"></button>
                     <div class="dropdown-menu dropdown-menu-end">
                         <a class="dropdown-item text-dark ajax-modal" href="#"
                             data-modal-url="<?= buildExportModalUrl('modals/ticket/ticket_export.php', ['client_id', 'state', 'status', 'billing', 'category', 'priority', 'assigned', 'sla', 'project', 'q'], ['dtf' => $dtf, 'dtt' => $dtt]) ?>">
@@ -368,11 +368,11 @@ if ($date_filter_active) {
                 <div class="col-sm-4">
                     <div>
                         <div class="input-group">
-                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Tickets">
-                                <button class="btn <?= $hidden_filter_count ? 'btn-warning' : 'btn-secondary' ?>" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilter" title="Filters">
+                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Tickets" aria-label="Search tickets">
+                                <button class="btn <?= $hidden_filter_count ? 'btn-warning' : 'btn-secondary' ?>" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilter" title="Filters" aria-controls="advancedFilter" aria-expanded="false" aria-label="Show advanced filters">
                                     <i class="fas fa-filter"></i><?php if ($hidden_filter_count) { ?><span class="ms-1"><?= $hidden_filter_count ?></span><?php } ?>
                                 </button>
-                                <button class="btn btn-primary" type="submit"><i class="fa fa-search"></i></button>
+                                <button class="btn btn-primary" type="submit" aria-label="Search tickets"><i class="fa fa-search"></i></button>
                         </div>
                     </div>
                 </div>

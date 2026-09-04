@@ -354,10 +354,6 @@ if ($dead_events) {
 } elseif ($failed_events) {
     $attention_items[] = ['warning', 'fa-redo', "$failed_events operational event" . ($failed_events === 1 ? '' : 's') . ' waiting to retry', $session_is_admin ? '/admin/integration_automation.php' : '#recent-activity'];
 }
-if ($documentation_attention) {
-    $attention_items[] = ['warning', 'fa-book-medical', "$documentation_attention documentation obligation" . ($documentation_attention === 1 ? '' : 's') . ' need attention', '#documentation-attention'];
-}
-
 $sql_open_incidents = mysqli_query($mysqli, "SELECT automation_incidents.*,
     client_name, location_name, asset_name, service_name, ticket_prefix, ticket_number
     FROM automation_incidents

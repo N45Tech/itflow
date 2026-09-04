@@ -16,16 +16,16 @@
     }
 ?>
 
-<div class="card mb-3 d-print-none">
+<div class="card mb-3 d-print-none client-context-bar">
     <div class="card-header pb-1 pt-2 px-3">
         <div class="card-title">
-            <a href="#" class="client-header-toggle<?= $client_header_open ? '' : ' collapsed' ?>" data-bs-toggle="collapse" data-bs-target="#clientHeader" aria-controls="clientHeader" aria-expanded="<?= $client_header_open ? 'true' : 'false' ?>"><h4 class="text-dark" data-bs-toggle="tooltip" data-bs-placement="right" title="Client ID: <?= $client_id ?>"><i class="fas fa-fw fa-chevron-<?= $client_header_open ? 'down' : 'right' ?> client-header-chevron" aria-hidden="true"></i><strong><?= $client_name ?></strong> <?php if ($client_archived_at) { echo "(archived)"; } ?></h4></a>
+            <a href="#" class="client-header-toggle<?= $client_header_open ? '' : ' collapsed' ?>" data-bs-toggle="collapse" data-bs-target="#clientHeader" aria-controls="clientHeader" aria-expanded="<?= $client_header_open ? 'true' : 'false' ?>"><h4 class="text-dark client-context-title" data-bs-toggle="tooltip" data-bs-placement="right" title="Client ID: <?= $client_id ?>"><i class="fas fa-fw fa-chevron-<?= $client_header_open ? 'down' : 'right' ?> client-header-chevron" aria-hidden="true"></i><strong><?= escapeHtml($client_name) ?></strong> <?php if ($client_archived_at) { echo "(archived)"; } ?></h4></a>
         </div>
         <?php if (!empty($client_tag_name_display_array)) { ?><div class="card-title ms-2"><?= $client_tags_display ?></div> <?php } ?>
         <?php if (lookupUserPermission("module_client") >= 2) { ?>
         <div class="card-tools">
             <div class="dropdown dropstart text-center">
-                <button class="btn btn-dark btn-sm" type="button" data-bs-toggle="dropdown">
+                <button class="btn btn-dark btn-sm" type="button" data-bs-toggle="dropdown" aria-label="Client actions">
                     <i class="fas fa-fw fa-ellipsis-v"></i>
                 </button>
                 <div class="dropdown-menu">
@@ -80,10 +80,10 @@
     </div>
 </div>
 
-<div class="collapse<?= $client_header_open ? ' show' : '' ?>" id="clientHeader">
+<div class="collapse<?= $client_header_open ? ' show' : '' ?>" id="clientHeader" aria-label="Client details">
 
-    <div class="card-group mb-3">
-        <div class="card card-body px-3 py-2">
+    <div class="card-group mb-3 client-context-rail" role="region" aria-label="Client overview details" tabindex="0">
+        <div class="card card-body px-3 py-2 client-context-panel">
             <h5>Primary Location</h5>
             <?php /* location_id comes from inc_all_client.php's LEFT JOIN on
                      location_primary = 1, so empty means there is genuinely no
@@ -127,7 +127,7 @@
             <?php } ?>
         </div>
 
-        <div class="card card-body px-3 py-2">
+        <div class="card card-body px-3 py-2 client-context-panel">
             <h5>Primary Contact</h5>
             <?php
 
@@ -174,7 +174,7 @@
 
         <?php if (lookupUserPermission("module_financial") >= 1 && $config_module_enable_accounting == 1) { ?>
 
-        <div class="card card-body px-3 py-2">
+        <div class="card card-body px-3 py-2 client-context-panel">
             <h5>Billing</h5>
             <div class="ms-1 text-secondary">Hourly Rate
                 <span class="text-dark float-end"> <?= numfmt_format_currency($currency_format, $client_rate, $client_currency_code) ?></span>
@@ -212,7 +212,7 @@
         <?php } ?>
 
         <?php if (lookupUserPermission("module_support") >= 1 && $config_module_enable_ticketing == 1) { ?>
-        <div class="card card-body px-3 py-2">
+        <div class="card card-body px-3 py-2 client-context-panel">
             <h5>Support</h5>
             <div class="ms-1 text-secondary">Open Tickets
                 <span class="text-dark float-end"><?= $num_active_tickets ?></span>
