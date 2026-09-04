@@ -44,7 +44,8 @@ function verifyContactTicketAccess($requested_ticket_id, $expected_ticket_state)
  */
 function contactCan($capability) {
     global $session_contact_primary, $session_contact_is_billing_contact, $session_contact_is_technical_contact,
-        $session_contact_ticket_scope, $session_contact_asset_scope, $session_contact_can_manage_contacts;
+        $session_contact_ticket_scope, $session_contact_asset_scope, $session_contact_can_manage_contacts,
+        $session_contact_can_review_service_reviews;
 
     // Primary contacts can do everything in the portal
     if ($session_contact_primary == 1) {
@@ -69,6 +70,11 @@ function contactCan($capability) {
 
         case 'contacts':     // view / manage client contacts
             return (bool) ($session_contact_can_manage_contacts ?? false);
+
+        case 'service_reviews': // client-wide, explicitly authorized business-review participation
+            return ($session_contact_ticket_scope ?? 'own') === 'client'
+                && ($session_contact_asset_scope ?? 'assigned') === 'client'
+                && (bool) ($session_contact_can_review_service_reviews ?? false);
 
         default:             // unknown capability -> deny (fail closed)
             return false;

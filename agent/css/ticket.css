@@ -330,3 +330,19 @@
         border-radius: .35rem;
     }
 }
+
+/* Preserve readable contrast for the resolved-ticket close action. */
+#ticket_close,
+#ticket_close:hover,
+#ticket_close:focus,
+#ticket_close:active,
+#ticket_close.disabled,
+#ticket_close:disabled {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff;
+}
+
+#ticket_close i,
+#ticket_close svg {
+    color: currentColor !important;
+}

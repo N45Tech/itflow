@@ -11,6 +11,7 @@ $portal_page_slug = preg_replace('/[^a-z0-9-]/', '', str_replace('_', '-', pathi
 $portal_overview_active = $portal_current_page === 'index.php';
 $portal_get_help_active = in_array($portal_current_page, ['requests.php', 'request.php', 'request_status.php', 'ticket_add.php'], true);
 $portal_ticket_active = in_array($portal_current_page, ['tickets.php', 'ticket.php', 'ticket_view_all.php'], true);
+$portal_reviews_active = in_array($portal_current_page, ['reviews.php', 'review.php'], true);
 $portal_billing_active = in_array($portal_current_page, ['invoices.php', 'unpaid_invoices.php', 'recurring_invoices.php', 'quotes.php', 'saved_payment_methods.php', 'autopay.php'], true);
 $portal_technology_active = in_array($portal_current_page, ['assets.php', 'documents.php', 'document.php', 'domains.php', 'certificates.php', 'contacts.php'], true);
 $portal_account_active = $portal_current_page === 'profile.php';
@@ -18,6 +19,7 @@ $portal_can_accounting = contactCan('accounting') && $config_module_enable_accou
 $portal_can_assets = contactCan('assets') && $config_module_enable_itdoc;
 $portal_can_itdoc = contactCan('itdoc') && $config_module_enable_itdoc;
 $portal_can_contacts = contactCan('contacts');
+$portal_can_reviews = contactCan('service_reviews');
 $portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_contacts;
 ?>
 
@@ -72,6 +74,13 @@ $portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_
                 <i class="fas fa-fw fa-ticket-alt" aria-hidden="true"></i>
                 <span>Tickets &amp; approvals</span>
             </a>
+
+            <?php if ($portal_can_reviews) { ?>
+                <a class="n45-portal-nav-item <?= $portal_reviews_active ? 'active' : '' ?>" href="/client/reviews.php" <?= $portal_reviews_active ? 'aria-current="page"' : '' ?>>
+                    <i class="fas fa-fw fa-chart-line" aria-hidden="true"></i>
+                    <span>Business reviews</span>
+                </a>
+            <?php } ?>
 
             <?php if ($portal_can_accounting) { ?>
                 <details class="n45-portal-nav-group" <?= $portal_billing_active ? 'open' : '' ?>>

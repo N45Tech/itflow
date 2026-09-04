@@ -1244,6 +1244,7 @@ CREATE TABLE `contacts` (
   `contact_portal_ticket_scope` varchar(20) NOT NULL DEFAULT 'own',
   `contact_portal_asset_scope` varchar(20) NOT NULL DEFAULT 'assigned',
   `contact_portal_manage_contacts` tinyint(1) NOT NULL DEFAULT 0,
+  `contact_portal_review_access` tinyint(1) NOT NULL DEFAULT 0,
   `contact_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `contact_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `contact_archived_at` datetime DEFAULT NULL,

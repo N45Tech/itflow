@@ -83,7 +83,7 @@ $session_company_logo = $row['company_logo'];
 
 // Load contact session vars
 $contact_sql = mysqli_query($mysqli, "SELECT contact_billing, contact_email, contact_name, contact_photo, contact_pin, contact_primary,
-    contact_portal_asset_scope, contact_portal_manage_contacts, contact_portal_ticket_scope,
+    contact_portal_asset_scope, contact_portal_manage_contacts, contact_portal_review_access, contact_portal_ticket_scope,
     contact_technical, contact_title FROM contacts WHERE contact_id = $session_contact_id AND contact_client_id = $session_client_id");
 $contact = mysqli_fetch_assoc($contact_sql);
 
@@ -97,6 +97,7 @@ $session_contact_primary = intval($contact['contact_primary']);
 $session_contact_ticket_scope = $contact['contact_portal_ticket_scope'] === 'client' ? 'client' : 'own';
 $session_contact_asset_scope = $contact['contact_portal_asset_scope'] === 'client' ? 'client' : 'assigned';
 $session_contact_can_manage_contacts = intval($contact['contact_portal_manage_contacts']) === 1;
+$session_contact_can_review_service_reviews = intval($contact['contact_portal_review_access']) === 1;
 
 $session_contact_is_technical_contact = false;
 $session_contact_is_billing_contact = false;

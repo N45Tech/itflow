@@ -77,6 +77,10 @@ enforceContactCan('contacts');
                         <input type="checkbox" class="custom-control-input" id="contactManageContactsCheckbox" name="contact_portal_manage_contacts" value="1">
                         <label class="custom-control-label" for="contactManageContactsCheckbox"><span><strong>Manage contacts</strong><small>Create contacts and assign portal permissions</small></span></label>
                     </div>
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="contactReviewAccessCheckbox" name="contact_portal_review_access" value="1">
+                        <label class="custom-control-label" for="contactReviewAccessCheckbox"><span><strong>Business reviews</strong><small>Portal managers can view completed reviews and participate in the discussion</small></span></label>
+                    </div>
                 </div>
             </fieldset>
 

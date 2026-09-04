@@ -11,7 +11,7 @@ require_once "includes/inc_all.php";
 enforceContactCan('contacts');
 
 $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_email, contact_primary, contact_technical, contact_billing,
-    contact_portal_ticket_scope, contact_portal_asset_scope, contact_portal_manage_contacts
+    contact_portal_ticket_scope, contact_portal_asset_scope, contact_portal_manage_contacts, contact_portal_review_access
     FROM contacts WHERE contact_client_id = $session_client_id AND contacts.contact_archived_at IS NULL ORDER BY contact_created_at");
 ?>
 
@@ -50,6 +50,7 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
                     $contact_billing = intval($row['contact_billing']);
                     $contact_portal_role = portalAccessRoleFromScopes($row['contact_portal_ticket_scope'], $row['contact_portal_asset_scope']);
                     $contact_portal_manage_contacts = intval($row['contact_portal_manage_contacts']);
+                    $contact_portal_review_access = intval($row['contact_portal_review_access']);
 
                     $contact_role_display = $contact_portal_role === 'manager' ? 'Portal manager' : 'Portal user';
                     if ($contact_primary) {
@@ -60,6 +61,7 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
                     if ($contact_billing) { $additional_permissions[] = 'Billing'; }
                     if ($contact_technical) { $additional_permissions[] = 'Technical contact'; }
                     if ($contact_portal_manage_contacts) { $additional_permissions[] = 'Manage contacts'; }
+                    if ($contact_portal_review_access) { $additional_permissions[] = 'Business reviews'; }
 
                     ?>
 

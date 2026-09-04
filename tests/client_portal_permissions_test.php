@@ -18,6 +18,7 @@ $session_contact_is_technical_contact = false;
 $session_contact_ticket_scope = 'own';
 $session_contact_asset_scope = 'assigned';
 $session_contact_can_manage_contacts = false;
+$session_contact_can_review_service_reviews = false;
 
 $assertSame(false, contactCan('tickets_all'), 'Portal user received organization-wide ticket access');
 $assertSame(false, contactCan('assets_all'), 'Portal user received organization-wide asset access');
@@ -25,6 +26,7 @@ $assertSame(true, contactCan('assets'), 'Portal user lost access to assigned ass
 $assertSame(false, contactCan('contacts'), 'Portal user received contact management access');
 $assertSame(false, contactCan('accounting'), 'Portal user received billing access');
 $assertSame(false, contactCan('itdoc'), 'Portal user received technical-record access');
+$assertSame(false, contactCan('service_reviews'), 'Portal user received business-review access');
 
 // Portal manager: organization-wide tickets and assets, but no implicit extras.
 $session_contact_ticket_scope = 'client';
@@ -34,14 +36,17 @@ $assertSame(true, contactCan('assets_all'), 'Portal manager cannot view organiza
 $assertSame(false, contactCan('contacts'), 'Portal manager implicitly received contact management access');
 $assertSame(false, contactCan('accounting'), 'Portal manager implicitly received billing access');
 $assertSame(false, contactCan('itdoc'), 'Portal manager implicitly received technical-record access');
+$assertSame(false, contactCan('service_reviews'), 'Portal manager implicitly received business-review access');
 
 // Independent permissions can be combined without changing the manager scope.
 $session_contact_is_billing_contact = true;
 $session_contact_is_technical_contact = true;
 $session_contact_can_manage_contacts = true;
+$session_contact_can_review_service_reviews = true;
 $assertSame(true, contactCan('accounting'), 'Billing permission was not honored');
 $assertSame(true, contactCan('itdoc'), 'Technical-record permission was not honored');
 $assertSame(true, contactCan('contacts'), 'Contact management permission was not honored');
+$assertSame(true, contactCan('service_reviews'), 'Business-review permission was not honored');
 
 // Primary contacts remain full-access and migration-safe.
 $session_contact_primary = 1;
@@ -50,7 +55,8 @@ $session_contact_is_technical_contact = false;
 $session_contact_ticket_scope = 'own';
 $session_contact_asset_scope = 'assigned';
 $session_contact_can_manage_contacts = false;
-foreach (['tickets_all', 'assets_all', 'assets', 'contacts', 'accounting', 'itdoc'] as $capability) {
+$session_contact_can_review_service_reviews = false;
+foreach (['tickets_all', 'assets_all', 'assets', 'contacts', 'accounting', 'itdoc', 'service_reviews'] as $capability) {
     $assertSame(true, contactCan($capability), "Primary contact lost $capability access");
 }
 

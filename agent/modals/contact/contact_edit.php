@@ -11,7 +11,7 @@ $sql = mysqli_query($mysqli, "SELECT contact_archived_at, contact_billing, conta
     contact_location_id, contact_mobile, contact_mobile_country_code, contact_name,
     contact_notes, contact_phone, contact_phone_country_code, contact_photo, contact_pin,
     contact_primary, contact_technical, contact_portal_ticket_scope, contact_portal_asset_scope,
-    contact_portal_manage_contacts, contact_title, contact_user_id, user_auth_method FROM contacts
+    contact_portal_manage_contacts, contact_portal_review_access, contact_title, contact_user_id, user_auth_method FROM contacts
     LEFT JOIN users ON user_id = contact_user_id
     WHERE contact_id = $contact_id
     LIMIT 1"
@@ -52,6 +52,7 @@ $contact_billing = intval($row['contact_billing']);
 $contact_technical = intval($row['contact_technical']);
 $contact_portal_role = $contact_primary === 1 || ($row['contact_portal_ticket_scope'] === 'client' && $row['contact_portal_asset_scope'] === 'client') ? 'manager' : 'user';
 $contact_portal_manage_contacts = $contact_primary === 1 ? 1 : intval($row['contact_portal_manage_contacts']);
+$contact_portal_review_access = $contact_primary === 1 ? 1 : intval($row['contact_portal_review_access']);
 $contact_created_at = escapeHtml($row['contact_created_at']);
 $contact_archived_at = escapeHtml($row['contact_archived_at']);
 $contact_location_id = intval($row['contact_location_id']);
@@ -289,6 +290,11 @@ ob_start();
                 <div class="custom-control custom-checkbox mb-3">
                     <input type="checkbox" class="custom-control-input" id="contactManageContactsCheckbox<?= $contact_id ?>" name="contact_portal_manage_contacts" value="1" <?= $contact_portal_manage_contacts === 1 ? 'checked' : '' ?>>
                     <label class="custom-control-label" for="contactManageContactsCheckbox<?= $contact_id ?>">Can manage client portal contacts and permissions</label>
+                </div>
+
+                <div class="custom-control custom-checkbox mb-3">
+                    <input type="checkbox" class="custom-control-input" id="contactReviewAccessCheckbox<?= $contact_id ?>" name="contact_portal_review_access" value="1" <?= $contact_portal_review_access === 1 ? 'checked' : '' ?>>
+                    <label class="custom-control-label" for="contactReviewAccessCheckbox<?= $contact_id ?>">Business review participant <small class="d-block text-muted">Portal managers can view completed reviews and comment before or after meetings.</small></label>
                 </div>
 
             </div>

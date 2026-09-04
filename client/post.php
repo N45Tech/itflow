@@ -903,6 +903,7 @@ if (isset($_POST['add_contact'])) {
     $contact_technical = intval($_POST['contact_technical'] ?? 0);
     $contact_billing = intval($_POST['contact_billing'] ?? 0);
     $contact_portal_manage_contacts = intval($_POST['contact_portal_manage_contacts'] ?? 0);
+    $contact_portal_review_access = intval($_POST['contact_portal_review_access'] ?? 0);
     $portal_scopes = portalAccessScopesFromRole($_POST['contact_portal_role'] ?? 'user');
     $contact_portal_ticket_scope = $portal_scopes['ticket_scope'];
     $contact_portal_asset_scope = $portal_scopes['asset_scope'];
@@ -928,7 +929,7 @@ if (isset($_POST['add_contact'])) {
     }
 
     // Create contact record
-    mysqli_query($mysqli, "INSERT INTO contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_client_id = $session_client_id, contact_user_id = $contact_user_id");
+    mysqli_query($mysqli, "INSERT INTO contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_portal_review_access = $contact_portal_review_access, contact_client_id = $session_client_id, contact_user_id = $contact_user_id");
 
     $contact_id = mysqli_insert_id($mysqli);
 
@@ -960,6 +961,7 @@ if (isset($_POST['edit_contact'])) {
     $contact_technical = intval($_POST['contact_technical'] ?? 0);
     $contact_billing = intval($_POST['contact_billing'] ?? 0);
     $contact_portal_manage_contacts = intval($_POST['contact_portal_manage_contacts'] ?? 0);
+    $contact_portal_review_access = intval($_POST['contact_portal_review_access'] ?? 0);
     $portal_scopes = portalAccessScopesFromRole($_POST['contact_portal_role'] ?? 'user');
     $contact_portal_ticket_scope = $portal_scopes['ticket_scope'];
     $contact_portal_asset_scope = $portal_scopes['asset_scope'];
@@ -990,7 +992,7 @@ if (isset($_POST['edit_contact'])) {
     }
 
     // Update contact
-    mysqli_query($mysqli, "UPDATE contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_user_id = $contact_user_id WHERE contact_id = $contact_id AND contact_client_id = $session_client_id AND contact_archived_at IS NULL AND contact_primary = 0 AND contact_id != $session_contact_id");
+    mysqli_query($mysqli, "UPDATE contacts SET contact_name = '$contact_name', contact_email = '$contact_email', contact_billing = $contact_billing, contact_technical = $contact_technical, contact_portal_ticket_scope = '$contact_portal_ticket_scope', contact_portal_asset_scope = '$contact_portal_asset_scope', contact_portal_manage_contacts = $contact_portal_manage_contacts, contact_portal_review_access = $contact_portal_review_access, contact_user_id = $contact_user_id WHERE contact_id = $contact_id AND contact_client_id = $session_client_id AND contact_archived_at IS NULL AND contact_primary = 0 AND contact_id != $session_contact_id");
 
     logAudit("Contact", "Edit", "Client contact $session_contact_name edited contact $contact_name in the client portal", $session_client_id, $contact_id);
 
@@ -1814,4 +1816,45 @@ if (isset($_POST['client_upload_document'])) {
     }
 
     redirect('documents.php');
+}
+
+if (isset($_POST['add_service_review_comment'])) {
+    validateCSRFToken();
+    enforceContactCan('service_reviews');
+
+    $review_id = intval($_POST['review_id'] ?? 0);
+    $comment = trim((string) ($_POST['comment'] ?? ''));
+    if ($comment === '' || mb_strlen($comment) > 255) {
+        flashAlert('Enter a comment of 255 characters or fewer.', 'error');
+        redirect('review.php?id=' . $review_id);
+    }
+
+    $review_sql = mysqli_query($mysqli, "SELECT service_review_snapshot_hash
+        FROM service_reviews
+        WHERE service_review_id = $review_id
+        AND service_review_client_id = $session_client_id
+        AND service_review_status = 'Published'
+        LIMIT 1");
+    $review = $review_sql ? mysqli_fetch_assoc($review_sql) : null;
+    if (!$review) {
+        flashAlert('That business review is not available.', 'error');
+        redirect('reviews.php');
+    }
+
+    $comment_sql = escapeSql($comment);
+    $snapshot_hash_sql = escapeSql($review['service_review_snapshot_hash']);
+    if (!mysqli_query($mysqli, "INSERT INTO service_review_events SET
+        service_review_event_review_id = $review_id,
+        service_review_event_client_id = $session_client_id,
+        service_review_event_action = 'ClientComment',
+        service_review_event_actor_id = $session_user_id,
+        service_review_event_reason = '$comment_sql',
+        service_review_event_snapshot_hash = '$snapshot_hash_sql'")) {
+        flashAlert('Your comment could not be saved. Please try again.', 'error');
+        redirect('review.php?id=' . $review_id);
+    }
+
+    logAudit('Service Review', 'Comment', "Client contact $session_contact_name commented on business review $review_id", $session_client_id, $review_id);
+    flashAlert('Your comment was added.');
+    redirect('review.php?id=' . $review_id . '#discussion');
 }

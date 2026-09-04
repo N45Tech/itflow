@@ -306,6 +306,34 @@ $review_item_state = static function (bool $complete): string {
     </div>
 </div>
 
+<?php
+$client_review_comments = array_values(array_filter($review_events, static function ($event): bool {
+    return ($event['service_review_event_action'] ?? '') === 'ClientComment';
+}));
+?>
+<div class="card" id="client-discussion">
+    <div class="card-header">
+        <h2 class="card-title h5 mb-0"><i class="far fa-comments mr-2"></i>Client discussion</h2>
+    </div>
+    <div class="card-body">
+        <?php if (!$client_review_comments) { ?>
+            <p class="text-muted mb-0">No portal comments have been added to this review.</p>
+        <?php } else { ?>
+            <div class="service-review-comments">
+                <?php foreach ($client_review_comments as $comment) { ?>
+                    <article class="border-bottom pb-3 mb-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <strong><?= escapeHtml($comment['user_name'] ?: 'Portal participant') ?></strong>
+                            <small class="text-muted"><?= escapeHtml($comment['service_review_event_created_at']) ?></small>
+                        </div>
+                        <p class="mb-0 mt-2"><?= nl2br(escapeHtml($comment['service_review_event_reason'] ?? '')) ?></p>
+                    </article>
+                <?php } ?>
+            </div>
+        <?php } ?>
+    </div>
+</div>
+
 <details class="card card-outline card-secondary">
     <summary class="card-header" style="cursor: pointer;">
         <strong><i class="fas fa-fingerprint mr-2"></i>Technical record</strong>
@@ -318,7 +346,7 @@ $review_item_state = static function (bool $complete): string {
         </div>
         <div class="table-responsive">
             <table class="table table-sm mb-0">
-                <thead><tr><th>Event</th><th>Technician</th><th>Time</th><th>Note</th></tr></thead>
+                <thead><tr><th>Event</th><th>Actor</th><th>Time</th><th>Note</th></tr></thead>
                 <tbody>
                 <?php foreach ($review_events as $event) { ?>
                     <tr>

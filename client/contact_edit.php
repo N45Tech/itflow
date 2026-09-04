@@ -20,7 +20,8 @@ $contact_id = intval($_GET['id']);
 
 $sql_contact = mysqli_query(
     $mysqli, "SELECT contact_id, contact_name, contact_email, contact_primary, contact_technical, contact_billing,
-        contact_portal_ticket_scope, contact_portal_asset_scope, contact_portal_manage_contacts, user_auth_method
+        contact_portal_ticket_scope, contact_portal_asset_scope, contact_portal_manage_contacts,
+        contact_portal_review_access, user_auth_method
     FROM contacts
     LEFT JOIN users ON user_id = contact_user_id
     WHERE contact_id = $contact_id AND contact_client_id = $session_client_id AND contacts.contact_archived_at IS NULL LIMIT 1"
@@ -37,6 +38,7 @@ if ($row) {
     $contact_billing = intval($row['contact_billing']);
     $contact_portal_role = portalAccessRoleFromScopes($row['contact_portal_ticket_scope'], $row['contact_portal_asset_scope']);
     $contact_portal_manage_contacts = intval($row['contact_portal_manage_contacts']);
+    $contact_portal_review_access = intval($row['contact_portal_review_access']);
     $contact_auth_method = escapeHtml($row['user_auth_method']);
 } else {
     header("Location: post.php?logout");
@@ -110,6 +112,10 @@ if ($row) {
                     <div class="custom-control custom-checkbox">
                         <input type="checkbox" class="custom-control-input" id="contactManageContactsCheckbox" name="contact_portal_manage_contacts" value="1" <?php if ($contact_portal_manage_contacts == 1) { echo "checked"; } ?>>
                         <label class="custom-control-label" for="contactManageContactsCheckbox"><span><strong>Manage contacts</strong><small>Create contacts and assign portal permissions</small></span></label>
+                    </div>
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="contactReviewAccessCheckbox" name="contact_portal_review_access" value="1" <?php if ($contact_portal_review_access == 1) { echo "checked"; } ?>>
+                        <label class="custom-control-label" for="contactReviewAccessCheckbox"><span><strong>Business reviews</strong><small>Portal managers can view completed reviews and participate in the discussion</small></span></label>
                     </div>
                 </div>
             </fieldset>

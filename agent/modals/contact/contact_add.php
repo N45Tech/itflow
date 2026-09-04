@@ -274,6 +274,11 @@ ob_start();
                     <label class="custom-control-label" for="contactManageContactsCheckbox">Can manage client portal contacts and permissions</label>
                 </div>
 
+                <div class="custom-control custom-checkbox mb-3">
+                    <input type="checkbox" class="custom-control-input" id="contactReviewAccessCheckbox" name="contact_portal_review_access" value="1">
+                    <label class="custom-control-label" for="contactReviewAccessCheckbox">Business review participant <small class="d-block text-muted">Portal managers can view completed reviews and comment before or after meetings.</small></label>
+                </div>
+
             </div>
 
             <div class="tab-pane fade" id="pills-notes">
