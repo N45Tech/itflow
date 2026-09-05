@@ -308,6 +308,27 @@ return [
                 'altered_indexes' => [],
                 'legacy_bridge_index_overrides' => [],
             ],
+            'n45-0020-specific-client-approvers' => [
+                'module' => 'runbooks',
+                'legacy_version' => null,
+                'data_change' => false,
+                'rollback' => 'Disable specific client-contact routing, preserve approval evidence, and restore the pre-upgrade database snapshot before reverting application code.',
+                'created_tables' => [],
+                'altered_columns' => [
+                    'task_approvals' => ['approval_required_contact_id'],
+                    'ticket_approvals' => ['ticket_approval_required_contact_id'],
+                    'task_approval_events' => [
+                        'task_approval_event_from_required_contact_id',
+                        'task_approval_event_to_required_contact_id',
+                    ],
+                    'ticket_approval_events' => [
+                        'ticket_approval_event_from_required_contact_id',
+                        'ticket_approval_event_to_required_contact_id',
+                    ],
+                ],
+                'altered_indexes' => [],
+                'legacy_bridge_index_overrides' => [],
+            ],
         ],
     ],
     'features' => [
@@ -412,7 +433,11 @@ return [
         ],
         'runbooks' => [
             'runtime_files' => ['functions/runbooks.php', 'functions/ticket_approvals.php'],
-            'migrations' => ['n45-0010-versioned-runbooks', 'n45-0019-ticket-approval-gates'],
+            'migrations' => [
+                'n45-0010-versioned-runbooks',
+                'n45-0019-ticket-approval-gates',
+                'n45-0020-specific-client-approvers',
+            ],
             'toggleable' => false,
             'reason' => 'Lifecycle gates and evidence integrity must remain active after migration.',
         ],
@@ -1976,11 +2001,40 @@ return [
                 ],
                 'failure_queries' => [
                     "SELECT COUNT(*) FROM task_approvals WHERE approval_type NOT IN ('any','manager','technical','billing','specific')",
-                    "SELECT COUNT(*) FROM ticket_approvals WHERE ticket_approval_scope NOT IN ('client','internal') OR ticket_approval_type NOT IN ('any','manager','technical','billing','specific') OR ticket_approval_status NOT IN ('pending','approved','declined') OR (ticket_approval_scope = 'internal' AND ticket_approval_type NOT IN ('any','specific')) OR (ticket_approval_scope = 'client' AND ticket_approval_type = 'specific') OR (ticket_approval_type = 'specific' AND (ticket_approval_required_user_id IS NULL OR ticket_approval_required_user_id = 0)) OR (ticket_approval_type <> 'specific' AND ticket_approval_required_user_id IS NOT NULL)",
+                    "SELECT COUNT(*) FROM ticket_approvals WHERE ticket_approval_scope NOT IN ('client','internal') OR ticket_approval_type NOT IN ('any','manager','technical','billing','specific') OR ticket_approval_status NOT IN ('pending','approved','declined') OR (ticket_approval_scope = 'internal' AND ticket_approval_type NOT IN ('any','specific')) OR (ticket_approval_scope = 'internal' AND ticket_approval_type = 'specific' AND (ticket_approval_required_user_id IS NULL OR ticket_approval_required_user_id = 0)) OR ((ticket_approval_scope <> 'internal' OR ticket_approval_type <> 'specific') AND ticket_approval_required_user_id IS NOT NULL)",
                     "SELECT COUNT(*) FROM ticket_approvals WHERE ticket_approval_status = 'pending' AND (ticket_approval_url_key = '' OR LEFT(ticket_approval_url_key, 7) <> 'sha256:' OR ticket_approval_url_expires_at IS NULL)",
                     "SELECT COUNT(*) FROM ticket_approvals WHERE ticket_approval_status <> 'pending' AND (ticket_approval_url_key <> '' OR ticket_approval_url_expires_at IS NOT NULL)",
                     "SELECT COUNT(*) FROM ticket_approvals LEFT JOIN ticket_approval_events ON ticket_approval_event_approval_id = ticket_approval_id WHERE ticket_approval_event_id IS NULL",
                     "SELECT COUNT(*) FROM ticket_approval_events WHERE ticket_approval_event_action NOT IN ('created','re_requested','rerouted','approved','declined') OR ticket_approval_event_actor_type NOT IN ('agent','contact','guest','system')",
+                ],
+            ],
+        ],
+        'n45-0020-specific-client-approvers' => [
+            'module' => 'runbooks', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0020-specific-client-approvers.php',
+            'summary' => 'Allow ticket and task approvals to target one named contact from the ticket client.',
+            'data_change' => false,
+            'rollback' => 'Disable specific client-contact routing, preserve approval evidence, and restore the pre-upgrade database snapshot before reverting application code.',
+            'fingerprint' => [
+                'columns' => [
+                    'task_approvals' => [
+                        'approval_required_contact_id' => $column_fingerprint('int(11)', true, null),
+                    ],
+                    'ticket_approvals' => [
+                        'ticket_approval_required_contact_id' => $column_fingerprint('int(11)', true, null),
+                    ],
+                    'task_approval_events' => [
+                        'task_approval_event_from_required_contact_id' => $column_fingerprint('int(11)', false, 0),
+                        'task_approval_event_to_required_contact_id' => $column_fingerprint('int(11)', false, 0),
+                    ],
+                    'ticket_approval_events' => [
+                        'ticket_approval_event_from_required_contact_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_approval_event_to_required_contact_id' => $column_fingerprint('int(11)', false, 0),
+                    ],
+                ],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM task_approvals WHERE (approval_scope = 'internal' AND approval_type = 'specific' AND (approval_required_user_id IS NULL OR approval_required_user_id = 0 OR approval_required_contact_id IS NOT NULL)) OR (approval_scope = 'client' AND approval_type = 'specific' AND (approval_required_contact_id IS NULL OR approval_required_contact_id = 0 OR approval_required_user_id IS NOT NULL)) OR (approval_type <> 'specific' AND (approval_required_user_id IS NOT NULL OR approval_required_contact_id IS NOT NULL))",
+                    "SELECT COUNT(*) FROM ticket_approvals WHERE (ticket_approval_scope = 'internal' AND ticket_approval_type = 'specific' AND (ticket_approval_required_user_id IS NULL OR ticket_approval_required_user_id = 0 OR ticket_approval_required_contact_id IS NOT NULL)) OR (ticket_approval_scope = 'client' AND ticket_approval_type = 'specific' AND (ticket_approval_required_contact_id IS NULL OR ticket_approval_required_contact_id = 0 OR ticket_approval_required_user_id IS NOT NULL)) OR (ticket_approval_type <> 'specific' AND (ticket_approval_required_user_id IS NOT NULL OR ticket_approval_required_contact_id IS NOT NULL))",
                 ],
             ],
         ],

@@ -196,29 +196,33 @@ function runbookExportApprovalStatus($status) {
     return $labels[(string) ($status ?? '')] ?? 'Unavailable';
 }
 
-function runbookExportApprovalRoute($scope, $type, $required_user_id = 0) {
+function runbookExportApprovalRoute($scope, $type, $required_user_id = 0, $required_contact_id = 0) {
     $scope = (string) ($scope ?? '');
     $type = (string) ($type ?? '');
     $required_user_id = intval($required_user_id);
-    if ($scope === '' && $type === '' && $required_user_id === 0) {
+    $required_contact_id = intval($required_contact_id);
+    if ($scope === '' && $type === '' && $required_user_id === 0 && $required_contact_id === 0) {
         return 'Not configured';
     }
-    if ($scope === 'internal' && $type === 'specific' && $required_user_id > 0) {
+    if ($scope === 'internal' && $type === 'specific' && $required_user_id > 0 && $required_contact_id === 0) {
         return 'Internal / specific approver';
     }
-    if ($scope === 'internal' && $type === 'any' && $required_user_id === 0) {
+    if ($scope === 'internal' && $type === 'any' && $required_user_id === 0 && $required_contact_id === 0) {
         return 'Internal / any eligible approver';
     }
-    if ($scope === 'client' && $type === 'technical' && $required_user_id === 0) {
+    if ($scope === 'client' && $type === 'specific' && $required_user_id === 0 && $required_contact_id > 0) {
+        return 'Client / specific contact';
+    }
+    if ($scope === 'client' && $type === 'technical' && $required_user_id === 0 && $required_contact_id === 0) {
         return 'Client / technical contacts';
     }
-    if ($scope === 'client' && $type === 'manager' && $required_user_id === 0) {
+    if ($scope === 'client' && $type === 'manager' && $required_user_id === 0 && $required_contact_id === 0) {
         return 'Client / portal managers';
     }
-    if ($scope === 'client' && $type === 'billing' && $required_user_id === 0) {
+    if ($scope === 'client' && $type === 'billing' && $required_user_id === 0 && $required_contact_id === 0) {
         return 'Client / billing contacts';
     }
-    if ($scope === 'client' && $type === 'any' && $required_user_id === 0) {
+    if ($scope === 'client' && $type === 'any' && $required_user_id === 0 && $required_contact_id === 0) {
         return 'Client / any authorized contact';
     }
     return 'Unavailable';
@@ -275,6 +279,8 @@ function runbookExportApprovalHistoryConsistent($approval, $events, $task_state)
         $to_type = (string) ($event['task_approval_event_to_type'] ?? '');
         $from_user = max(0, intval($event['task_approval_event_from_required_user_id'] ?? 0));
         $to_user = max(0, intval($event['task_approval_event_to_required_user_id'] ?? 0));
+        $from_contact = max(0, intval($event['task_approval_event_from_required_contact_id'] ?? 0));
+        $to_contact = max(0, intval($event['task_approval_event_to_required_contact_id'] ?? 0));
         $actor_type = (string) ($event['task_approval_event_actor_type'] ?? '');
 
         if (!in_array($action, $actions, true)
@@ -288,10 +294,11 @@ function runbookExportApprovalHistoryConsistent($approval, $events, $task_state)
             || $to_status === ''
             || $to_scope === ''
             || $to_type === ''
-            || runbookExportApprovalRoute($to_scope, $to_type, $to_user) === 'Unavailable'
-            || ($from_status === '' && ($from_scope !== '' || $from_type !== '' || $from_user !== 0))
+            || runbookExportApprovalRoute($to_scope, $to_type, $to_user, $to_contact) === 'Unavailable'
+            || ($from_status === '' && ($from_scope !== '' || $from_type !== ''
+                || $from_user !== 0 || $from_contact !== 0))
             || ($from_status !== ''
-                && runbookExportApprovalRoute($from_scope, $from_type, $from_user) === 'Unavailable')) {
+                && runbookExportApprovalRoute($from_scope, $from_type, $from_user, $from_contact) === 'Unavailable')) {
             return false;
         }
         if ($index === 0 && !in_array($action, ['baseline', 'created'], true)) {
@@ -308,7 +315,8 @@ function runbookExportApprovalHistoryConsistent($approval, $events, $task_state)
             && ($from_status !== $previous['status']
                 || $from_scope !== $previous['scope']
                 || $from_type !== $previous['type']
-                || $from_user !== $previous['required_user_id'])) {
+                || $from_user !== $previous['required_user_id']
+                || $from_contact !== $previous['required_contact_id'])) {
             return false;
         }
         $previous = [
@@ -316,13 +324,15 @@ function runbookExportApprovalHistoryConsistent($approval, $events, $task_state)
             'scope' => $to_scope,
             'type' => $to_type,
             'required_user_id' => $to_user,
+            'required_contact_id' => $to_contact,
             'action' => $action,
         ];
     }
 
     if ($previous['scope'] !== (string) ($approval['approval_scope'] ?? '')
         || $previous['type'] !== (string) ($approval['approval_type'] ?? '')
-        || $previous['required_user_id'] !== intval($approval['approval_route_user_key'] ?? 0)) {
+        || $previous['required_user_id'] !== intval($approval['approval_route_user_key'] ?? 0)
+        || $previous['required_contact_id'] !== intval($approval['approval_route_contact_key'] ?? 0)) {
         return false;
     }
 
@@ -521,6 +531,7 @@ $approvals_by_key = [];
 $approvals = runbookExportQuery("SELECT runbook_version_task_key,
     approval_id AS approval_projection_key, approval_scope, approval_type,
     COALESCE(approval_required_user_id, 0) AS approval_route_user_key,
+    COALESCE(approval_required_contact_id, 0) AS approval_route_contact_key,
     approval_status,
     CASE WHEN COALESCE(approval_approved_by, '') <> '' THEN 1 ELSE 0 END AS approval_has_decision_actor,
     CASE
@@ -551,6 +562,8 @@ $approval_events = runbookExportQuery("SELECT
     task_approval_event_from_type, task_approval_event_to_type,
     task_approval_event_from_required_user_id,
     task_approval_event_to_required_user_id,
+    task_approval_event_from_required_contact_id,
+    task_approval_event_to_required_contact_id,
     task_approval_event_actor_type,
     task_approval_event_request_expires_at,
     task_approval_event_created_at
@@ -626,12 +639,14 @@ foreach ($task_rows as $task) {
                 'from_route' => runbookExportApprovalRoute(
                     $approval_event['task_approval_event_from_scope'],
                     $approval_event['task_approval_event_from_type'],
-                    $approval_event['task_approval_event_from_required_user_id']
+                    $approval_event['task_approval_event_from_required_user_id'],
+                    $approval_event['task_approval_event_from_required_contact_id']
                 ),
                 'to_route' => runbookExportApprovalRoute(
                     $approval_event['task_approval_event_to_scope'],
                     $approval_event['task_approval_event_to_type'],
-                    $approval_event['task_approval_event_to_required_user_id']
+                    $approval_event['task_approval_event_to_required_user_id'],
+                    $approval_event['task_approval_event_to_required_contact_id']
                 ),
                 'actor_type' => runbookExportApprovalEventActorType($approval_event),
                 'actor_label' => runbookExportApprovalEventActorLabel($approval_event),
@@ -640,7 +655,11 @@ foreach ($task_rows as $task) {
             ];
         }
         $approval['approval_history'] = $safe_approval_history;
-        unset($approval['approval_projection_key'], $approval['approval_route_user_key']);
+        unset(
+            $approval['approval_projection_key'],
+            $approval['approval_route_user_key'],
+            $approval['approval_route_contact_key']
+        );
         $task_approvals[$approval_index] = $approval;
     }
     $approvals_by_key[$task_key] = $task_approvals;

@@ -246,6 +246,8 @@ function runbookRecordApprovalEvent(
     $to_type_sql = $event_value($after['type'] ?? null, $types);
     $from_user_id = max(0, intval($before['required_user_id'] ?? 0));
     $to_user_id = max(0, intval($after['required_user_id'] ?? 0));
+    $from_contact_id = max(0, intval($before['required_contact_id'] ?? 0));
+    $to_contact_id = max(0, intval($after['required_contact_id'] ?? 0));
     $actor_type_sql = mysqli_real_escape_string($mysqli, $actor_type);
     $actor_id = max(0, intval($actor_id));
     $actor_label_sql = $nullable_text($actor_label);
@@ -264,6 +266,8 @@ function runbookRecordApprovalEvent(
         task_approval_event_to_type = $to_type_sql,
         task_approval_event_from_required_user_id = $from_user_id,
         task_approval_event_to_required_user_id = $to_user_id,
+        task_approval_event_from_required_contact_id = $from_contact_id,
+        task_approval_event_to_required_contact_id = $to_contact_id,
         task_approval_event_actor_type = '$actor_type_sql',
         task_approval_event_actor_id = $actor_id,
         task_approval_event_actor_label = $actor_label_sql,
@@ -1004,12 +1008,20 @@ function runbookResolveOwner($owner_type, $owner_user_id, $ticket) {
  * is the fallback when a matching contact cannot see the ticket in the portal.
  * Internal routes also honor support permissions and client access scope.
  */
-function runbookApprovalRouteAvailability($scope, $type, $required_user_id, $ticket, $created_by = 0) {
+function runbookApprovalRouteAvailability(
+    $scope,
+    $type,
+    $required_user_id,
+    $ticket,
+    $created_by = 0,
+    $required_contact_id = 0
+) {
     global $mysqli, $config_smtp_provider, $config_smtp_host;
 
     $scope = (string) $scope;
     $type = (string) $type;
     $required_user_id = intval($required_user_id);
+    $required_contact_id = intval($required_contact_id);
     $created_by = intval($created_by);
     $client_id = intval($ticket['ticket_client_id'] ?? 0);
     $contact_id = intval($ticket['ticket_contact_id'] ?? 0);
@@ -1069,8 +1081,40 @@ function runbookApprovalRouteAvailability($scope, $type, $required_user_id, $tic
             : [false, 'No other active internal user can decide this approval.'];
     }
 
-    if ($scope !== 'client' || !$client_id || !in_array($type, ['any', 'manager', 'technical', 'billing'], true)) {
+    if ($scope !== 'client' || !$client_id || !in_array($type, ['any', 'manager', 'technical', 'billing', 'specific'], true)) {
         return [false, 'The approval route is invalid.'];
+    }
+
+    if ($type === 'specific') {
+        if (!$required_contact_id) {
+            return [false, 'Choose a specific client contact.'];
+        }
+        $selected_contact = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT contact_id,
+            contact_email, contact_user_id, contact_portal_ticket_scope,
+            user_type, user_status, user_archived_at
+            FROM contacts
+            LEFT JOIN users ON user_id = contact_user_id
+            WHERE contact_id = $required_contact_id
+            AND contact_client_id = $client_id
+            AND contact_archived_at IS NULL LIMIT 1 FOR UPDATE"));
+        if (!$selected_contact) {
+            return [false, 'The selected client contact is missing, archived, or belongs to another client.'];
+        }
+        $has_portal_access = intval($selected_contact['contact_user_id'] ?? 0) > 0
+            && intval($selected_contact['user_type'] ?? 0) === 2
+            && intval($selected_contact['user_status'] ?? 0) === 1
+            && empty($selected_contact['user_archived_at'])
+            && ($required_contact_id === $contact_id
+                || $selected_contact['contact_portal_ticket_scope'] === 'client');
+        if ($has_portal_access) {
+            return [true, ''];
+        }
+        if (empty($config_smtp_provider) && empty($config_smtp_host)) {
+            return [false, 'The selected client contact cannot access this ticket and outbound email is not configured.'];
+        }
+        return filter_var(trim((string) ($selected_contact['contact_email'] ?? '')), FILTER_VALIDATE_EMAIL)
+            ? [true, '']
+            : [false, 'The selected client contact cannot access this ticket and has no valid email address.'];
     }
 
     $role_filter = '1 = 1';
@@ -1137,6 +1181,7 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
     $scope = (string) $task['runbook_version_task_approval_scope'];
     $type = (string) $task['runbook_version_task_approval_type'];
     $required_user_id = intval($task['runbook_version_task_approval_user_id']);
+    $required_contact_id = intval($task['runbook_version_task_approval_contact_id'] ?? 0);
     $ticket_id = intval($ticket['ticket_id']);
     $client_id = intval($ticket['ticket_client_id']);
     $task_name = (string) $task['runbook_version_task_name'];
@@ -1149,7 +1194,8 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
         $type,
         $required_user_id,
         $ticket,
-        $created_by
+        $created_by,
+        $required_contact_id
     );
 
     if ($route_available && $scope === 'internal' && $type === 'specific' && $required_user_id) {
@@ -1211,6 +1257,8 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
             $where = "contact_client_id = $client_id AND contact_technical = 1";
         } elseif ($type === 'billing') {
             $where = "contact_client_id = $client_id AND contact_billing = 1";
+        } elseif ($type === 'specific' && $required_contact_id) {
+            $where = "contact_id = $required_contact_id AND contact_client_id = $client_id";
         }
         if ($where) {
             $contacts = mysqli_query($mysqli, "SELECT contact_name AS recipient_name,

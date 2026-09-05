@@ -15,7 +15,12 @@ if (isset($_POST['add_ticket_approval'])) {
     $required_user_id = $scope === 'internal' && $type === 'specific'
         ? intval($_POST['approval_required_user_id'] ?? 0)
         : 0;
-    if (!$ticket_id || $scope === '' || ($type === 'specific' && !$required_user_id)) {
+    $required_contact_id = $scope === 'client' && $type === 'specific'
+        ? intval($_POST['approval_required_contact_id'] ?? 0)
+        : 0;
+    if (!$ticket_id || $scope === ''
+        || ($scope === 'internal' && $type === 'specific' && !$required_user_id)
+        || ($scope === 'client' && $type === 'specific' && !$required_contact_id)) {
         flashAlert('Choose who should approve this ticket.', 'error');
         redirect();
     }
@@ -38,7 +43,8 @@ if (isset($_POST['add_ticket_approval'])) {
         $type,
         $required_user_id,
         $ticket,
-        $session_user_id
+        $session_user_id,
+        $required_contact_id
     );
     if (!$route_available) {
         flashAlert(escapeHtml($route_error), 'error');
@@ -52,6 +58,7 @@ if (isset($_POST['add_ticket_approval'])) {
     $scope_sql = escapeSql($scope);
     $type_sql = escapeSql($type);
     $required_user_sql = $required_user_id ? (string) $required_user_id : 'NULL';
+    $required_contact_sql = $required_contact_id ? (string) $required_contact_id : 'NULL';
     $transaction_started = false;
     try {
         if (!mysqli_begin_transaction($mysqli)) {
@@ -73,7 +80,8 @@ if (isset($_POST['add_ticket_approval'])) {
             $type,
             $required_user_id,
             $locked_ticket,
-            $session_user_id
+            $session_user_id,
+            $required_contact_id
         );
         if (!$route_available) {
             throw new RuntimeException($route_error);
@@ -83,6 +91,7 @@ if (isset($_POST['add_ticket_approval'])) {
             ticket_approval_scope = '$scope_sql',
             ticket_approval_type = '$type_sql',
             ticket_approval_required_user_id = $required_user_sql,
+            ticket_approval_required_contact_id = $required_contact_sql,
             ticket_approval_status = 'pending',
             ticket_approval_created_by = $session_user_id,
             ticket_approval_url_key = '$url_key_sql',
@@ -102,6 +111,7 @@ if (isset($_POST['add_ticket_approval'])) {
                 'scope' => $scope,
                 'type' => $type,
                 'required_user_id' => $required_user_id,
+                'required_contact_id' => $required_contact_id,
             ],
             'agent',
             $session_user_id,
@@ -116,7 +126,8 @@ if (isset($_POST['add_ticket_approval'])) {
             $type,
             $required_user_id,
             $url_key_raw,
-            $session_user_id
+            $session_user_id,
+            $required_contact_id
         );
 
         if (!mysqli_commit($mysqli)) {
@@ -132,7 +143,18 @@ if (isset($_POST['add_ticket_approval'])) {
         redirect();
     }
 
-    $route_label = approvalRouteLabel($scope, $type);
+    $required_user_name = '';
+    $required_contact_name = '';
+    if ($required_user_id) {
+        $required_user_name = (string) (mysqli_fetch_row(mysqli_query($mysqli,
+            "SELECT user_name FROM users WHERE user_id = $required_user_id LIMIT 1"))[0] ?? '');
+    }
+    if ($required_contact_id) {
+        $required_contact_name = (string) (mysqli_fetch_row(mysqli_query($mysqli,
+            "SELECT contact_name FROM contacts WHERE contact_id = $required_contact_id
+            AND contact_client_id = $client_id LIMIT 1"))[0] ?? '');
+    }
+    $route_label = approvalRouteLabel($scope, $type, $required_user_name, $required_contact_name);
     logTicketHistory($ticket_id, escapeSql("$session_name requested ticket approval from $route_label"));
     logAudit('Ticket', 'Edit', escapeSql("$session_name requested ticket approval from $route_label"), $client_id, $ticket_id);
     triggerCustomAction('ticket_update', $ticket_id);
@@ -193,6 +215,7 @@ if (isset($_POST['decide_ticket_approval'])) {
         }
 
         $required_user_id = intval($locked_approval['ticket_approval_required_user_id']);
+        $required_contact_id = intval($locked_approval['ticket_approval_required_contact_id']);
         runbookDbQuery("UPDATE ticket_approvals SET
             ticket_approval_status = '$decision_sql',
             ticket_approval_decided_by = '$session_user_id',
@@ -213,12 +236,14 @@ if (isset($_POST['decide_ticket_approval'])) {
                 'scope' => $locked_approval['ticket_approval_scope'],
                 'type' => $locked_approval['ticket_approval_type'],
                 'required_user_id' => $required_user_id,
+                'required_contact_id' => $required_contact_id,
             ],
             [
                 'status' => $decision,
                 'scope' => $locked_approval['ticket_approval_scope'],
                 'type' => $locked_approval['ticket_approval_type'],
                 'required_user_id' => $required_user_id,
+                'required_contact_id' => $required_contact_id,
             ],
             'agent',
             $session_user_id,
@@ -289,12 +314,18 @@ if (isset($_POST['retry_ticket_approval']) || isset($_POST['reroute_ticket_appro
         $required_user_id = $scope === 'internal' && $type === 'specific'
             ? intval($_POST['approval_required_user_id'] ?? 0)
             : 0;
+        $required_contact_id = $scope === 'client' && $type === 'specific'
+            ? intval($_POST['approval_required_contact_id'] ?? 0)
+            : 0;
     } else {
         $scope = (string) $approval['ticket_approval_scope'];
         $type = (string) $approval['ticket_approval_type'];
         $required_user_id = intval($approval['ticket_approval_required_user_id']);
+        $required_contact_id = intval($approval['ticket_approval_required_contact_id']);
     }
-    if ($scope === '' || ($type === 'specific' && !$required_user_id)) {
+    if ($scope === ''
+        || ($scope === 'internal' && $type === 'specific' && !$required_user_id)
+        || ($scope === 'client' && $type === 'specific' && !$required_contact_id)) {
         flashAlert('Choose who should receive the approval request.', 'error');
         redirect();
     }
@@ -303,7 +334,8 @@ if (isset($_POST['retry_ticket_approval']) || isset($_POST['reroute_ticket_appro
         $type,
         $required_user_id,
         $approval,
-        intval($approval['ticket_approval_created_by'])
+        intval($approval['ticket_approval_created_by']),
+        $required_contact_id
     );
     if (!$route_available) {
         flashAlert(escapeHtml($route_error), 'error');
@@ -317,6 +349,7 @@ if (isset($_POST['retry_ticket_approval']) || isset($_POST['reroute_ticket_appro
     $scope_sql = escapeSql($scope);
     $type_sql = escapeSql($type);
     $required_user_sql = $required_user_id ? (string) $required_user_id : 'NULL';
+    $required_contact_sql = $required_contact_id ? (string) $required_contact_id : 'NULL';
     $transaction_started = false;
     try {
         if (!mysqli_begin_transaction($mysqli)) {
@@ -338,16 +371,19 @@ if (isset($_POST['retry_ticket_approval']) || isset($_POST['reroute_ticket_appro
             $scope = (string) $locked_approval['ticket_approval_scope'];
             $type = (string) $locked_approval['ticket_approval_type'];
             $required_user_id = intval($locked_approval['ticket_approval_required_user_id']);
+            $required_contact_id = intval($locked_approval['ticket_approval_required_contact_id']);
             $scope_sql = escapeSql($scope);
             $type_sql = escapeSql($type);
             $required_user_sql = $required_user_id ? (string) $required_user_id : 'NULL';
+            $required_contact_sql = $required_contact_id ? (string) $required_contact_id : 'NULL';
         }
         [$route_available, $route_error] = runbookApprovalRouteAvailability(
             $scope,
             $type,
             $required_user_id,
             $locked_ticket,
-            intval($locked_approval['ticket_approval_created_by'])
+            intval($locked_approval['ticket_approval_created_by']),
+            $required_contact_id
         );
         if (!$route_available) {
             throw new RuntimeException($route_error);
@@ -356,6 +392,7 @@ if (isset($_POST['retry_ticket_approval']) || isset($_POST['reroute_ticket_appro
         runbookDbQuery("UPDATE ticket_approvals SET
             ticket_approval_scope = '$scope_sql', ticket_approval_type = '$type_sql',
             ticket_approval_required_user_id = $required_user_sql,
+            ticket_approval_required_contact_id = $required_contact_sql,
             ticket_approval_status = 'pending', ticket_approval_decided_by = NULL,
             ticket_approval_decided_at = NULL, ticket_approval_url_key = '$url_key_sql',
             ticket_approval_url_expires_at = '$url_expires_at_sql'
@@ -376,12 +413,14 @@ if (isset($_POST['retry_ticket_approval']) || isset($_POST['reroute_ticket_appro
                 'scope' => $locked_approval['ticket_approval_scope'],
                 'type' => $locked_approval['ticket_approval_type'],
                 'required_user_id' => intval($locked_approval['ticket_approval_required_user_id']),
+                'required_contact_id' => intval($locked_approval['ticket_approval_required_contact_id']),
             ],
             [
                 'status' => 'pending',
                 'scope' => $scope,
                 'type' => $type,
                 'required_user_id' => $required_user_id,
+                'required_contact_id' => $required_contact_id,
             ],
             'agent',
             $session_user_id,
@@ -396,7 +435,8 @@ if (isset($_POST['retry_ticket_approval']) || isset($_POST['reroute_ticket_appro
             $type,
             $required_user_id,
             $url_key_raw,
-            intval($locked_approval['ticket_approval_created_by'])
+            intval($locked_approval['ticket_approval_created_by']),
+            $required_contact_id
         );
 
         if (!mysqli_commit($mysqli)) {

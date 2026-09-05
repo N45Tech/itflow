@@ -64,6 +64,11 @@ $active_users = mysqli_query($mysqli, "SELECT user_id, user_name FROM users
                     WHERE a.user_id = users.user_id AND a.client_id = $client_id AND a.permission_type = 'allow')))
     )
     ORDER BY user_name");
+$active_contacts = $client_id > 0
+    ? mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_email FROM contacts
+        WHERE contact_client_id = $client_id AND contact_archived_at IS NULL
+        ORDER BY contact_name, contact_id")
+    : false;
 
 ob_start();
 
@@ -99,6 +104,7 @@ ob_start();
                 <?php if ($client_id) { ?>
                     <optgroup label="Client contacts">
                         <option value="client:any">The contact on this ticket</option>
+                        <option value="client:specific">A specific client contact</option>
                         <option value="client:manager">Any portal manager except the ticket contact</option>
                         <option value="client:technical">Any technical contact</option>
                         <option value="client:billing">Any billing contact</option>
@@ -121,6 +127,24 @@ ob_start();
                 <?php } ?>
             </select>
         </div>
+
+        <?php if ($client_id) { ?>
+            <div class="mb-3" id="approval_contact_wrapper" hidden>
+                <label class="form-label" for="approval_required_contact_id">Client approver</label>
+                <select class="form-select" name="approval_required_contact_id" id="approval_required_contact_id" disabled>
+                    <option value="">Choose a client contact...</option>
+                    <?php while ($contact = mysqli_fetch_assoc($active_contacts)) {
+                        $contact_label = (string) $contact['contact_name'];
+                        if (trim((string) $contact['contact_email']) !== '') {
+                            $contact_label .= ' — ' . $contact['contact_email'];
+                        }
+                        ?>
+                        <option value="<?= intval($contact['contact_id']) ?>"><?= escapeHtml($contact_label) ?></option>
+                    <?php } ?>
+                </select>
+                <div class="form-text">Only contacts from this ticket's client are available.</div>
+            </div>
+        <?php } ?>
     </div>
 
     <div class="modal-footer">
@@ -136,6 +160,8 @@ ob_start();
     const route = document.getElementById('approval_route');
     const userWrapper = document.getElementById('approval_user_wrapper');
     const user = document.getElementById('approval_required_user_id');
+    const contactWrapper = document.getElementById('approval_contact_wrapper');
+    const contact = document.getElementById('approval_required_contact_id');
     const help = document.getElementById('approval_route_help');
     if (!route || !userWrapper || !user || !help) {
         return;
@@ -143,6 +169,7 @@ ob_start();
 
     const routeHelp = {
         'client:any': 'Sends the request to the contact named on this ticket.',
+        'client:specific': 'Only the client contact you choose can approve in the portal; any email link is sent only to them.',
         'client:manager': 'Sends the request to portal managers other than the contact named on this ticket.',
         'client:technical': 'Sends the request to the client\'s technical contacts.',
         'client:billing': 'Sends the request to the client\'s billing contacts.',
@@ -155,6 +182,12 @@ ob_start();
         userWrapper.hidden = !needsUser;
         user.disabled = !needsUser;
         user.required = needsUser;
+        const needsContact = route.value === 'client:specific';
+        if (contactWrapper && contact) {
+            contactWrapper.hidden = !needsContact;
+            contact.disabled = !needsContact;
+            contact.required = needsContact;
+        }
         help.textContent = routeHelp[route.value] || 'The selected person or group will receive one approval request.';
     };
 

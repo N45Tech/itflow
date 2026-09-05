@@ -13,15 +13,16 @@ function approvalRouteParts($route) {
     $scope = $parts[0] ?? '';
     $type = $parts[1] ?? '';
     $valid = ($scope === 'internal' && in_array($type, ['any', 'specific'], true))
-        || ($scope === 'client' && in_array($type, ['any', 'manager', 'technical', 'billing'], true));
+        || ($scope === 'client' && in_array($type, ['any', 'manager', 'technical', 'billing', 'specific'], true));
 
     return $valid ? [$scope, $type] : ['', ''];
 }
 
-function approvalRouteLabel($scope, $type, $specific_user_name = '') {
+function approvalRouteLabel($scope, $type, $specific_user_name = '', $specific_contact_name = '') {
     $scope = (string) $scope;
     $type = (string) $type;
     $specific_user_name = trim((string) $specific_user_name);
+    $specific_contact_name = trim((string) $specific_contact_name);
 
     if ($scope === 'internal' && $type === 'specific') {
         return $specific_user_name !== '' ? $specific_user_name : 'Specific internal user';
@@ -41,14 +42,26 @@ function approvalRouteLabel($scope, $type, $specific_user_name = '') {
     if ($scope === 'client' && $type === 'any') {
         return 'The contact on this ticket';
     }
+    if ($scope === 'client' && $type === 'specific') {
+        return $specific_contact_name !== '' ? $specific_contact_name : 'Specific client contact';
+    }
 
     return 'Unavailable approval route';
 }
 
-function ticketApprovalContactCanDecide($type, $ticket_contact_id, $contact_id, $is_manager, $is_technical, $is_billing) {
+function ticketApprovalContactCanDecide(
+    $type,
+    $ticket_contact_id,
+    $contact_id,
+    $is_manager,
+    $is_technical,
+    $is_billing,
+    $required_contact_id = 0
+) {
     $type = (string) $type;
     $ticket_contact_id = intval($ticket_contact_id);
     $contact_id = intval($contact_id);
+    $required_contact_id = intval($required_contact_id);
     if (!$contact_id) {
         return false;
     }
@@ -64,6 +77,9 @@ function ticketApprovalContactCanDecide($type, $ticket_contact_id, $contact_id, 
     }
     if ($type === 'billing') {
         return (bool) $is_billing;
+    }
+    if ($type === 'specific') {
+        return $required_contact_id > 0 && $contact_id === $required_contact_id;
     }
 
     return false;
@@ -138,6 +154,8 @@ function ticketApprovalRecordEvent(
     $to_type_sql = $event_value($after['type'] ?? null, $types);
     $from_user_id = max(0, intval($before['required_user_id'] ?? 0));
     $to_user_id = max(0, intval($after['required_user_id'] ?? 0));
+    $from_contact_id = max(0, intval($before['required_contact_id'] ?? 0));
+    $to_contact_id = max(0, intval($after['required_contact_id'] ?? 0));
     $actor_type_sql = mysqli_real_escape_string($mysqli, $actor_type);
     $actor_id = max(0, intval($actor_id));
     $actor_label_sql = $nullable_text($actor_label);
@@ -156,6 +174,8 @@ function ticketApprovalRecordEvent(
         ticket_approval_event_to_type = $to_type_sql,
         ticket_approval_event_from_required_user_id = $from_user_id,
         ticket_approval_event_to_required_user_id = $to_user_id,
+        ticket_approval_event_from_required_contact_id = $from_contact_id,
+        ticket_approval_event_to_required_contact_id = $to_contact_id,
         ticket_approval_event_actor_type = '$actor_type_sql',
         ticket_approval_event_actor_id = $actor_id,
         ticket_approval_event_actor_label = $actor_label_sql,
@@ -164,7 +184,16 @@ function ticketApprovalRecordEvent(
         'Could not append the ticket approval event');
 }
 
-function ticketApprovalQueueNotification($approval_id, $ticket, $scope, $type, $required_user_id, $url_key, $created_by) {
+function ticketApprovalQueueNotification(
+    $approval_id,
+    $ticket,
+    $scope,
+    $type,
+    $required_user_id,
+    $url_key,
+    $created_by,
+    $required_contact_id = 0
+) {
     return runbookQueueApprovalNotification(
         $approval_id,
         $ticket,
@@ -173,11 +202,53 @@ function ticketApprovalQueueNotification($approval_id, $ticket, $scope, $type, $
             'runbook_version_task_approval_scope' => $scope,
             'runbook_version_task_approval_type' => $type,
             'runbook_version_task_approval_user_id' => intval($required_user_id),
+            'runbook_version_task_approval_contact_id' => intval($required_contact_id),
         ],
         $url_key,
         $created_by,
         ['target_type' => 'ticket']
     );
+}
+
+/**
+ * Specific contact assignments are retained with approval history. Call this
+ * while the contact row is locked before hard deletion or anonymization.
+ */
+function ticketApprovalContactHasAuditHistory($contact_id, $client_id = 0) {
+    global $mysqli;
+
+    $contact_id = intval($contact_id);
+    $client_id = intval($client_id);
+    if (!$contact_id) {
+        return false;
+    }
+    $client_filter = $client_id > 0 ? "AND ticket_client_id = $client_id" : '';
+    $result = mysqli_query($mysqli, "SELECT
+        EXISTS (SELECT 1 FROM ticket_approvals
+            INNER JOIN tickets ON ticket_id = ticket_approval_ticket_id
+            WHERE ticket_approval_required_contact_id = $contact_id $client_filter) AS has_ticket_approval,
+        EXISTS (SELECT 1 FROM task_approvals
+            INNER JOIN tasks ON task_id = approval_task_id
+            INNER JOIN tickets ON ticket_id = task_ticket_id
+            WHERE approval_required_contact_id = $contact_id $client_filter) AS has_task_approval,
+        EXISTS (SELECT 1 FROM ticket_approval_events
+            INNER JOIN tickets ON ticket_id = ticket_approval_event_ticket_id
+            WHERE (ticket_approval_event_from_required_contact_id = $contact_id
+                OR ticket_approval_event_to_required_contact_id = $contact_id) $client_filter) AS has_ticket_event,
+        EXISTS (SELECT 1 FROM task_approval_events
+            INNER JOIN tasks ON task_id = task_approval_event_task_id
+            INNER JOIN tickets ON ticket_id = task_ticket_id
+            WHERE (task_approval_event_from_required_contact_id = $contact_id
+                OR task_approval_event_to_required_contact_id = $contact_id) $client_filter) AS has_task_event");
+    if ($result === false) {
+        error_log("Could not verify contact approval retention for contact $contact_id: " . mysqli_error($mysqli));
+        return true;
+    }
+    $row = mysqli_fetch_assoc($result);
+    return intval($row['has_ticket_approval'] ?? 0) > 0
+        || intval($row['has_task_approval'] ?? 0) > 0
+        || intval($row['has_ticket_event'] ?? 0) > 0
+        || intval($row['has_task_event'] ?? 0) > 0;
 }
 
 /**

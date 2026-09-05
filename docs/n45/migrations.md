@@ -43,6 +43,7 @@ The manifest reserves the next four feature IDs and all post-integration migrati
 | — | `n45-0017-automation-action-outbox` | Automation |
 | None | `n45-0018-portal-business-review-access` | Portal |
 | — | `n45-0019-ticket-approval-gates` | Runbooks |
+| — | `n45-0020-specific-client-approvers` | Runbooks |
 
 When integrating each feature, rename its file into `n45/migrations/`, change its guard to `FROM_N45_DB_UPDATER`, and make its header name the stable ID. Remove checks that read `settings.config_current_database_version` or require the preceding numeric fork marker; stable manifest order is the N45 prerequisite after the namespaces separate. Add the module and ordered migration definition to `n45/manifest.php`; copy the reservation's `legacy_version`, `data_change`, and rollback contract exactly; add complete column, index, and data fingerprints; update the released-file inventory and baseline-schema assertions; then add the migration to the released inventory below. `n45-0011` must retain `legacy_version => '2.7.8'`, not `null`. Remove no reservation: the durable mapping is needed to detect old installations whose upstream marker already contains that former fork number.
 
@@ -110,6 +111,7 @@ The legacy bridge remains deliberately read-only. A database whose upstream mark
 | `n45-0017-automation-action-outbox` | — | Automation | No | Disable automation processing, preserve queued and delivered action evidence, and restore the pre-upgrade database snapshot before reverting application code. |
 | `n45-0018-portal-business-review-access` | None | Portal | No | Disable portal business-review access and restore the pre-upgrade database snapshot before reverting application code. |
 | `n45-0019-ticket-approval-gates` | — | Runbooks | No | Disable ticket approval creation, preserve approval evidence, and restore the pre-upgrade database snapshot before reverting application code. |
+| `n45-0020-specific-client-approvers` | — | Runbooks | No | Disable specific client-contact routing, preserve approval evidence, and restore the pre-upgrade database snapshot before reverting application code. |
 
 Any environment that experimentally ran an earlier local `2.8.0.php` must be restored from its pre-upgrade snapshot or explicitly reconciled to the final portal request schema before release deployment. An advanced numeric marker alone is not proof of the final schema: the legacy bridge fails closed on an older or partial shape. Once namespace state is reconciled, an unrecorded `n45-0013` remains pending and the normal runner executes its retry-safe repair before recording the ledger row.
 
