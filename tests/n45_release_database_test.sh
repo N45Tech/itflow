@@ -81,13 +81,29 @@ assert_current() {
     php tests/n45_release_database_assert.php "$source_mode"
 }
 
+ensure_commit_available() {
+    local commit_sha=$1
+    local fixture_label=$2
+
+    [[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]] || fail "invalid $fixture_label SHA: $commit_sha"
+    if git cat-file -e "$commit_sha^{commit}" 2> /dev/null; then
+        return
+    fi
+
+    echo "Fetching pinned $fixture_label ($commit_sha)"
+    git fetch --no-tags --no-write-fetch-head origin "$commit_sha" \
+        || fail "$fixture_label is unavailable and could not be fetched from origin"
+    git cat-file -e "$commit_sha^{commit}" 2> /dev/null \
+        || fail "$fixture_label is unavailable after fetch"
+}
+
 UPSTREAM_MARKER_BASE=$(php -r '$manifest = require "n45/manifest.php"; echo $manifest["maintenance"]["upstream_marker_base"] ?? "";')
 [[ "$UPSTREAM_MARKER_BASE" == '2.6.7' ]] || fail "unexpected upstream marker base: $UPSTREAM_MARKER_BASE"
 CURRENT_UPSTREAM_MARKER=$(php -r 'require "includes/database_version.php"; echo LATEST_DATABASE_VERSION;')
 [[ "$CURRENT_UPSTREAM_MARKER" =~ ^[0-9]+(\.[0-9]+)+$ ]] || fail "invalid current upstream marker: $CURRENT_UPSTREAM_MARKER"
 php -r 'exit(version_compare($argv[1], $argv[2], "<=") ? 0 : 1);' "$UPSTREAM_MARKER_BASE" "$CURRENT_UPSTREAM_MARKER" \
     || fail 'the current upstream marker predates the bridge base'
-git cat-file -e "$UPSTREAM_SCHEMA_COMMIT^{commit}" || fail 'reviewed upstream schema commit is unavailable'
+ensure_commit_available "$UPSTREAM_SCHEMA_COMMIT" 'reviewed upstream schema commit'
 git merge-base --is-ancestor "$UPSTREAM_SCHEMA_COMMIT" HEAD || fail 'reviewed upstream schema commit is not an ancestor of this release'
 git show "$UPSTREAM_SCHEMA_COMMIT:db.sql" > "$TEMP_DIRECTORY/upstream-2.6.7.sql"
 
@@ -174,9 +190,10 @@ LEGACY_MARKER=$(php -r '
 ')
 [[ "$LEGACY_MARKER" =~ ^[0-9]+(\.[0-9]+)+$ ]] || fail 'the manifest has no safe legacy bridge marker'
 
-git cat-file -e "$LEGACY_SCHEMA_COMMIT^{commit}" || fail 'legacy N45 schema commit is unavailable'
 # The sanitized release lineage intentionally excludes historical operations
-# commits. The exact content-addressed commit remains the authoritative fixture.
+# commits. Fetch the exact content-addressed commit when a clean checkout does
+# not already contain the authoritative fixture.
+ensure_commit_available "$LEGACY_SCHEMA_COMMIT" 'legacy N45 schema commit'
 git show "$LEGACY_SCHEMA_COMMIT:db.sql" > "$TEMP_DIRECTORY/legacy-fixture.sql"
 reset_database "$LEGACY_DATABASE"
 import_database "$LEGACY_DATABASE" "$TEMP_DIRECTORY/legacy-fixture.sql"

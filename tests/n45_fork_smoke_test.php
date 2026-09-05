@@ -552,6 +552,7 @@ foreach (glob($root . '/api/v1/tickets/*.php') ?: [] as $api_ticket_file) {
 // Repeatable parity review must remain repository native and read-only.
 $review_script = $read('scripts/n45-upstream-review.sh');
 $review_workflow = $read('.github/workflows/upstream-parity.yml');
+$release_database_test = $read('tests/n45_release_database_test.sh');
 $dockerignore = $read('.dockerignore');
 $assertContains('git merge-base', $review_script, 'Upstream review does not calculate a merge base');
 $assertContains('comm -12', $review_script, 'Upstream review does not identify path overlap');
@@ -574,6 +575,9 @@ $assertContains('[ "$GITHUB_EVENT_NAME" = pull_request ]', $review_workflow, 'Pa
 $assertContains('[ "$GITHUB_BASE_REF" = main ]', $review_workflow, 'Automatic parity approval is not restricted to PRs targeting main');
 $assertContains('[ "$PR_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]', $review_workflow, 'Automatic parity approval is not restricted to the repository write-access boundary');
 $assertContains('reviewed_head_sha="$(git rev-parse HEAD)"', $review_workflow, 'Trusted integration approval is not bound to the exact checked-out merge candidate');
+$assertContains('ensure_commit_available()', $release_database_test, 'Release database tests cannot recover pinned fixtures omitted from a clean checkout');
+$assertContains('git fetch --no-tags --no-write-fetch-head origin "$commit_sha"', $release_database_test, 'Release database tests do not fetch missing fixtures by exact SHA');
+$assertContains('ensure_commit_available "$LEGACY_SCHEMA_COMMIT"', $release_database_test, 'The legacy schema bridge does not ensure its pinned fixture is available');
 $assertContains('.github/*', $dockerignore, 'Deployment image does not bound the reopened .github build context.');
 $assertContains('!.github/workflows', $dockerignore, 'Deployment image excludes the .github workflows directory, preventing parity-wrapper discovery.');
 $assertContains('.github/workflows/*', $dockerignore, 'Deployment image does not limit workflow inclusion to the required parity contract.');
