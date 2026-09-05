@@ -306,6 +306,9 @@ if (isset($_GET['delete_client'])) {
         if (portalRequestClientHasAuditHistory($client_id)) {
             throw new DomainException('The client has immutable portal request or approval history');
         }
+        if (ticketApprovalClientHasAuditHistory($client_id)) {
+            throw new DomainException('The client has immutable ticket approval history');
+        }
         if (agreementClientHasAuditHistory($client_id)) {
             throw new DomainException('The client has immutable agreement, SLA, or service-review history');
         }

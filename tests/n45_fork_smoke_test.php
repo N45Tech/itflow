@@ -114,6 +114,7 @@ $assertTrue(
         'n45-0016-release-safety-hardening',
         'n45-0017-automation-action-outbox',
         'n45-0018-portal-business-review-access',
+        'n45-0019-ticket-approval-gates',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -132,8 +133,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0018-portal-business-review-access',
-    'The portal business-review migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0019-ticket-approval-gates',
+    'The ticket approval-gate migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -170,6 +171,16 @@ $assertTrue(
 $assertTrue(
     in_array('n45-0018-portal-business-review-access', $manifest['modules']['portal']['migrations'] ?? [], true),
     'The business-review permission is not owned by the portal module'
+);
+$ticket_approval_migration = $manifest['migrations']['n45-0019-ticket-approval-gates'] ?? [];
+$assertTrue(
+    ($ticket_approval_migration['fingerprint']['tables'] ?? null)
+        === ($post_integration_reservations['n45-0019-ticket-approval-gates']['created_tables'] ?? null),
+    'The ticket approval-gate migration does not match its table reservation'
+);
+$assertTrue(
+    in_array('n45-0019-ticket-approval-gates', $manifest['modules']['runbooks']['migrations'] ?? [], true),
+    'Ticket approval gates are not owned by the runbooks module'
 );
 
 $manifest_migration_files = array_map(
@@ -541,6 +552,7 @@ foreach (glob($root . '/api/v1/tickets/*.php') ?: [] as $api_ticket_file) {
 // Repeatable parity review must remain repository native and read-only.
 $review_script = $read('scripts/n45-upstream-review.sh');
 $review_workflow = $read('.github/workflows/upstream-parity.yml');
+$release_database_test = $read('tests/n45_release_database_test.sh');
 $dockerignore = $read('.dockerignore');
 $assertContains('git merge-base', $review_script, 'Upstream review does not calculate a merge base');
 $assertContains('comm -12', $review_script, 'Upstream review does not identify path overlap');
@@ -558,6 +570,14 @@ $assertTrue(is_file($root . '/n45/upstream-diff-check.allowlist'), 'The exact hi
 $assertTrue(is_file($root . '/n45/security-sensitive-paths.regex'), 'Security-sensitive path rules are missing');
 $assertContains('https://github.com/itflow-org/itflow.git', $review_workflow, 'Parity workflow does not fetch authoritative ITFlow upstream');
 $assertContains('for test_file in tests/*_test.php', $review_workflow, 'Parity workflow does not run the full regression suite');
+$assertContains('PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}', $review_workflow, 'Parity workflow cannot identify same-repository integration PRs');
+$assertContains('[ "$GITHUB_EVENT_NAME" = pull_request ]', $review_workflow, 'Parity workflow does not automatically bind trusted integration PRs');
+$assertContains('[ "$GITHUB_BASE_REF" = main ]', $review_workflow, 'Automatic parity approval is not restricted to PRs targeting main');
+$assertContains('[ "$PR_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]', $review_workflow, 'Automatic parity approval is not restricted to the repository write-access boundary');
+$assertContains('reviewed_head_sha="$(git rev-parse HEAD)"', $review_workflow, 'Trusted integration approval is not bound to the exact checked-out merge candidate');
+$assertContains('ensure_commit_available()', $release_database_test, 'Release database tests cannot recover pinned fixtures omitted from a clean checkout');
+$assertContains('git fetch --no-tags --no-write-fetch-head origin "$commit_sha"', $release_database_test, 'Release database tests do not fetch missing fixtures by exact SHA');
+$assertContains('ensure_commit_available "$LEGACY_SCHEMA_COMMIT"', $release_database_test, 'The legacy schema bridge does not ensure its pinned fixture is available');
 $assertContains('.github/*', $dockerignore, 'Deployment image does not bound the reopened .github build context.');
 $assertContains('!.github/workflows', $dockerignore, 'Deployment image excludes the .github workflows directory, preventing parity-wrapper discovery.');
 $assertContains('.github/workflows/*', $dockerignore, 'Deployment image does not limit workflow inclusion to the required parity contract.');

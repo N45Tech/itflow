@@ -14,7 +14,7 @@ $ticket_tasks_modal = file_get_contents($root . '/agent/js/ticket_tasks_modal.js
 $ticket_add_modal = file_get_contents($root . '/agent/modals/ticket/ticket_add.php');
 $recurring_ticket_add_modal = file_get_contents($root . '/agent/modals/recurring_ticket/recurring_ticket_add.php');
 $recurring_ticket_edit_modal = file_get_contents($root . '/agent/modals/recurring_ticket/recurring_ticket_edit.php');
-$ticket_approval_reroute_modal = file_get_contents($root . '/agent/modals/ticket/ticket_task_approval_reroute.php');
+$ticket_approval_manage_modal = file_get_contents($root . '/agent/modals/ticket/ticket_approval_manage.php');
 
 $failures = [];
 $assertContains = static function (string $needle, string $haystack, string $message) use (&$failures): void {
@@ -112,16 +112,16 @@ foreach ([
     );
 }
 
-$assertContains('data-bs-dismiss="modal"', $ticket_approval_reroute_modal,
-    'The task approval reroute modal does not use the active Bootstrap dismiss API');
-$assertNotContains('data-dismiss="modal"', $ticket_approval_reroute_modal,
-    'The task approval reroute modal still uses the removed Bootstrap dismiss API');
-$assertContains("document.getElementById('approval_route_", $ticket_approval_reroute_modal,
-    'The task approval reroute modal does not initialize its route control with native DOM APIs');
-$assertContains("route.addEventListener('change', syncSpecificUser);", $ticket_approval_reroute_modal,
-    'The task approval reroute modal does not install its native route-change handler');
-$assertNotContains('$(function', $ticket_approval_reroute_modal,
-    'The task approval reroute modal still requires unavailable jQuery');
+$assertContains('data-bs-dismiss="modal"', $ticket_approval_manage_modal,
+    'The consolidated approval manager does not use the active Bootstrap dismiss API');
+$assertNotContains('data-dismiss="modal"', $ticket_approval_manage_modal,
+    'The consolidated approval manager still uses the removed Bootstrap dismiss API');
+$assertContains("document.getElementById('approval_route_", $ticket_approval_manage_modal,
+    'The consolidated approval manager does not initialize its route control with native DOM APIs');
+$assertContains("route.addEventListener('change', syncSpecificUser);", $ticket_approval_manage_modal,
+    'The consolidated approval manager does not install its native route-change handler');
+$assertNotContains('$(function', $ticket_approval_manage_modal,
+    'The consolidated approval manager still requires unavailable jQuery');
 
 $auth_script_start = strpos($asset_view, '<!-- JavaScript to Show/Hide Password Form Group -->');
 $auth_script_end = $auth_script_start === false ? false : strpos($asset_view, '</script>', $auth_script_start);

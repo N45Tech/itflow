@@ -207,7 +207,7 @@ function runbookRecordApprovalEvent(
     $actions = ['baseline', 'created', 're_requested', 'rerouted', 'approved', 'declined', 'waived'];
     $statuses = ['pending', 'approved', 'declined', 'waived'];
     $scopes = ['internal', 'client'];
-    $types = ['any', 'technical', 'billing', 'specific'];
+    $types = ['any', 'manager', 'technical', 'billing', 'specific'];
     $actor_types = ['agent', 'contact', 'guest', 'system'];
     if (!$approval_id || !$task_id || !in_array($action, $actions, true)) {
         throw new RuntimeException('Invalid approval history event');
@@ -1069,22 +1069,34 @@ function runbookApprovalRouteAvailability($scope, $type, $required_user_id, $tic
             : [false, 'No other active internal user can decide this approval.'];
     }
 
-    if ($scope !== 'client' || !$client_id || !in_array($type, ['any', 'technical', 'billing'], true)) {
+    if ($scope !== 'client' || !$client_id || !in_array($type, ['any', 'manager', 'technical', 'billing'], true)) {
         return [false, 'The approval route is invalid.'];
     }
 
     $role_filter = '1 = 1';
-    if ($type === 'technical') {
+    $contact_exclusion = '';
+    if ($type === 'manager') {
+        $role_filter = "contact_portal_ticket_scope = 'client' AND contact_portal_asset_scope = 'client'";
+        // A requester who is also a portal manager must not approve their own ticket.
+        $contact_exclusion = $contact_id ? "AND contact_id <> $contact_id" : '';
+    } elseif ($type === 'technical') {
         $role_filter = 'contact_technical = 1';
     } elseif ($type === 'billing') {
         $role_filter = 'contact_billing = 1';
     }
+    if ($type === 'any' && !$contact_id) {
+        return [false, 'This ticket does not have a contact who can receive the approval.'];
+    }
+    $portal_access_filter = $type === 'any'
+        ? "contact_id = $contact_id"
+        : "(contact_id = $contact_id OR contact_portal_ticket_scope = 'client')";
     $portal_eligible = mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*) FROM contacts
         INNER JOIN users ON user_id = contact_user_id
         WHERE contact_client_id = $client_id AND contact_archived_at IS NULL
         AND user_type = 2 AND user_status = 1 AND user_archived_at IS NULL
         AND $role_filter
-        AND (contact_id = $contact_id OR contact_portal_ticket_scope = 'client')"));
+        $contact_exclusion
+        AND $portal_access_filter"));
     if (intval($portal_eligible[0] ?? 0) > 0) {
         return [true, ''];
     }
@@ -1094,9 +1106,11 @@ function runbookApprovalRouteAvailability($scope, $type, $required_user_id, $tic
     }
 
     if ($type === 'any') {
-        $contact_filter = $contact_id
-            ? "contact_id = $contact_id"
-            : 'contact_primary = 1';
+        $contact_filter = "contact_id = $contact_id";
+    } elseif ($type === 'manager') {
+        $contact_filter = "contact_portal_ticket_scope = 'client'
+            AND contact_portal_asset_scope = 'client'"
+            . ($contact_id ? " AND contact_id <> $contact_id" : '');
     } elseif ($type === 'technical') {
         $contact_filter = 'contact_technical = 1';
     } else {
@@ -1114,7 +1128,7 @@ function runbookApprovalRouteAvailability($scope, $type, $required_user_id, $tic
     return [false, 'No portal-authorized contact or valid deliverable email recipient is available.'];
 }
 
-function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key, $created_by) {
+function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key, $created_by, $context = []) {
     global $mysqli, $config_smtp_provider, $config_smtp_host, $config_ticket_from_email,
         $config_ticket_from_name, $config_base_url;
 
@@ -1126,6 +1140,9 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
     $ticket_id = intval($ticket['ticket_id']);
     $client_id = intval($ticket['ticket_client_id']);
     $task_name = (string) $task['runbook_version_task_name'];
+    $target_type = ($context['target_type'] ?? 'task') === 'ticket' ? 'ticket' : 'task';
+    $ticket_label = (string) $ticket['ticket_prefix'] . intval($ticket['ticket_number']);
+    $internal_target = $target_type === 'ticket' ? "Ticket $ticket_label" : "Runbook task $task_name";
 
     [$route_available] = runbookApprovalRouteAvailability(
         $scope,
@@ -1136,7 +1153,7 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
     );
 
     if ($route_available && $scope === 'internal' && $type === 'specific' && $required_user_id) {
-        $notification = escapeSql("Runbook task $task_name requires your approval");
+        $notification = escapeSql("$internal_target requires your approval");
         runbookDbQuery("INSERT INTO notifications SET notification_type = 'Ticket',
             notification = '$notification', notification_action = 'ticket.php?ticket_id=$ticket_id',
             notification_client_id = $client_id, notification_user_id = $required_user_id", 'Could not notify the specific runbook approver');
@@ -1172,19 +1189,24 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
             ) ORDER BY user_id");
         while ($recipient = mysqli_fetch_assoc($users)) {
             $recipient_user_id = intval($recipient['user_id']);
-            $notification = escapeSql("Runbook task $task_name requires an internal approval");
+            $notification = escapeSql("$internal_target requires an internal approval");
             runbookDbQuery("INSERT INTO notifications SET notification_type = 'Ticket',
                 notification = '$notification', notification_action = 'ticket.php?ticket_id=$ticket_id',
                 notification_client_id = $client_id, notification_user_id = $recipient_user_id", 'Could not notify an eligible runbook approver');
             $recipients[] = $recipient;
         }
     } elseif ($scope === 'client') {
+        $contact_id = intval($ticket['ticket_contact_id']);
         $where = '';
         if ($type === 'any') {
-            $contact_id = intval($ticket['ticket_contact_id']);
             $where = $contact_id
                 ? "contact_id = $contact_id AND contact_client_id = $client_id"
                 : "contact_client_id = $client_id AND contact_primary = 1";
+        } elseif ($type === 'manager') {
+            $where = "contact_client_id = $client_id
+                AND contact_portal_ticket_scope = 'client'
+                AND contact_portal_asset_scope = 'client'"
+                . ($contact_id ? " AND contact_id <> $contact_id" : '');
         } elseif ($type === 'technical') {
             $where = "contact_client_id = $client_id AND contact_technical = 1";
         } elseif ($type === 'billing') {
@@ -1202,7 +1224,7 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
 
     if (!$route_available) {
         if ($created_by) {
-            $notification = escapeSql("No eligible recipient was found for runbook approval: $task_name");
+            $notification = escapeSql("No eligible recipient was found for approval: $internal_target");
             runbookDbQuery("INSERT INTO notifications SET notification_type = 'Ticket',
                 notification = '$notification', notification_action = 'ticket.php?ticket_id=$ticket_id',
                 notification_client_id = $client_id, notification_user_id = $created_by", 'Could not notify the approval requester that no route is available');
@@ -1224,12 +1246,14 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
         $base_url = 'https://' . $base_url;
     }
     if ($scope === 'client') {
-        $approval_url = $base_url . '/guest/guest_approve_ticket_task.php?task_approval_id=' . $approval_id
-            . '&url_key=' . rawurlencode($url_key);
+        $approval_url = $target_type === 'ticket'
+            ? $base_url . '/guest/guest_approve_ticket.php?ticket_approval_id=' . $approval_id
+                . '&url_key=' . rawurlencode($url_key)
+            : $base_url . '/guest/guest_approve_ticket_task.php?task_approval_id=' . $approval_id
+                . '&url_key=' . rawurlencode($url_key);
     } else {
         $approval_url = $base_url . '/agent/ticket.php?ticket_id=' . $ticket_id;
     }
-    $ticket_label = (string) $ticket['ticket_prefix'] . intval($ticket['ticket_number']);
     $ticket_subject = (string) $ticket['ticket_subject'];
     $subject = escapeSql("Approval required - [$ticket_label] - $ticket_subject");
     $safe_task_name = escapeHtml($task_name);
@@ -1238,7 +1262,9 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
     $credential_warning = $scope === 'client'
         ? '<br><br>Do not forward this approval link; it acts as the approval credential.'
         : '';
-    $body = escapeSql("Hello,<br><br>The ticket <strong>$safe_ticket_subject</strong> has a runbook task requiring your decision:<br><br><strong>$safe_task_name</strong><br><br><a href=\"$safe_approval_url\">Review and decide this approval</a>.$credential_warning");
+    $body = $target_type === 'ticket'
+        ? escapeSql("Hello,<br><br>You have been asked to approve the ticket <strong>$safe_ticket_subject</strong> before work can be completed.<br><br><a href=\"$safe_approval_url\">Review and decide this approval</a>.$credential_warning")
+        : escapeSql("Hello,<br><br>The ticket <strong>$safe_ticket_subject</strong> has a runbook task requiring your decision:<br><br><strong>$safe_task_name</strong><br><br><a href=\"$safe_approval_url\">Review and decide this approval</a>.$credential_warning");
     $from = escapeSql((string) $config_ticket_from_email);
     $from_name = escapeSql((string) $config_ticket_from_name);
     $mail = [];
@@ -1261,7 +1287,7 @@ function runbookQueueApprovalNotification($approval_id, $ticket, $task, $url_key
     foreach ($mail as $email) {
         addToMailQueue([$email]);
         if (mysqli_affected_rows($mysqli) !== 1) {
-            throw new RuntimeException('Could not queue a runbook approval email');
+            throw new RuntimeException('Could not queue an approval email');
         }
     }
     return true;
@@ -1761,7 +1787,22 @@ function runbookOnlyTicketCanResolve($ticket_id) {
  * requirement names, exception reasons and client context cannot leak.
  */
 function ticketLifecycleCanResolve($ticket_id, $include_documentation_detail = false) {
-    return runbookOnlyTicketCanResolve($ticket_id);
+    global $mysqli;
+
+    [$runbook_allows_resolution, $runbook_error] = runbookOnlyTicketCanResolve($ticket_id);
+    if (!$runbook_allows_resolution) {
+        return [false, $runbook_error];
+    }
+
+    $ticket_id = intval($ticket_id);
+    $pending_ticket_approvals = mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*)
+        FROM ticket_approvals WHERE ticket_approval_ticket_id = $ticket_id
+        AND ticket_approval_status <> 'approved'"));
+    if (intval($pending_ticket_approvals[0] ?? 0) > 0) {
+        return [false, intval($pending_ticket_approvals[0]) . ' ticket approval(s) are still unresolved.'];
+    }
+
+    return [true, ''];
 }
 /**
  * Backwards-compatible public gate used by all existing terminal transitions.

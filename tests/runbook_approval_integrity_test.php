@@ -45,7 +45,7 @@ $runbooks = $read('functions/runbooks.php');
 $tasks = $read('agent/post/task.php');
 $tickets = $read('agent/post/ticket.php');
 $agent_ticket = $read('agent/ticket.php');
-$task_edit = $read('agent/modals/ticket/ticket_task_edit.php');
+$approval_manage = $read('agent/modals/ticket/ticket_approval_manage.php');
 $client = $read('client/post.php');
 $guest = $read('guest/guest_post.php');
 $migration = $read('n45/migrations/n45-0010-versioned-runbooks.php');
@@ -86,7 +86,7 @@ $assertOrdered(
     ["elseif (\$task_needs_approval && \$user_can_approve)", "elseif (\$task_state === 'Waiting')"],
     'A waiting task hides the assigned internal approver decision controls'
 );
-$assertContains("if (lookupUserPermission('module_support') >= 3)", $task_edit, 'The task editor exposes the administrator-only approval manager to technicians');
+$assertContains("enforceUserPermission('module_support', 3)", $approval_manage, 'The consolidated approval manager is not administrator-only');
 
 $resume = $section($tasks, "if (isset(\$_POST['resume_task']))", "if (isset(\$_POST['skip_runbook_task']))");
 $assertOrdered(
@@ -108,7 +108,7 @@ $assertContains("'guest'", $guest, 'Guest approval decisions lack guest event at
 $transfer = $section($tickets, "if (isset(\$_POST['change_client_ticket']))", "if (isset(\$_GET['resolve_ticket']))");
 $assertOrdered(
     $transfer,
-    ['mysqli_begin_transaction($mysqli)', 'FOR UPDATE', 'has_execution', 'has_approval', 'has_evidence', 'UPDATE tickets SET ticket_client_id'],
+    ['mysqli_begin_transaction($mysqli)', 'FOR UPDATE', 'has_execution', 'has_task_approval', 'has_ticket_approval', 'has_evidence', 'UPDATE tickets SET ticket_client_id'],
     'Ticket transfer does not check all client-bound workflow artifacts after locking'
 );
 $assertContains('AND ticket_client_id = $source_client_id', $transfer, 'Ticket transfer lacks a source-client compare-and-swap');

@@ -338,6 +338,145 @@ if (isset($_GET['approve_ticket_task'])) {
     redirect();
 }
 
+if (isset($_POST['decide_client_ticket_approval'])) {
+
+    validateCSRFToken();
+
+    $approval_id = intval($_POST['ticket_approval_id'] ?? 0);
+    $decision = (string) ($_POST['decision'] ?? '');
+    if (!$approval_id || !in_array($decision, ['approved', 'declined'], true)) {
+        flashAlert('Choose approve or decline.', 'warning');
+        redirect();
+    }
+
+    $approval = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_approvals.*,
+        ticket_id, ticket_client_id, ticket_contact_id, ticket_project_id,
+        ticket_assigned_to, ticket_status, ticket_created_at, ticket_prefix,
+        ticket_number, ticket_subject, ticket_resolved_at, ticket_closed_at
+        FROM ticket_approvals
+        INNER JOIN tickets ON ticket_id = ticket_approval_ticket_id
+        WHERE ticket_approval_id = $approval_id
+        AND ticket_approval_status = 'pending'
+        AND ticket_approval_scope = 'client'
+        AND ticket_client_id = $session_client_id LIMIT 1"));
+    if (!$approval) {
+        flashAlert('Cannot find that pending approval.', 'warning');
+        redirect();
+    }
+
+    $ticket_id = intval($approval['ticket_id']);
+    if (!verifyContactTicketAccess($ticket_id, 'Open')) {
+        flashAlert('You do not have access to decide this approval.', 'warning');
+        redirect();
+    }
+    $contact_can_decide = ticketApprovalContactCanDecide(
+        $approval['ticket_approval_type'],
+        intval($approval['ticket_contact_id']),
+        $session_contact_id,
+        contactCan('tickets_all') && contactCan('assets_all'),
+        $session_contact_is_technical_contact,
+        $session_contact_is_billing_contact
+    );
+    if (!$contact_can_decide) {
+        flashAlert('This approval is assigned to a different client contact or role.', 'warning');
+        redirect();
+    }
+
+    $decision_sql = escapeSql($decision);
+    $decided_by = escapeSql("Contact $session_contact_id ($session_contact_email)");
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the client ticket approval decision');
+        }
+        $transaction_started = true;
+
+        $locked_ticket = runbookLockOpenTicket($ticket_id);
+        if (intval($locked_ticket['ticket_client_id']) !== intval($session_client_id)
+            || (intval($locked_ticket['ticket_contact_id']) !== intval($session_contact_id)
+                && !contactCan('tickets_all'))) {
+            throw new RuntimeException('The ticket is outside this contact scope');
+        }
+        $locked_approval = mysqli_fetch_assoc(runbookDbQuery("SELECT * FROM ticket_approvals
+            WHERE ticket_approval_id = $approval_id
+            AND ticket_approval_ticket_id = $ticket_id LIMIT 1 FOR UPDATE",
+            'Could not lock the client ticket approval'));
+        if (!$locked_approval
+            || $locked_approval['ticket_approval_scope'] !== 'client'
+            || $locked_approval['ticket_approval_status'] !== 'pending'
+            || !ticketApprovalContactCanDecide(
+                $locked_approval['ticket_approval_type'],
+                intval($locked_ticket['ticket_contact_id']),
+                $session_contact_id,
+                contactCan('tickets_all') && contactCan('assets_all'),
+                $session_contact_is_technical_contact,
+                $session_contact_is_billing_contact
+            )) {
+            throw new RuntimeException('The client ticket approval is no longer actionable');
+        }
+
+        $required_user_id = intval($locked_approval['ticket_approval_required_user_id']);
+        runbookDbQuery("UPDATE ticket_approvals SET
+            ticket_approval_status = '$decision_sql',
+            ticket_approval_decided_by = '$decided_by',
+            ticket_approval_decided_at = NOW(), ticket_approval_url_key = '',
+            ticket_approval_url_expires_at = NULL
+            WHERE ticket_approval_id = $approval_id
+            AND ticket_approval_ticket_id = $ticket_id
+            AND ticket_approval_scope = 'client'
+            AND ticket_approval_status = 'pending'", 'Could not decide the client ticket approval');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The client ticket approval was already decided');
+        }
+        ticketApprovalRecordEvent(
+            $approval_id,
+            $ticket_id,
+            $decision,
+            [
+                'status' => 'pending',
+                'scope' => $locked_approval['ticket_approval_scope'],
+                'type' => $locked_approval['ticket_approval_type'],
+                'required_user_id' => $required_user_id,
+            ],
+            [
+                'status' => $decision,
+                'scope' => $locked_approval['ticket_approval_scope'],
+                'type' => $locked_approval['ticket_approval_type'],
+                'required_user_id' => $required_user_id,
+            ],
+            'contact',
+            $session_contact_id,
+            $session_contact_email
+        );
+
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the client ticket approval decision');
+        }
+        $transaction_started = false;
+    } catch (Throwable $exception) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        error_log("Client ticket approval $approval_id failed safely: " . $exception->getMessage());
+        flashAlert('This approval was already decided. Refresh the ticket.', 'warning');
+        redirect();
+    }
+
+    $created_by = intval($approval['ticket_approval_created_by']);
+    if ($created_by) {
+        $contact_email_sql = escapeSql($session_contact_email);
+        mysqli_query($mysqli, "INSERT INTO notifications SET notification_type = 'Ticket',
+            notification = '$contact_email_sql $decision_sql ticket approval',
+            notification_action = 'ticket.php?ticket_id=$ticket_id&client_id=$session_client_id',
+            notification_client_id = $session_client_id, notification_user_id = $created_by");
+    }
+    logTicketHistory($ticket_id, escapeSql("Client contact $session_contact_email $decision ticket approval $approval_id"));
+    logAudit('Ticket', 'Edit', escapeSql("Contact $session_contact_email $decision ticket approval $approval_id"), $session_client_id, $ticket_id);
+    triggerCustomAction('ticket_update', $ticket_id);
+    flashAlert('Ticket approval ' . escapeHtml($decision));
+    redirect();
+}
+
 if (isset($_POST['decide_client_ticket_task_approval'])) {
 
     validateCSRFToken();
@@ -351,7 +490,7 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
     }
 
     $approval_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT approval_created_by,
-        approval_type, task_name, task_ticket_id, ticket_client_id
+        approval_type, task_name, task_ticket_id, ticket_client_id, ticket_contact_id
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
         INNER JOIN tickets ON ticket_id = task_ticket_id
@@ -372,9 +511,14 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
     }
 
     $approval_type = (string) $approval_row['approval_type'];
-    $contact_can_decide = $approval_type === 'any'
-        || ($approval_type === 'technical' && !empty($session_contact_is_technical_contact))
-        || ($approval_type === 'billing' && !empty($session_contact_is_billing_contact));
+    $contact_can_decide = ticketApprovalContactCanDecide(
+        $approval_type,
+        intval($approval_row['ticket_contact_id']),
+        $session_contact_id,
+        contactCan('tickets_all') && contactCan('assets_all'),
+        $session_contact_is_technical_contact,
+        $session_contact_is_billing_contact
+    );
     if (!$contact_can_decide) {
         flashAlert('This approval requires a different client contact role.', 'warning');
         redirect();
@@ -406,9 +550,14 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
             throw new RuntimeException('The approval is no longer actionable');
         }
         $locked_type = (string) $locked_approval['approval_type'];
-        $locked_contact_can_decide = $locked_type === 'any'
-            || ($locked_type === 'technical' && !empty($session_contact_is_technical_contact))
-            || ($locked_type === 'billing' && !empty($session_contact_is_billing_contact));
+        $locked_contact_can_decide = ticketApprovalContactCanDecide(
+            $locked_type,
+            intval($locked_ticket['ticket_contact_id']),
+            $session_contact_id,
+            contactCan('tickets_all') && contactCan('assets_all'),
+            $session_contact_is_technical_contact,
+            $session_contact_is_billing_contact
+        );
         if (!$locked_contact_can_decide) {
             throw new RuntimeException('This approval requires a different client contact role');
         }

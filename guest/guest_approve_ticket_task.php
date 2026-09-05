@@ -98,7 +98,6 @@ if (!$ticket_row) {
 }
 $task_row = array_merge($task_row, $ticket_row);
 $task_name = escapeHtml($task_row['task_name']);
-$approval_scope = escapeHtml($task_row['approval_scope']);
 $approval_type = escapeHtml($task_row['approval_type']);
 $approval_status = escapeHtml($task_row['approval_status']);
 $ticket_prefix = escapeHtml($task_row['ticket_prefix']);
@@ -203,7 +202,7 @@ if ($ticket_priority == "Urgent") {
             <p>
                 <strong>Task Name: </strong><?= ucfirst($task_name); ?>
                 <br>
-                <strong>Scope/Type:</strong> <?= ucfirst($approval_scope) . " - " . ucfirst($approval_type)?>
+                <strong>Sent to:</strong> <?= escapeHtml(approvalRouteLabel('client', $approval_type)) ?>
                 <br>
                 <strong>Status:</strong> <?= ucfirst($approval_status)?>
                 <br>

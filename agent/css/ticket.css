@@ -220,13 +220,14 @@
 }
 
 .ticket-task-horizontal-scroll #tasks tr {
+    position: relative;
     display: flex;
     flex: 0 0 clamp(16rem, 24vw, 20rem);
     scroll-snap-align: start;
     border: 1px solid var(--bs-border-color, #dee2e6);
     border-radius: .5rem;
     background: var(--bs-body-bg, #fff);
-    overflow: hidden;
+    overflow: visible;
 }
 
 .ticket-task-horizontal-scroll #tasks td:first-child {
@@ -244,6 +245,7 @@
 
 .ticket-task-current #tasks tbody,
 .ticket-task-current #tasks tr {
+    position: relative;
     display: flex;
     width: 100%;
 }
@@ -254,7 +256,60 @@
     border-left: .3rem solid var(--n45-accent, #167f70);
     border-radius: .65rem;
     background: var(--bs-body-bg, #fff);
-    overflow: hidden;
+    overflow: visible;
+}
+
+/* Popper uses a fixed strategy for these menus; keep their layer above the
+ * neighboring task cards even when the horizontal task rail is scrollable. */
+.ticket-task-workspace .dropdown-menu {
+    z-index: 1085;
+}
+
+.ticket-task-workspace #tasks tr:has(.dropdown-menu.show) {
+    z-index: 1080;
+}
+
+.approval-target-summary {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .85rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: .55rem;
+    background: var(--bs-secondary-bg, #f5f7f9);
+}
+
+.approval-target-icon {
+    display: inline-grid;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: 0 0 2.25rem;
+    place-items: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--n45-accent, #167f70) 14%, transparent);
+    color: var(--n45-accent, #167f70);
+}
+
+.approval-current-route {
+    padding: .7rem .85rem;
+    border-left: .2rem solid var(--n45-accent, #167f70);
+    background: var(--bs-secondary-bg, #f5f7f9);
+}
+
+.approval-current-route dt {
+    color: var(--n45-muted, #586579);
+    font-size: .75rem;
+    font-weight: 600;
+}
+
+.approval-current-route dd {
+    margin: .1rem 0 0;
+    color: var(--n45-ink, #172033);
+    font-weight: 600;
+}
+
+.approval-manage-actions {
+    flex-wrap: wrap;
 }
 
 .ticket-task-current #tasks td:first-child {
