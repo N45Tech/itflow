@@ -25,6 +25,7 @@ $assertOrder = function (string $first, string $second, string $haystack, string
 };
 
 $service = $read('functions/device_source.php');
+$identity = $read('functions/integration_identity.php');
 $loader = $read('functions.php');
 $manifest = require $root . '/n45/manifest.php';
 $api = $read('api/v1/integrations/device_source/update.php');
@@ -53,6 +54,18 @@ $assertContains('integrationIdentityFindMapping($source, \'device\', $external_i
 $assertContains('integrationIdentityRetireMapping(', $service, 'Missing source identities are not retired through the safe cascade');
 $assertContains('retirement guard blocked', $service, 'Unexpected source shrinkage is not guarded');
 $assertContains("integrationIdentityAcquireLock(\$source, 'sync_scope', \$scope_id)", $service, 'A source scope can complete concurrently');
+$assertContains("'external_parent_id' => \$scope_id", $service,
+    'The initial device identity write does not include its tenant/site scope');
+$assertContains("'last_seen_at' => \$mapping_last_seen_at", $service,
+    'The initial device identity write does not use the source observation watermark');
+$assertContains("\$before['seen'] !== \$reported_count", $service,
+    'Device source completion can silently publish mismatched coverage');
+$assertContains('$repair_missing_parent', $identity,
+    'Older unscoped device identities have no constrained upgrade repair');
+$assertContains("\$existing_client_id === \$incoming_client_id", $identity,
+    'The unscoped device identity repair is not constrained to the same client');
+$assertContains("(string) (\$existing['automation_mapping_external_parent_id'] ?? '') === ''", $identity,
+    'The unscoped device identity repair can overwrite an existing tenant/site scope');
 $assertOrder('integrationIdentityUpsertMapping([', 'endpointReconcileAssetSourceUnlocked([', $service, 'Endpoint posture is published before its identity mapping');
 $assertContains('integrationIdentityRecordSnapshot([', $service, 'Source snapshots are not persisted');
 $assertContains("integrationIdentityFindMapping(\$source, 'sync_scope', \$scope_id)", $service,

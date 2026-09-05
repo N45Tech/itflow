@@ -38,6 +38,11 @@ $event_a = automationEventEnvelope([
     'severity' => 'critical',
     'description' => 'Malware was quarantined.',
     'occurred_at' => '2026-08-31T12:00:00Z',
+    'assigned_to' => 7,
+    'category_id' => 12,
+    'contact_id' => 19,
+    'contact_mode' => 'none',
+    'request_type_key' => 'Security Alert',
     'identity' => [
         'entity_type' => 'device',
         'external_id' => 'endpoint-101',
@@ -58,6 +63,11 @@ $event_b = automationEventEnvelope([
     'occurred_at' => '2026-08-31T12:01:00Z',
     'description' => 'Malware was quarantined.',
     'severity' => 'critical',
+    'assigned_to' => 7,
+    'category_id' => 12,
+    'contact_id' => 19,
+    'contact_mode' => 'none',
+    'request_type_key' => 'Security Alert',
     'title' => 'Threat detected',
     'state' => 'open',
     'incident_key' => 'threat:abc123',
@@ -73,6 +83,11 @@ $event_b = automationEventEnvelope([
 $document_a = automationEventDocument($event_a);
 $document_b = automationEventDocument($event_b);
 $assertSame('sentinelone', $event_a['source'], 'Event source was not normalized');
+$assertSame(7, $event_a['assigned_to'], 'Event assignee routing was not normalized');
+$assertSame(12, $event_a['category_id'], 'Event category routing was not normalized');
+$assertSame(19, $event_a['contact_id'], 'Event contact routing was not normalized');
+$assertSame('none', $event_a['contact_mode'], 'Event contact mode was not normalized');
+$assertSame('security-alert', $event_a['request_type_key'], 'Event request type was not normalized');
 $assertSame($document_a['fingerprint'], $document_b['fingerprint'], 'Delivery ids, timestamps, key order, or secret values changed the semantic fingerprint');
 $assertSame(false, str_contains($document_a['payload'], 'do-not-store'), 'A secret value remained in the retained event payload');
 $assertTrue(str_contains($document_a['payload'], '[REDACTED]'), 'Secret-bearing fields were not visibly redacted');
@@ -116,6 +131,12 @@ $assertThrows(static fn () => automationEventEnvelope([
     'event_id' => 'event-1',
     'incident_key' => 'host:123',
 ]), 'An invalid source was accepted');
+$assertThrows(static fn () => automationEventEnvelope([
+    'source' => 'checkmk',
+    'event_id' => 'event-1',
+    'incident_key' => 'host:123',
+    'contact_mode' => 'guess',
+]), 'An unsupported contact routing mode was accepted');
 
 $migration = file_get_contents(__DIR__ . '/../n45/migrations/n45-0009-automation-event-lifecycle.php');
 $endpoint = file_get_contents(__DIR__ . '/../api/v1/integrations/automation/event.php');

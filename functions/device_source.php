@@ -231,6 +231,7 @@ function deviceSourcePublish(array $input): array
     $create_asset = filter_var($input['create_asset'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $metadata = deviceSourceMappingMetadata($input, $cycle_id, $scope_id);
     $snapshot_facts = deviceSourceSnapshotFacts($source, $external_id, $facts, $interfaces);
+    $mapping_last_seen_at = $snapshot_facts['last_seen_at'] ?? $observed_at;
 
     $scope_lock_held = false;
     if ($create_asset) {
@@ -253,7 +254,9 @@ function deviceSourcePublish(array $input): array
             'source' => $source,
             'entity_type' => 'device',
             'external_id' => $external_id,
+            'external_parent_id' => $scope_id,
             'external_name' => $external_name,
+            'last_seen_at' => $mapping_last_seen_at,
             'client' => ['id' => $client_id],
             'location' => $location_id > 0 ? ['id' => $location_id] : [],
             'asset' => $asset,
@@ -288,7 +291,7 @@ function deviceSourcePublish(array $input): array
                 'state' => $status === 'retired' ? 'retired' : $identity_state,
                 'strategy' => (string) ($resolved['strategy'] ?? 'unresolved'),
                 'confidence' => $asset_id > 0 ? 100 : 0,
-                'last_seen_at' => $snapshot_facts['last_seen_at'] ?? $observed_at,
+                'last_seen_at' => $mapping_last_seen_at,
                 'last_error' => $last_error,
                 'metadata' => $metadata,
             ]);
@@ -445,6 +448,12 @@ function deviceSourceComplete(array $input): array
         }
 
         $before = deviceSourceScopeCounts($source, $scope_id, $client_id, $cycle_started_at);
+        if ($before['seen'] !== $reported_count) {
+            throw new RuntimeException(
+                "Device source completion counted {$before['seen']} scoped records but the source reported "
+                . "$reported_count; refusing to publish incomplete coverage"
+            );
+        }
         $minimum_safe_count = $before['total'] > 0
             ? (int) floor($before['total'] * ($guard_percent / 100))
             : 0;

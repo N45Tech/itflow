@@ -1,0 +1,108 @@
+{
+  "name": "N45 - CIPP Alerts to ITFlow",
+  "nodes": [
+    {
+      "id": "8377f204-4b54-4662-8c45-171bc5b154cf",
+      "name": "CIPP Alerts Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -480,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "n45-cipp-alerts",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-cipp-webhook-auth",
+          "name": "N45 CIPP Webhook"
+        }
+      }
+    },
+    {
+      "id": "f659b431-4aed-43d6-8d7a-bfd7f0a9c6df",
+      "name": "Normalize CIPP Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst text = (value, fallback = '') => value === undefined || value === null ? fallback : String(value).trim();\nconst integer = (value) => {\n  const parsed = Number(value);\n  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;\n};\nconst slug = (value) => text(value, 'alert').toLowerCase().replace(/[^a-z0-9]+/g, '-')\n  .replace(/^-+|-+$/g, '').slice(0, 120) || 'alert';\nconst sensitiveKey = (key) => {\n  const normalized = String(key || '').replace(/([a-z0-9])([A-Z])/g, '$1_$2')\n    .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');\n  return ['api_key', 'apikey', 'auth', 'authentication', 'authorization', 'client_secret', 'cookie',\n    'credential', 'credentials', 'password', 'private_key', 'refresh_token', 'secret', 'signature',\n    'token', 'webhook_secret'].includes(normalized)\n    || ['_api_key', '_credential', '_password', '_secret', '_token'].some((suffix) => normalized.endsWith(suffix));\n};\nconst sanitize = (value, depth = 0) => {\n  if (depth > 4 || value === undefined) return null;\n  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;\n  if (typeof value === 'string') return value.slice(0, 1000);\n  if (Array.isArray(value)) return value.slice(0, 25).map((item) => sanitize(item, depth + 1));\n  if (typeof value !== 'object') return String(value).slice(0, 1000);\n  return Object.fromEntries(Object.entries(value).slice(0, 30)\n    .filter(([key]) => !sensitiveKey(key))\n    .map(([key, item]) => [key, sanitize(item, depth + 1)]));\n};\nconst schemaSource = text(body.source).toLowerCase();\nif (!['cipp', 'send alert'].includes(schemaSource)) throw new Error('Expected a CIPP standardized alert source.');\nif (text(body.schemaVersion) !== '1.0') throw new Error('Unsupported CIPP alert schema version. Expected 1.0.');\nconst tenant = text(body.tenant).toLowerCase();\nconst title = text(body.title);\nif (!tenant) throw new Error('CIPP tenant is missing.');\nif (!title) throw new Error('CIPP alert title is missing.');\nlet tenantMap = {};\ntry {\n  tenantMap = JSON.parse(text($vars.N45_CIPP_ALERT_TENANT_MAP_JSON, '{}'));\n} catch (error) {\n  throw new Error('N45_CIPP_ALERT_TENANT_MAP_JSON must be valid JSON.');\n}\nconst mapping = tenantMap && typeof tenantMap === 'object' ? tenantMap[tenant] : null;\nif (!mapping || typeof mapping !== 'object' || integer(mapping.client_id) < 1) {\n  throw new Error('CIPP tenant ' + tenant + ' has no explicit ITFlow client ID mapping.');\n}\nlet generatedAt = text(body.generatedAt, new Date().toISOString()).replace(' ', 'T');\nif (!/(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(generatedAt)) generatedAt += 'Z';\nconst parsedGeneratedAt = new Date(generatedAt);\nif (Number.isNaN(parsedGeneratedAt.getTime())) throw new Error('CIPP generatedAt is invalid.');\ngeneratedAt = parsedGeneratedAt.toISOString();\nconst rawPayload = Array.isArray(body.payload) ? body.payload : [];\nconst requestedCount = Number(body.alertCount);\nconst alertCount = Number.isFinite(requestedCount) ? Math.max(0, Math.floor(requestedCount)) : rawPayload.length;\nif (alertCount < 1 && rawPayload.length < 1) throw new Error('CIPP sent an empty alert.');\nconst payload = sanitize(rawPayload);\nconst searchText = (title + ' ' + JSON.stringify(payload)).toLowerCase();\nconst highRisk = ['global admin', 'emergency access', 'break glass', 'security defaults',\n  'conditional access', 'administrator without mfa', 'admin without mfa', 'compromised',\n  'malware', 'phishing', 'ransomware', 'breach'].some((term) => searchText.includes(term));\nconst lowRisk = ['recommendation', 'informational', 'report only', 'report-only', 'alignment']\n  .some((term) => searchText.includes(term));\nconst invoking = text(body.invoking, 'cipp-alert');\nconst incidentKey = 'cipp:' + slug(tenant) + ':' + slug(invoking) + ':' + slug(title);\nconst summaryLines = payload.slice(0, 20).map((item, index) => {\n  if (typeof item === 'string') return (index + 1) + '. ' + item.slice(0, 500);\n  const detail = item && typeof item === 'object' ? item : { value: item };\n  const preferred = ['displayName', 'name', 'userPrincipalName', 'message', 'description', 'status', 'value']\n    .filter((key) => detail[key] !== undefined && detail[key] !== null && detail[key] !== '')\n    .map((key) => key + ': ' + String(detail[key]).slice(0, 300));\n  return (index + 1) + '. ' + (preferred.length ? preferred.join('; ') : JSON.stringify(detail).slice(0, 500));\n});\nif (rawPayload.length > summaryLines.length) summaryLines.push('... ' + (rawPayload.length - summaryLines.length) + ' more result(s) omitted.');\nconst description = [\n  'Microsoft 365 alert for ' + text(mapping.client_name, tenant) + '.',\n  'Alert count: ' + alertCount,\n  'Generated: ' + generatedAt,\n  'Monitor: ' + invoking,\n  '',\n  ...summaryLines,\n].join('\\n').slice(0, 8000);\nconst event = {\n  source: 'cipp', event_id: incidentKey + ':' + generatedAt, incident_key: incidentKey,\n  entity_type: 'microsoft_365_tenant', state: 'open',\n  severity: highRisk ? 'high' : (lowRisk ? 'low' : 'medium'),\n  title: ('Microsoft 365 alert: ' + title).slice(0, 500), description, occurred_at: generatedAt,\n  url: '', auto_resolve: false, request_type_key: 'microsoft-365-alert', contact_mode: 'none',\n  identity: {\n    external_id: tenant, external_name: text(mapping.client_name, tenant),\n    client: { id: integer(mapping.client_id), name: text(mapping.client_name) },\n    location: integer(mapping.location_id) > 0 ? { id: integer(mapping.location_id) } : {},\n    domain: { name: tenant }, asset: {},\n    options: { create_client: false, create_location: false, create_asset: false, create_domain: false },\n    metadata: { tenant_domain: tenant, schema_version: text(body.schemaVersion), schema_source: schemaSource },\n  },\n  metadata: { invoking, alert_count: alertCount, tenant_domain: tenant },\n};\nif (integer(mapping.assigned_to) > 0) event.assigned_to = integer(mapping.assigned_to);\nif (integer(mapping.category_id) > 0) event.category_id = integer(mapping.category_id);\nif (integer(mapping.contact_id) > 0) event.contact_id = integer(mapping.contact_id);\nreturn [{ json: event }];"
+      }
+    },
+    {
+      "id": "d91ab17c-46ef-44d1-b8e4-94a0418c8863",
+      "name": "Queue Through Operations Broker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://automate.n45tech.com/webhook/n45-itflow-events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-webhook-auth",
+          "name": "N45 Integration Webhook"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "CIPP Alerts Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize CIPP Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize CIPP Alert": {
+      "main": [
+        [
+          {
+            "node": "Queue Through Operations Broker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": false,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "timezone": "UTC"
+  },
+  "active": false,
+  "tags": []
+}

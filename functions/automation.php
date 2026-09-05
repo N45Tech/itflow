@@ -425,13 +425,14 @@ function automationCreateDomain(array $domain, int $client_id): array
 
 function automationSaveMapping(string $source, string $entity_type, string $external_id,
     string $external_name, int $client_id, int $location_id, int $asset_id, int $domain_id,
-    string $strategy, array $metadata = []): array
+    string $strategy, array $metadata = [], string $external_parent_id = '', $last_seen_at = null): array
 {
     $has_binding = $client_id > 0 || $location_id > 0 || $asset_id > 0 || $domain_id > 0;
     return integrationIdentityUpsertMapping([
         'source' => $source,
         'entity_type' => $entity_type,
         'external_id' => $external_id,
+        'external_parent_id' => $external_parent_id,
         'external_name' => $external_name,
         'client_id' => $client_id,
         'location_id' => $location_id,
@@ -440,6 +441,7 @@ function automationSaveMapping(string $source, string $entity_type, string $exte
         'strategy' => $strategy,
         'state' => $has_binding ? 'automatic' : 'unresolved',
         'confidence' => $has_binding ? 100 : 0,
+        'last_seen_at' => $last_seen_at,
         'metadata' => $metadata,
     ]);
 }
@@ -692,7 +694,9 @@ function automationResolveIdentityUnlocked(array $input): array
 
     $saved_mapping = automationSaveMapping($source, $entity_type, $external_id, $external_name,
         $client_id, $location_id, $asset_id, $domain_id, $strategy ?: 'unresolved',
-        is_array($input['metadata'] ?? null) ? $input['metadata'] : []);
+        is_array($input['metadata'] ?? null) ? $input['metadata'] : [],
+        automationLimitText($input['external_parent_id'] ?? '', 255),
+        $input['last_seen_at'] ?? null);
     if ($client_external_id !== '' && ($client_entity_type !== $entity_type || $client_external_id !== $external_id)) {
         automationSaveMapping($source, $client_entity_type, $client_external_id,
             (string) ($client['name'] ?? ''), $client_id, 0, 0, 0, 'client_external_id');
@@ -910,9 +914,42 @@ function automationCreateIncidentTicket(array $event, array $resolved,
     };
     $location_id = intval($resolved['location_id'] ?? 0);
     $asset_id = intval($resolved['asset_id'] ?? 0);
-    $assigned_to = intval($event['assigned_to'] ?? 0);
+    $assigned_to = max(0, intval($event['assigned_to'] ?? 0));
+    if ($assigned_to > 0) {
+        $assignee = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT user_id FROM users
+            WHERE user_id = $assigned_to AND user_type = 1 AND user_status = 1
+            AND user_archived_at IS NULL LIMIT 1"));
+        if (!$assignee) {
+            throw new InvalidArgumentException('The automation ticket assignee is not an active technician');
+        }
+    }
+    $category_id = max(0, intval($event['category_id'] ?? 0));
+    if ($category_id > 0) {
+        $category = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT category_id FROM categories
+            WHERE category_id = $category_id AND category_type = 'Ticket'
+            AND category_archived_at IS NULL LIMIT 1"));
+        if (!$category) {
+            throw new InvalidArgumentException('The automation ticket category is unavailable');
+        }
+    }
+    $request_type_key = function_exists('agreementNormalizeRequestTypeKey')
+        ? agreementNormalizeRequestTypeKey($event['request_type_key'] ?? '*') : '*';
+    $request_type_sql = automationDbEscape($request_type_key);
     $contact_id = 0;
-    if ($client_id > 0) {
+    $requested_contact_id = max(0, intval($event['contact_id'] ?? 0));
+    $contact_mode = strtolower(automationLimitText($event['contact_mode'] ?? 'primary', 20));
+    if (!in_array($contact_mode, ['none', 'primary'], true)) {
+        throw new InvalidArgumentException('The automation ticket contact mode is invalid');
+    }
+    if ($requested_contact_id > 0) {
+        $contact = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT contact_id FROM contacts
+            WHERE contact_id = $requested_contact_id AND contact_client_id = $client_id
+            AND contact_archived_at IS NULL LIMIT 1"));
+        if (!$contact || $client_id < 1) {
+            throw new InvalidArgumentException('The automation ticket contact does not belong to the resolved client');
+        }
+        $contact_id = intval($contact['contact_id']);
+    } elseif ($client_id > 0 && $contact_mode === 'primary') {
         $contact = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT contact_id FROM contacts
             WHERE contact_client_id = $client_id AND contact_primary = 1
             AND contact_archived_at IS NULL LIMIT 1"));
@@ -940,6 +977,7 @@ function automationCreateIncidentTicket(array $event, array $resolved,
         automationDbQuery("INSERT INTO tickets SET ticket_prefix = '$prefix_sql',
             ticket_number = $ticket_number, ticket_source = 'Automation', ticket_subject = '$subject_sql',
             ticket_details = '$details_sql', ticket_priority = '$priority_sql', ticket_status = 1,
+            ticket_category = $category_id, ticket_request_type_key = '$request_type_sql',
             ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = 0,
             ticket_assigned_to = $assigned_to, ticket_client_id = $client_id,
             ticket_contact_id = $contact_id, ticket_location_id = $location_id, ticket_asset_id = $asset_id,

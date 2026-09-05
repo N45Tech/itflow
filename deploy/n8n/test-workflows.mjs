@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(fileURLToPath(import.meta.url));
 const workflowDirectory = join(root, 'workflows');
 const files = (await readdir(workflowDirectory)).filter((file) => file.endsWith('.json')).sort();
-assert.equal(files.length, 7, 'Expected seven generated workflows');
+assert.equal(files.length, 8, 'Expected eight generated workflows');
 
 const workflows = new Map();
 for (const file of files) {
@@ -17,6 +17,9 @@ for (const file of files) {
   workflows.set(workflow.name, workflow);
   const names = new Set(workflow.nodes.map((node) => node.name));
   assert.equal(names.size, workflow.nodes.length, `${file} contains duplicate node names`);
+  assert.equal(workflow.settings.saveDataSuccessExecution, 'none', `${file} retains successful execution payloads`);
+  assert.equal(workflow.settings.saveDataErrorExecution, 'none', `${file} retains failed execution payloads`);
+  assert.equal(workflow.settings.saveManualExecutions, false, `${file} retains manual execution payloads`);
   for (const [source, outputs] of Object.entries(workflow.connections)) {
     assert(names.has(source), `${file} has a connection from an unknown node: ${source}`);
     for (const channel of Object.values(outputs)) {
@@ -55,6 +58,33 @@ assert.equal(down[0].json.identity.external_name, 'Internet');
 assert.equal(down[0].json.identity.options.create_client, false);
 assert.equal(down[0].json.identity.options.create_location, false);
 assert.equal(down[0].json.identity.options.create_asset, false);
+assert.equal(down[0].json.request_type_key, 'monitoring-alert');
+assert.equal(down[0].json.contact_mode, 'none');
+
+const uptimeWithLocalOffset = code(broker, 'Normalize Event', {
+  body: {
+    monitor: { id: 5, name: 'N45 Technologies :: Infrastructure :: PSA', url: 'https://psa.n45tech.com' },
+    heartbeat: {
+      status: 0,
+      time: '2026-09-05 22:16:50.407',
+      localDateTime: '2026-09-05 18:16:50',
+      timezoneOffset: '-04:00',
+      msg: '[PSA] [Down] connect ECONNREFUSED',
+    },
+  },
+}, {
+  N45_EVENT_ROUTING_JSON: JSON.stringify({
+    uptime_kuma: { assigned_to: 7, category_id: 12, contact_id: 19, request_type_key: 'Infrastructure Alert', contact_mode: 'none' },
+  }),
+});
+assert.equal(uptimeWithLocalOffset[0].json.occurred_at, '2026-09-05T22:16:50.000Z');
+assert.equal(uptimeWithLocalOffset[0].json.title, 'Monitoring alert: PSA');
+assert.match(uptimeWithLocalOffset[0].json.description, /^PSA \(psa\.n45tech\.com\) is unavailable\./);
+assert.doesNotMatch(uptimeWithLocalOffset[0].json.description, /^\[/);
+assert.equal(uptimeWithLocalOffset[0].json.assigned_to, 7);
+assert.equal(uptimeWithLocalOffset[0].json.category_id, 12);
+assert.equal(uptimeWithLocalOffset[0].json.contact_id, 19);
+assert.equal(uptimeWithLocalOffset[0].json.request_type_key, 'infrastructure-alert');
 
 const recovered = code(broker, 'Normalize Event', {
   body: {
@@ -77,6 +107,36 @@ assert.equal(hardenedCanonical.identity.options.create_client, false);
 assert.equal(hardenedCanonical.identity.options.create_location, false);
 assert.equal(hardenedCanonical.identity.metadata.client_alias_applied, true);
 
+const sanitizedCanonical = code(broker, 'Normalize Event', { body: {
+  ...canonical,
+  metadata: { api_key: 'must-not-pass', useful: 'retained' },
+  identity: {
+    ...canonical.identity,
+    metadata: { accessToken: 'must-not-pass', device_id: 'device-1' },
+  },
+  authorization: 'must-not-pass',
+} })[0].json;
+assert.doesNotMatch(JSON.stringify(sanitizedCanonical), /must-not-pass/);
+assert.equal(sanitizedCanonical.metadata.useful, 'retained');
+assert.equal(sanitizedCanonical.identity.metadata.device_id, 'device-1');
+
+const brokerWorkflow = workflows.get(broker);
+assert(brokerWorkflow.nodes.some((entry) => entry.name === 'Queue Event' && entry.type === 'n8n-nodes-base.dataTable'));
+const queueNode = brokerWorkflow.nodes.find((entry) => entry.name === 'Queue Event');
+assert.deepEqual(queueNode.parameters.filters.conditions.map((condition) => condition.keyName), ['source', 'event_id']);
+assert(brokerWorkflow.nodes.some((entry) => entry.name === 'Delivery Schedule' && entry.type === 'n8n-nodes-base.scheduleTrigger'));
+const deliveryNode = brokerWorkflow.nodes.find((entry) => entry.name === 'Deliver Event to ITFlow');
+assert.equal(deliveryNode.onError, 'continueRegularOutput');
+assert.equal(deliveryNode.parameters.options.response.response.neverError, true);
+assert.equal(deliveryNode.parameters.options.response.response.fullResponse, true);
+const dueEvents = code(broker, 'Select Due Events', [
+  { id: 1, event_id: 'a-open', incident_key: 'incident:a', occurred_at: '2026-01-01T00:00:00Z', status: 'terminal', next_attempt_at: '2026-01-01T00:00:00Z', payload: JSON.stringify(canonical) },
+  { id: 2, event_id: 'a-resolved', incident_key: 'incident:a', occurred_at: '2026-01-01T00:05:00Z', status: 'pending', next_attempt_at: '2026-01-01T00:00:00Z', payload: JSON.stringify(canonical) },
+  { id: 3, event_id: 'b-open', incident_key: 'incident:b', occurred_at: '2026-01-01T00:00:00Z', status: 'retry', next_attempt_at: '2026-01-01T00:00:00Z', payload: JSON.stringify(canonical) },
+  { id: 4, event_id: 'b-resolved', incident_key: 'incident:b', occurred_at: '2026-01-01T00:05:00Z', status: 'pending', next_attempt_at: '2026-01-01T00:00:00Z', payload: JSON.stringify(canonical) },
+]);
+assert.deepEqual(dueEvents.map((item) => item.json.event_id), ['b-open']);
+
 const netbox = code('N45 - NetBox Entity Reconciliation', 'Normalize NetBox Devices', {
   results: [{
     id: 8, name: 'switch-01', serial: 'ABC123',
@@ -92,6 +152,19 @@ assert.equal(netbox[0].json.location.name, 'Main Office');
 assert.equal(netbox[0].json.location.external_id, '3');
 assert.equal(netbox[0].json.asset.serial, 'ABC123');
 assert.equal(netbox[0].json.asset.ip, '192.0.2.10');
+assert.equal(netbox[0].json.options.create_client, false);
+assert.throws(() => code('N45 - NetBox Entity Reconciliation', 'Normalize NetBox Devices', { results: [] }),
+  /zero devices/);
+const netboxEvent = code('N45 - NetBox Entity Reconciliation', 'Normalize NetBox Event', {
+  body: {
+    model: 'dcim.device',
+    data: {
+      id: 9, name: 'switch-02', tenant: { id: 4, name: 'Unknown Tenant' },
+      site: { id: 5, name: 'Branch' }, device_type: { model: 'C9200' },
+    },
+  },
+});
+assert.equal(netboxEvent[0].json.options.create_client, false);
 
 const zones = code('N45 - Cloudflare Domain Reconciliation', 'Map Zones to Clients', {
   result: [{ id: 'zone-1', name: 'n45tech.com', status: 'active' }, { id: 'zone-2', name: 'unmapped.example' }],
@@ -99,6 +172,8 @@ const zones = code('N45 - Cloudflare Domain Reconciliation', 'Map Zones to Clien
 assert.equal(zones.length, 1);
 assert.equal(zones[0].json.domain.name, 'n45tech.com');
 assert.equal(zones[0].json.options.create_domain, true);
+assert.throws(() => code('N45 - Cloudflare Domain Reconciliation', 'Map Zones to Clients', { result: [] }),
+  /zero zones/);
 
 const error = code('N45 - Automation Failure to ITFlow', 'Normalize n8n Error', {
   execution: { id: 99, error: { message: 'Connection refused' }, lastNodeExecuted: 'Fetch' },
@@ -202,6 +277,7 @@ for (const workflowName of [intuneWorkflow, entraWorkflow, sentinelWorkflow]) {
   }
   assert.equal(publishNode.parameters.options.batching.batch.batchSize, 1, `${workflowName} does not publish serially`);
   assert.equal(sourceWorkflow.settings.timezone, 'UTC');
+  assert.equal(sourceWorkflow.settings.executionTimeout, 3600, `${workflowName} exceeds the n8n instance timeout ceiling`);
   assert(sourceWorkflow.nodes.some((entry) => entry.type === 'n8n-nodes-base.scheduleTrigger'), `${workflowName} is not scheduled`);
 }
 
@@ -226,5 +302,29 @@ assert.equal(sourceFailure.length, 1);
 assert.equal(sourceFailure[0].json.action, 'failure');
 assert.equal(sourceFailure[0].json.source, 'intune');
 assert.doesNotMatch(sourceFailure[0].json.error, /must-not-pass/);
+
+const cipp = code('N45 - CIPP Alerts to ITFlow', 'Normalize CIPP Alert', {
+  body: {
+    source: 'CIPP', schemaVersion: '1.0', tenant: 'contoso.onmicrosoft.com',
+    title: 'Administrator without MFA', generatedAt: '2026-09-05T12:00:00Z',
+    alertCount: 1, invoking: 'mfa-report',
+    payload: [{ displayName: 'Example Admin', status: 'At risk', accessToken: 'must-not-pass' }],
+  },
+}, {
+  N45_CIPP_ALERT_TENANT_MAP_JSON: JSON.stringify({
+    'contoso.onmicrosoft.com': { client_id: 42, client_name: 'Contoso', location_id: 7, assigned_to: 3, category_id: 12, contact_id: 19 },
+  }),
+});
+assert.equal(cipp[0].json.identity.client.id, 42);
+assert.equal(cipp[0].json.identity.location.id, 7);
+assert.equal(cipp[0].json.assigned_to, 3);
+assert.equal(cipp[0].json.category_id, 12);
+assert.equal(cipp[0].json.contact_id, 19);
+assert.equal(cipp[0].json.severity, 'high');
+assert.equal(cipp[0].json.request_type_key, 'microsoft-365-alert');
+assert.doesNotMatch(JSON.stringify(cipp), /must-not-pass/);
+assert.throws(() => code('N45 - CIPP Alerts to ITFlow', 'Normalize CIPP Alert', {
+  body: { source: 'CIPP', schemaVersion: '1.0', tenant: 'unmapped.onmicrosoft.com', title: 'Alert', alertCount: 1 },
+}, { N45_CIPP_ALERT_TENANT_MAP_JSON: '{}' }), /no explicit ITFlow client ID mapping/);
 
 console.log(`Validated ${files.length} workflows and representative source payloads.`);

@@ -47,6 +47,9 @@
         "genericAuthType": "httpHeaderAuth",
         "options": {}
       },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
       "credentials": {
         "httpHeaderAuth": {
           "id": "replace-n45-netbox-api",
@@ -64,7 +67,7 @@
         -80
       ],
       "parameters": {
-        "jsCode": "const response = $input.first().json;\nconst devices = response.results || response.data?.results || [];\nconst DEFAULT_CLIENT = 'N45 Technology Solutions';\nconst CREATE_CLIENTS_FROM_TENANTS = true;\nif (!Array.isArray(devices)) throw new Error('NetBox did not return a device results array.');\nreturn devices.map((device) => {\n  const site = device.site || {};\n  const tenant = device.tenant || site.tenant || {};\n  const clientName = device.custom_fields?.itflow_client || tenant.name || DEFAULT_CLIENT;\n  const primaryIp = String(device.primary_ip?.address || '').split('/')[0];\n  return { json: {\n    source: 'netbox',\n    entity_type: 'device',\n    external_id: String(device.id),\n    external_name: device.name || device.display || ('NetBox device ' + device.id),\n    client: { name: clientName, entity_type: 'tenant', external_id: tenant.id ? String(tenant.id) : '' },\n    location: {\n      name: site.name || '',\n      entity_type: 'site',\n      external_id: site.id ? String(site.id) : '',\n      description: site.description || '',\n      address: site.physical_address || site.shipping_address || '',\n    },\n    asset: {\n      name: device.name || device.display,\n      description: device.description || '',\n      type: device.role?.name || device.device_role?.name || 'Network',\n      make: device.device_type?.manufacturer?.name || 'Unknown',\n      model: device.device_type?.model || '',\n      serial: device.serial || '',\n      os: device.platform?.name || '',\n      ip: primaryIp,\n      status: device.status?.label || device.status?.value || 'Active',\n      uri: 'https://netbox.n45tech.com/dcim/devices/' + device.id + '/',\n      notes: 'Managed in NetBox. ITFlow retains client ownership and service context.',\n    },\n    options: {\n      create_client: CREATE_CLIENTS_FROM_TENANTS && clientName !== '',\n      create_location: site.name !== '',\n      create_asset: true,\n    },\n    metadata: { netbox_last_updated: device.last_updated || '', tenant_id: tenant.id || 0, site_id: site.id || 0 },\n  } };\n});"
+        "jsCode": "const response = $input.first().json;\nconst devices = response.results || response.data?.results || [];\nconst DEFAULT_CLIENT = 'N45 Technology Solutions';\nconst CREATE_CLIENTS_FROM_TENANTS = false;\nif (!Array.isArray(devices)) throw new Error('NetBox did not return a device results array.');\nif (devices.length === 0) throw new Error('NetBox returned zero devices; refusing to report a successful reconciliation.');\nreturn devices.map((device) => {\n  const site = device.site || {};\n  const tenant = device.tenant || site.tenant || {};\n  const clientName = device.custom_fields?.itflow_client || tenant.name || DEFAULT_CLIENT;\n  const primaryIp = String(device.primary_ip?.address || '').split('/')[0];\n  return { json: {\n    source: 'netbox',\n    entity_type: 'device',\n    external_id: String(device.id),\n    external_name: device.name || device.display || ('NetBox device ' + device.id),\n    client: { name: clientName, entity_type: 'tenant', external_id: tenant.id ? String(tenant.id) : '' },\n    location: {\n      name: site.name || '',\n      entity_type: 'site',\n      external_id: site.id ? String(site.id) : '',\n      description: site.description || '',\n      address: site.physical_address || site.shipping_address || '',\n    },\n    asset: {\n      name: device.name || device.display,\n      description: device.description || '',\n      type: device.role?.name || device.device_role?.name || 'Network',\n      make: device.device_type?.manufacturer?.name || 'Unknown',\n      model: device.device_type?.model || '',\n      serial: device.serial || '',\n      os: device.platform?.name || '',\n      ip: primaryIp,\n      status: device.status?.label || device.status?.value || 'Active',\n      uri: 'https://netbox.n45tech.com/dcim/devices/' + device.id + '/',\n      notes: 'Managed in NetBox. ITFlow retains client ownership and service context.',\n    },\n    options: {\n      create_client: CREATE_CLIENTS_FROM_TENANTS && clientName !== '',\n      create_location: site.name !== '',\n      create_asset: true,\n    },\n    metadata: { netbox_last_updated: device.last_updated || '', tenant_id: tenant.id || 0, site_id: site.id || 0 },\n  } };\n});"
       }
     },
     {
@@ -100,7 +103,7 @@
         160
       ],
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nconst body = input.body || input;\nconst device = body.data || {};\nconst model = String(body.model || body.object_type || '').toLowerCase();\nif (!model.includes('device') && !device.device_type) return [];\nconst site = device.site || {};\nconst tenant = device.tenant || site.tenant || {};\nconst clientName = device.custom_fields?.itflow_client || tenant.name || 'N45 Technology Solutions';\nconst primaryIp = String(device.primary_ip?.address || '').split('/')[0];\nreturn [{ json: {\n  source: 'netbox', entity_type: 'device', external_id: String(device.id),\n  external_name: device.name || device.display || ('NetBox device ' + device.id),\n  client: { name: clientName, entity_type: 'tenant', external_id: tenant.id ? String(tenant.id) : '' },\n  location: { name: site.name || '', entity_type: 'site', external_id: site.id ? String(site.id) : '', description: site.description || '', address: site.physical_address || '' },\n  asset: {\n    name: device.name || device.display, description: device.description || '',\n    type: device.role?.name || device.device_role?.name || 'Network',\n    make: device.device_type?.manufacturer?.name || 'Unknown', model: device.device_type?.model || '',\n    serial: device.serial || '', os: device.platform?.name || '', ip: primaryIp,\n    status: device.status?.label || device.status?.value || 'Active',\n    uri: 'https://netbox.n45tech.com/dcim/devices/' + device.id + '/',\n  },\n  options: { create_client: clientName !== '', create_location: site.name !== '', create_asset: true },\n  metadata: { netbox_event: body.event || '', netbox_request_id: body.request_id || '' },\n} }];"
+        "jsCode": "const input = $input.first().json;\nconst body = input.body || input;\nconst device = body.data || {};\nconst model = String(body.model || body.object_type || '').toLowerCase();\nif (!model.includes('device') && !device.device_type) return [];\nconst site = device.site || {};\nconst tenant = device.tenant || site.tenant || {};\nconst clientName = device.custom_fields?.itflow_client || tenant.name || 'N45 Technology Solutions';\nconst primaryIp = String(device.primary_ip?.address || '').split('/')[0];\nreturn [{ json: {\n  source: 'netbox', entity_type: 'device', external_id: String(device.id),\n  external_name: device.name || device.display || ('NetBox device ' + device.id),\n  client: { name: clientName, entity_type: 'tenant', external_id: tenant.id ? String(tenant.id) : '' },\n  location: { name: site.name || '', entity_type: 'site', external_id: site.id ? String(site.id) : '', description: site.description || '', address: site.physical_address || '' },\n  asset: {\n    name: device.name || device.display, description: device.description || '',\n    type: device.role?.name || device.device_role?.name || 'Network',\n    make: device.device_type?.manufacturer?.name || 'Unknown', model: device.device_type?.model || '',\n    serial: device.serial || '', os: device.platform?.name || '', ip: primaryIp,\n    status: device.status?.label || device.status?.value || 'Active',\n    uri: 'https://netbox.n45tech.com/dcim/devices/' + device.id + '/',\n  },\n  options: { create_client: false, create_location: site.name !== '', create_asset: true },\n  metadata: { netbox_event: body.event || '', netbox_request_id: body.request_id || '' },\n} }];"
       }
     },
     {
@@ -129,6 +132,9 @@
           }
         }
       },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
       "credentials": {
         "httpHeaderAuth": {
           "id": "replace-n45-itflow-api",
@@ -208,7 +214,9 @@
   "pinData": {},
   "settings": {
     "executionOrder": "v1",
-    "saveManualExecutions": true,
+    "saveManualExecutions": false,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
     "callerPolicy": "workflowsFromSameOwner",
     "errorWorkflow": ""
   },

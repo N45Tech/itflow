@@ -155,6 +155,23 @@ function automationEventEnvelope(array $input): array
     $event['description'] = automationLimitText($input['description'] ?? '', 8000);
     $event['occurred_at'] = automationEventDateTime($input['occurred_at'] ?? null);
     $event['service_id'] = max(0, intval($input['service_id'] ?? 0));
+    $event['assigned_to'] = max(0, intval($input['assigned_to'] ?? 0));
+    $event['category_id'] = max(0, intval($input['category_id'] ?? 0));
+    $event['contact_id'] = max(0, intval($input['contact_id'] ?? 0));
+    if (function_exists('agreementNormalizeRequestTypeKey')) {
+        $event['request_type_key'] = agreementNormalizeRequestTypeKey($input['request_type_key'] ?? '*');
+    } else {
+        $request_type_key = strtolower(trim((string) ($input['request_type_key'] ?? '*')));
+        $request_type_key = $request_type_key === '' ? '*' : $request_type_key;
+        $request_type_key = $request_type_key === '*' ? '*'
+            : trim((string) preg_replace('/[^a-z0-9]+/', '-', $request_type_key), '-');
+        $event['request_type_key'] = automationLimitText($request_type_key ?: '*', 100);
+    }
+    $contact_mode = strtolower(automationLimitText($input['contact_mode'] ?? 'primary', 20));
+    if (!in_array($contact_mode, ['none', 'primary'], true)) {
+        throw new InvalidArgumentException('contact_mode must be none or primary');
+    }
+    $event['contact_mode'] = $contact_mode;
     $event['identity'] = is_array($input['identity'] ?? null) ? $input['identity'] : [];
     $event['metadata'] = is_array($input['metadata'] ?? null) ? $input['metadata'] : [];
     $event['auto_resolve'] = automationBool($input['auto_resolve'] ?? null, true);

@@ -260,10 +260,12 @@
   "pinData": {},
   "settings": {
     "executionOrder": "v1",
-    "saveManualExecutions": true,
+    "saveManualExecutions": false,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
     "callerPolicy": "workflowsFromSameOwner",
     "errorWorkflow": "",
-    "executionTimeout": 7200,
+    "executionTimeout": 3600,
     "timezone": "UTC"
   },
   "active": false,
