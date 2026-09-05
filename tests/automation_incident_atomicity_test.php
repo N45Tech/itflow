@@ -133,6 +133,12 @@ $assertContains('bool $caller_transaction = false', $create,
     'Ticket creation cannot join the event transaction');
 $assertContains('applyTicketSla($ticket_id, null, null, true)', $create,
     'SLA selection does not join ticket creation atomically');
+$assertContains("ticket_request_type_key = '\$request_type_sql'", $create,
+    'Automation tickets do not retain their routed request type');
+$assertContains('ticket_category = $category_id', $create,
+    'Automation tickets do not retain their routed category');
+$assertContains("\$contact_mode === 'primary'", $create,
+    'Automation tickets cannot deliberately avoid assigning a client contact');
 $assertContains('if (!logTicketHistory(', $create,
     'Ticket history failure does not abort ticket creation');
 $assertContains('automationEventQueueAudit(', $create,

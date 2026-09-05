@@ -506,8 +506,20 @@ function integrationIdentityUpsertMapping(array $input): array
 
         if ($existing && !empty($existing['automation_mapping_last_seen_at'])
             && strcmp((string) $existing['automation_mapping_last_seen_at'], $last_seen_at) > 0) {
+            $existing_client_id = intval($existing['automation_mapping_client_id'] ?? 0);
+            $incoming_client_id = intval($bindings['client_id'] ?? 0);
+            $repair_missing_parent = $entity_type === 'device'
+                && in_array($source, ['entra', 'intune', 'sentinelone'], true)
+                && (string) ($existing['automation_mapping_external_parent_id'] ?? '') === ''
+                && $external_parent_id !== ''
+                && $existing_client_id > 0
+                && $existing_client_id === $incoming_client_id;
+            $parent_repair_sql = $repair_missing_parent
+                ? ", automation_mapping_external_parent_id = '"
+                    . integrationIdentityDbEscape($external_parent_id) . "'"
+                : '';
             if (!mysqli_query($mysqli, "UPDATE automation_entity_mappings SET
-                automation_mapping_last_synced_at = NOW()
+                automation_mapping_last_synced_at = NOW()$parent_repair_sql
                 WHERE automation_mapping_id = " . intval($existing['automation_mapping_id']))) {
                 throw new RuntimeException('Could not acknowledge the stale identity delivery: ' . mysqli_error($mysqli));
             }

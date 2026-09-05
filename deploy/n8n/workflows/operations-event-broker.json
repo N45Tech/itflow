@@ -7,8 +7,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        -720,
-        0
+        -900,
+        -240
       ],
       "parameters": {
         "httpMethod": "POST",
@@ -30,37 +30,62 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -460,
-        0
+        -650,
+        -240
       ],
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst headers = Object.fromEntries(Object.entries(input.headers || {}).map(([key, value]) => [key.toLowerCase(), value]));\nconst header = (name) => String(headers[name.toLowerCase()] ?? '').trim();\nconst text = (value, fallback = '') => value === undefined || value === null ? fallback : String(value).trim();\nconst bool = (value, fallback = false) => {\n  if (value === undefined || value === null || value === '') return fallback;\n  return value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\n};\nconst clientAliases = new Map([\n  ['n45 technologies', 'N45 Technology Solutions'],\n  ['n45 tech solutions', 'N45 Technology Solutions'],\n  ['n45 technology solutions', 'N45 Technology Solutions'],\n]);\nconst canonicalClientName = (value) => {\n  const original = text(value);\n  return clientAliases.get(original.toLowerCase()) || original;\n};\nconst hardenIdentity = (identityInput = {}) => {\n  const identity = identityInput && typeof identityInput === 'object' ? { ...identityInput } : {};\n  const originalClientName = text(identity.client?.name);\n  const mappedClientName = canonicalClientName(originalClientName);\n  const options = identity.options && typeof identity.options === 'object' ? identity.options : {};\n  const identityMetadata = identity.metadata && typeof identity.metadata === 'object' ? identity.metadata : {};\n  identity.client = { ...(identity.client || {}), name: mappedClientName };\n  identity.options = {\n    ...options,\n    create_client: bool(options.create_client, false),\n    create_location: bool(options.create_location, false),\n    create_asset: bool(options.create_asset, false),\n  };\n  identity.metadata = {\n    ...identityMetadata,\n    original_client_name: originalClientName,\n    client_alias_applied: originalClientName !== mappedClientName,\n  };\n  return identity;\n};\n\nif (body.identity && body.source && body.event_id && body.incident_key) {\n  return [{ json: { ...body, identity: hardenIdentity(body.identity) } }];\n}\n\nlet source = text(body.source || header('x-n45-source')).toLowerCase().replace(/[^a-z0-9._-]/g, '_');\nif (!source && (body.monitor || body.heartbeat)) source = 'uptime_kuma';\nif (!source && (body.job || body.backup_job)) source = 'backup';\nif (!source) throw new Error('The event source is missing. Send x-n45-source or a canonical source field.');\n\nconst monitor = body.monitor || {};\nconst heartbeat = body.heartbeat || {};\nconst monitorName = text(monitor.name || body.monitor_name || body.service_name || body.name || body.job || body.backup_job, 'Unnamed service');\nconst parts = monitorName.split(/\\s+::\\s+/).map((part) => part.trim()).filter(Boolean);\nconst explicitClient = text(body.client_name || header('x-itflow-client'));\nconst explicitLocation = text(body.location_name || header('x-itflow-location'));\nconst originalClientName = explicitClient || (parts.length >= 3 ? parts[0] : '');\nconst clientName = canonicalClientName(originalClientName);\nconst locationName = explicitLocation || (parts.length >= 3 ? parts[1] : '');\nconst serviceName = parts.length >= 3 ? parts.slice(2).join(' :: ') : monitorName;\n\nconst rawStatus = body.state ?? body.status ?? heartbeat.status ?? body.result;\nconst normalizedStatus = typeof rawStatus === 'number'\n  ? ({ 0: 'open', 1: 'resolved', 2: 'update', 3: 'resolved' }[rawStatus] || '')\n  : text(rawStatus).toLowerCase();\nconst healthy = ['up', 'ok', 'healthy', 'success', 'successful', 'resolved', 'recovered', 'operational', 'passed'].includes(normalizedStatus);\nconst unhealthy = ['down', 'failed', 'failure', 'error', 'critical', 'unhealthy', 'open', 'alerting'].includes(normalizedStatus);\nif (!healthy && !unhealthy && normalizedStatus !== 'update') {\n  throw new Error('The event status could not be mapped to open, update, or resolved.');\n}\nconst state = healthy ? 'resolved' : (normalizedStatus === 'update' ? 'update' : 'open');\n\nconst externalId = text(monitor.id ?? monitor.monitorID ?? heartbeat.monitorID ?? body.monitor_id ?? body.job_id ?? body.workflow_id ?? body.external_id, serviceName);\nconst incidentKey = text(body.incident_key, source + ':' + externalId);\nconst occurredAt = text(body.occurred_at || heartbeat.time || body.time || body.timestamp, new Date().toISOString());\nconst eventId = text(body.event_id || heartbeat.id, incidentKey + ':' + state + ':' + occurredAt);\nconst sourceUrl = text(body.url || monitor.url || body.source_url);\nconst host = text(monitor.hostname || body.hostname || body.host);\nconst details = text(body.description || body.message || body.msg || heartbeat.msg,\n  serviceName + (state === 'resolved' ? ' recovered.' : ' reported ' + normalizedStatus + '.'));\n\nconst event = {\n  source,\n  event_id: eventId,\n  incident_key: incidentKey,\n  entity_type: source === 'uptime_kuma' ? 'monitor' : (source === 'backup' ? 'backup_job' : 'service'),\n  state,\n  severity: text(body.severity, state === 'resolved' ? 'low' : 'high'),\n  title: text(body.title, '[' + source.replaceAll('_', ' ') + '] ' + serviceName),\n  description: details,\n  occurred_at: occurredAt,\n  url: sourceUrl,\n  auto_resolve: bool(body.auto_resolve, true),\n  assigned_to: Number(body.assigned_to || 0),\n  identity: {\n    external_id: externalId,\n    external_name: serviceName,\n    client: { name: clientName },\n    location: { name: locationName },\n    asset: host ? { name: host, uri: sourceUrl } : {},\n    options: {\n      create_client: bool(body.create_client ?? header('x-itflow-create-client'), false),\n      create_location: bool(body.create_location ?? header('x-itflow-create-location'), false),\n      create_asset: bool(body.create_asset ?? header('x-itflow-create-asset'), false),\n    },\n    metadata: {\n      monitor_type: monitor.type || '',\n      raw_status: rawStatus ?? '',\n      original_client_name: originalClientName,\n      client_alias_applied: originalClientName !== clientName,\n    },\n  },\n  metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},\n};\nreturn [{ json: event }];"
+        "jsCode": "const input = $input.first().json;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst headers = Object.fromEntries(Object.entries(input.headers || {}).map(([key, value]) => [key.toLowerCase(), value]));\nconst header = (name) => String(headers[name.toLowerCase()] ?? '').trim();\nconst text = (value, fallback = '') => value === undefined || value === null ? fallback : String(value).trim();\nconst limitedText = (value, length, fallback = '') => text(value, fallback).slice(0, length);\nconst bool = (value, fallback = false) => {\n  if (value === undefined || value === null || value === '') return fallback;\n  return value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\n};\nconst integer = (value) => {\n  const parsed = Number(value);\n  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;\n};\nconst sensitiveKey = (key) => {\n  const normalized = String(key || '').replace(/([a-z0-9])([A-Z])/g, '$1_$2')\n    .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');\n  if (['api_key', 'apikey', 'auth', 'authentication', 'authorization', 'bearer', 'client_secret',\n    'cookie', 'credential', 'credentials', 'password', 'private_key', 'proxy_authorization',\n    'refresh_token', 'secret', 'session', 'session_id', 'signature', 'signing_key', 'token',\n    'webhook_secret', 'x_api_key'].includes(normalized)) return true;\n  return ['_api_key', '_credential', '_password', '_secret', '_token'].some((suffix) => normalized.endsWith(suffix));\n};\nconst sanitize = (value, depth = 0) => {\n  if (depth > 5 || value === undefined || typeof value === 'function') return null;\n  if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;\n  if (typeof value === 'string') return value.slice(0, 8000);\n  if (Array.isArray(value)) return value.slice(0, 100).map((item) => sanitize(item, depth + 1));\n  if (typeof value !== 'object') return String(value).slice(0, 8000);\n  const clean = {};\n  for (const [key, item] of Object.entries(value).slice(0, 100)) {\n    if (!sensitiveKey(key)) clean[key] = sanitize(item, depth + 1);\n  }\n  return clean;\n};\nconst sourceName = (value) => text(value).toLowerCase().replace(/[^a-z0-9._-]/g, '_').slice(0, 40);\nconst stateName = (value) => {\n  const state = text(value, 'open').toLowerCase();\n  if (!['open', 'update', 'resolved'].includes(state)) throw new Error('The canonical event state is invalid.');\n  return state;\n};\nconst severityName = (value, fallback) => {\n  const severity = text(value, fallback).toLowerCase();\n  return ['information', 'low', 'warning', 'medium', 'high', 'critical', 'emergency'].includes(severity)\n    ? severity : fallback;\n};\nconst timestamp = (value, offset = '') => {\n  let raw = text(value);\n  if (!raw) return new Date().toISOString();\n  raw = raw.replace(' ', 'T');\n  if (!/(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(raw)) {\n    raw += /^[+-]\\d{2}:\\d{2}$/.test(text(offset)) ? text(offset) : 'Z';\n  }\n  const parsed = new Date(raw);\n  if (Number.isNaN(parsed.getTime())) throw new Error('The event timestamp is invalid.');\n  return parsed.toISOString();\n};\nconst clientAliases = new Map([\n  ['n45 technologies', 'N45 Technology Solutions'],\n  ['n45 tech solutions', 'N45 Technology Solutions'],\n  ['n45 technology solutions', 'N45 Technology Solutions'],\n]);\nconst canonicalClientName = (value) => {\n  const original = text(value);\n  return clientAliases.get(original.toLowerCase()) || original;\n};\nconst record = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};\nconst pick = (value, keys) => Object.fromEntries(keys\n  .filter((key) => value[key] !== undefined && value[key] !== null && value[key] !== '')\n  .map((key) => [key, sanitize(value[key])]));\nconst hardenIdentity = (identityInput = {}) => {\n  const original = record(identityInput);\n  const client = record(original.client);\n  const location = record(original.location);\n  const asset = record(original.asset);\n  const domain = record(original.domain);\n  const options = record(original.options);\n  const originalClientName = text(client.name);\n  const mappedClientName = canonicalClientName(originalClientName);\n  return {\n    ...pick(original, ['external_id', 'external_name', 'entity_type']),\n    client: { ...pick(client, ['id', 'external_id', 'entity_type']), name: mappedClientName },\n    location: pick(location, ['id', 'name', 'external_id', 'entity_type', 'description', 'address', 'city', 'state', 'zip']),\n    asset: pick(asset, ['id', 'name', 'description', 'type', 'make', 'model', 'serial', 'os', 'ip', 'status', 'uri', 'notes']),\n    domain: pick(domain, ['id', 'name', 'description', 'notes']),\n    options: {\n      create_client: bool(options.create_client, false),\n      create_location: bool(options.create_location, false),\n      create_asset: bool(options.create_asset, false),\n      create_domain: bool(options.create_domain, false),\n    },\n    metadata: {\n      ...sanitize(record(original.metadata)),\n      original_client_name: originalClientName,\n      client_alias_applied: originalClientName !== mappedClientName,\n    },\n  };\n};\nlet routing = {};\nconst routingJson = text($vars.N45_EVENT_ROUTING_JSON);\nif (routingJson) {\n  try {\n    const parsed = JSON.parse(routingJson);\n    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');\n    routing = parsed;\n  } catch (error) {\n    throw new Error('N45_EVENT_ROUTING_JSON must be a JSON object.');\n  }\n}\nlet source = sourceName(body.source || header('x-n45-source'));\nif (!source && (body.monitor || body.heartbeat)) source = 'uptime_kuma';\nif (!source && (body.job || body.backup_job)) source = 'backup';\nif (!source) throw new Error('The event source is missing. Send x-n45-source or a canonical source field.');\nconst sourceRoute = record(routing[source]);\nconst routeValue = (key, fallback) => body[key] !== undefined && body[key] !== null && body[key] !== ''\n  ? body[key] : (sourceRoute[key] !== undefined ? sourceRoute[key] : fallback);\nconst requestType = (fallback) => {\n  const value = text(routeValue('request_type_key', fallback)).toLowerCase()\n    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100);\n  return value || fallback;\n};\nconst contactMode = ['none', 'primary'].includes(text(routeValue('contact_mode', 'none')).toLowerCase())\n  ? text(routeValue('contact_mode', 'none')).toLowerCase() : 'none';\n\nif (body.identity && body.event_id && body.incident_key) {\n  const canonicalState = stateName(body.state);\n  const canonicalEventId = limitedText(body.event_id, 255);\n  const canonicalIncidentKey = limitedText(body.incident_key, 255);\n  if (!canonicalEventId || !canonicalIncidentKey) throw new Error('Canonical event_id and incident_key are required.');\n  const fallbackRequestType = source === 'n8n' ? 'automation-failure'\n    : (source === 'backup' ? 'backup-alert' : (source === 'uptime_kuma' ? 'monitoring-alert' : 'integration-alert'));\n  return [{ json: {\n    source,\n    event_id: canonicalEventId,\n    incident_key: canonicalIncidentKey,\n    entity_type: sourceName(body.entity_type || body.identity.entity_type || 'service') || 'service',\n    state: canonicalState,\n    severity: severityName(body.severity, canonicalState === 'resolved' ? 'low' : 'medium'),\n    title: limitedText(body.title, 500) || 'Integration alert',\n    description: limitedText(body.description, 8000),\n    occurred_at: timestamp(body.occurred_at, body.timezone_offset || body.timezoneOffset),\n    url: limitedText(body.url, 2000),\n    auto_resolve: bool(body.auto_resolve, true),\n    assigned_to: integer(routeValue('assigned_to', 0)),\n    category_id: integer(routeValue('category_id', 0)),\n    contact_id: integer(routeValue('contact_id', 0)),\n    request_type_key: requestType(fallbackRequestType),\n    contact_mode: contactMode,\n    service_id: integer(body.service_id),\n    identity: hardenIdentity(body.identity),\n    metadata: sanitize(record(body.metadata)),\n  } }];\n}\n\nconst monitor = body.monitor || {};\nconst heartbeat = body.heartbeat || {};\nconst monitorName = text(monitor.name || body.monitor_name || body.service_name || body.name || body.job || body.backup_job, 'Unnamed service');\nconst parts = monitorName.split(/\\s+::\\s+/).map((part) => part.trim()).filter(Boolean);\nconst explicitClient = text(body.client_name || header('x-itflow-client'));\nconst explicitLocation = text(body.location_name || header('x-itflow-location'));\nconst originalClientName = explicitClient || (parts.length >= 3 ? parts[0] : '');\nconst clientName = canonicalClientName(originalClientName);\nconst locationName = explicitLocation || (parts.length >= 3 ? parts[1] : '');\nconst serviceName = parts.length >= 3 ? parts.slice(2).join(' :: ') : monitorName;\n\nconst rawStatus = body.state ?? body.status ?? heartbeat.status ?? body.result;\nconst normalizedStatus = typeof rawStatus === 'number'\n  ? ({ 0: 'open', 1: 'resolved', 2: 'update', 3: 'resolved' }[rawStatus] || '')\n  : text(rawStatus).toLowerCase();\nconst healthy = ['up', 'ok', 'healthy', 'success', 'successful', 'resolved', 'recovered', 'operational', 'passed'].includes(normalizedStatus);\nconst unhealthy = ['down', 'failed', 'failure', 'error', 'critical', 'unhealthy', 'open', 'alerting'].includes(normalizedStatus);\nif (!healthy && !unhealthy && normalizedStatus !== 'update') {\n  throw new Error('The event status could not be mapped to open, update, or resolved.');\n}\nconst state = healthy ? 'resolved' : (normalizedStatus === 'update' ? 'update' : 'open');\n\nconst externalId = text(monitor.id ?? monitor.monitorID ?? heartbeat.monitorID ?? body.monitor_id ?? body.job_id ?? body.workflow_id ?? body.external_id, serviceName);\nconst incidentKey = text(body.incident_key, source + ':' + externalId);\nconst sourceOffset = heartbeat.timezoneOffset || body.timezone_offset || body.timezoneOffset;\nconst occurredAt = body.occurred_at\n  ? timestamp(body.occurred_at, sourceOffset)\n  : (heartbeat.localDateTime && sourceOffset\n    ? timestamp(heartbeat.localDateTime, sourceOffset)\n    : timestamp(heartbeat.time || body.time || body.timestamp, sourceOffset));\nconst eventId = text(body.event_id || heartbeat.id, incidentKey + ':' + state + ':' + occurredAt);\nconst sourceUrl = text(body.url || monitor.url || body.source_url);\nconst host = text(monitor.hostname || body.hostname || body.host);\nconst target = host || sourceUrl.replace(/^https?:\\/\\//i, '').split('/')[0];\nconst rawDetails = text(body.description || body.message || body.msg || heartbeat.msg);\nconst cleanDetails = rawDetails.replace(/^(?:\\[[^\\]]*\\]\\s*)+/, '')\n  .replace(/^(?:down|up|resolved|recovered)\\s*[:\\-–—]?\\s*/i, '').trim();\nconst availability = serviceName + (target ? ' (' + target + ')' : '');\nconst details = source === 'uptime_kuma'\n  ? availability + (state === 'resolved' ? ' has recovered.' : ' is unavailable.')\n    + (cleanDetails ? '\\n\\nSource detail: ' + cleanDetails : '')\n  : (rawDetails || serviceName + (state === 'resolved' ? ' recovered.' : ' reported ' + normalizedStatus + '.'));\nconst monitorTags = JSON.stringify(monitor.tags || body.tags || []).toLowerCase();\nconst defaultSeverity = state === 'resolved' ? 'low'\n  : (/critical|emergency/.test(monitorTags) ? 'critical'\n    : (/high/.test(monitorTags) || /\\b(psa|firewall|internet|core)\\b/i.test(serviceName) ? 'high' : 'medium'));\nconst defaultTitle = source === 'uptime_kuma' ? 'Monitoring alert: ' + serviceName\n  : (source === 'backup' ? 'Backup alert: ' + serviceName : 'Integration alert: ' + serviceName);\nconst defaultRequestType = source === 'uptime_kuma' ? 'monitoring-alert'\n  : (source === 'backup' ? 'backup-alert' : 'integration-alert');\n\nconst event = {\n  source,\n  event_id: eventId,\n  incident_key: incidentKey,\n  entity_type: source === 'uptime_kuma' ? 'monitor' : (source === 'backup' ? 'backup_job' : 'service'),\n  state,\n  severity: severityName(body.severity, defaultSeverity),\n  title: limitedText(body.title, 500, defaultTitle),\n  description: limitedText(details, 8000),\n  occurred_at: occurredAt,\n  url: sourceUrl,\n  auto_resolve: bool(body.auto_resolve, true),\n  assigned_to: integer(routeValue('assigned_to', 0)),\n  category_id: integer(routeValue('category_id', 0)),\n  contact_id: integer(routeValue('contact_id', 0)),\n  request_type_key: requestType(defaultRequestType),\n  contact_mode: contactMode,\n  identity: {\n    external_id: externalId,\n    external_name: serviceName,\n    client: { name: clientName },\n    location: { name: locationName },\n    asset: host ? { name: host, uri: sourceUrl } : {},\n    options: {\n      create_client: bool(body.create_client ?? header('x-itflow-create-client'), false),\n      create_location: bool(body.create_location ?? header('x-itflow-create-location'), false),\n      create_asset: bool(body.create_asset ?? header('x-itflow-create-asset'), false),\n    },\n    metadata: {\n      monitor_type: monitor.type || '',\n      raw_status: rawStatus ?? '',\n      original_client_name: originalClientName,\n      client_alias_applied: originalClientName !== clientName,\n    },\n  },\n  metadata: sanitize(record(body.metadata)),\n};\nreturn [{ json: event }];"
       }
     },
     {
       "id": "b5b28290-c8f5-4f50-8dcc-d5369f0c5122",
-      "name": "Send to ITFlow",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "name": "Queue Event",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
       "position": [
-        -200,
-        0
+        -380,
+        -240
       ],
       "parameters": {
-        "method": "POST",
-        "url": "https://psa.n45tech.com/api/v1/integrations/automation/event.php",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "N45 Operations Event Outbox",
+          "cachedResultName": "N45 Operations Event Outbox"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "source",
+              "condition": "eq",
+              "keyValue": "={{ $json.source }}"
+            },
+            {
+              "keyName": "event_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.event_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "value": {
+            "event_id": "={{ $json.event_id }}",
+            "incident_key": "={{ $json.incident_key }}",
+            "source": "={{ $json.source }}",
+            "occurred_at": "={{ $json.occurred_at }}",
+            "payload": "={{ JSON.stringify($json) }}",
+            "status": "pending",
+            "attempts": 0,
+            "next_attempt_at": "={{ $now.toISO() }}",
+            "last_error": ""
+          }
+        },
         "options": {}
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "replace-n45-itflow-api",
-          "name": "N45 ITFlow API"
-        }
       }
     },
     {
@@ -69,12 +94,259 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
       "position": [
-        60,
-        0
+        -100,
+        -240
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($json) }}",
+        "responseBody": {
+          "accepted": true,
+          "queued": true
+        },
+        "options": {
+          "responseCode": 202
+        }
+      }
+    },
+    {
+      "id": "ad6ddcd3-c9ad-4298-bb62-4dad129d6221",
+      "name": "Delivery Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -900,
+        160
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cb937a65-cd54-46b3-a1a0-635415dbb62b",
+      "name": "Read Event Queue",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -650,
+        160
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "N45 Operations Event Outbox",
+          "cachedResultName": "N45 Operations Event Outbox"
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "createdAt",
+        "orderByDirection": "ASC"
+      }
+    },
+    {
+      "id": "8c937a65-cd54-46b3-a1a0-635415dbb62c",
+      "name": "Select Due Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        160
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const rows = $input.all().map((item) => item.json).sort((left, right) => {\n  const leftTime = Date.parse(left.occurred_at || left.createdAt || '') || 0;\n  const rightTime = Date.parse(right.occurred_at || right.createdAt || '') || 0;\n  return leftTime - rightTime || Number(left.id || 0) - Number(right.id || 0);\n});\nconst firstIncidentSeen = new Set();\nconst selected = [];\nconst now = Date.now();\nfor (const row of rows) {\n  const incidentKey = String(row.source || '') + '\\u0000' + String(row.incident_key || 'row:' + row.id);\n  if (firstIncidentSeen.has(incidentKey)) continue;\n  firstIncidentSeen.add(incidentKey);\n  if (!['pending', 'retry'].includes(String(row.status || '').toLowerCase())) continue;\n  const dueAt = Date.parse(row.next_attempt_at || row.createdAt || '') || 0;\n  if (dueAt > now) continue;\n  let deliveryPayload = {};\n  let payloadError = '';\n  try {\n    deliveryPayload = JSON.parse(String(row.payload || ''));\n    if (!deliveryPayload || typeof deliveryPayload !== 'object' || Array.isArray(deliveryPayload)) {\n      throw new Error('payload is not an object');\n    }\n  } catch (error) {\n    payloadError = 'The queued event payload is invalid.';\n  }\n  selected.push({ json: { ...row, delivery_payload: deliveryPayload, payload_error: payloadError } });\n  if (selected.length >= 25) break;\n}\nreturn selected;"
+      }
+    },
+    {
+      "id": "5afd7992-64e1-4c93-879a-8fe90025b22f",
+      "name": "Deliver Event to ITFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -140,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://psa.n45tech.com/api/v1/integrations/automation/event.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.delivery_payload) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 100
+            }
+          },
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replace-n45-itflow-api",
+          "name": "N45 ITFlow API"
+        }
+      }
+    },
+    {
+      "id": "195c93c9-fd8d-48a1-8cc8-6fbfe3105c08",
+      "name": "Classify Delivery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        160
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const response = $json || {};\nconst row = $('Select Due Events').item.json;\nconst attempts = Math.max(0, Number(row.attempts || 0)) + 1;\nconst statusCode = Number(response.statusCode ?? response.status ?? response.error?.statusCode\n  ?? response.error?.httpCode ?? 0);\nconst redact = (value) => String(value || '')\n  .replace(/\\b(Bearer|Basic|ApiToken)\\s+[^\\s,;]+/gi, '$1 [redacted]')\n  .replace(/([?&](?:access_token|api[_-]?key|authorization|client_secret|password|refresh_token|secret|token)=)[^&\\s]*/gi, '$1[redacted]')\n  .slice(0, 2000);\nlet responseMessage = row.payload_error || response.body?.message || response.body?.error\n  || response.error?.message || response.message || '';\nif (responseMessage && typeof responseMessage === 'object') responseMessage = JSON.stringify(responseMessage);\nif (statusCode >= 200 && statusCode < 300 && !row.payload_error) {\n  return { json: { id: row.id, event_id: row.event_id, disposition: 'delivered', attempts,\n    status: 'delivered', next_attempt_at: new Date().toISOString(), last_error: '' } };\n}\nconst retryable = !row.payload_error && (statusCode === 0 || [408, 425, 429].includes(statusCode) || statusCode >= 500);\nconst exhausted = attempts >= 20;\nif (retryable && !exhausted) {\n  const delaySeconds = Math.min(3600, 30 * (2 ** Math.min(attempts, 7))) + (Number(row.id || 0) % 17);\n  const message = redact(responseMessage || ('ITFlow delivery returned HTTP ' + (statusCode || 'network error')));\n  return { json: { id: row.id, event_id: row.event_id, disposition: 'retry', attempts,\n    status: 'retry', next_attempt_at: new Date(Date.now() + delaySeconds * 1000).toISOString(), last_error: message } };\n}\nconst reason = row.payload_error || (exhausted\n  ? 'ITFlow delivery exhausted 20 attempts.'\n  : 'ITFlow delivery returned non-retryable HTTP ' + (statusCode || 'error') + '.');\nconst detail = redact(responseMessage);\nreturn { json: { id: row.id, event_id: row.event_id, disposition: 'terminal', attempts,\n  status: 'terminal', next_attempt_at: new Date().toISOString(),\n  last_error: redact(reason + (detail ? ' ' + detail : '')) } };"
+      }
+    },
+    {
+      "id": "fd265b7d-0f9c-4014-bb0c-eef07b7f1b93",
+      "name": "Route Delivery",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        380,
+        160
+      ],
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 3,
+        "output": "={{ $json.disposition === 'delivered' ? 0 : ($json.disposition === 'retry' ? 1 : 2) }}"
+      }
+    },
+    {
+      "id": "96a230b9-60b9-4a07-87b1-1dabfa4d4939",
+      "name": "Remove Delivered Event",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        650,
+        40
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "N45 Operations Event Outbox",
+          "cachedResultName": "N45 Operations Event Outbox"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "852e6482-ef32-4671-a7af-6d4c0d4f01a9",
+      "name": "Schedule Event Retry",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        650,
+        160
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "N45 Operations Event Outbox",
+          "cachedResultName": "N45 Operations Event Outbox"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "value": {
+            "status": "={{ $json.status }}",
+            "attempts": "={{ $json.attempts }}",
+            "next_attempt_at": "={{ $json.next_attempt_at }}",
+            "last_error": "={{ $json.last_error }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "01a9801e-da74-4880-a415-28b5f47ce09a",
+      "name": "Hold Terminal Event",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        650,
+        280
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "N45 Operations Event Outbox",
+          "cachedResultName": "N45 Operations Event Outbox"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "value": {
+            "status": "={{ $json.status }}",
+            "attempts": "={{ $json.attempts }}",
+            "next_attempt_at": "={{ $json.next_attempt_at }}",
+            "last_error": "={{ $json.last_error }}"
+          }
+        },
         "options": {}
       }
     }
@@ -95,18 +367,98 @@
       "main": [
         [
           {
-            "node": "Send to ITFlow",
+            "node": "Queue Event",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send to ITFlow": {
+    "Queue Event": {
       "main": [
         [
           {
             "node": "Acknowledge Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delivery Schedule": {
+      "main": [
+        [
+          {
+            "node": "Read Event Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Event Queue": {
+      "main": [
+        [
+          {
+            "node": "Select Due Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Due Events": {
+      "main": [
+        [
+          {
+            "node": "Deliver Event to ITFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deliver Event to ITFlow": {
+      "main": [
+        [
+          {
+            "node": "Classify Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Delivery": {
+      "main": [
+        [
+          {
+            "node": "Route Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Delivery": {
+      "main": [
+        [
+          {
+            "node": "Remove Delivered Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Schedule Event Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hold Terminal Event",
             "type": "main",
             "index": 0
           }
@@ -117,9 +469,12 @@
   "pinData": {},
   "settings": {
     "executionOrder": "v1",
-    "saveManualExecutions": true,
+    "saveManualExecutions": false,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "errorWorkflow": "",
+    "timezone": "UTC"
   },
   "active": false,
   "tags": []

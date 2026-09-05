@@ -22,7 +22,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nconst execution = input.execution || {};\nconst workflow = input.workflow || {};\nconst trigger = input.trigger || {};\nconst error = execution.error || trigger.error || input.error || {};\nconst executionId = String(execution.id || Date.now());\nconst workflowId = String(workflow.id || 'unknown');\nconst redact = (value) => String(value || '')\n  .replace(/\\b(Bearer|Basic|ApiToken)\\s+[^\\s,;]+/gi, '$1 [redacted]')\n  .replace(/([?&](?:access_token|api[_-]?key|authorization|client_secret|code|password|refresh_token|secret|token)=)[^&\\s]*/gi, '$1[redacted]')\n  .slice(0, 2000);\nreturn [{ json: {\n  source: 'n8n', event_id: 'execution:' + executionId,\n  incident_key: 'workflow:' + workflowId, entity_type: 'workflow', state: 'open', severity: 'high',\n  title: '[n8n] Workflow failed: ' + (workflow.name || workflowId),\n  description: redact(error.message || error.description || 'The n8n workflow failed.') +\n    (execution.lastNodeExecuted ? '\\nLast node: ' + execution.lastNodeExecuted : ''),\n  occurred_at: new Date().toISOString(),\n  url: execution.url || '', auto_resolve: false,\n  identity: {\n    external_id: workflowId, external_name: workflow.name || workflowId,\n    client: { name: 'N45 Technology Solutions' }, location: { name: 'Infrastructure' },\n    options: { create_client: false, create_location: false, create_asset: false },\n    metadata: { execution_id: executionId, last_node: execution.lastNodeExecuted || '' },\n  },\n} }];"
+        "jsCode": "const input = $input.first().json;\nconst execution = input.execution || {};\nconst workflow = input.workflow || {};\nconst trigger = input.trigger || {};\nconst error = execution.error || trigger.error || input.error || {};\nconst executionId = String(execution.id || Date.now());\nconst workflowId = String(workflow.id || 'unknown');\nconst redact = (value) => String(value || '')\n  .replace(/\\b(Bearer|Basic|ApiToken)\\s+[^\\s,;]+/gi, '$1 [redacted]')\n  .replace(/([?&](?:access_token|api[_-]?key|authorization|client_secret|code|password|refresh_token|secret|token)=)[^&\\s]*/gi, '$1[redacted]')\n  .slice(0, 2000);\nreturn [{ json: {\n  source: 'n8n', event_id: 'execution:' + executionId,\n  incident_key: 'workflow:' + workflowId, entity_type: 'workflow', state: 'open', severity: 'high',\n  title: '[n8n] Workflow failed: ' + (workflow.name || workflowId),\n  description: redact(error.message || error.description || 'The n8n workflow failed.') +\n    (execution.lastNodeExecuted ? '\\nLast node: ' + execution.lastNodeExecuted : ''),\n  occurred_at: new Date().toISOString(),\n  url: execution.url || '', auto_resolve: false,\n  request_type_key: 'automation-failure', contact_mode: 'none',\n  identity: {\n    external_id: workflowId, external_name: workflow.name || workflowId,\n    client: { name: 'N45 Technology Solutions' }, location: { name: 'Infrastructure' },\n    options: { create_client: false, create_location: false, create_asset: false },\n    metadata: { execution_id: executionId, last_node: execution.lastNodeExecuted || '' },\n  },\n} }];"
       }
     },
     {
@@ -44,6 +44,9 @@
         "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {}
       },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
       "credentials": {
         "httpHeaderAuth": {
           "id": "replace-n45-webhook-auth",
@@ -144,9 +147,12 @@
   "pinData": {},
   "settings": {
     "executionOrder": "v1",
-    "saveManualExecutions": true,
+    "saveManualExecutions": false,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "errorWorkflow": "",
+    "timezone": "UTC"
   },
   "active": false,
   "tags": []
