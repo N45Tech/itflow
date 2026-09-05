@@ -1,0 +1,216 @@
+name: Notify production after CI
+
+on:
+  workflow_run:
+    workflows: [PHPLint, N45 Upstream Parity, SQL Syntax Check for db.sql]
+    branches: [main]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: production-notification-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    if: >-
+      github.repository == 'N45Tech/itflow' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.workflow_run.repository.full_name == github.repository &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+
+    # Never check out code or download artifacts in this privileged workflow.
+    steps:
+      - name: Require all CI workflows for the current main commit
+        id: release
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const source = context.payload.workflow_run;
+            const sha = source.head_sha;
+            const required = [
+              { name: 'PHPLint', path: '.github/workflows/php-lint.yml' },
+              { name: 'N45 Upstream Parity', path: '.github/workflows/upstream-parity.yml' },
+              { name: 'SQL Syntax Check for db.sql', path: '.github/workflows/dbsql-lint.yml' },
+            ];
+            core.setOutput('ready', 'false');
+            if (!/^[0-9a-f]{40}$/.test(sha)) {
+              core.setFailed('The completed workflow has an invalid commit SHA.');
+              return;
+            }
+            const currentMain = async () => {
+              const response = await github.rest.git.getRef({
+                owner, repo, ref: 'heads/main',
+              });
+              return response.data.object.sha;
+            };
+            if (await currentMain() !== sha) {
+              core.notice('A newer main commit exists; this notification is obsolete.');
+              return;
+            }
+            const workflows = await github.paginate(
+              github.rest.actions.listRepoWorkflows, { owner, repo, per_page: 100 }
+            );
+            const results = [];
+            for (const expected of required) {
+              const workflow = workflows.find((item) =>
+                item.path === expected.path &&
+                item.name === expected.name &&
+                item.state === 'active'
+              );
+              if (!workflow) {
+                core.setFailed('A required CI workflow is missing, renamed, or disabled.');
+                return;
+              }
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner, repo, workflow_id: workflow.id,
+                branch: 'main', event: 'push', head_sha: sha, per_page: 100,
+              });
+              const latest = runs.filter((run) =>
+                run.workflow_id === workflow.id &&
+                run.path === expected.path &&
+                run.event === 'push' &&
+                run.head_branch === 'main' &&
+                run.head_sha === sha &&
+                run.repository?.full_name === context.payload.repository.full_name &&
+                run.head_repository?.full_name === context.payload.repository.full_name
+              ).sort((left, right) =>
+                Number(right.run_number) - Number(left.run_number) ||
+                Number(right.run_attempt) - Number(left.run_attempt) ||
+                Number(right.id) - Number(left.id)
+              )[0];
+              results.push({ name: expected.name, run: latest });
+            }
+            await core.summary
+              .addHeading('Production notification eligibility')
+              .addRaw('Commit: ' + sha + '\n\n')
+              .addTable([
+                [{ data: 'Workflow', header: true }, { data: 'Result', header: true }],
+                ...results.map(({ name, run }) =>
+                  [name, run?.conclusion || run?.status || 'missing']
+                ),
+              ]).write();
+            if (!results.every(({ run }) =>
+              run?.status === 'completed' && run.conclusion === 'success'
+            )) {
+              core.notice('Not all required CI workflows have passed; no notification sent.');
+              return;
+            }
+            if (!results.some(({ run }) =>
+              run.id === source.id && run.run_attempt === source.run_attempt
+            )) {
+              core.notice('This completion event was superseded by a newer CI attempt.');
+              return;
+            }
+            if (await currentMain() !== sha) {
+              core.notice('Main advanced during the checks; no obsolete notification sent.');
+              return;
+            }
+            core.setOutput('sha', sha);
+            core.setOutput('source_run_id', String(source.id));
+            core.setOutput('ready', 'true');
+
+      - name: Load the private dispatch destination
+        if: steps.release.outputs.ready == 'true'
+        id: destination
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          DISPATCH_REPOSITORY: ${{ secrets.PRODUCTION_DISPATCH_REPOSITORY }}
+          DISPATCH_APP_ID: ${{ secrets.PRODUCTION_DISPATCH_APP_ID }}
+          PRIVATE_KEY_CONFIGURED: ${{ secrets.PRODUCTION_DISPATCH_APP_PRIVATE_KEY != '' }}
+        with:
+          script: |
+            const destination = process.env.DISPATCH_REPOSITORY || '';
+            if (!destination || !process.env.DISPATCH_APP_ID ||
+                process.env.PRIVATE_KEY_CONFIGURED !== 'true') {
+              core.setFailed('Direct notification is not configured. Add the three PRODUCTION_DISPATCH secrets. Scheduled deployment polling is unchanged.');
+              return;
+            }
+            if (!/^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_.-]+$/.test(destination)) {
+              core.setFailed('The private deployment destination is invalid.');
+              return;
+            }
+            const [owner, repo] = destination.split('/');
+            if (owner.toLowerCase() !== context.repo.owner.toLowerCase() ||
+                repo.toLowerCase() === context.repo.repo.toLowerCase()) {
+              core.setFailed('The deployment destination must be a separate repository in this organization.');
+              return;
+            }
+            core.setSecret(destination);
+            core.setSecret(owner);
+            core.setSecret(repo);
+            core.setOutput('owner', owner);
+            core.setOutput('repo', repo);
+
+      - name: Create a short-lived notification token
+        if: steps.release.outputs.ready == 'true'
+        id: dispatch_token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ secrets.PRODUCTION_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.PRODUCTION_DISPATCH_APP_PRIVATE_KEY }}
+          owner: ${{ steps.destination.outputs.owner }}
+          repositories: ${{ steps.destination.outputs.repo }}
+          permission-actions: write
+          skip-token-revoke: false
+
+      - name: Notify the private deployment workflow
+        if: steps.release.outputs.ready == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          DISPATCH_TOKEN: ${{ steps.dispatch_token.outputs.token }}
+          DISPATCH_OWNER: ${{ steps.destination.outputs.owner }}
+          DISPATCH_REPOSITORY: ${{ steps.destination.outputs.repo }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          SOURCE_RUN_ID: ${{ steps.release.outputs.source_run_id }}
+        with:
+          script: |
+            const owner = encodeURIComponent(process.env.DISPATCH_OWNER);
+            const repo = encodeURIComponent(process.env.DISPATCH_REPOSITORY);
+            let response;
+            try {
+              response = await fetch(
+                'https://api.github.com/repos/' + owner + '/' + repo +
+                  '/actions/workflows/deploy-production.yml/dispatches',
+                {
+                  method: 'POST',
+                  redirect: 'error',
+                  signal: AbortSignal.timeout(30000),
+                  headers: {
+                    Accept: 'application/vnd.github+json',
+                    Authorization: 'Bearer ' + process.env.DISPATCH_TOKEN,
+                    'Content-Type': 'application/json',
+                    'X-GitHub-Api-Version': '2022-11-28',
+                  },
+                  body: JSON.stringify({
+                    ref: 'main',
+                    inputs: {
+                      sha: process.env.RELEASE_SHA,
+                      source_run_id: process.env.SOURCE_RUN_ID,
+                    },
+                  }),
+                }
+              );
+            } catch {
+              core.setFailed('The private notification failed or timed out. Scheduled polling remains available.');
+              return;
+            }
+            if (response.status !== 204) {
+              // Never publish private URLs, response bodies, or deployment logs.
+              core.setFailed('The private notification was not accepted (HTTP ' + response.status + '). Scheduled polling remains available.');
+              return;
+            }
+            await core.summary
+              .addHeading('Release notification accepted')
+              .addRaw('The private workflow will independently recheck main and CI before making changes. Acceptance is not confirmation of a successful deployment.\n')
+              .write();
