@@ -114,6 +114,7 @@ $assertTrue(
         'n45-0016-release-safety-hardening',
         'n45-0017-automation-action-outbox',
         'n45-0018-portal-business-review-access',
+        'n45-0019-ticket-approval-gates',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -132,8 +133,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0018-portal-business-review-access',
-    'The portal business-review migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0019-ticket-approval-gates',
+    'The ticket approval-gate migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -170,6 +171,16 @@ $assertTrue(
 $assertTrue(
     in_array('n45-0018-portal-business-review-access', $manifest['modules']['portal']['migrations'] ?? [], true),
     'The business-review permission is not owned by the portal module'
+);
+$ticket_approval_migration = $manifest['migrations']['n45-0019-ticket-approval-gates'] ?? [];
+$assertTrue(
+    ($ticket_approval_migration['fingerprint']['tables'] ?? null)
+        === ($post_integration_reservations['n45-0019-ticket-approval-gates']['created_tables'] ?? null),
+    'The ticket approval-gate migration does not match its table reservation'
+);
+$assertTrue(
+    in_array('n45-0019-ticket-approval-gates', $manifest['modules']['runbooks']['migrations'] ?? [], true),
+    'Ticket approval gates are not owned by the runbooks module'
 );
 
 $manifest_migration_files = array_map(

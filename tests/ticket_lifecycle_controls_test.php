@@ -4,7 +4,7 @@ $root = dirname(__DIR__);
 $ticket = file_get_contents($root . '/agent/ticket.php');
 $ticketPost = file_get_contents($root . '/agent/post/ticket.php');
 $taskPost = file_get_contents($root . '/agent/post/task.php');
-$approvalModal = file_get_contents($root . '/agent/modals/ticket/ticket_task_approver_add.php');
+$approvalModal = file_get_contents($root . '/agent/modals/ticket/ticket_approval_request.php');
 $terminalModal = file_get_contents($root . '/agent/modals/ticket/ticket_terminal.php');
 $ticketCss = file_get_contents($root . '/agent/css/ticket.css');
 $ticketJs = file_get_contents($root . '/agent/js/ticket_workspace.js');
@@ -35,7 +35,7 @@ $assertContains('runbookTicketCanResolve($ticket_id)', $ticketPost, 'Direct clos
 $assertContains("\$terminal_reason === ''", $ticketPost, 'Terminal actions do not require an audit reason');
 $assertContains('name="terminal_reason"', $terminalModal, 'Close and cancel modal does not collect an audit reason');
 
-$assertContains('title="Add approval"', $ticket, 'Post-creation approval control is not visible on unfinished tasks');
+$assertContains('ticket_approval_request.php?task_id=<?= $task_id ?>', $ticket, 'Post-creation approval control is not present in the unfinished task menu');
 $assertNotContains("intval(\$row['task_runbook_version_task_id']) > 0", $approvalModal, 'Published task modal still rejects additive approval gates');
 $assertNotContains('Published runbook approval gates come only from the pinned version', $taskPost, 'Approval handler still rejects additive gates on published tasks');
 

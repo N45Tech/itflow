@@ -634,6 +634,128 @@ if (isset($_POST['edit_ticket_priority'])) {
 
 }
 
+if (isset($_POST['edit_ticket_status'])) {
+
+    validateCSRFToken();
+    enforceUserPermission('module_support', 2);
+
+    $ticket_id = intval($_POST['ticket_id'] ?? 0);
+    $requested_status = filter_var(
+        $_POST['ticket_status'] ?? null,
+        FILTER_VALIDATE_INT,
+        ['options' => ['min_range' => 1]]
+    );
+    if (!$ticket_id || $requested_status === false || in_array($requested_status, [1, 5], true)) {
+        flashAlert('Choose an available ticket status.', 'error');
+        redirect();
+    }
+    $requested_status = intval($requested_status);
+
+    $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id,
+        ticket_project_id, ticket_status, ticket_resolved_at, ticket_closed_at,
+        ticket_prefix, ticket_number FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+    if (!$ticket || !empty($ticket['ticket_closed_at'])) {
+        flashAlert('This ticket no longer accepts status changes.', 'error');
+        redirect();
+    }
+    $client_id = intval($ticket['ticket_client_id']);
+    if ($client_id) {
+        enforceClientAccess($client_id);
+    }
+
+    $original_status = intval($ticket['ticket_status']);
+    if ($requested_status === $original_status) {
+        flashAlert('Ticket status was already up to date.');
+        redirect();
+    }
+
+    // Resolving through the inline selector must use the exact same lifecycle,
+    // notification, and Change Passport path as the primary Resolve action.
+    if ($requested_status === 4) {
+        redirect("post.php?resolve_ticket=$ticket_id&csrf_token=" . rawurlencode($_SESSION['csrf_token']));
+    }
+
+    $original_status_name = getTicketStatusName($original_status);
+    $requested_status_name = '';
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the ticket status transaction');
+        }
+        $transaction_started = true;
+
+        $status_row = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT ticket_status_name
+            FROM ticket_statuses WHERE ticket_status_id = $requested_status
+            AND ticket_status_active = 1 AND ticket_status_id NOT IN (1, 5)
+            LIMIT 1", 'Could not validate the requested ticket status'));
+        if (!$status_row) {
+            throw new RuntimeException('The requested ticket status is unavailable or inactive');
+        }
+        $requested_status_name = (string) $status_row['ticket_status_name'];
+
+        $locked_ticket = $original_status === 4
+            ? runbookLockTicketForReopen($ticket_id)
+            : runbookLockOpenTicket($ticket_id);
+        runbookRequireLockedTicketClient($locked_ticket, $client_id);
+        if (intval($locked_ticket['ticket_status']) !== $original_status) {
+            throw new RuntimeException('The ticket status changed before it was locked');
+        }
+
+        if ($original_status === 4) {
+            ticketCreationDbQuery("UPDATE tickets SET ticket_status = $requested_status,
+                ticket_resolved_at = NULL, ticket_updated_at = NOW()
+                WHERE ticket_id = $ticket_id AND ticket_status = 4
+                AND ticket_closed_at IS NULL", 'Could not reopen the ticket into the selected status');
+        } else {
+            ticketCreationDbQuery("UPDATE tickets SET ticket_status = $requested_status,
+                ticket_updated_at = NOW() WHERE ticket_id = $ticket_id
+                AND ticket_status = $original_status AND ticket_resolved_at IS NULL
+                AND ticket_closed_at IS NULL", 'Could not update the ticket status');
+        }
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The ticket status changed before it could be committed');
+        }
+
+        syncTicketSlaClock($ticket_id);
+        if ($original_status === 4) {
+            resetTicketResolutionSla($ticket_id);
+        }
+        $history_status_sql = escapeSql($requested_status_name);
+        $history_description_sql = escapeSql("$session_name changed status from $original_status_name to $requested_status_name");
+        ticketCreationDbQuery("INSERT INTO ticket_history SET
+            ticket_history_status = '$history_status_sql',
+            ticket_history_description = '$history_description_sql',
+            ticket_history_ticket_id = $ticket_id", 'Could not record the ticket status history');
+
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the ticket status change');
+        }
+        $transaction_started = false;
+    } catch (Throwable $exception) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        error_log("Ticket $ticket_id status change failed safely: " . $exception->getMessage());
+        flashAlert('The ticket status could not be changed. Refresh the ticket and try again.', 'error');
+        redirect();
+    }
+
+    $audit_description_sql = escapeSql("$session_name changed ticket status from "
+        . "$original_status_name to $requested_status_name for ticket "
+        . (string) $ticket['ticket_prefix'] . intval($ticket['ticket_number']));
+    logAudit(
+        'Ticket',
+        $original_status === 4 ? 'Reopened' : 'Edit',
+        $audit_description_sql,
+        $client_id,
+        $ticket_id
+    );
+    triggerCustomAction('ticket_update', $ticket_id);
+    flashAlert('Status updated from <strong>' . escapeHtml($original_status_name)
+        . '</strong> to <strong>' . escapeHtml($requested_status_name) . '</strong>');
+    redirect();
+}
+
 if (isset($_POST['edit_ticket_sla'])) {
 
     validateCSRFToken();
@@ -1349,6 +1471,9 @@ if (isset($_GET['delete_ticket'])) {
             if (agreementTicketHasAuditHistory($ticket_id, $client_id)) {
                 throw new DomainException('The ticket has immutable agreement or SLA decision history');
             }
+            if (ticketApprovalTicketHasAuditHistory($ticket_id)) {
+                throw new DomainException('The ticket has immutable approval history');
+            }
             automationDeleteTicketOperations($ticket_id);
             automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id",
                 'Could not delete the ticket replies');
@@ -1373,7 +1498,7 @@ if (isset($_GET['delete_ticket'])) {
             }
             error_log("Ticket $ticket_id could not be deleted: " . $e->getMessage());
             flashAlert($e instanceof DomainException
-                ? 'Tickets with immutable workflow, documentation, agreement, or SLA history cannot be permanently deleted. Close the ticket to preserve its audit trail.'
+                ? 'Tickets with immutable workflow, approval, documentation, agreement, or SLA history cannot be permanently deleted. Close the ticket to preserve its audit trail.'
                 : 'The ticket and its Operations record could not be deleted.', 'error');
             redirect();
         }
@@ -1443,6 +1568,9 @@ if (isset($_POST['bulk_delete_tickets'])) {
                 }
                 if (agreementTicketHasAuditHistory($ticket_id, $client_id)) {
                     throw new DomainException('The ticket has immutable agreement or SLA decision history');
+                }
+                if (ticketApprovalTicketHasAuditHistory($ticket_id)) {
+                    throw new DomainException('The ticket has immutable approval history');
                 }
                 automationDeleteTicketOperations($ticket_id);
                 automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id",
@@ -3428,15 +3556,18 @@ if (isset($_POST['change_client_ticket'])) {
                     WHERE runbook_execution_ticket_id = $ticket_id) AS has_execution,
                 EXISTS (SELECT 1 FROM task_approvals
                     INNER JOIN tasks ON task_id = approval_task_id
-                    WHERE task_ticket_id = $ticket_id) AS has_approval,
+                    WHERE task_ticket_id = $ticket_id) AS has_task_approval,
+                EXISTS (SELECT 1 FROM ticket_approvals
+                    WHERE ticket_approval_ticket_id = $ticket_id) AS has_ticket_approval,
                 EXISTS (SELECT 1 FROM task_evidence
                     INNER JOIN tasks ON task_id = task_evidence_task_id
                     WHERE task_ticket_id = $ticket_id) AS has_evidence",
                 'Could not validate the locked ticket workflow context'));
             if (intval($workflow_artifacts['has_execution'] ?? 0)
-                || intval($workflow_artifacts['has_approval'] ?? 0)
+                || intval($workflow_artifacts['has_task_approval'] ?? 0)
+                || intval($workflow_artifacts['has_ticket_approval'] ?? 0)
                 || intval($workflow_artifacts['has_evidence'] ?? 0)) {
-                $client_change_error = 'Tickets with a runbook execution, task approval, or task evidence cannot be transferred because their audit context belongs to the original client';
+                $client_change_error = 'Tickets with a runbook execution, approval, or task evidence cannot be transferred because their audit context belongs to the original client';
                 throw new RuntimeException('The locked ticket has client-bound workflow artifacts');
             }
         }

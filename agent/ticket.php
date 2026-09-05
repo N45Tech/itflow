@@ -447,6 +447,38 @@ if (isset($_GET['ticket_id'])) {
             }
         }
 
+        // Ticket approvals are independent of tasks, so taskless requests (for
+        // example, a new-laptop request) can still require a manager decision.
+        $ticket_approval_count = 0;
+        $ticket_approval_pending_count = 0;
+        $ticket_approval_declined_count = 0;
+        $ticket_approval_unresolved_id = 0;
+        $ticket_approval_decision_id = 0;
+        $sql_ticket_approvals = mysqli_query($mysqli, "SELECT ticket_approvals.*,
+            user_name AS required_user_name FROM ticket_approvals
+            LEFT JOIN users ON user_id = ticket_approval_required_user_id
+            WHERE ticket_approval_ticket_id = $ticket_id
+            ORDER BY ticket_approval_id ASC");
+        while ($approval_row = mysqli_fetch_assoc($sql_ticket_approvals)) {
+            $ticket_approval_count++;
+            if ($approval_row['ticket_approval_status'] === 'approved') {
+                continue;
+            }
+            if (!$ticket_approval_unresolved_id) {
+                $ticket_approval_unresolved_id = intval($approval_row['ticket_approval_id']);
+            }
+            if ($approval_row['ticket_approval_status'] === 'declined') {
+                $ticket_approval_declined_count++;
+            } else {
+                $ticket_approval_pending_count++;
+                if (!$ticket_approval_decision_id
+                    && $can_edit_ticket
+                    && ticketApprovalUserCanDecide($approval_row, $session_user_id)) {
+                    $ticket_approval_decision_id = intval($approval_row['ticket_approval_id']);
+                }
+            }
+        }
+
         /*
          * Ticket history. agent/post/ticket.php has been writing priority, SLA,
          * contact, watcher and asset changes here all along - the page fetched
@@ -540,7 +572,7 @@ if (isset($_GET['ticket_id'])) {
 
         ?>
 
-        <link rel="stylesheet" href="css/ticket.css">
+        <link rel="stylesheet" href="css/ticket.css?v=<?= filemtime(__DIR__ . '/css/ticket.css') ?>">
 
         <!-- Collision detection reads this - keep it outside the reply form so it exists on resolved tickets too -->
         <input type="hidden" id="ticket_id" value="<?= $ticket_id ?>">
@@ -658,6 +690,19 @@ if (isset($_GET['ticket_id'])) {
                                         <i class="fas fa-ellipsis-v"></i>
                                     </button>
                                     <div class="dropdown-menu">
+                                        <?php if ($ticket_is_open && $can_edit_ticket
+                                            && (!$ticket_approval_unresolved_id || lookupUserPermission('module_support') >= 3)) { ?>
+                                            <?php if ($ticket_approval_unresolved_id && lookupUserPermission('module_support') >= 3) { ?>
+                                                <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_approval_manage.php?target=ticket&id=<?= $ticket_approval_unresolved_id ?>">
+                                                    <i class="fas fa-fw fa-user-check me-2"></i>Manage ticket approval
+                                                </a>
+                                            <?php } elseif (!$ticket_approval_unresolved_id) { ?>
+                                                <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_approval_request.php?ticket_id=<?= $ticket_id ?>">
+                                                    <i class="fas fa-fw fa-user-check me-2"></i><?= $ticket_approval_count ? 'Request another approval' : 'Request ticket approval' ?>
+                                                </a>
+                                            <?php } ?>
+                                            <div class="dropdown-divider"></div>
+                                        <?php } ?>
                                         <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_summary.php?ticket_id=<?= $ticket_id ?>" data-modal-size="lg">
                                             <i class="fas fa-fw fa-lightbulb me-2"></i>Summarize
                                         </a>
@@ -703,7 +748,13 @@ if (isset($_GET['ticket_id'])) {
                     <div class="ticket-field">
                         <div class="ticket-field-label">Status</div>
                         <div class="ticket-field-value">
-                            <span class="badge rounded-pill p-2 text-light" style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                            <a href="#" title="Change status"
+                               class="text-decoration-none<?php if ($can_edit_ticket && !$ticket_is_closed) { echo ' ajax-modal'; } ?>"
+                               <?php if ($can_edit_ticket && !$ticket_is_closed) { ?>
+                                   data-modal-url="modals/ticket/ticket_status.php?id=<?= $ticket_id ?>"
+                               <?php } ?>>
+                                <span class="badge rounded-pill p-2 text-light" style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                            </a>
                         </div>
                     </div>
 
@@ -720,6 +771,33 @@ if (isset($_GET['ticket_id'])) {
                             </a>
                         </div>
                     </div>
+
+                    <?php if ($ticket_approval_count) { ?>
+                        <div class="ticket-field">
+                            <div class="ticket-field-label">Ticket approval</div>
+                            <div class="ticket-field-value d-flex flex-wrap align-items-center gap-2">
+                                <?php if ($ticket_approval_unresolved_id) { ?>
+                                    <span class="badge rounded-pill p-2 <?= $ticket_approval_declined_count ? 'bg-danger' : 'bg-warning text-dark' ?>">
+                                        <i class="fas fa-user-check me-1"></i>
+                                        <?= $ticket_approval_declined_count
+                                            ? $ticket_approval_declined_count . ' declined'
+                                            : $ticket_approval_pending_count . ' pending' ?>
+                                    </span>
+                                <?php } else { ?>
+                                    <span class="badge rounded-pill p-2 bg-success"><i class="fas fa-check me-1"></i>Approved</span>
+                                <?php } ?>
+
+                                <?php if ($ticket_approval_decision_id) { ?>
+                                    <form action="post.php" method="post" class="d-inline-flex gap-1">
+                                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                        <input type="hidden" name="ticket_approval_id" value="<?= $ticket_approval_decision_id ?>">
+                                        <button type="submit" name="decide_ticket_approval" value="approved" class="btn btn-sm btn-outline-success">Approve</button>
+                                        <button type="submit" name="decide_ticket_approval" value="declined" class="btn btn-sm btn-outline-danger" onclick="return confirm('Decline this ticket approval?');">Decline</button>
+                                    </form>
+                                <?php } ?>
+                            </div>
+                        </div>
+                    <?php } ?>
 
                     <?php if ($sla_in_use) { ?>
                         <div class="ticket-field">
@@ -981,7 +1059,6 @@ if (isset($_GET['ticket_id'])) {
                                     $task_needs_approval = false;
                                     $approval_id = 0;
                                     $unresolved_approval_id = 0;
-                                    $declined_approval_id = 0;
                                     $approval_approved_count = 0;
                                     $approval_pending_count = 0;
                                     $approval_declined_count = 0;
@@ -998,7 +1075,6 @@ if (isset($_GET['ticket_id'])) {
                                                 $unresolved_approval_id = intval($approval['approval_id']);
                                             }
                                             if ($approval['approval_status'] === 'declined') {
-                                                $declined_approval_id = intval($approval['approval_id']);
                                                 $approval_declined_count++;
                                             }
                                             if ($approval['approval_status'] !== 'pending') {
@@ -1057,15 +1133,6 @@ if (isset($_GET['ticket_id'])) {
                                                     <i class="fas fa-pause-circle text-warning" title="Waiting: <?= $task_waiting_reason ?>"></i>
                                                 <?php } elseif ($task_needs_approval) { ?>
                                                     <i class="fas fa-shield-alt text-warning" title="Approval required"></i>
-
-                                                    <?php if ($declined_approval_id && lookupUserPermission('module_support') >= 3) { ?>
-                                                        <a class="ajax-modal text-danger" href="#"
-                                                           data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $declined_approval_id ?>"
-                                                           title="Reroute or re-request this approval">
-                                                            <i class="fas fa-redo me-1"></i>Manage approval
-                                                        </a>
-                                                    <?php } ?>
-
                                                 <?php } elseif (!$task_evidence_satisfied) { ?>
                                                     <i class="fas fa-paperclip text-danger" title="Required <?= escapeHtml($task_evidence_required) ?> evidence is missing"></i>
                                                 <?php } else { ?>
@@ -1092,9 +1159,6 @@ if (isset($_GET['ticket_id'])) {
                                                     <span class="<?= $task_needs_approval ? 'text-warning' : 'text-success' ?> ms-1" title="<?= $approval_approved_count ?> approved, <?= $approval_pending_count ?> pending, <?= $approval_declined_count ?> declined">
                                                         <i class="fas fa-shield-alt me-1"></i><?= $task_needs_approval ? ($approval_pending_count . ' pending' . ($approval_declined_count ? ', ' . $approval_declined_count . ' declined' : '')) : 'approved' ?>
                                                     </span>
-                                                    <?php if ($unresolved_approval_id && lookupUserPermission('module_support') >= 3 && !in_array($task_state, ['Completed','Skipped'], true)) { ?>
-                                                        <a class="ajax-modal ms-1" href="#" data-modal-url="modals/ticket/ticket_task_approval_reroute.php?id=<?= $unresolved_approval_id ?>">Manage</a>
-                                                    <?php } ?>
                                                 <?php } ?>
                                                 <?php if ($task_completion_estimate) { ?><span class="text-muted ms-1"><?= $task_completion_estimate ?>m</span><?php } ?>
                                             </div>
@@ -1124,21 +1188,28 @@ if (isset($_GET['ticket_id'])) {
                                                 <?php } ?>
 
                                                 <?php if (!$ticket_is_resolved && $can_edit_ticket) { ?>
-                                                    <?php if (!in_array($task_state, ['Completed','Skipped'], true)) { ?>
-                                                        <a class="btn btn-light text-secondary btn-sm ajax-modal" href="#"
-                                                           data-modal-url="modals/ticket/ticket_task_approver_add.php?id=<?= $task_id ?>"
-                                                           title="Add approval" aria-label="Add approval to <?= $task_name ?>">
-                                                            <i class="fas fa-shield-alt"></i>
-                                                        </a>
-                                                    <?php } ?>
                                                     <div class="dropdown dropstart text-center">
-                                                        <button class="btn btn-light text-secondary btn-sm" type="button" data-bs-toggle="dropdown">
+                                                        <button class="btn btn-light text-secondary btn-sm" type="button"
+                                                                data-bs-toggle="dropdown" data-bs-boundary="viewport"
+                                                                data-bs-popper-config='{"strategy":"fixed"}'
+                                                                aria-label="Actions for <?= $task_name ?>">
                                                             <i class="fas fa-ellipsis-v"></i>
                                                         </button>
                                                         <div class="dropdown-menu">
                                                             <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_edit.php?id=<?= $task_id ?>">
-                                                                <i class="fas fa-fw fa-edit me-2"></i>Edit
+                                                                <i class="fas fa-fw fa-edit me-2"></i>Manage task
                                                             </a>
+                                                            <?php if (!in_array($task_state, ['Completed','Skipped'], true)) { ?>
+                                                                <?php if ($unresolved_approval_id && lookupUserPermission('module_support') >= 3) { ?>
+                                                                    <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_approval_manage.php?target=task&id=<?= $unresolved_approval_id ?>">
+                                                                        <i class="fas fa-fw fa-user-check me-2"></i>Manage approval
+                                                                    </a>
+                                                                <?php } elseif (!$task_needs_approval) { ?>
+                                                                    <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_approval_request.php?task_id=<?= $task_id ?>">
+                                                                        <i class="fas fa-fw fa-user-check me-2"></i>Request approval
+                                                                    </a>
+                                                                <?php } ?>
+                                                            <?php } ?>
                                                             <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/ticket/ticket_task_evidence_add.php?id=<?= $task_id ?>">
                                                                 <i class="fas fa-fw fa-paperclip mr-2"></i>Evidence
                                                             </a>

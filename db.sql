@@ -3983,7 +3983,7 @@ DROP TABLE IF EXISTS `task_approvals`;
 CREATE TABLE `task_approvals` (
   `approval_id` int(11) NOT NULL AUTO_INCREMENT,
   `approval_scope` enum('client','internal') NOT NULL,
-  `approval_type` enum('any','technical','billing','specific') NOT NULL,
+  `approval_type` varchar(20) NOT NULL,
   `approval_required_user_id` int(11) DEFAULT NULL,
   `approval_status` enum('pending','approved','declined') NOT NULL,
   `approval_created_by` int(11) NOT NULL,
@@ -3995,6 +3995,63 @@ CREATE TABLE `task_approvals` (
   `approval_task_id` int(11) NOT NULL,
   PRIMARY KEY (`approval_id`),
   KEY `approval_task_status` (`approval_task_id`,`approval_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `ticket_approvals`
+--
+
+DROP TABLE IF EXISTS `ticket_approvals`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_approvals` (
+  `ticket_approval_id` int(11) NOT NULL AUTO_INCREMENT,
+  `ticket_approval_scope` varchar(20) NOT NULL,
+  `ticket_approval_type` varchar(20) NOT NULL,
+  `ticket_approval_required_user_id` int(11) DEFAULT NULL,
+  `ticket_approval_status` varchar(20) NOT NULL,
+  `ticket_approval_created_by` int(11) NOT NULL,
+  `ticket_approval_decided_by` varchar(255) DEFAULT NULL,
+  `ticket_approval_url_key` varchar(200) NOT NULL,
+  `ticket_approval_url_expires_at` datetime DEFAULT NULL,
+  `ticket_approval_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `ticket_approval_decided_at` datetime DEFAULT NULL,
+  `ticket_approval_ticket_id` int(11) NOT NULL,
+  PRIMARY KEY (`ticket_approval_id`),
+  KEY `ticket_approval_ticket_status` (`ticket_approval_ticket_id`,`ticket_approval_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `ticket_approval_events`
+--
+
+DROP TABLE IF EXISTS `ticket_approval_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_approval_events` (
+  `ticket_approval_event_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `ticket_approval_event_approval_id` int(11) NOT NULL,
+  `ticket_approval_event_ticket_id` int(11) NOT NULL,
+  `ticket_approval_event_action` varchar(30) NOT NULL,
+  `ticket_approval_event_from_status` varchar(20) DEFAULT NULL,
+  `ticket_approval_event_to_status` varchar(20) DEFAULT NULL,
+  `ticket_approval_event_from_scope` varchar(20) DEFAULT NULL,
+  `ticket_approval_event_to_scope` varchar(20) DEFAULT NULL,
+  `ticket_approval_event_from_type` varchar(20) DEFAULT NULL,
+  `ticket_approval_event_to_type` varchar(20) DEFAULT NULL,
+  `ticket_approval_event_from_required_user_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_approval_event_to_required_user_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_approval_event_actor_type` varchar(20) NOT NULL DEFAULT 'system',
+  `ticket_approval_event_actor_id` int(11) NOT NULL DEFAULT 0,
+  `ticket_approval_event_actor_label` varchar(255) DEFAULT NULL,
+  `ticket_approval_event_reason` varchar(255) DEFAULT NULL,
+  `ticket_approval_event_request_expires_at` datetime DEFAULT NULL,
+  `ticket_approval_event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`ticket_approval_event_id`),
+  KEY `ticket_approval_event_approval` (`ticket_approval_event_approval_id`,`ticket_approval_event_id`),
+  KEY `ticket_approval_event_ticket` (`ticket_approval_event_ticket_id`,`ticket_approval_event_created_at`,`ticket_approval_event_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

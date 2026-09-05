@@ -725,12 +725,18 @@ if (isset($_POST['add_ticket_task_approver'])) {
     enforceUserPermission('module_support', 2);
 
     $task_id = intval($_POST['task_id']);
-    $scope = $_POST['approval_scope'] ?? '';
-    $type = $_POST['approval_type'] ?? '';
+    $route = (string) ($_POST['approval_route'] ?? '');
+    if ($route !== '') {
+        [$scope, $type] = approvalRouteParts($route);
+    } else {
+        // Compatibility for forms submitted before the consolidated modal shipped.
+        $scope = (string) ($_POST['approval_scope'] ?? '');
+        $type = (string) ($_POST['approval_type'] ?? '');
+    }
     if (!in_array($scope, ['internal', 'client'], true)
-        || !in_array($type, ['any', 'technical', 'billing', 'specific'], true)
+        || !in_array($type, ['any', 'manager', 'technical', 'billing', 'specific'], true)
         || ($scope === 'client' && $type === 'specific')
-        || ($scope === 'internal' && in_array($type, ['technical', 'billing'], true))) {
+        || ($scope === 'internal' && in_array($type, ['manager', 'technical', 'billing'], true))) {
         flashAlert('Invalid approval rule', 'error');
         redirect();
     }
@@ -1122,16 +1128,12 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
     $approval_id = intval($_POST['approval_id']);
     $route = (string) ($_POST['approval_route'] ?? '');
     $reason = trim($_POST['approval_reason'] ?? '');
-    $route_parts = explode(':', $route, 2);
-    $new_scope = $route_parts[0] ?? '';
-    $new_type = $route_parts[1] ?? '';
+    [$new_scope, $new_type] = approvalRouteParts($route);
     $new_user_id = $new_scope === 'internal' && $new_type === 'specific'
         ? intval($_POST['approval_required_user_id'] ?? 0)
         : 0;
 
-    $valid_route = ($new_scope === 'internal' && in_array($new_type, ['any', 'specific'], true))
-        || ($new_scope === 'client' && in_array($new_type, ['any', 'technical', 'billing'], true));
-    if (!$valid_route || $reason === '') {
+    if ($new_scope === '' || $reason === '') {
         flashAlert('Choose a valid approval route and provide a reroute reason.', 'error');
         redirect();
     }

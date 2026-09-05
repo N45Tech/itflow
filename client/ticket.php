@@ -60,6 +60,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
         $ticket_closed_at = escapeHtml($ticket_row['ticket_closed_at']);
         $ticket_feedback = escapeHtml($ticket_row['ticket_feedback']);
         $ticket_category = escapeHtml($ticket_row['category_name']);
+        $ticket_contact_id = intval($ticket_row['ticket_contact_id']);
 
         // Get Ticket Attachments (not associated with a specific reply)
         $sql_ticket_attachments = mysqli_query(
@@ -90,6 +91,12 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
             AND task_state NOT IN ('Completed','Skipped')
             AND approval_scope = 'client' AND approval_status = 'pending'
         ");
+        $sql_ticket_approvals = mysqli_query($mysqli, "SELECT ticket_approval_id,
+            ticket_approval_type, ticket_approval_status
+            FROM ticket_approvals WHERE ticket_approval_ticket_id = $ticket_id
+            AND ticket_approval_scope = 'client' AND ticket_approval_status = 'pending'");
+        [$ticket_can_resolve] = ticketLifecycleCanResolve($ticket_id, false);
+        $session_contact_is_portal_manager = contactCan('tickets_all') && contactCan('assets_all');
         ?>
 
         <ol class="breadcrumb d-print-none">
@@ -109,7 +116,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                 </h4>
                 <div class="card-tools">
                     <?php
-                    if (empty($ticket_resolved_at) && $task_count == $completed_task_count) { ?>
+                    if (empty($ticket_resolved_at) && $task_count == $completed_task_count && $ticket_can_resolve) { ?>
                         <a href="post.php?resolve_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-sm btn-outline-success float-end text-white confirm-link"><i class="fas fa-fw fa-check text-success"></i> Resolve ticket</a>
                     <?php } ?>
                 </div>
@@ -158,14 +165,45 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
         </div>
 
         <!-- Approvals -->
-        <?php if (mysqli_num_rows($sql_task_approvals) > 0) { ?>
+        <?php if (mysqli_num_rows($sql_ticket_approvals) > 0 || mysqli_num_rows($sql_task_approvals) > 0) { ?>
             <div class="card">
                 <div class="card-body">
-                    <h5>Approvals</h5>
-                    This ticket has tasks requiring approval:
+                    <h5>Approval needed</h5>
+                    <p class="text-muted">Review the items you are authorized to decide.</p>
 
-                    <ul>
+                    <ul class="list-unstyled mb-0">
                         <?php
+
+                        while ($approval = mysqli_fetch_assoc($sql_ticket_approvals)) {
+                            $approval_id = intval($approval['ticket_approval_id']);
+                            $approval_type = (string) $approval['ticket_approval_type'];
+                            $contact_can_approve = ticketApprovalContactCanDecide(
+                                $approval_type,
+                                $ticket_contact_id,
+                                $session_contact_id,
+                                $session_contact_is_portal_manager,
+                                $session_contact_is_technical_contact,
+                                $session_contact_is_billing_contact
+                            );
+                            ?>
+                            <li class="border rounded p-3 mb-2">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                    <div>
+                                        <strong>Entire ticket</strong>
+                                        <div class="small text-muted">Waiting for <?= escapeHtml(approvalRouteLabel('client', $approval_type)) ?></div>
+                                    </div>
+                                    <?php if ($contact_can_approve) { ?>
+                                        <form action="post.php" method="post" class="d-flex gap-2">
+                                            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                            <input type="hidden" name="decide_client_ticket_approval" value="1">
+                                            <input type="hidden" name="ticket_approval_id" value="<?= $approval_id ?>">
+                                            <button type="submit" name="decision" value="approved" class="btn btn-sm btn-success">Approve</button>
+                                            <button type="submit" name="decision" value="declined" class="btn btn-sm btn-outline-danger" onclick="return confirm('Decline this ticket approval?');">Decline</button>
+                                        </form>
+                                    <?php } ?>
+                                </div>
+                            </li>
+                        <?php }
 
                         while ($approvals = mysqli_fetch_assoc($sql_task_approvals)) {
                             $task_id = intval($approvals['task_id']);
@@ -174,41 +212,39 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                             $approval_type = escapeHtml($approvals['approval_type']);
                             $contact_can_approve = false; // Default
 
-                            if ($approval_type == 'any') {
-                                $contact_can_approve = true;
-                            }
-
-                            if ($approval_type == 'technical' && $session_contact_is_technical_contact) {
-                                $contact_can_approve = true;
-                            }
-
-                            if ($approval_type == 'billing' && $session_contact_is_billing_contact) {
-                                $contact_can_approve = true;
-                            }
+                            $contact_can_approve = ticketApprovalContactCanDecide(
+                                $approval_type,
+                                $ticket_contact_id,
+                                $session_contact_id,
+                                $session_contact_is_portal_manager,
+                                $session_contact_is_technical_contact,
+                                $session_contact_is_billing_contact
+                            );
 
                             ?>
 
-                            <li>
-                                <?php echo $task_name;
-                                if ($contact_can_approve) { ?>
-                                    <form action="post.php" method="post" class="d-inline ml-2">
-                                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                        <input type="hidden" name="decide_client_ticket_task_approval" value="1">
-                                        <input type="hidden" name="task_id" value="<?= $task_id ?>">
-                                        <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
-                                        <button type="submit" name="decision" value="approved" class="btn btn-sm btn-outline-success">Approve</button>
-                                        <button type="submit" name="decision" value="declined" class="btn btn-sm btn-outline-danger" onclick="return confirm('Decline this task approval?');">Decline</button>
-                                    </form>
-                                <?php }
-                                else {?> - Please ask your <?= $approval_type ?> contact to approve this task <?php } ?>
+                            <li class="border rounded p-3 mb-2">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                    <div>
+                                        <strong><?= $task_name ?></strong>
+                                        <div class="small text-muted">Task approval · Waiting for <?= escapeHtml(approvalRouteLabel('client', $approval_type)) ?></div>
+                                    </div>
+                                    <?php if ($contact_can_approve) { ?>
+                                        <form action="post.php" method="post" class="d-flex gap-2">
+                                            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                            <input type="hidden" name="decide_client_ticket_task_approval" value="1">
+                                            <input type="hidden" name="task_id" value="<?= $task_id ?>">
+                                            <input type="hidden" name="approval_id" value="<?= $approval_id ?>">
+                                            <button type="submit" name="decision" value="approved" class="btn btn-sm btn-success">Approve</button>
+                                            <button type="submit" name="decision" value="declined" class="btn btn-sm btn-outline-danger" onclick="return confirm('Decline this task approval?');">Decline</button>
+                                        </form>
+                                    <?php } ?>
+                                </div>
                             </li>
 
                         <?php } ?>
 
                     </ul>
-
-
-
                 </div>
             </div>
         <?php } ?>

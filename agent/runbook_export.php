@@ -143,6 +143,9 @@ function runbookExportApprovalRecipient($approval) {
     if ($scope === 'client' && $type === 'technical') {
         return 'Authorized technical client contacts';
     }
+    if ($scope === 'client' && $type === 'manager') {
+        return 'Authorized portal managers (ticket contact excluded)';
+    }
     if ($scope === 'client' && $type === 'billing') {
         return 'Authorized billing client contacts';
     }
@@ -209,6 +212,9 @@ function runbookExportApprovalRoute($scope, $type, $required_user_id = 0) {
     if ($scope === 'client' && $type === 'technical' && $required_user_id === 0) {
         return 'Client / technical contacts';
     }
+    if ($scope === 'client' && $type === 'manager' && $required_user_id === 0) {
+        return 'Client / portal managers';
+    }
     if ($scope === 'client' && $type === 'billing' && $required_user_id === 0) {
         return 'Client / billing contacts';
     }
@@ -247,7 +253,7 @@ function runbookExportApprovalHistoryConsistent($approval, $events, $task_state)
     $actions = ['baseline', 'created', 're_requested', 'rerouted', 'approved', 'declined', 'waived'];
     $statuses = ['', 'pending', 'approved', 'declined', 'waived'];
     $scopes = ['', 'internal', 'client'];
-    $types = ['', 'any', 'technical', 'billing', 'specific'];
+    $types = ['', 'any', 'manager', 'technical', 'billing', 'specific'];
     $actor_types = ['agent', 'contact', 'guest', 'system'];
     $expected_status_by_action = [
         'created' => 'pending',

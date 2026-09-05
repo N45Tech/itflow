@@ -297,6 +297,135 @@ if (isset($_GET['add_ticket_feedback'], $_GET['url_key'])) {
 
 }
 
+if (isset($_POST['decide_ticket_approval'])) {
+
+    $approval_id = intval($_POST['ticket_approval_id'] ?? 0);
+    $url_key = isset($_POST['approval_url_key']) && is_string($_POST['approval_url_key'])
+        ? $_POST['approval_url_key'] : '';
+    $decision = isset($_POST['decision']) && is_string($_POST['decision'])
+        ? $_POST['decision'] : '';
+    $return_url = "guest_approve_ticket.php?ticket_approval_id=$approval_id&url_key=" . rawurlencode($url_key);
+    if ($approval_id < 1 || $url_key === '' || strlen($url_key) > 200
+        || !in_array($decision, ['approved', 'declined'], true)) {
+        flashAlert('Invalid approval request', 'error');
+        redirect($return_url);
+    }
+
+    $approval = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_approvals.*,
+        ticket_id, ticket_client_id, ticket_contact_id, ticket_project_id,
+        ticket_assigned_to, ticket_status, ticket_created_at, ticket_prefix,
+        ticket_number, ticket_subject, ticket_resolved_at, ticket_closed_at
+        FROM ticket_approvals
+        INNER JOIN tickets ON ticket_id = ticket_approval_ticket_id
+        WHERE ticket_approval_id = $approval_id
+        AND ticket_approval_scope = 'client'
+        AND ticket_approval_status = 'pending' LIMIT 1"));
+    if (!$approval
+        || !runbookApprovalTokenMatches($approval['ticket_approval_url_key'], $url_key)
+        || (!empty($approval['ticket_approval_url_expires_at'])
+            && strtotime($approval['ticket_approval_url_expires_at']) <= time())) {
+        flashAlert('This approval request is invalid or is no longer pending', 'error');
+        redirect($return_url);
+    }
+
+    $ticket_id = intval($approval['ticket_id']);
+    $client_id = intval($approval['ticket_client_id']);
+    $created_by = intval($approval['ticket_approval_created_by']);
+    $decision_sql = escapeSql($decision);
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the guest ticket approval decision');
+        }
+        $transaction_started = true;
+
+        $locked_ticket = runbookLockOpenTicket($ticket_id);
+        runbookRequireLockedTicketClient($locked_ticket, $client_id);
+        $locked_approval = mysqli_fetch_assoc(runbookDbQuery("SELECT * FROM ticket_approvals
+            WHERE ticket_approval_id = $approval_id
+            AND ticket_approval_ticket_id = $ticket_id LIMIT 1 FOR UPDATE",
+            'Could not lock the guest ticket approval'));
+        if (!$locked_approval
+            || $locked_approval['ticket_approval_scope'] !== 'client'
+            || $locked_approval['ticket_approval_status'] !== 'pending'
+            || !runbookApprovalTokenMatches($locked_approval['ticket_approval_url_key'], $url_key)
+            || (!empty($locked_approval['ticket_approval_url_expires_at'])
+                && strtotime($locked_approval['ticket_approval_url_expires_at']) <= time())) {
+            throw new RuntimeException('The guest ticket approval is no longer actionable');
+        }
+
+        $stored_token_sql = escapeSql($locked_approval['ticket_approval_url_key']);
+        $required_user_id = intval($locked_approval['ticket_approval_required_user_id']);
+        runbookDbQuery("UPDATE ticket_approvals SET
+            ticket_approval_status = '$decision_sql',
+            ticket_approval_decided_by = 'Unverified guest bearer',
+            ticket_approval_decided_at = NOW(), ticket_approval_url_key = '',
+            ticket_approval_url_expires_at = NULL
+            WHERE ticket_approval_id = $approval_id
+            AND ticket_approval_ticket_id = $ticket_id
+            AND ticket_approval_scope = 'client'
+            AND ticket_approval_status = 'pending'
+            AND ticket_approval_url_key = '$stored_token_sql'
+            AND (ticket_approval_url_expires_at IS NULL
+                OR ticket_approval_url_expires_at > NOW())",
+            'Could not decide the guest ticket approval');
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            throw new RuntimeException('The guest ticket approval was already decided or expired');
+        }
+        ticketApprovalRecordEvent(
+            $approval_id,
+            $ticket_id,
+            $decision,
+            [
+                'status' => 'pending',
+                'scope' => $locked_approval['ticket_approval_scope'],
+                'type' => $locked_approval['ticket_approval_type'],
+                'required_user_id' => $required_user_id,
+            ],
+            [
+                'status' => $decision,
+                'scope' => $locked_approval['ticket_approval_scope'],
+                'type' => $locked_approval['ticket_approval_type'],
+                'required_user_id' => $required_user_id,
+            ],
+            'guest',
+            0,
+            'Unverified guest bearer'
+        );
+
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the guest ticket approval decision');
+        }
+        $transaction_started = false;
+    } catch (Throwable $exception) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        error_log("Guest ticket approval $approval_id failed safely: " . $exception->getMessage());
+        flashAlert('This approval request is no longer pending', 'error');
+        redirect($return_url);
+    }
+
+    $_SESSION['guest_ticket_approval_receipt'] = [
+        'approval_id' => $approval_id,
+        'decision' => $decision,
+        'expires_at' => time() + 300,
+    ];
+    if ($created_by) {
+        mysqli_query($mysqli, "INSERT INTO notifications SET
+            notification_type = 'Ticket',
+            notification = 'Guest $decision_sql ticket approval',
+            notification_action = 'ticket.php?ticket_id=$ticket_id',
+            notification_client_id = $client_id,
+            notification_user_id = $created_by");
+    }
+    logTicketHistory($ticket_id, escapeSql("Client $decision ticket approval $approval_id"));
+    logAudit('Ticket', 'Edit', escapeSql("Guest link $decision client ticket approval $approval_id"), $client_id, $ticket_id);
+    triggerCustomAction('ticket_update', $ticket_id);
+    flashAlert('Ticket approval ' . $decision);
+    redirect($return_url);
+}
+
 // Compatibility for old direct-action links: display the confirmation page,
 // but never change approval state from a bearer-token GET request.
 if (isset($_GET['approve_ticket_task'])) {
