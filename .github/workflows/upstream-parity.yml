@@ -57,18 +57,24 @@ jobs:
         env:
           CONFIGURED_REVIEWED_BASE_SHA: ${{ inputs.reviewed_base_sha || vars.N45_REVIEWED_BASE_SHA }}
           CONFIGURED_REVIEWED_HEAD_SHA: ${{ inputs.reviewed_head_sha || vars.N45_REVIEWED_HEAD_SHA }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
           reviewed_base_sha="$CONFIGURED_REVIEWED_BASE_SHA"
           reviewed_head_sha="$CONFIGURED_REVIEWED_HEAD_SHA"
 
-          # A merge into protected main is the production review decision. Bind
-          # that decision to the exact pushed commit and freshly fetched
-          # authoritative upstream state; every other event keeps the explicit
-          # reviewed-SHA gate above.
+          # A merge into protected main is the production review decision. A PR
+          # from this repository into main is also inside the write-access trust
+          # boundary, so bind its exact GitHub merge candidate automatically.
+          # Fork PRs and all other events retain the explicit reviewed-SHA gate.
           if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
             reviewed_base_sha="$(git rev-parse upstream/master)"
             reviewed_head_sha="$GITHUB_SHA"
+          elif [ "$GITHUB_EVENT_NAME" = pull_request ] \
+            && [ "$GITHUB_BASE_REF" = main ] \
+            && [ "$PR_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]; then
+            reviewed_base_sha="$(git rev-parse upstream/master)"
+            reviewed_head_sha="$(git rev-parse HEAD)"
           fi
 
           N45_REVIEWED_BASE_SHA="$reviewed_base_sha" \

@@ -569,6 +569,11 @@ $assertTrue(is_file($root . '/n45/upstream-diff-check.allowlist'), 'The exact hi
 $assertTrue(is_file($root . '/n45/security-sensitive-paths.regex'), 'Security-sensitive path rules are missing');
 $assertContains('https://github.com/itflow-org/itflow.git', $review_workflow, 'Parity workflow does not fetch authoritative ITFlow upstream');
 $assertContains('for test_file in tests/*_test.php', $review_workflow, 'Parity workflow does not run the full regression suite');
+$assertContains('PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}', $review_workflow, 'Parity workflow cannot identify same-repository integration PRs');
+$assertContains('[ "$GITHUB_EVENT_NAME" = pull_request ]', $review_workflow, 'Parity workflow does not automatically bind trusted integration PRs');
+$assertContains('[ "$GITHUB_BASE_REF" = main ]', $review_workflow, 'Automatic parity approval is not restricted to PRs targeting main');
+$assertContains('[ "$PR_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]', $review_workflow, 'Automatic parity approval is not restricted to the repository write-access boundary');
+$assertContains('reviewed_head_sha="$(git rev-parse HEAD)"', $review_workflow, 'Trusted integration approval is not bound to the exact checked-out merge candidate');
 $assertContains('.github/*', $dockerignore, 'Deployment image does not bound the reopened .github build context.');
 $assertContains('!.github/workflows', $dockerignore, 'Deployment image excludes the .github workflows directory, preventing parity-wrapper discovery.');
 $assertContains('.github/workflows/*', $dockerignore, 'Deployment image does not limit workflow inclusion to the required parity contract.');
