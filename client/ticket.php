@@ -84,16 +84,26 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
 
         // Get pending task approvals
         $sql_task_approvals = mysqli_query($mysqli,"
-            SELECT task_id, task_name, approval_id, approval_scope, approval_type, approval_required_user_id, approval_status
+            SELECT task_id, task_name, approval_id, approval_scope, approval_type,
+                approval_required_user_id, approval_required_contact_id, approval_status,
+                required_contact.contact_name AS required_contact_name
             FROM tasks
             LEFT JOIN task_approvals ON task_id = task_approvals.approval_task_id
+            LEFT JOIN contacts required_contact
+                ON required_contact.contact_id = approval_required_contact_id
+                AND required_contact.contact_client_id = $session_client_id
             WHERE task_ticket_id = $ticket_id AND task_completed_at IS NULL
             AND task_state NOT IN ('Completed','Skipped')
             AND approval_scope = 'client' AND approval_status = 'pending'
         ");
         $sql_ticket_approvals = mysqli_query($mysqli, "SELECT ticket_approval_id,
-            ticket_approval_type, ticket_approval_status
-            FROM ticket_approvals WHERE ticket_approval_ticket_id = $ticket_id
+            ticket_approval_type, ticket_approval_required_contact_id,
+            ticket_approval_status, required_contact.contact_name AS required_contact_name
+            FROM ticket_approvals
+            LEFT JOIN contacts required_contact
+                ON required_contact.contact_id = ticket_approval_required_contact_id
+                AND required_contact.contact_client_id = $session_client_id
+            WHERE ticket_approval_ticket_id = $ticket_id
             AND ticket_approval_scope = 'client' AND ticket_approval_status = 'pending'");
         [$ticket_can_resolve] = ticketLifecycleCanResolve($ticket_id, false);
         $session_contact_is_portal_manager = contactCan('tickets_all') && contactCan('assets_all');
@@ -183,14 +193,15 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                                 $session_contact_id,
                                 $session_contact_is_portal_manager,
                                 $session_contact_is_technical_contact,
-                                $session_contact_is_billing_contact
+                                $session_contact_is_billing_contact,
+                                intval($approval['ticket_approval_required_contact_id'])
                             );
                             ?>
                             <li class="border rounded p-3 mb-2">
                                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                                     <div>
                                         <strong>Entire ticket</strong>
-                                        <div class="small text-muted">Waiting for <?= escapeHtml(approvalRouteLabel('client', $approval_type)) ?></div>
+                                        <div class="small text-muted">Waiting for <?= escapeHtml(approvalRouteLabel('client', $approval_type, '', $approval['required_contact_name'] ?? '')) ?></div>
                                     </div>
                                     <?php if ($contact_can_approve) { ?>
                                         <form action="post.php" method="post" class="d-flex gap-2">
@@ -218,7 +229,8 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                                 $session_contact_id,
                                 $session_contact_is_portal_manager,
                                 $session_contact_is_technical_contact,
-                                $session_contact_is_billing_contact
+                                $session_contact_is_billing_contact,
+                                intval($approvals['approval_required_contact_id'])
                             );
 
                             ?>
@@ -227,7 +239,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                                     <div>
                                         <strong><?= $task_name ?></strong>
-                                        <div class="small text-muted">Task approval · Waiting for <?= escapeHtml(approvalRouteLabel('client', $approval_type)) ?></div>
+                                        <div class="small text-muted">Task approval · Waiting for <?= escapeHtml(approvalRouteLabel('client', $approval_type, '', $approvals['required_contact_name'] ?? '')) ?></div>
                                     </div>
                                     <?php if ($contact_can_approve) { ?>
                                         <form action="post.php" method="post" class="d-flex gap-2">

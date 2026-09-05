@@ -30,9 +30,13 @@ $company_website = escapeHtml($company['company_website']);
 
 $approval = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_approvals.*,
     ticket_id, ticket_details, ticket_number, ticket_prefix, ticket_priority,
-    ticket_status_name, ticket_subject, ticket_resolved_at, ticket_closed_at
+    ticket_status_name, ticket_subject, ticket_resolved_at, ticket_closed_at,
+    required_contact.contact_name AS required_contact_name
     FROM ticket_approvals
     INNER JOIN tickets ON ticket_id = ticket_approval_ticket_id
+    LEFT JOIN contacts required_contact
+        ON required_contact.contact_id = ticket_approval_required_contact_id
+        AND required_contact.contact_client_id = ticket_client_id
     LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
     WHERE ticket_approval_id = $approval_id
     AND ticket_approval_scope = 'client' LIMIT 1"));
@@ -92,7 +96,13 @@ if ($ticket_priority === 'Urgent') {
             <p class="text-muted mb-2">You have been asked to approve this request</p>
         <?php } ?>
         <h4 class="mb-2"><?= $ticket_subject ?></h4>
-        <p class="text-muted mb-4">Ticket <strong><?= $ticket_prefix . $ticket_number ?></strong></p>
+        <p class="text-muted mb-1">Ticket <strong><?= $ticket_prefix . $ticket_number ?></strong></p>
+        <p class="text-muted mb-4">Requested from <?= escapeHtml(approvalRouteLabel(
+            'client',
+            $approval['ticket_approval_type'],
+            '',
+            $approval['required_contact_name'] ?? ''
+        )) ?></p>
 
         <?php if ($approval_actionable) { ?>
             <form action="guest_post.php" method="post" autocomplete="off">

@@ -353,6 +353,17 @@ if (isset($_POST['decide_ticket_approval'])) {
                 && strtotime($locked_approval['ticket_approval_url_expires_at']) <= time())) {
             throw new RuntimeException('The guest ticket approval is no longer actionable');
         }
+        $required_contact_id = intval($locked_approval['ticket_approval_required_contact_id']);
+        if ($locked_approval['ticket_approval_type'] === 'specific') {
+            $selected_contact = mysqli_fetch_row(runbookDbQuery("SELECT contact_id FROM contacts
+                WHERE contact_id = $required_contact_id
+                AND contact_client_id = $client_id
+                AND contact_archived_at IS NULL LIMIT 1 FOR UPDATE",
+                'Could not validate the selected client approver'));
+            if (!$selected_contact) {
+                throw new RuntimeException('The selected client approver is no longer valid for this ticket');
+            }
+        }
 
         $stored_token_sql = escapeSql($locked_approval['ticket_approval_url_key']);
         $required_user_id = intval($locked_approval['ticket_approval_required_user_id']);
@@ -381,12 +392,14 @@ if (isset($_POST['decide_ticket_approval'])) {
                 'scope' => $locked_approval['ticket_approval_scope'],
                 'type' => $locked_approval['ticket_approval_type'],
                 'required_user_id' => $required_user_id,
+                'required_contact_id' => $required_contact_id,
             ],
             [
                 'status' => $decision,
                 'scope' => $locked_approval['ticket_approval_scope'],
                 'type' => $locked_approval['ticket_approval_type'],
                 'required_user_id' => $required_user_id,
+                'required_contact_id' => $required_contact_id,
             ],
             'guest',
             0,
@@ -489,7 +502,8 @@ if (isset($_POST['decide_ticket_task_approval'])) {
         $locked_ticket = runbookLockOpenTicket($ticket_id);
         runbookRequireLockedTicketClient($locked_ticket, $client_id);
         $locked_approval = mysqli_fetch_assoc(runbookDbQuery("SELECT approval_scope,
-            approval_type, approval_required_user_id, approval_status,
+            approval_type, approval_required_user_id, approval_required_contact_id,
+            approval_status,
             approval_url_key, approval_url_expires_at, task_state, task_ticket_id
             FROM task_approvals
             INNER JOIN tasks ON task_id = approval_task_id
@@ -503,6 +517,17 @@ if (isset($_POST['decide_ticket_task_approval'])) {
             || (!empty($locked_approval['approval_url_expires_at'])
                 && strtotime($locked_approval['approval_url_expires_at']) <= time())) {
             throw new RuntimeException('The guest approval is no longer actionable');
+        }
+        $required_contact_id = intval($locked_approval['approval_required_contact_id']);
+        if ($locked_approval['approval_type'] === 'specific') {
+            $selected_contact = mysqli_fetch_row(runbookDbQuery("SELECT contact_id FROM contacts
+                WHERE contact_id = $required_contact_id
+                AND contact_client_id = $client_id
+                AND contact_archived_at IS NULL LIMIT 1 FOR UPDATE",
+                'Could not validate the selected client task approver'));
+            if (!$selected_contact) {
+                throw new RuntimeException('The selected client task approver is no longer valid for this ticket');
+            }
         }
         $stored_token_sql = escapeSql($locked_approval['approval_url_key']);
         runbookDbQuery("UPDATE task_approvals
@@ -531,12 +556,14 @@ if (isset($_POST['decide_ticket_task_approval'])) {
                 'scope' => $locked_approval['approval_scope'],
                 'type' => $locked_approval['approval_type'],
                 'required_user_id' => intval($locked_approval['approval_required_user_id']),
+                'required_contact_id' => $required_contact_id,
             ],
             [
                 'status' => $decision,
                 'scope' => $locked_approval['approval_scope'],
                 'type' => $locked_approval['approval_type'],
                 'required_user_id' => intval($locked_approval['approval_required_user_id']),
+                'required_contact_id' => $required_contact_id,
             ],
             'guest',
             0,

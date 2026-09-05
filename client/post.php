@@ -375,7 +375,8 @@ if (isset($_POST['decide_client_ticket_approval'])) {
         $session_contact_id,
         contactCan('tickets_all') && contactCan('assets_all'),
         $session_contact_is_technical_contact,
-        $session_contact_is_billing_contact
+        $session_contact_is_billing_contact,
+        intval($approval['ticket_approval_required_contact_id'])
     );
     if (!$contact_can_decide) {
         flashAlert('This approval is assigned to a different client contact or role.', 'warning');
@@ -410,12 +411,14 @@ if (isset($_POST['decide_client_ticket_approval'])) {
                 $session_contact_id,
                 contactCan('tickets_all') && contactCan('assets_all'),
                 $session_contact_is_technical_contact,
-                $session_contact_is_billing_contact
+                $session_contact_is_billing_contact,
+                intval($locked_approval['ticket_approval_required_contact_id'])
             )) {
             throw new RuntimeException('The client ticket approval is no longer actionable');
         }
 
         $required_user_id = intval($locked_approval['ticket_approval_required_user_id']);
+        $required_contact_id = intval($locked_approval['ticket_approval_required_contact_id']);
         runbookDbQuery("UPDATE ticket_approvals SET
             ticket_approval_status = '$decision_sql',
             ticket_approval_decided_by = '$decided_by',
@@ -437,12 +440,14 @@ if (isset($_POST['decide_client_ticket_approval'])) {
                 'scope' => $locked_approval['ticket_approval_scope'],
                 'type' => $locked_approval['ticket_approval_type'],
                 'required_user_id' => $required_user_id,
+                'required_contact_id' => $required_contact_id,
             ],
             [
                 'status' => $decision,
                 'scope' => $locked_approval['ticket_approval_scope'],
                 'type' => $locked_approval['ticket_approval_type'],
                 'required_user_id' => $required_user_id,
+                'required_contact_id' => $required_contact_id,
             ],
             'contact',
             $session_contact_id,
@@ -490,7 +495,8 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
     }
 
     $approval_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT approval_created_by,
-        approval_type, task_name, task_ticket_id, ticket_client_id, ticket_contact_id
+        approval_type, approval_required_contact_id, task_name, task_ticket_id,
+        ticket_client_id, ticket_contact_id
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
         INNER JOIN tickets ON ticket_id = task_ticket_id
@@ -517,7 +523,8 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
         $session_contact_id,
         contactCan('tickets_all') && contactCan('assets_all'),
         $session_contact_is_technical_contact,
-        $session_contact_is_billing_contact
+        $session_contact_is_billing_contact,
+        intval($approval_row['approval_required_contact_id'])
     );
     if (!$contact_can_decide) {
         flashAlert('This approval requires a different client contact role.', 'warning');
@@ -538,7 +545,8 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
             throw new RuntimeException('The ticket is outside your client scope');
         }
         $locked_approval = mysqli_fetch_assoc(runbookDbQuery("SELECT approval_type,
-            approval_scope, approval_required_user_id, approval_status, task_state,
+            approval_scope, approval_required_user_id, approval_required_contact_id,
+            approval_status, task_state,
             task_ticket_id FROM task_approvals
             INNER JOIN tasks ON task_id = approval_task_id
             WHERE approval_id = $approval_id AND approval_task_id = $task_id
@@ -556,7 +564,8 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
             $session_contact_id,
             contactCan('tickets_all') && contactCan('assets_all'),
             $session_contact_is_technical_contact,
-            $session_contact_is_billing_contact
+            $session_contact_is_billing_contact,
+            intval($locked_approval['approval_required_contact_id'])
         );
         if (!$locked_contact_can_decide) {
             throw new RuntimeException('This approval requires a different client contact role');
@@ -580,12 +589,14 @@ if (isset($_POST['decide_client_ticket_task_approval'])) {
                 'scope' => $locked_approval['approval_scope'],
                 'type' => $locked_type,
                 'required_user_id' => intval($locked_approval['approval_required_user_id']),
+                'required_contact_id' => intval($locked_approval['approval_required_contact_id']),
             ],
             [
                 'status' => $decision,
                 'scope' => $locked_approval['approval_scope'],
                 'type' => $locked_type,
                 'required_user_id' => intval($locked_approval['approval_required_user_id']),
+                'required_contact_id' => intval($locked_approval['approval_required_contact_id']),
             ],
             'contact',
             $session_contact_id,

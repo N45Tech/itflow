@@ -439,7 +439,7 @@ if (isset($_POST['resume_task'])) {
         }
 
         $locked_approvals = runbookDbQuery("SELECT approval_scope, approval_type,
-            approval_required_user_id, approval_created_by
+            approval_required_user_id, approval_required_contact_id, approval_created_by
             FROM task_approvals WHERE approval_task_id = $task_id
             AND approval_status IN ('pending','declined') FOR UPDATE",
             'Could not reload approval routes for the waiting task');
@@ -449,7 +449,8 @@ if (isset($_POST['resume_task'])) {
                 $locked_approval['approval_type'],
                 intval($locked_approval['approval_required_user_id']),
                 $locked_ticket,
-                intval($locked_approval['approval_created_by'])
+                intval($locked_approval['approval_created_by']),
+                intval($locked_approval['approval_required_contact_id'])
             );
             if (!$route_available) {
                 throw new RuntimeException($route_error);
@@ -518,7 +519,8 @@ if (isset($_POST['skip_runbook_task'])) {
         }
         $approval_rows = [];
         $locked_approvals = runbookDbQuery("SELECT approval_id, approval_scope,
-            approval_type, approval_required_user_id, approval_status
+            approval_type, approval_required_user_id, approval_required_contact_id,
+            approval_status
             FROM task_approvals WHERE approval_task_id = $task_id FOR UPDATE",
             'Could not lock approval bearers for the skipped task');
         while ($locked_approval = mysqli_fetch_assoc($locked_approvals)) {
@@ -549,12 +551,14 @@ if (isset($_POST['skip_runbook_task'])) {
                     'scope' => $approval_row['approval_scope'],
                     'type' => $approval_row['approval_type'],
                     'required_user_id' => intval($approval_row['approval_required_user_id']),
+                    'required_contact_id' => intval($approval_row['approval_required_contact_id']),
                 ],
                 [
                     'status' => 'waived',
                     'scope' => $approval_row['approval_scope'],
                     'type' => $approval_row['approval_type'],
                     'required_user_id' => intval($approval_row['approval_required_user_id']),
+                    'required_contact_id' => intval($approval_row['approval_required_contact_id']),
                 ],
                 'agent',
                 $session_user_id,
@@ -735,12 +739,21 @@ if (isset($_POST['add_ticket_task_approver'])) {
     }
     if (!in_array($scope, ['internal', 'client'], true)
         || !in_array($type, ['any', 'manager', 'technical', 'billing', 'specific'], true)
-        || ($scope === 'client' && $type === 'specific')
         || ($scope === 'internal' && in_array($type, ['manager', 'technical', 'billing'], true))) {
         flashAlert('Invalid approval rule', 'error');
         redirect();
     }
-    $required_user_id = $type === 'specific' ? intval($_POST['approval_required_user_id'] ?? 0) : 0;
+    $required_user_id = $scope === 'internal' && $type === 'specific'
+        ? intval($_POST['approval_required_user_id'] ?? 0)
+        : 0;
+    $required_contact_id = $scope === 'client' && $type === 'specific'
+        ? intval($_POST['approval_required_contact_id'] ?? 0)
+        : 0;
+    if (($scope === 'internal' && $type === 'specific' && !$required_user_id)
+        || ($scope === 'client' && $type === 'specific' && !$required_contact_id)) {
+        flashAlert('Choose the specific approver.', 'error');
+        redirect();
+    }
     $tt_row = mysqli_fetch_assoc(mysqli_query($mysqli, "
         SELECT task_name, task_state, task_runbook_version_task_id, task_ticket_id,
             ticket_id, ticket_client_id, ticket_contact_id, ticket_number,
@@ -769,7 +782,8 @@ if (isset($_POST['add_ticket_task_approver'])) {
         $type,
         $required_user_id,
         $tt_row,
-        $session_user_id
+        $session_user_id,
+        $required_contact_id
     );
     if (!$route_available) {
         flashAlert(escapeHtml($route_error), 'error');
@@ -783,6 +797,7 @@ if (isset($_POST['add_ticket_task_approver'])) {
     $scope_sql = escapeSql($scope);
     $type_sql = escapeSql($type);
     $required_user_sql = $required_user_id ? (string) $required_user_id : 'NULL';
+    $required_contact_sql = $required_contact_id ? (string) $required_contact_id : 'NULL';
 
     if (!mysqli_begin_transaction($mysqli)) {
         flashAlert('The ticket could not be locked for adding the approval.', 'error');
@@ -804,13 +819,15 @@ if (isset($_POST['add_ticket_task_approver'])) {
             $type,
             $required_user_id,
             $locked_ticket,
-            $session_user_id
+            $session_user_id,
+            $required_contact_id
         );
         if (!$route_available) {
             throw new RuntimeException($route_error);
         }
         runbookDbQuery("INSERT INTO task_approvals SET approval_scope = '$scope_sql',
             approval_type = '$type_sql', approval_required_user_id = $required_user_sql,
+            approval_required_contact_id = $required_contact_sql,
             approval_status = 'pending', approval_created_by = $session_user_id,
             approval_url_key = '$approval_url_key', approval_url_expires_at = '$approval_url_expires_at',
             approval_task_id = $task_id", 'Could not add the task approval');
@@ -828,6 +845,7 @@ if (isset($_POST['add_ticket_task_approver'])) {
                 'scope' => $scope,
                 'type' => $type,
                 'required_user_id' => $required_user_id,
+                'required_contact_id' => $required_contact_id,
             ],
             'agent',
             $session_user_id,
@@ -840,6 +858,7 @@ if (isset($_POST['add_ticket_task_approver'])) {
             'runbook_version_task_approval_scope' => $scope,
             'runbook_version_task_approval_type' => $type,
             'runbook_version_task_approval_user_id' => $required_user_id,
+            'runbook_version_task_approval_contact_id' => $required_contact_id,
         ];
         runbookQueueApprovalNotification(
             $approval_id,
@@ -883,7 +902,8 @@ if (isset($_POST['decide_ticket_task_approval'])) {
     }
 
     $approval = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT approval_created_by,
-        approval_required_user_id, approval_type, task_name, task_ticket_id, ticket_client_id
+        approval_required_user_id, approval_required_contact_id, approval_type,
+        task_name, task_ticket_id, ticket_client_id
         FROM task_approvals
         INNER JOIN tasks ON task_id = approval_task_id
         INNER JOIN tickets ON ticket_id = task_ticket_id
@@ -917,7 +937,8 @@ if (isset($_POST['decide_ticket_task_approval'])) {
         $locked_ticket = runbookLockOpenTicket(intval($approval['task_ticket_id']));
         runbookRequireLockedTicketClient($locked_ticket, $client_id);
         $locked_approval = mysqli_fetch_assoc(runbookDbQuery("SELECT approval_created_by,
-            approval_required_user_id, approval_type, approval_scope, approval_status,
+            approval_required_user_id, approval_required_contact_id, approval_type,
+            approval_scope, approval_status,
             task_state FROM task_approvals
             INNER JOIN tasks ON task_id = approval_task_id
             WHERE approval_id = $approval_id AND approval_task_id = $task_id
@@ -928,6 +949,7 @@ if (isset($_POST['decide_ticket_task_approval'])) {
             throw new RuntimeException('The approval is no longer actionable');
         }
         $locked_required_user = intval($locked_approval['approval_required_user_id']);
+        $locked_required_contact = intval($locked_approval['approval_required_contact_id']);
         if ($locked_required_user && $locked_required_user !== $session_user_id) {
             throw new RuntimeException('The approval is assigned to another user');
         }
@@ -953,12 +975,14 @@ if (isset($_POST['decide_ticket_task_approval'])) {
                 'scope' => $locked_approval['approval_scope'],
                 'type' => $locked_approval['approval_type'],
                 'required_user_id' => $locked_required_user,
+                'required_contact_id' => $locked_required_contact,
             ],
             [
                 'status' => $decision,
                 'scope' => $locked_approval['approval_scope'],
                 'type' => $locked_approval['approval_type'],
                 'required_user_id' => $locked_required_user,
+                'required_contact_id' => $locked_required_contact,
             ],
             'agent',
             $session_user_id,
@@ -985,7 +1009,8 @@ if (isset($_POST['retry_ticket_task_approval'])) {
 
     $approval_id = intval($_POST['approval_id']);
     $approval = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT approval_task_id,
-        approval_scope, approval_type, approval_required_user_id, approval_created_by,
+        approval_scope, approval_type, approval_required_user_id,
+        approval_required_contact_id, approval_created_by,
         task_name, task_state, ticket_id, ticket_client_id, ticket_contact_id, ticket_prefix,
         ticket_number, ticket_subject, ticket_assigned_to, ticket_project_id, ticket_created_at
         FROM task_approvals
@@ -1007,7 +1032,8 @@ if (isset($_POST['retry_ticket_task_approval'])) {
         $approval['approval_type'],
         intval($approval['approval_required_user_id']),
         $approval,
-        intval($approval['approval_created_by'])
+        intval($approval['approval_created_by']),
+        intval($approval['approval_required_contact_id'])
     );
     if (!$route_available) {
         flashAlert(escapeHtml($route_error) . ' Reroute this approval before re-requesting it.', 'error');
@@ -1031,7 +1057,8 @@ if (isset($_POST['retry_ticket_task_approval'])) {
         $locked_ticket = runbookLockOpenTicket(intval($approval['ticket_id']));
         runbookRequireLockedTicketClient($locked_ticket, $client_id);
         $locked_approval = mysqli_fetch_assoc(runbookDbQuery("SELECT approval_task_id,
-            approval_scope, approval_type, approval_required_user_id, approval_created_by,
+            approval_scope, approval_type, approval_required_user_id,
+            approval_required_contact_id, approval_created_by,
             approval_status, task_name, task_state, ticket_id, ticket_client_id,
             ticket_contact_id, ticket_prefix, ticket_number, ticket_subject,
             ticket_assigned_to, ticket_project_id, ticket_created_at
@@ -1051,7 +1078,8 @@ if (isset($_POST['retry_ticket_task_approval'])) {
             $approval['approval_type'],
             intval($approval['approval_required_user_id']),
             $approval,
-            intval($approval['approval_created_by'])
+            intval($approval['approval_created_by']),
+            intval($approval['approval_required_contact_id'])
         );
         if (!$route_available) {
             throw new RuntimeException($route_error);
@@ -1076,12 +1104,14 @@ if (isset($_POST['retry_ticket_task_approval'])) {
                 'scope' => $approval['approval_scope'],
                 'type' => $approval['approval_type'],
                 'required_user_id' => intval($approval['approval_required_user_id']),
+                'required_contact_id' => intval($approval['approval_required_contact_id']),
             ],
             [
                 'status' => 'pending',
                 'scope' => $approval['approval_scope'],
                 'type' => $approval['approval_type'],
                 'required_user_id' => intval($approval['approval_required_user_id']),
+                'required_contact_id' => intval($approval['approval_required_contact_id']),
             ],
             'agent',
             $session_user_id,
@@ -1095,6 +1125,7 @@ if (isset($_POST['retry_ticket_task_approval'])) {
             'runbook_version_task_approval_scope' => $approval['approval_scope'],
             'runbook_version_task_approval_type' => $approval['approval_type'],
             'runbook_version_task_approval_user_id' => intval($approval['approval_required_user_id']),
+            'runbook_version_task_approval_contact_id' => intval($approval['approval_required_contact_id']),
         ];
         runbookQueueApprovalNotification(
             $approval_id,
@@ -1132,14 +1163,20 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
     $new_user_id = $new_scope === 'internal' && $new_type === 'specific'
         ? intval($_POST['approval_required_user_id'] ?? 0)
         : 0;
+    $new_contact_id = $new_scope === 'client' && $new_type === 'specific'
+        ? intval($_POST['approval_required_contact_id'] ?? 0)
+        : 0;
 
-    if ($new_scope === '' || $reason === '') {
+    if ($new_scope === '' || $reason === ''
+        || ($new_scope === 'internal' && $new_type === 'specific' && !$new_user_id)
+        || ($new_scope === 'client' && $new_type === 'specific' && !$new_contact_id)) {
         flashAlert('Choose a valid approval route and provide a reroute reason.', 'error');
         redirect();
     }
 
     $approval = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT approval_task_id,
-        approval_scope, approval_type, approval_required_user_id, approval_created_by,
+        approval_scope, approval_type, approval_required_user_id,
+        approval_required_contact_id, approval_created_by,
         approval_status, task_name, task_state, task_waiting_reason, ticket_id, ticket_client_id,
         ticket_contact_id, ticket_prefix, ticket_number, ticket_subject,
         ticket_assigned_to, ticket_project_id, ticket_created_at
@@ -1162,7 +1199,8 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
         $new_type,
         $new_user_id,
         $approval,
-        intval($approval['approval_created_by'])
+        intval($approval['approval_created_by']),
+        $new_contact_id
     );
     if (!$route_available) {
         flashAlert(escapeHtml($route_error), 'error');
@@ -1172,11 +1210,15 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
     $old_scope = (string) $approval['approval_scope'];
     $old_type = (string) $approval['approval_type'];
     $old_user_id = intval($approval['approval_required_user_id']);
-    $old_route = $old_scope . ':' . $old_type . ($old_user_id ? ':' . $old_user_id : '');
-    $new_route = $new_scope . ':' . $new_type . ($new_user_id ? ':' . $new_user_id : '');
+    $old_contact_id = intval($approval['approval_required_contact_id']);
+    $old_route_id = $old_user_id ?: $old_contact_id;
+    $new_route_id = $new_user_id ?: $new_contact_id;
+    $old_route = $old_scope . ':' . $old_type . ($old_route_id ? ':' . $old_route_id : '');
+    $new_route = $new_scope . ':' . $new_type . ($new_route_id ? ':' . $new_route_id : '');
     $scope_sql = escapeSql($new_scope);
     $type_sql = escapeSql($new_type);
     $user_sql = $new_user_id ? (string) $new_user_id : 'NULL';
+    $contact_sql = $new_contact_id ? (string) $new_contact_id : 'NULL';
     $url_key_raw = randomString(32);
     $url_key = escapeSql(runbookApprovalTokenHash($url_key_raw));
     $url_expires_at_value = runbookApprovalTokenExpiry();
@@ -1192,7 +1234,8 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
         $locked_ticket = runbookLockOpenTicket(intval($approval['ticket_id']));
         runbookRequireLockedTicketClient($locked_ticket, $client_id);
         $locked_approval = mysqli_fetch_assoc(runbookDbQuery("SELECT approval_task_id,
-            approval_scope, approval_type, approval_required_user_id, approval_created_by,
+            approval_scope, approval_type, approval_required_user_id,
+            approval_required_contact_id, approval_created_by,
             approval_status, task_name, task_state, task_waiting_reason, ticket_id,
             ticket_client_id, ticket_contact_id, ticket_prefix, ticket_number,
             ticket_subject, ticket_assigned_to, ticket_project_id, ticket_created_at
@@ -1212,7 +1255,8 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
             $new_type,
             $new_user_id,
             $approval,
-            intval($approval['approval_created_by'])
+            intval($approval['approval_created_by']),
+            $new_contact_id
         );
         if (!$route_available) {
             throw new RuntimeException($route_error);
@@ -1221,9 +1265,12 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
         $old_scope = (string) $approval['approval_scope'];
         $old_type = (string) $approval['approval_type'];
         $old_user_id = intval($approval['approval_required_user_id']);
-        $old_route = $old_scope . ':' . $old_type . ($old_user_id ? ':' . $old_user_id : '');
+        $old_contact_id = intval($approval['approval_required_contact_id']);
+        $old_route_id = $old_user_id ?: $old_contact_id;
+        $old_route = $old_scope . ':' . $old_type . ($old_route_id ? ':' . $old_route_id : '');
         runbookDbQuery("UPDATE task_approvals SET approval_scope = '$scope_sql',
             approval_type = '$type_sql', approval_required_user_id = $user_sql,
+            approval_required_contact_id = $contact_sql,
             approval_status = 'pending', approval_approved_by = NULL, approval_decided_at = NULL,
             approval_url_key = '$url_key', approval_url_expires_at = '$url_expires_at'
             WHERE approval_id = $approval_id AND approval_task_id = $task_id
@@ -1242,12 +1289,14 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
                 'scope' => $old_scope,
                 'type' => $old_type,
                 'required_user_id' => $old_user_id,
+                'required_contact_id' => $old_contact_id,
             ],
             [
                 'status' => 'pending',
                 'scope' => $new_scope,
                 'type' => $new_type,
                 'required_user_id' => $new_user_id,
+                'required_contact_id' => $new_contact_id,
             ],
             'agent',
             $session_user_id,
@@ -1280,6 +1329,7 @@ if (isset($_POST['reroute_ticket_task_approval'])) {
             'runbook_version_task_approval_scope' => $new_scope,
             'runbook_version_task_approval_type' => $new_type,
             'runbook_version_task_approval_user_id' => $new_user_id,
+            'runbook_version_task_approval_contact_id' => $new_contact_id,
         ];
         runbookQueueApprovalNotification(
             $approval_id,

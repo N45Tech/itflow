@@ -115,6 +115,7 @@ $assertTrue(
         'n45-0017-automation-action-outbox',
         'n45-0018-portal-business-review-access',
         'n45-0019-ticket-approval-gates',
+        'n45-0020-specific-client-approvers',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -133,8 +134,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0019-ticket-approval-gates',
-    'The ticket approval-gate migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0020-specific-client-approvers',
+    'The specific-client-approver migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -181,6 +182,16 @@ $assertTrue(
 $assertTrue(
     in_array('n45-0019-ticket-approval-gates', $manifest['modules']['runbooks']['migrations'] ?? [], true),
     'Ticket approval gates are not owned by the runbooks module'
+);
+$specific_approver_migration = $manifest['migrations']['n45-0020-specific-client-approvers'] ?? [];
+$assertTrue(
+    ($specific_approver_migration['fingerprint']['columns']['task_approvals']['approval_required_contact_id'] ?? null)
+        !== null,
+    'The specific-client-approver migration does not fingerprint task contact assignments'
+);
+$assertTrue(
+    in_array('n45-0020-specific-client-approvers', $manifest['modules']['runbooks']['migrations'] ?? [], true),
+    'Specific client approvers are not owned by the runbooks module'
 );
 
 $manifest_migration_files = array_map(

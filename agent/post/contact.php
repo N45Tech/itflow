@@ -750,7 +750,8 @@ if (isset($_POST['bulk_delete_contacts'])) {
                 if (!$row) {
                     throw new RuntimeException('The contact no longer exists for this client');
                 }
-                if (portalRequestContactHasAuditHistory($contact_id, $client_id)) {
+                if (portalRequestContactHasAuditHistory($contact_id, $client_id)
+                    || ticketApprovalContactHasAuditHistory($contact_id, $client_id)) {
                     mysqli_rollback($mysqli);
                     $blocked++;
                     continue;
@@ -786,7 +787,7 @@ if (isset($_POST['bulk_delete_contacts'])) {
         }
 
         flashAlert("Deleted <strong>$count</strong> contact(s)."
-            . ($blocked ? " <strong>$blocked</strong> retained because portal request audit history exists." : '')
+            . ($blocked ? " <strong>$blocked</strong> retained because request or approval audit history exists." : '')
             . ($failed ? " <strong>$failed</strong> could not be deleted." : ''),
             ($blocked || $failed) ? 'warning' : 'success');
 
@@ -845,9 +846,10 @@ if (isset($_GET['anonymize_contact'])) {
         $contact_name = escapeSql($contact_name_raw);
         $contact_user_id = intval($row['contact_user_id']);
 
-        if (portalRequestContactHasAuditHistory($contact_id, $client_id)) {
+        if (portalRequestContactHasAuditHistory($contact_id, $client_id)
+            || ticketApprovalContactHasAuditHistory($contact_id, $client_id)) {
             mysqli_rollback($mysqli);
-            flashAlert('This contact has portal request audit records and cannot be anonymized. Archive the contact without anonymizing it to preserve the request history.', 'error');
+            flashAlert('This contact has request or approval audit history and cannot be anonymized. Archive the contact without anonymizing it to preserve that history.', 'error');
             redirect();
         }
 
@@ -939,7 +941,7 @@ if (isset($_GET['anonymize_contact'])) {
     } catch (Throwable $exception) {
         mysqli_rollback($mysqli);
         error_log("Contact $contact_id anonymization failed: " . $exception->getMessage());
-        flashAlert('The contact could not be anonymized. No portal request history was changed.', 'error');
+        flashAlert('The contact could not be anonymized. No request or approval history was changed.', 'error');
         redirect();
     }
 
@@ -1041,9 +1043,10 @@ if (isset($_GET['delete_contact'])) {
         if (!$row) {
             throw new RuntimeException('The contact no longer exists for this client');
         }
-        if (portalRequestContactHasAuditHistory($contact_id, $client_id)) {
+        if (portalRequestContactHasAuditHistory($contact_id, $client_id)
+            || ticketApprovalContactHasAuditHistory($contact_id, $client_id)) {
             mysqli_rollback($mysqli);
-            flashAlert('This contact has portal request audit records and cannot be permanently deleted. Archive the contact to preserve the request history.', 'error');
+            flashAlert('This contact has request or approval audit history and cannot be permanently deleted. Archive the contact to preserve that history.', 'error');
             redirect();
         }
         $contact_name = escapeSql($row['contact_name']);
@@ -1064,7 +1067,7 @@ if (isset($_GET['delete_contact'])) {
     } catch (Throwable $exception) {
         mysqli_rollback($mysqli);
         error_log("Contact $contact_id hard deletion failed: " . $exception->getMessage());
-        flashAlert('The contact could not be permanently deleted. No portal request history was removed.', 'error');
+        flashAlert('The contact could not be permanently deleted. No request or approval history was removed.', 'error');
         redirect();
     }
 

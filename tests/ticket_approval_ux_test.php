@@ -40,6 +40,7 @@ $agent_ticket = $read('agent/ticket.php');
 $ticket_post = $read('agent/post/ticket.php');
 $approval_post = $read('agent/post/approval.php');
 $task_post = $read('agent/post/task.php');
+$contact_post = $read('agent/post/contact.php');
 $client_post = $read('client/post.php');
 $guest_post = $read('guest/guest_post.php');
 $client_ticket = $read('client/ticket.php');
@@ -51,6 +52,7 @@ $ticket_css = $read('agent/css/ticket.css');
 $runbooks = $read('functions/runbooks.php');
 $approval_helpers = $read('functions/ticket_approvals.php');
 $migration = $read('n45/migrations/n45-0019-ticket-approval-gates.php');
+$specific_approver_migration = $read('n45/migrations/n45-0020-specific-client-approvers.php');
 $manifest = $read('n45/manifest.php');
 $schema = $read('db.sql');
 
@@ -79,6 +81,12 @@ $assertContains('Currently sent to', $manage_modal, 'Approval management does no
 $assertContains('Why are you sending it again?', $manage_modal, 'Approval re-requests do not collect one clear audit reason');
 $assertContains("enforceUserPermission('module_support', 3)", $manage_modal,
     'Approval rerouting is not restricted to administrators');
+$assertContains('value="client:specific"', $request_modal . $manage_modal,
+    'Approval modals do not offer one named client contact');
+$assertContains('name="approval_required_contact_id"', $request_modal . $manage_modal,
+    'Approval modals do not submit the named client contact');
+$assertContains('contact_client_id = $client_id', $request_modal . $manage_modal,
+    'The named-contact pickers are not restricted to the ticket client');
 
 // Task actions belong to the task overflow menu, and Popper escapes the task
 // rail's former clipping layer.
@@ -120,30 +128,62 @@ $assertContains('validateCSRFToken();', $approval_post, 'Agent ticket approval m
 $assertContains('validateCSRFToken();', $client_post, 'Portal ticket approval decisions lack CSRF protection');
 $assertContains('runbookApprovalTokenMatches(', $guest_post, 'Guest ticket approvals do not verify their bearer credential');
 $assertContains("'manager'", $task_post, 'Manual task approvals do not accept portal-manager routing');
+$assertContains('approval_required_contact_id', $task_post,
+    'Manual task approvals do not persist a named client contact');
+$assertContains('ticket_approval_required_contact_id', $approval_post,
+    'Whole-ticket approvals do not persist a named client contact');
+$assertContains("elseif (\$type === 'specific' && \$required_contact_id)", $runbooks,
+    'Notifications are not limited to the selected client contact');
+$assertContains("intval(\$locked_approval['approval_required_contact_id'])", $client_post,
+    'Portal task decisions do not enforce the selected client contact');
+$assertContains("intval(\$locked_approval['ticket_approval_required_contact_id'])", $client_post,
+    'Portal ticket decisions do not enforce the selected client contact');
+$assertContains("required_contact.contact_client_id = \$session_client_id", $client_ticket,
+    'Portal approval labels can resolve contacts outside the signed-in client');
 
 // Schema changes remain in the fork namespace and retain approval evidence.
 $assertContains('CREATE TABLE IF NOT EXISTS `ticket_approvals`', $migration, 'The N45 ticket approval projection migration is missing');
 $assertContains('CREATE TABLE IF NOT EXISTS `ticket_approval_events`', $migration, 'The N45 ticket approval event migration is missing');
 $assertContains("'n45-0019-ticket-approval-gates'", $manifest, 'The ticket approval migration is absent from the N45 manifest');
 $assertContains('CREATE TABLE `ticket_approvals`', $schema, 'Fresh installs omit whole-ticket approvals');
+$assertContains('`approval_required_contact_id` int(11) DEFAULT NULL', $specific_approver_migration,
+    'The named task approver migration is missing');
+$assertContains('`ticket_approval_required_contact_id` int(11) DEFAULT NULL', $specific_approver_migration,
+    'The named ticket approver migration is missing');
+$assertContains('`approval_required_contact_id` int(11) DEFAULT NULL', $schema,
+    'Fresh installs omit named task approvers');
+$assertContains('`ticket_approval_required_contact_id` int(11) DEFAULT NULL', $schema,
+    'Fresh installs omit named ticket approvers');
 $assertContains('function ticketApprovalTicketHasAuditHistory(', $approval_helpers,
     'Ticket deletion does not have an approval-retention guard');
 $assertContains('ticketApprovalTicketHasAuditHistory($ticket_id)', $ticket_post,
     'Ticket hard deletion can orphan approval evidence');
+$assertContains('function ticketApprovalContactHasAuditHistory(', $approval_helpers,
+    'Contact deletion does not have an approval-retention guard');
+$assertContains('ticketApprovalContactHasAuditHistory($contact_id, $client_id)', $contact_post,
+    'Contact hard deletion can discard named-approver history');
 
 require_once $root . '/functions/ticket_approvals.php';
 $assertTrue(approvalRouteParts('client:manager') === ['client', 'manager'],
     'Portal-manager routes do not parse');
+$assertTrue(approvalRouteParts('client:specific') === ['client', 'specific'],
+    'Named client-contact routes do not parse');
 $assertTrue(approvalRouteParts('internal:manager') === ['', ''],
     'Portal-manager routing can be assigned to an internal scope');
 $assertTrue(approvalRouteLabel('client', 'manager') === 'Any portal manager except the ticket contact',
     'Portal-manager routing does not have the intended plain-language label');
+$assertTrue(approvalRouteLabel('client', 'specific', '', 'Alex Manager') === 'Alex Manager',
+    'Named client-contact routing does not display the selected contact');
 $assertTrue(ticketApprovalContactCanDecide('manager', 10, 20, true, false, false) === true,
     'A different portal manager cannot decide the ticket approval');
 $assertTrue(ticketApprovalContactCanDecide('manager', 10, 10, true, false, false) === false,
     'The ticket contact can approve their own manager-routed request');
 $assertTrue(ticketApprovalContactCanDecide('any', 10, 20, true, false, false) === false,
     'A broad portal contact can take over a ticket-contact approval');
+$assertTrue(ticketApprovalContactCanDecide('specific', 10, 20, false, false, false, 20) === true,
+    'The selected client contact cannot decide their approval');
+$assertTrue(ticketApprovalContactCanDecide('specific', 10, 21, true, true, true, 20) === false,
+    'A different privileged contact can take over a named-contact approval');
 $assertTrue(ticketApprovalUserCanDecide([
     'ticket_approval_scope' => 'internal',
     'ticket_approval_status' => 'pending',

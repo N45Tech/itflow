@@ -50,9 +50,15 @@ if ($approval_id < 1 || $url_key === '' || strlen($url_key) > 200) {
 }
 
 $task_row = mysqli_fetch_assoc(mysqli_query($mysqli,
-    "SELECT approval_scope, approval_status, approval_type, approval_url_key,
-        approval_url_expires_at, task_id, task_state FROM task_approvals
+    "SELECT approval_scope, approval_status, approval_type,
+        approval_required_contact_id, approval_url_key, approval_url_expires_at,
+        task_id, task_state, required_contact.contact_name AS required_contact_name
+        FROM task_approvals
         INNER JOIN tasks ON approval_task_id = task_id
+        INNER JOIN tickets approval_ticket ON approval_ticket.ticket_id = task_ticket_id
+        LEFT JOIN contacts required_contact
+            ON required_contact.contact_id = approval_required_contact_id
+            AND required_contact.contact_client_id = approval_ticket.ticket_client_id
     WHERE approval_id = $approval_id AND approval_scope = 'client'
     LIMIT 1"
 ));
@@ -202,7 +208,7 @@ if ($ticket_priority == "Urgent") {
             <p>
                 <strong>Task Name: </strong><?= ucfirst($task_name); ?>
                 <br>
-                <strong>Sent to:</strong> <?= escapeHtml(approvalRouteLabel('client', $approval_type)) ?>
+                <strong>Sent to:</strong> <?= escapeHtml(approvalRouteLabel('client', $approval_type, '', $task_row['required_contact_name'] ?? '')) ?>
                 <br>
                 <strong>Status:</strong> <?= ucfirst($approval_status)?>
                 <br>
