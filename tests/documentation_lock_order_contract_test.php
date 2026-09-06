@@ -40,7 +40,7 @@ $client_ticket_lock = $section(
     'client/ticket lock helper'
 );
 $assertOrdered($client_ticket_lock, [
-    'documentationLockClient($client_id)',
+    'documentationLockClient($client_id, $allow_archived_client)',
     'documentationLockTicket($ticket_id)',
     "intval(\$ticket['ticket_client_id']) !== \$client_id",
 ], 'The shared ticket lock does not enforce client then ticket with revalidation');

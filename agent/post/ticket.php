@@ -1450,7 +1450,10 @@ if (isset($_GET['delete_ticket'])) {
                 throw new RuntimeException('Could not start the ticket deletion transaction');
             }
             $transaction_started = true;
-            $locked_delete_ticket = documentationLockClientTicket($ticket_id, $client_id);
+            // Archived clients can still contain legacy or integration-created tickets.
+            // The client row must remain locked, but archival alone must not prevent a
+            // permitted hard delete after every audit-retention check passes.
+            $locked_delete_ticket = documentationLockClientTicket($ticket_id, $client_id, true);
             if (!$locked_delete_ticket || intval($locked_delete_ticket['ticket_client_id']) !== $client_id
                 || !empty($locked_delete_ticket['ticket_closed_at'])) {
                 throw new RuntimeException('The ticket client changed before deletion');
@@ -1527,29 +1530,34 @@ if (isset($_POST['bulk_delete_tickets'])) {
 
     if (isset($_POST['ticket_ids'])) {
 
-        $requested_count = count($_POST['ticket_ids']);
+        $ticket_ids = array_values(array_unique(array_filter(
+            array_map('intval', (array) $_POST['ticket_ids']),
+            static fn ($ticket_id) => $ticket_id > 0
+        )));
+        $requested_count = count($ticket_ids);
         $deleted_count = 0;
         $skipped_count = 0;
+        $failed_count = 0;
 
-        // Cycle through array and delete each recurring scheduled ticket
-        foreach ($_POST['ticket_ids'] as $ticket_id) {
-
-            $ticket_id = intval($ticket_id);
-
-            $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
-
-            // Don't Enforce Client Access if Ticket doesn't have an assigned client
-            if ($client_id) {
-                enforceClientAccess($client_id);
-            }
+        // Process each selected ticket in its own transaction.
+        foreach ($ticket_ids as $ticket_id) {
 
             $transaction_started = false;
             try {
+                $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+
+                // Don't Enforce Client Access if Ticket doesn't have an assigned client
+                if ($client_id) {
+                    enforceClientAccess($client_id);
+                }
+
                 if (!mysqli_begin_transaction($mysqli)) {
                     throw new RuntimeException('Could not start the bulk ticket deletion transaction');
                 }
                 $transaction_started = true;
-                $locked_delete_ticket = documentationLockClientTicket($ticket_id, $client_id);
+                // See the single-delete path: archived clients may retain deletable
+                // legacy or integration-created tickets.
+                $locked_delete_ticket = documentationLockClientTicket($ticket_id, $client_id, true);
                 if (!$locked_delete_ticket || intval($locked_delete_ticket['ticket_client_id']) !== $client_id) {
                     throw new RuntimeException('The ticket client changed before bulk deletion');
                 }
@@ -1591,15 +1599,25 @@ if (isset($_POST['bulk_delete_tickets'])) {
                 }
                 $transaction_started = false;
             } catch (Throwable $e) {
+                $database_error_number = mysqli_errno($mysqli);
+                $database_error = trim(mysqli_error($mysqli));
                 if ($transaction_started) {
                     mysqli_rollback($mysqli);
                 }
-                error_log("Ticket $ticket_id could not be deleted during bulk deletion: " . $e->getMessage());
+                $database_context = $database_error_number
+                    ? " [MySQL $database_error_number: $database_error]"
+                    : '';
+                error_log("Ticket $ticket_id could not be deleted during bulk deletion ["
+                    . get_class($e) . ']: ' . $e->getMessage() . $database_context);
                 if ($e instanceof DomainException) {
                     $skipped_count++;
                     continue;
                 }
-                throw $e;
+                // A failure for one ticket must not turn the entire browser request
+                // into an empty HTTP 500. Its transaction has been rolled back, so
+                // retain it and continue processing the remaining selections.
+                $failed_count++;
+                continue;
             }
 
             // Database deletion committed before its non-transactional filesystem cleanup.
@@ -1612,9 +1630,16 @@ if (isset($_POST['bulk_delete_tickets'])) {
 
         }
 
-        logAudit("Ticket", "Bulk Delete", "$session_name deleted $deleted_count of $requested_count requested ticket(s); $skipped_count ticket(s) with immutable workflow, documentation, agreement, or SLA history retained");
+        logAudit("Ticket", "Bulk Delete", "$session_name deleted $deleted_count of $requested_count requested ticket(s); $skipped_count ticket(s) with immutable workflow, approval, documentation, agreement, or SLA history retained; $failed_count ticket(s) failed safely and were retained");
 
-        flashAlert("Deleted <strong>$deleted_count</strong> ticket(s). Retained <strong>$skipped_count</strong> ticket(s) to preserve immutable workflow, documentation, agreement, or SLA evidence.", $skipped_count ? 'info' : 'error');
+        $bulk_delete_message = "Deleted <strong>$deleted_count</strong> ticket(s).";
+        if ($skipped_count) {
+            $bulk_delete_message .= " Retained <strong>$skipped_count</strong> ticket(s) to preserve immutable workflow, approval, documentation, agreement, or SLA evidence.";
+        }
+        if ($failed_count) {
+            $bulk_delete_message .= " <strong>$failed_count</strong> ticket(s) could not be deleted and were left unchanged. Retry once; if the problem continues, check the application error log for the ticket ID.";
+        }
+        flashAlert($bulk_delete_message, $failed_count ? 'error' : ($skipped_count ? 'info' : 'error'));
     }
 
     redirect();
