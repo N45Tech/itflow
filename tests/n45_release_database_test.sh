@@ -130,6 +130,7 @@ assert_current "$FINAL_DATABASE" fresh
 php tests/n45_transaction_state_database_assert.php
 php tests/ticket_recovery_database_assert.php
 php tests/field_service_database_assert.php
+php tests/field_workspace_database_assert.php
 
 echo 'Upgrading the clean upstream 2.6.7 schema through the production CLI'
 reset_database "$UPGRADE_DATABASE"

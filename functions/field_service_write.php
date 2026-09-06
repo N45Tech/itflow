@@ -58,6 +58,9 @@ function fieldRequest(string $action, array $input, int $user_id, callable $oper
     if ($ticket_id) {
         fieldTicket($ticket_id);
     }
+    if ($action === 'create_job') {
+        fieldClient((int) ($input['client_id'] ?? 0));
+    }
     $key_sql = fieldSql($key);
     if (!mysqli_begin_transaction($mysqli)) {
         throw new RuntimeException('Could not begin the field update.');
@@ -70,8 +73,10 @@ function fieldRequest(string $action, array $input, int $user_id, callable $oper
             if (!hash_equals($existing['request_hash'], $hash)) {
                 throw new DomainException('This submission changed after it was sent. Refresh before sending another update.');
             }
+            $replayed = json_decode($existing['request_response'], true, 512, JSON_THROW_ON_ERROR);
+            if ($action === 'create_job' && !empty($replayed['ticket_id'])) { fieldTicket((int) $replayed['ticket_id']); }
             mysqli_commit($mysqli);
-            return json_decode($existing['request_response'], true, 512, JSON_THROW_ON_ERROR);
+            return $replayed;
         }
         // The unique key serializes simultaneous retries. No operation can commit
         // without its receipt, so a dropped HTTP response remains safely retryable.
@@ -89,7 +94,9 @@ function fieldRequest(string $action, array $input, int $user_id, callable $oper
             if (!$existing || !hash_equals($existing['request_hash'], $hash)) {
                 throw new DomainException('This submission changed. Refresh and try again.');
             }
-            return json_decode($existing['request_response'], true, 512, JSON_THROW_ON_ERROR);
+            $replayed = json_decode($existing['request_response'], true, 512, JSON_THROW_ON_ERROR);
+            if ($action === 'create_job' && !empty($replayed['ticket_id'])) { fieldTicket((int) $replayed['ticket_id']); }
+            return $replayed;
         }
         $result = $operation($batch);
         fieldDb('UPDATE field_requests SET request_response = ' . fieldSql(json_encode($result, JSON_THROW_ON_ERROR))
@@ -106,6 +113,9 @@ function fieldRequest(string $action, array $input, int $user_id, callable $oper
     }
     if ($batch) {
         fileStagingFinalizeCommittedBatch($batch, 'Field evidence');
+    }
+    if (function_exists('fieldWorkspaceAfterCommit')) {
+        fieldWorkspaceAfterCommit($result);
     }
     return $result;
 }

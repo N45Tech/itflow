@@ -151,7 +151,7 @@ components:
 
 Field Mode carries N45's calm, capable operational identity into work at a client site. Warm paper, dark spruce, clear type, and restrained green actions keep job context legible beside the next useful action. The interface is compact enough for real work, with generous touch controls and ordinary language.
 
-This document records the built system within `agent/field/`, from `field.css`, `shell.html`, and the rendered components in `app.mjs`. It extends the incumbent identity in the root `DESIGN.md` and `PRODUCT.md`; it does not replace guidance for the wider PSA or customer email. The accepted workflow remains in `docs/n45/field-mode.md`. The customer appointment projection keeps its existing portal components.
+This document records the built system within `agent/field/`, from `field.css`, `shell.html`, and the rendered components in `app.mjs` and `workspace.mjs`. It extends the incumbent identity in the root `DESIGN.md` and `PRODUCT.md`; it does not replace guidance for the wider PSA or customer email. The accepted workflow remains in `docs/n45/field-mode.md`. The customer appointment projection keeps its existing portal components.
 
 **Key Characteristics:**
 
@@ -186,7 +186,7 @@ The field palette uses N45's paper, ink, and spruce with a darker action teal an
 | Borders and dividers | `line` | `line-dark` |
 | Selection and active-visit fill | `soft` | `soft-dark` |
 
-The masthead stays dark spruce in both themes, using `surface-dark`, `ink-dark`, and `line-dark`, with `masthead-support` for connection text and the PSA link. Theme substitution changes role assignments together; primary button text follows the surface role.
+The masthead stays dark spruce in both themes, using `surface-dark`, `ink-dark`, and `line-dark`, with `masthead-support` for connection text and the Find work link. Theme substitution changes role assignments together; primary button text follows the surface role.
 
 **The State Has Words Rule.** Pair status color with a readable state label, an active navigation state, or an explanatory message.
 
@@ -204,9 +204,9 @@ Job headlines use a fixed narrow-screen size (1.75rem). Paragraphs are bounded a
 
 The main column is centered within a maximum width of 1140px, including 24px side padding at wide widths. The masthead is 76px high. At the wide breakpoint (760px), navigation is a sticky row beneath the masthead, and job content can split into a flexible main area and a site-information aside. That split uses a 1.7-to-1 ratio, a minimum aside width of 260px, and a 44px gap.
 
-Below the wide breakpoint, the masthead becomes 66px high, content has 20px side gutters, and the five-destination navigation is fixed to the bottom with safe-area padding. Main content reserves 105px at the bottom. The job aside stacks below a dividing rule. Heading actions and active-visit actions move beneath their text, while job section links scroll horizontally. Activity choices wrap into two columns where space requires it.
+Below the wide breakpoint, the masthead becomes 66px high, content has 20px side gutters, and the five-destination navigation is fixed to the bottom with safe-area padding. Main content reserves 105px at the bottom. The job aside stacks below a dividing rule. Heading actions and active-visit actions move beneath their text, while a labeled native Job section picker exposes all job destinations. Activity choices wrap into two columns where space requires it.
 
-The spacing rhythm is practical rather than a strict mathematical scale: compact gaps join controls, medium gaps separate action groups, and larger spacing separates work sections. Lists use repeated horizontal rules and vertical row padding. Forms use a 19px row gap and can be bounded to 720px. Long instructions wrap instead of widening the layout.
+The spacing rhythm is practical rather than a strict mathematical scale: compact gaps join controls, medium gaps separate action groups, and larger spacing separates work sections. Lists use repeated horizontal rules and vertical row padding. Forms use a 19px row gap and can be bounded to 720px. Paired form fields use equal columns with an 18px gap, stacking below the wide breakpoint. Long instructions, resource names, and file names wrap instead of widening the layout.
 
 **The Rows Carry Work Rule.** Use divided rows for schedules, documents, assets, notes, issues, and time history; reserve enclosed panels for arrival choices, active visits, and focused forms.
 
@@ -234,11 +234,25 @@ Fields use the surface fill, ink text, a quiet border, and the control radius. L
 
 ### Navigation
 
-The main navigation uses text labels and a soft filled current item. Its narrow-screen targets are at least 48px high, with equal available width. Job navigation uses the same selected treatment in a horizontally scrollable row, with targets at least 44px high. Project filtering uses a bordered segmented group and a soft fill on the pressed option. Current and pressed states are represented in markup as well as visually.
+The main navigation uses text labels and a soft filled current item. Its narrow-screen targets are at least 48px high, with equal available width. At widths of 760px and above, job navigation uses the same selected treatment in a horizontally scrollable row, with targets at least 44px high. Below 760px, a labeled native Job section picker replaces the links and exposes every destination. After a selection loads, focus returns to the picker and a polite status announces the section. If loading fails, focus moves to the retry view and the status announces the failure. The masthead Find work link opens ticket discovery within Field Mode; the discovery page keeps New job in its heading action group and uses the shared labeled fields for search filters. Project filtering uses a bordered segmented group and a soft fill on the pressed option. Current and pressed states are represented in markup as well as visually.
+
+### Job context and management
+
+The job heading groups the ticket reference, client, readable status, subject, site, schedule, and assigned technician above the section navigation. Management and completion actions align beside the subject at wide widths and share the available row below it on phones. Open jobs offer Manage job and Resolve ticket; resolved jobs offer Reopen and Close ticket; closed jobs offer Create follow-up. The same titled dialog surface presents management, handoff, and completion forms. Conditional fields appear with the choice that requires them, and completion requirements and errors remain readable beside the form action.
 
 ### Tags and work rows
 
-Tags are small, filled state labels rather than buttons. The neutral version uses the soft fill; attention uses the warm semantic pair. Rows place the task or job name above supporting context and allow metadata to wrap. A schedule time column uses tabular figures. Task sections show instructions and evidence requirements beside the available next actions; completion can remain disabled with its reason shown in text.
+Tags are small, filled state labels rather than buttons. The neutral version uses the soft fill; attention uses the warm semantic pair. Rows place the task or job name above supporting context and allow metadata to wrap. A schedule time column uses tabular figures. Task sections show instructions and evidence requirements beside the available next actions; completion can remain disabled with its reason shown in text. Conversation rows group author, timestamp, visibility, and any recorded duration above the message. Approval rows keep the task, decision route, state, and available actions together; commitment rows keep the promise, due time, and outcome action together. Loading earlier conversation entries or more files adds rows beneath the existing records.
+
+### Client and site resources
+
+Contacts, assets, and credentials use the same divided rows, with names above supporting detail and plainly labeled actions. Resource and file names remain text inside buttons and links and may wrap over multiple lines. Network records use native disclosures with a summary target at least 44px high. Expanded network and asset details use aligned label/value pairs: a minimum 90px label column and a wider value column at wide widths, then a 90px label column with a flexible wrapping value column on phones.
+
+Credential rows show the name and description before reveal. Reveal opens the shared dialog with labeled read-only fields and explicit copy actions. The values clear within 30 seconds, on closing the dialog, when work is covered, when the document becomes hidden, or when the route changes; an expiring one-time code can shorten that interval.
+
+### Documents and files
+
+Documentation combines a readable text view with a full-document action for diagrams and embedded content. The full reader stays within the shared dialog; images fit the available width and wide tables scroll within the document. Review and verification use the same labeled form controls, evidence choices, and explicit confirmation checkbox as other work forms. File rows open a titled preview with a persistent Open or download file action. Images retain their proportions within the available width and a 65dvh height limit; document and PDF frames use the surface fill, a quiet border, and a 60dvh height. Upload and camera actions stay alongside the evidence fields and task selection.
 
 ### Arrival and active-visit panels
 

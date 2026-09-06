@@ -1,4 +1,5 @@
 import {DraftVault, knownAccounts} from './drafts.mjs';
+import {createWorkspace} from './workspace.mjs';
 const $ = (selector, root = document) => root.querySelector(selector);
 const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n = value => Number(value) || 0;
@@ -18,8 +19,8 @@ async function api(action, payload=null, query={}) {
     else {options.headers={'Content-Type':'application/json'};options.body=JSON.stringify({...payload,action,csrf_token:state.boot?.csrf_token||''});}
   }
   let response;
-  try {response=await fetch(url,options);} catch {connection(false);throw new Error('Connection unavailable. Keep your work here, reconnect, then retry. If your session ended, sign in through the PSA.');}
-  if (response.type==='opaqueredirect' || response.status===401 || !response.headers.get('content-type')?.includes('application/json')) {state.boot=null;state.job=null;state.project=null;connection(false);throw new Error('Sign in again through the PSA, then reopen Field Mode.');}
+  try {response=await fetch(url,options);} catch {connection(false);throw new Error('Connection unavailable. Keep your work here, reconnect, then retry. If your session ended, sign in again.');}
+  if (response.type==='opaqueredirect' || response.status===401 || !response.headers.get('content-type')?.includes('application/json')) {state.boot=null;state.job=null;state.project=null;connection(false);throw new Error('Your session ended. Sign in again to return to Field Mode.');}
   const body=await response.json();connection(true);
   if (!response.ok || body.error) {const error=new Error(body.error||'The update could not be confirmed. Retry this form.');error.status=response.status;throw error;}
   return body.data;
@@ -33,6 +34,7 @@ const writable = () => !!state.boot?.user.write;
 const jobHref = (id,panel='overview') => `#job/${n(id)}/${panel}`;
 const actionButton = (action,text,attrs='',secondary=false) => `<button type="button" data-action="${action}" ${attrs} class="${secondary?'secondary':''}">${text}</button>`;
 const empty = (title,copy) => `<div class="empty"><h2>${e(title)}</h2><p class="muted">${e(copy)}</p></div>`;
+const workspace=createWorkspace({$,e,n,state,api,write,reload,notice,sheet,closeSheet,header,empty,jobHref,jobRow,actionButton,fmt,taskOptions,route,boot});
 function header(title,description,actions='') {return `<div class="page-head"><div><h1>${e(title)}</h1><p class="muted">${e(description)}</p></div>${actions?`<div class="heading-actions">${actions}</div>`:''}</div>`;}
 function jobRow(job) {
   return `<div class="list-row"><div class="schedule-time">${e(clock(job.scheduled_at))}</div><div class="row-main"><a class="title" href="${jobHref(job.ticket_id)}">${e(job.subject)}</a><p class="muted">${e(job.client_name)} · ${e(job.location_name)}</p><div class="meta"><span>${e(job.reference)}</span><span>${e(job.scheduled_at?fmt(job.scheduled_at,{hour:undefined,minute:undefined}):'Unscheduled')}</span>${job.project_name?`<span>${e(job.project_name)}</span>`:''}</div></div><span class="tag ${['high','critical'].includes(job.priority)?'attention':''}">${e(job.status||job.priority)}</span></div>`;
@@ -52,17 +54,18 @@ function today() {
   const todayKey=new Date().toDateString();
   const scheduled=jobs.filter(j=>j.scheduled_at&&new Date(j.scheduled_at).toDateString()===todayKey).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));
   const other=jobs.filter(j=>!scheduled.includes(j));
-  return header('Today’s work',new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}),actionButton('locate','Find my stop','',true))
+  return header('Today’s work',new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}),actionButton('locate','Find my stop','',true)+`<a class="button secondary" href="#jobs">Find work</a>`+(writable()?workspace.button('create','New job'):''))
     +activeBanner()+matchesMarkup()+`<p class="hint" id="location-message">${e(state.locationMessage||'Your schedule and location help identify the right stop. You confirm every arrival.')}</p>`
     +`<div class="section-head"><h2>On the schedule</h2><span class="muted">${scheduled.length} jobs</span></div>`
     +(scheduled.length?`<div class="list">${scheduled.map(jobRow).join('')}</div>`:empty('No scheduled stops today','Your assigned work appears below. You can open any job and check in manually.'))
     +(other.length?`<div class="section-head"><h2>Other assigned work</h2></div><div class="list">${other.map(jobRow).join('')}</div>`:'');
 }
 function jobTop(j,panel) {
-  return `<a class="back" href="#today">Back to today</a><div class="job-top"><div class="meta"><strong>${e(j.reference)}</strong><span>${e(j.client_name)}</span><span class="tag">${e(j.status)}</span></div><h1>${e(j.subject)}</h1><p class="muted">${e(j.location_name)}${j.address?' · '+e(j.address):''}</p><div class="meta"><span>${e(fmt(j.scheduled_at))}</span><span>${e(j.assigned_name||'Unassigned')}</span>${j.project_id?`<a href="#project/${j.project_id}">${e(j.project_name)}</a>`:''}<a href="/agent/ticket.php?ticket_id=${j.ticket_id}">Full ticket in PSA</a></div></div><nav class="job-tabs" aria-label="Job sections">${[['overview','Job'],['docs','Documentation'],['tasks','Tasks'],['notes','Notes'],['issues','Issues'],['photos','Photos']].map(([id,title])=>`<a href="${jobHref(j.ticket_id,id)}" ${panel===id?'aria-current="page"':''}>${title}</a>`).join('')}</nav>`;
+  const sections=[['overview','Job'],['docs','Documentation'],['tasks','Tasks'],['notes','Notes'],['issues','Issues'],['approvals','Approvals'],['conversation','Conversation'],['resources','Resources'],['photos','Files']];
+  return `<a class="back" href="#today">Back to today</a><div class="job-top"><div class="meta"><strong>${e(j.reference)}</strong><span>${e(j.client_name)}</span><span class="tag">${e(j.status)}</span></div><div class="job-title-row"><h1>${e(j.subject)}</h1>${workspace.jobActions(j)}</div><p class="muted">${e(j.location_name)}${j.address?' · '+e(j.address):''}</p><div class="meta"><span>${e(fmt(j.scheduled_at))}</span><span>${e(j.assigned_name||'Unassigned')}</span>${j.project_id?`<a href="#project/${j.project_id}">${e(j.project_name)}</a>`:''}</div></div><nav class="job-tabs" aria-label="Job sections">${sections.map(([id,title])=>`<a href="${jobHref(j.ticket_id,id)}" ${panel===id?'aria-current="page"':''}>${title}</a>`).join('')}</nav><label class="job-section-picker">Job section<select id="job-section" aria-label="Job section">${sections.map(([id,title])=>`<option value="${id}" ${panel===id?'selected':''}>${title}</option>`).join('')}</select></label>`;
 }
 function visitControls(j) {
-  if(j.terminal)return '<p class="hint">This ticket is complete. Reopen it in the PSA before adding field work.</p>';
+  if(j.terminal)return `<p class="hint">${j.closed?'This closed ticket is preserved in history. Create a follow-up job for additional work.':'This ticket is resolved. Use Reopen above to resume work.'}</p>`;
   if(!writable())return '<p class="hint">You have view access to this job.</p>';
   const v=activeVisit();const matching=state.matches.some(m=>n(m.ticket_id)===j.ticket_id);
   if(v && (n(v.visit_client_id)!==j.client_id || n(v.visit_location_id)!==j.location_id)) return `<p class="hint">A visit is running at another site. Finish it before starting this job.</p><a class="button secondary" href="#time">Open active visit</a>`;
@@ -72,18 +75,19 @@ function visitControls(j) {
 }
 function overview(j) {
   const phone=(j.contact.phone||'').replace(/[^+\d,;#*]/g,'');
-  return visitControls(j)+`<div class="split"><div><section class="subsection"><h2>Work to do</h2><p class="prose">${e(j.details||'No job instructions have been added.')}</p></section>${j.next_action?`<section class="subsection"><h2>Next action</h2><p>${e(j.next_action)}</p></section>`:''}<div class="actions"><a class="button" href="${jobHref(j.ticket_id,'notes')}">Write a work note</a><a class="button secondary" href="${jobHref(j.ticket_id,'issues')}">Report an issue</a></div></div><aside class="aside"><h2>Before you start</h2><p><strong>${e(j.contact.name||'No contact set')}</strong></p>${phone?`<a class="button secondary" href="tel:${e(phone)}">Call contact</a>`:''}${j.address?`<p><a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(j.address)}" target="_blank" rel="noopener noreferrer">Directions to site</a></p>`:''}<p class="prose">${e(j.site_notes||'No site access notes available.')}</p>${j.site_hours?`<p class="muted">Hours: ${e(j.site_hours)}</p>`:''}<p class="hint">${j.pin_valid?'Arrival pin verified for this address.':'This address needs a verified arrival pin for automatic matching.'}</p>${state.boot.user.verify_site&&j.location_id&&!j.terminal?actionButton('pin',j.pin_valid?'Update site pin':'Verify this site',`data-ticket="${j.ticket_id}"`,true):''}${j.promises.length?`<h3 class="subsection">Customer commitments</h3>${j.promises.map(p=>`<p>${e(p.ticket_customer_promise_summary)}<br><span class="muted">Due ${e(fmt(p.ticket_customer_promise_due_at))}</span></p>`).join('')}`:''}</aside></div>`;
+  return visitControls(j)+`<div class="split"><div><section class="subsection"><h2>Work to do</h2><p class="prose">${e(j.details||'No job instructions have been added.')}</p></section>${j.next_action?`<section class="subsection"><h2>Next action</h2><p>${e(j.next_action)}</p></section>`:''}<div class="actions"><a class="button" href="${jobHref(j.ticket_id,'notes')}">Write a work note</a><a class="button secondary" href="${jobHref(j.ticket_id,'issues')}">Report an issue</a></div></div><aside class="aside"><h2>Before you start</h2><p><strong>${e(j.contact.name||'No contact set')}</strong></p>${phone?`<a class="button secondary" href="tel:${e(phone)}">Call contact</a>`:''}${j.address?`<p><a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(j.address)}" target="_blank" rel="noopener noreferrer">Directions to site</a></p>`:''}<p class="prose">${e(j.site_notes||'No site access notes available.')}</p>${j.site_hours?`<p class="muted">Hours: ${e(j.site_hours)}</p>`:''}<p class="hint">${j.pin_valid?'Arrival pin verified for this address.':'This address needs a verified arrival pin for automatic matching.'}</p>${state.boot.user.verify_site&&j.location_id&&!j.terminal?actionButton('pin',j.pin_valid?'Update site pin':'Verify this site',`data-ticket="${j.ticket_id}"`,true):''}</aside></div>`+workspace.promises(j);
 }
 function docRows(docs) {
   return docs.length?`<div class="list">${docs.map(d=>`<div class="list-row"><div class="row-main"><button class="quiet" data-action="document" data-id="${n(d.document_id)}">${e(d.document_name)}</button><p class="muted">${e(d.document_description||'')}</p><div class="meta"><span>${d.last_verified_at?'Verified '+e(fmt(d.last_verified_at)):'Verification not recorded'}</span>${n(d.asset_linked)?'<span class="tag">Linked asset</span>':''}</div></div></div>`).join('')}</div>`:empty('No matching documents','Report what is missing so the owner can correct it.');
 }
 function docs(j) {
-  if(!state.boot.user.documents)return empty('Documentation access required','Your administrator can grant client documentation access.');
-  return `<div class="section-head"><h2>Client documentation</h2>${writable()&&!j.terminal?actionButton('new-issue','Report missing docs','data-kind="documentation"',true):''}</div><form id="doc-search" class="search"><input name="q" aria-label="Search client documentation" placeholder="Search access notes, diagrams, runbooks…" maxlength="200"><button>Search</button></form><div id="doc-list">${docRows(j.documents)}</div><div id="doc-content"></div><section class="subsection"><div class="section-head"><h2>Assets at this site</h2>${actionButton('scan','Scan code','',true)}</div><form id="asset-search" class="search"><input name="q" required maxlength="200" aria-label="Asset name or serial number" placeholder="Asset name or serial number"><button>Find</button></form><div id="assets">${assetRows(j.assets)}</div></section>`;
+  if(!state.boot.user.documents)return workspace.documentation(j)+empty('Documentation access required','Your administrator can grant client documentation access.');
+  return `<div class="section-head"><h2>Client documentation</h2><div class="actions">${state.boot.user.client_write&&!j.terminal?workspace.button('document-update','Add documentation'):''}${writable()&&!j.terminal?actionButton('new-issue','Report missing docs','data-kind="documentation"',true):''}</div></div><form id="doc-search" class="search"><input name="q" aria-label="Search client documentation" placeholder="Search access notes, diagrams, runbooks…" maxlength="200"><button>Search</button></form><div id="doc-list">${docRows(j.documents)}</div><div id="doc-content"></div>`+workspace.documentation(j);
 }
-function assetRows(assets) {return assets.length?`<div class="list">${assets.map(a=>`<div class="list-row"><div><h3>${e(a.asset_name)}</h3><p class="muted">${e([a.asset_make,a.asset_model,a.asset_serial].filter(Boolean).join(' · '))}</p></div><a href="/agent/asset.php?client_id=${n(state.job?.client_id)}&asset_id=${n(a.asset_id)}">Open asset</a></div>`).join('')}</div>`:empty('No assets found','Search by name or serial number. Scanning fills the same search.');}
+function assetRows(assets) {return workspace.assetRows(assets);}
+
 function taskRows(tasks,ticketId) {
-  return tasks.length?`<ul class="task-list">${tasks.map(t=>`<li class="task ${t.task_completed_at?'task-completed':''}"><div class="meta"><span class="tag">${e(t.task_state)}</span><span>${e(t.assigned_name||'Unassigned')}</span>${t.task_due_at?`<span>Due ${e(fmt(t.task_due_at))}</span>`:''}</div><h3>${e(t.task_name)}</h3>${t.task_instructions?`<p class="prose">${e(t.task_instructions)}</p>`:''}${t.dependencies.length?`<details><summary>${t.dependencies.length} dependencies</summary>${t.dependencies.map(d=>`<p class="muted">${e(d.task_name)} · ${e(d.task_state)}</p>`).join('')}</details>`:''}${t.task_waiting_reason?`<p class="hint">${e(t.task_waiting_reason)}</p>`:''}${t.task_evidence_required!=='none'?`<p class="hint">Evidence: ${e(t.task_evidence_prompt||t.task_evidence_required)}</p>`:''}${!t.can_complete&&!t.task_completed_at?`<p class="hint">${e(t.completion_error)}</p>`:''}${writable()&&!t.task_completed_at&&t.task_state!=='Skipped'?`<div class="actions">${actionButton('complete-task','Complete task',`data-task="${n(t.task_id)}" data-ticket="${n(ticketId)}" ${!t.can_complete?'disabled':''}`)}<a class="button secondary" href="${jobHref(ticketId,'notes')}?task=${n(t.task_id)}">Add note</a><a class="button secondary" href="${jobHref(ticketId,'photos')}?task=${n(t.task_id)}">Add photo</a>${actionButton('new-issue','Report issue',`data-task="${n(t.task_id)}" data-ticket="${n(ticketId)}"`,true)}</div>`:''}</li>`).join('')}</ul>`:empty('No tasks on this job','Use the job instructions and record your work in Notes.');
+  return tasks.length?`<ul class="task-list">${tasks.map(t=>`<li class="task ${t.task_completed_at?'task-completed':''}"><div class="meta"><span class="tag">${e(t.task_state)}</span><span>${e(t.assigned_name||'Unassigned')}</span>${t.task_due_at?`<span>Due ${e(fmt(t.task_due_at))}</span>`:''}</div><h3>${e(t.task_name)}</h3>${t.task_instructions?`<p class="prose">${e(t.task_instructions)}</p>`:''}${t.dependencies.length?`<details><summary>${t.dependencies.length} dependencies</summary>${t.dependencies.map(d=>`<p class="muted">${e(d.task_name)} · ${e(d.task_state)}</p>`).join('')}</details>`:''}${t.task_waiting_reason?`<p class="hint">${e(t.task_waiting_reason)}</p>`:''}${t.task_evidence_required!=='none'?`<p class="hint">Evidence: ${e(t.task_evidence_prompt||t.task_evidence_required)}</p>`:''}${!t.can_complete&&!t.task_completed_at?`<p class="hint">${e(t.completion_error)}</p>`:''}${writable()&&t.task_completed_at?workspace.button('task-reopen','Reopen task',`data-id="${n(t.task_id)}" data-ticket="${n(ticketId)}"`):''}${writable()&&!t.task_completed_at&&t.task_state!=='Skipped'?`<div class="actions">${actionButton('complete-task','Complete task',`data-task="${n(t.task_id)}" data-ticket="${n(ticketId)}" ${!t.can_complete?'disabled':''}`)}<a class="button secondary" href="${jobHref(ticketId,'notes')}?task=${n(t.task_id)}">Add note</a><a class="button secondary" href="${jobHref(ticketId,'photos')}?task=${n(t.task_id)}">Add photo</a>${actionButton('new-issue','Report issue',`data-task="${n(t.task_id)}" data-ticket="${n(ticketId)}"`,true)}</div>`:''}</li>`).join('')}</ul>`:empty('No tasks on this job','Use the job instructions and record your work in Notes.');
 }
 function taskOptions(j,selected=0) {return `<option value="0">Whole ticket</option>${j.tasks.filter(t=>!t.task_completed_at&&t.task_state!=='Skipped').map(t=>`<option value="${n(t.task_id)}" ${n(selected)===n(t.task_id)?'selected':''}>${e(t.task_name)}</option>`).join('')}`;}
 const templates = {troubleshooting:['What did you investigate or change?','What did testing show?','What remains, or how was the fix confirmed?'],installation:['What did you install and configure?','What passed acceptance testing?','What is needed for handover?'],maintenance:['What checks or maintenance did you perform?','What did you find?','What follow-up is needed?'],survey:['What did you inspect or measure?','What conditions or requirements did you find?','What should happen next?'],project:['What project work did you complete?','What changed or passed validation?','What task or dependency comes next?']};
@@ -99,9 +103,8 @@ async function notes(j, task=0, offline=false) {
 function issueRows(issues) {
   return issues.length?`<div class="list">${issues.map(i=>`<article class="list-row"><div class="row-main"><div class="meta"><span class="tag ${i.blocker_status==='resolved'?'':'attention'}">${e(i.blocker_status)}</span><span>${e(i.blocker_kind)}</span><a href="${jobHref(i.blocker_ticket_id,'issues')}">${e(i.ticket_prefix+i.ticket_number)}</a></div><h3>${e(i.blocker_title)}</h3><p class="prose issue-details">${e(i.blocker_details)}</p><p class="hint">Impact: ${e(i.blocker_impact)}</p><p class="hint">${e(i.owner_name||'Owner unavailable')} · Response due ${e(fmt(i.blocker_due_at))}</p>${i.blocker_attachment_id?`<p><a href="/agent/field/api.php?action=attachment&ticket_id=${n(i.blocker_ticket_id)}&attachment_id=${n(i.blocker_attachment_id)}" target="_blank" rel="noopener">View issue photo</a></p>`:''}${i.blocker_resolution||i.blocker_response?`<p class="prose issue-response">${e(i.blocker_resolution||i.blocker_response)}</p>`:''}${writable()&&i.blocker_status!=='resolved'&&(state.boot.user.admin||n(i.blocker_owner_id)===state.boot.user.id)?`<div class="actions">${i.blocker_status==='open'?actionButton('issue-response','Acknowledge',`data-id="${n(i.blocker_id)}" data-ticket="${n(i.blocker_ticket_id)}" data-status="acknowledged"`,true):''}${actionButton('issue-response','Resolve issue',`data-id="${n(i.blocker_id)}" data-ticket="${n(i.blocker_ticket_id)}" data-status="resolved"`)}</div>`:''}</div></article>`).join('')}</div>`:empty('No open issues','Report a blocker, access problem, parts request, or documentation gap from a job.');
 }
-function photos(j,task=0) {
-  return `${writable()&&!j.terminal?`<form id="photo-form" class="form-grid inline-form"><h2>Photo evidence</h2><p class="hint">Photos upload while connected. They are not saved offline.</p><label>Photo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required></label><label>Caption<input name="caption" maxlength="200" required placeholder="What this photo shows"></label><label>Attach evidence to<select name="task_id">${taskOptions(j,task)}</select></label><button type="submit">Upload photo</button><p class="hint">JPG, PNG, or WebP · Up to 12 MB</p></form>`:''}<div class="section-head"><h2>Ticket attachments</h2></div><div class="list">${j.attachments.map(a=>`<div class="list-row"><a href="/agent/field/api.php?action=attachment&ticket_id=${j.ticket_id}&attachment_id=${n(a.ticket_attachment_id)}" target="_blank" rel="noopener">${e(a.ticket_attachment_name)}</a><span class="muted">${e(fmt(a.ticket_attachment_created_at))}</span></div>`).join('')||'<p class="hint">No attachments yet.</p>'}</div>`;
-}
+async function photos(j,task=0) {return workspace.files(j,task);}
+
 function projects() {
   return header('Your projects','Open a project for its full work plan, dependencies, and issues.')+(state.boot.projects.length?`<div class="list">${state.boot.projects.map(p=>`<div class="list-row"><div class="row-main"><a class="title" href="#project/${n(p.project_id)}">${e(p.project_name)}</a><p class="muted">${e(p.client_name)}</p><div class="meta"><span>${e(p.manager_name||'No project manager')}</span><span>${p.project_due?'Due '+e(p.project_due):'No due date'}</span></div></div><div><p class="hint">${n(p.completed_count)} of ${n(p.ticket_count)} jobs done</p><progress class="progress" max="${n(p.ticket_count)||1}" value="${n(p.completed_count)}" aria-label="Project jobs completed"></progress></div></div>`).join('')}</div>`:empty('No assigned projects','Projects appear here when you manage the project or have assigned work within it.'));
 }
@@ -126,19 +129,20 @@ async function draftsView() {
   return head+(drafts.length?`<div class="list">${drafts.map(d=>`<div class="list-row"><div class="row-main"><h3>${e(d.unreadable?'Unreadable draft':d.reference+' · '+d.subject)}</h3><p class="muted">${d.unreadable?'This draft could not be decrypted. Its encrypted copy has been kept.':'Saved '+e(fmt(d.saved_at))}</p><div class="actions">${!d.unreadable?actionButton('open-draft','Open draft',`data-id="${e(d.id)}"`,true):''}${actionButton('delete-draft','Discard draft',`data-id="${e(d.id)}"`,true)}</div></div></div>`).join('')}</div>`:empty('No saved drafts','Notes you write with recovery unlocked are saved here automatically.'));
 }
 async function route() {
-  await saveDraft();const version=++state.route;
+  await saveDraft();workspace.clearSecrets();const version=++state.route;
   const hash=location.hash.slice(1)||'today';const [path,params]=hash.split('?');const [view,id,panel='overview']=path.split('/');
-  document.querySelectorAll('[data-nav]').forEach(a=>a.setAttribute('aria-current',a.dataset.nav===view||(view==='project'&&a.dataset.nav==='projects')||(view==='job'&&a.dataset.nav==='today')?'page':'false'));
-  if(!state.boot && view!=='drafts') {$('#work').innerHTML=header('Reconnect to your work','Your private job data is available after sign-in.')+`<div class="actions">${actionButton('refresh','Try connection')}<a class="button secondary" href="/agent/">Sign in through PSA</a><a class="button secondary" href="#drafts">Open encrypted drafts</a></div>`;return;}
+  document.querySelectorAll('[data-nav]').forEach(a=>a.setAttribute('aria-current',a.dataset.nav===view||(view==='project'&&a.dataset.nav==='projects')||(['job','jobs','new'].includes(view)&&a.dataset.nav==='today')?'page':'false'));
+  if(!state.boot && view!=='drafts') {$('#work').innerHTML=header('Reconnect to your work','Your private job data is available after sign-in.')+`<div class="actions">${actionButton('refresh','Try connection')}<a class="button secondary" href="/agent/field/">Sign in to Field Mode</a><a class="button secondary" href="#drafts">Open encrypted drafts</a></div>`;return;}
   $('#work').setAttribute('aria-busy','true');
   try {
     let html;
     if(view==='job') {
       const job=await api('ticket',null,{ticket_id:id});if(version!==state.route)return;state.job=job;
       const task=n(new URLSearchParams(params).get('task'));
-      const panelHtml=await ({overview:()=>overview(job),docs:()=>docs(job),tasks:()=>taskRows(job.tasks,job.ticket_id),notes:()=>notes(job,task),issues:()=>`<div class="section-head"><h2>Job issues</h2>${writable()&&!job.terminal?actionButton('new-issue','Report issue'):''}</div>`+issueRows(job.blockers),photos:()=>photos(job,task)}[panel]||(()=>overview(job)))();
+      const panelHtml=await ({overview:()=>overview(job),conversation:()=>workspace.communication(job),resources:()=>workspace.resources(job),approvals:()=>workspace.approvals(job),docs:()=>docs(job),tasks:()=>`<div class="section-head"><h2>Job tasks</h2>${writable()&&!job.terminal?workspace.button('task-new','Add task'):''}</div>`+taskRows(job.tasks,job.ticket_id),notes:()=>notes(job,task),issues:()=>`<div class="section-head"><h2>Job issues</h2>${writable()&&!job.terminal?actionButton('new-issue','Report issue'):''}</div>`+issueRows(job.blockers),photos:()=>photos(job,task)}[panel]||(()=>overview(job)))();
       html=jobTop(job,panel)+panelHtml;
-    } else if(view==='project') {state.project=await api('project',null,{project_id:id});html=projectView(state.project);}
+    } else if(view==='jobs'||view==='new')html=await workspace.route(view,id);
+    else if(view==='project') {state.project=await api('project',null,{project_id:id});html=projectView(state.project);}
     else if(view==='projects')html=projects();
     else if(view==='time')html=timeView();
     else if(view==='issues')html=header('Issues assigned to you','Acknowledge requests and record the response where the work happens.')+issueRows(state.boot.issues);
@@ -146,12 +150,13 @@ async function route() {
     else html=today();
     if(version!==state.route)return;
     $('#work').innerHTML=html;if(view==='job'&&panel==='notes'&&state.note?.pending){$('#note-form')?.querySelectorAll('input,textarea').forEach(input=>input.readOnly=true);$('#note-form')?.querySelectorAll('select').forEach(input=>input.disabled=true);}
+    if(state.sectionFocus===location.hash){state.sectionFocus=null;const picker=$('#job-section');picker?.focus({preventScroll:true});$('#section-announcement').textContent=(picker?.selectedOptions[0]?.textContent||'Job')+' section loaded.';}
     window.scrollTo({top:0,behavior:'instant'});updateElapsed();
   } catch(error) {if(version===state.route)$('#work').innerHTML=header('This view could not be loaded',error.message)+`<div class="actions">${actionButton('refresh','Retry')}<a href="#drafts" class="button secondary">Open encrypted drafts</a><a href="#today" class="button secondary">Today</a></div>`;}
-  finally {$('#work').removeAttribute('aria-busy');}
+  finally {$('#work').removeAttribute('aria-busy');if(version===state.route&&state.sectionFocus===location.hash){state.sectionFocus=null;$('#work').focus({preventScroll:true});$('#section-announcement').textContent='The job section could not be loaded. Retry is available.';}}
 }
 function sheet(title,html) {stopCamera();$('#sheet-title').textContent=title;$('#sheet-body').innerHTML=html;$('#sheet').showModal();}
-function closeSheet() {stopCamera();$('#sheet').close();$('#sheet-body').replaceChildren();}
+function closeSheet() {workspace.clearSecrets();stopCamera();$('#sheet').close();$('#sheet-body').replaceChildren();}
 function formError(form,error) {let node=$('.error-text',form);if(!node){node=document.createElement('p');node.className='error-text';node.setAttribute('role','alert');form.append(node);}node.textContent=error.message;}
 function keyFor(form) {return form.dataset.requestKey ||= crypto.randomUUID();}
 async function write(action,payload,form) {
@@ -261,12 +266,13 @@ function signatureForm() {
   canvas.addEventListener('pointerup',()=>drawing=false);canvas.addEventListener('pointercancel',()=>drawing=false);
 }
 function updateElapsed(){document.querySelectorAll('[data-elapsed]').forEach(el=>{const seconds=Math.max(0,Math.floor((Date.now()-new Date(el.dataset.elapsed))/1000));el.textContent=`${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}m in this activity`;});}
-async function cover(){if(state.cover)return;await saveDraft();state.cover=true;stopSharing();stopCamera();state.vault?.lock();state.coveredSheet=$('#sheet').open;if(state.coveredSheet){$('#sheet').querySelectorAll('input[type=password]').forEach(input=>input.value='');$('#sheet').close();}document.body.classList.add('cover-active');$('#work').inert=true;$('.main-nav').inert=true;$('#privacy').hidden=false;$('#privacy button').focus();}
+async function cover(){if(state.cover)return;workspace.clearSecrets();await saveDraft();state.cover=true;stopSharing();stopCamera();state.vault?.lock();state.coveredSheet=$('#sheet').open;if(state.coveredSheet){$('#sheet').querySelectorAll('input[type=password]').forEach(input=>input.value='');$('#sheet').close();}document.body.classList.add('cover-active');$('#work').inert=true;$('.main-nav').inert=true;$('#privacy').hidden=false;$('#privacy button').focus();}
 function restoreCheckout(){if(!state.checkout)return;finishForm(activeVisit()?.visit_ticket_id);for(const [key,value] of Object.entries(state.checkout)){const input=$(`[name="${key}"]`,$('#finish-form'));if(input)input.value=value;}state.checkout=null;}
 document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-action]');if(!button)return;
   const action=button.dataset.action;
   try {
+    if(await workspace.click(action,button))return;
     if(action==='close-sheet'){const checkout=!!state.checkout;closeSheet();if(checkout)restoreCheckout();}
     else if(action==='refresh')await reload();
     else if(action==='locate')await locate(true);
@@ -280,7 +286,7 @@ document.addEventListener('click',async event=>{
     else if(action==='project-filter'){state.projectFilter=button.dataset.filter;$('#work').innerHTML=projectView(state.project);}
     else if(action==='document'){
       const doc=await api('document',null,{ticket_id:state.job.ticket_id,document_id:button.dataset.id});
-      $('#doc-content').innerHTML=`<article class="doc-view"><h2>${e(doc.name)}</h2><p class="prose">${e(doc.content||'This document has no readable text. Open the full document for diagrams or embedded content.')}</p><div class="actions"><a class="button secondary" href="/agent/document.php?client_id=${state.job.client_id}&document_id=${n(doc.id)}" target="_blank" rel="noopener">Open full document</a>${writable()&&!state.job.terminal?actionButton('new-issue','Report incorrect docs',`data-kind="documentation" data-document="${n(doc.id)}"`,true):''}</div></article>`;$('#doc-content').scrollIntoView({block:'start'});
+      $('#doc-content').innerHTML=`<article class="doc-view"><h2>${e(doc.name)}</h2><p class="prose">${e(doc.content||'This document has no readable text. Open the full document for diagrams or embedded content.')}</p><div class="actions">${workspace.button('document-full','View full document',`data-id="${n(doc.id)}"`)}${state.boot.user.client_write&&!state.job.terminal?workspace.button('document-update','Add an update',`data-id="${n(doc.id)}"`):''}${writable()&&!state.job.terminal?actionButton('new-issue','Report incorrect docs',`data-kind="documentation" data-document="${n(doc.id)}"`,true):''}</div></article>`;$('#doc-content').scrollIntoView({block:'start'});
     }
     else if(action==='pin'){
       const pos=await geo();if(pos.accuracy>100)throw new Error('Get a location accurate to 100 metres or better before verifying this site.');
@@ -318,6 +324,7 @@ document.addEventListener('click',async event=>{
 document.addEventListener('submit',async event=>{
   const form=event.target;if(!form.id)return;event.preventDefault();
   try {
+    if(await workspace.submit(form))return;
     if(form.id==='note-form'){
       snapshotNote();await saveDraft();
       if(!state.boot||!state.online)throw new Error('Draft kept on this device if recovery is unlocked. Reconnect and sign in before sending.');
@@ -346,7 +353,7 @@ document.addEventListener('submit',async event=>{
       else if(form.id==='time-form') {action='time';payload.reviews={};form.querySelectorAll('[data-segment]').forEach(row=>payload.reviews[row.dataset.segment]={seconds:Math.round(n($('[data-minutes]',row).value)*60),reason:$('[data-reason]',row).value});}
       else if(form.id==='issue-form'){action='issue';payload=new FormData(form);if(!payload.get('photo')?.size)payload.delete('photo');payload.set('due_at',new Date(payload.get('due_at')).toISOString());}
       else if(form.id==='response-form')action='issue_update';
-      else if(form.id==='photo-form'){action='photo';payload=new FormData(form);payload.set('ticket_id',state.job.ticket_id);}
+      else if(form.id==='photo-form'){action='photo';payload=new FormData(form);payload.set('ticket_id',form.dataset.ticketId||state.job.ticket_id);}
       else if(form.id==='pin-form'){action='pin';payload={...payload,...state.pinPosition,ticket_id:state.job.ticket_id,address_hash:state.job.address_hash};}
       else if(form.id==='sharing-form'){
         action='position';const v=activeVisit();payload={...payload,ticket_id:n(v.visit_ticket_id),visit_id:n(v.visit_id),share_location:n(payload.share_location)};
