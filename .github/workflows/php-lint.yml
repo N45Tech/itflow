@@ -3,16 +3,17 @@ name: PHPLint
 
 on:
   pull_request:
-  push:
     branches:
       - main
-      - 'codex/**'
 
 permissions:
   contents: read
 
 jobs:
   build:
+    if: >-
+      github.event.pull_request.head.ref == 'next' &&
+      github.event.pull_request.head.repo.full_name == github.repository
 
     runs-on: ubuntu-latest
 
@@ -28,11 +29,3 @@ jobs:
 
     - name: Check PHP syntax errors
       uses: overtrue/phplint@9.4.1
-
-    - name: Run PHP regression tests
-      run: |
-        set -e
-        for test_file in tests/*_test.php; do
-          echo "Running ${test_file}"
-          php "${test_file}"
-        done

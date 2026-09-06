@@ -1,43 +1,37 @@
 name: Notify production after CI
 
 on:
-  workflow_run:
-    workflows: [PHPLint, N45 Upstream Parity, SQL Syntax Check for db.sql]
-    branches: [main]
-    types: [completed]
+  push:
+    branches:
+      - main
 
 permissions: {}
 
 concurrency:
-  group: production-notification-${{ github.event.workflow_run.head_sha }}
+  group: production-notification-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
   notify:
     if: >-
       github.repository == 'N45Tech/itflow' &&
-      github.ref == 'refs/heads/main' &&
-      github.event.workflow_run.repository.full_name == github.repository &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.conclusion == 'success'
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: read
       contents: read
+      pull-requests: read
 
     # Never check out code or download artifacts in this privileged workflow.
     steps:
-      - name: Require all CI workflows for the current main commit
+      - name: Require green next-to-main PR gates for the current main tree
         id: release
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         with:
           script: |
             const { owner, repo } = context.repo;
-            const source = context.payload.workflow_run;
-            const sha = source.head_sha;
+            const sha = context.sha;
             const required = [
               { name: 'PHPLint', path: '.github/workflows/php-lint.yml' },
               { name: 'N45 Upstream Parity', path: '.github/workflows/upstream-parity.yml' },
@@ -58,6 +52,44 @@ jobs:
               core.notice('A newer main commit exists; this notification is obsolete.');
               return;
             }
+
+            const mainCommit = (await github.rest.git.getCommit({
+              owner, repo, commit_sha: sha,
+            })).data;
+            if (mainCommit.parents.length !== 2) {
+              core.setFailed('Production releases must be merge commits from next into main.');
+              return;
+            }
+            const baseSha = mainCommit.parents[0].sha;
+            const headSha = mainCommit.parents[1].sha;
+            const associatedPulls = await github.paginate(
+              github.rest.repos.listPullRequestsAssociatedWithCommit,
+              { owner, repo, commit_sha: sha, per_page: 100 }
+            );
+            const candidates = associatedPulls.filter((pull) =>
+              pull.state === 'closed' &&
+              Boolean(pull.merged_at) &&
+              pull.merge_commit_sha === sha &&
+              pull.base?.ref === 'main' &&
+              pull.base?.sha === baseSha &&
+              pull.base?.repo?.full_name === context.payload.repository.full_name &&
+              pull.head?.ref === 'next' &&
+              pull.head?.sha === headSha &&
+              pull.head?.repo?.full_name === context.payload.repository.full_name
+            );
+            if (candidates.length !== 1) {
+              core.setFailed('Main is not the exact merge of one same-repository next-to-main pull request.');
+              return;
+            }
+            const pull = candidates[0];
+            const headCommit = (await github.rest.git.getCommit({
+              owner, repo, commit_sha: headSha,
+            })).data;
+            if (mainCommit.tree.sha !== headCommit.tree.sha) {
+              core.setFailed('The merged main tree differs from the tested next tree. Update next and open a new pull request.');
+              return;
+            }
+
             const workflows = await github.paginate(
               github.rest.actions.listRepoWorkflows, { owner, repo, per_page: 100 }
             );
@@ -74,16 +106,17 @@ jobs:
               }
               const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
                 owner, repo, workflow_id: workflow.id,
-                branch: 'main', event: 'push', head_sha: sha, per_page: 100,
+                branch: 'next', event: 'pull_request', head_sha: headSha, per_page: 100,
               });
               const latest = runs.filter((run) =>
                 run.workflow_id === workflow.id &&
                 run.path === expected.path &&
-                run.event === 'push' &&
-                run.head_branch === 'main' &&
-                run.head_sha === sha &&
+                run.event === 'pull_request' &&
+                run.head_branch === 'next' &&
+                run.head_sha === headSha &&
                 run.repository?.full_name === context.payload.repository.full_name &&
-                run.head_repository?.full_name === context.payload.repository.full_name
+                run.head_repository?.full_name === context.payload.repository.full_name &&
+                new Date(run.updated_at).getTime() <= new Date(pull.merged_at).getTime()
               ).sort((left, right) =>
                 Number(right.run_number) - Number(left.run_number) ||
                 Number(right.run_attempt) - Number(left.run_attempt) ||
@@ -93,7 +126,9 @@ jobs:
             }
             await core.summary
               .addHeading('Production notification eligibility')
-              .addRaw('Commit: ' + sha + '\n\n')
+              .addRaw('Pull request: #' + pull.number + '\n\n')
+              .addRaw('Tested next commit: ' + headSha + '\n\n')
+              .addRaw('Release commit: ' + sha + '\n\n')
               .addTable([
                 [{ data: 'Workflow', header: true }, { data: 'Result', header: true }],
                 ...results.map(({ name, run }) =>
@@ -103,13 +138,7 @@ jobs:
             if (!results.every(({ run }) =>
               run?.status === 'completed' && run.conclusion === 'success'
             )) {
-              core.notice('Not all required CI workflows have passed; no notification sent.');
-              return;
-            }
-            if (!results.some(({ run }) =>
-              run.id === source.id && run.run_attempt === source.run_attempt
-            )) {
-              core.notice('This completion event was superseded by a newer CI attempt.');
+              core.setFailed('Not all required pull-request workflows passed before the merge.');
               return;
             }
             if (await currentMain() !== sha) {
@@ -117,7 +146,7 @@ jobs:
               return;
             }
             core.setOutput('sha', sha);
-            core.setOutput('source_run_id', String(source.id));
+            core.setOutput('source_run_id', String(context.runId));
             core.setOutput('ready', 'true');
 
       - name: Load the private dispatch destination
