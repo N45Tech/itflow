@@ -1771,6 +1771,9 @@ function runbookTaskCanComplete($task_id) {
     global $mysqli;
 
     $task_id = intval($task_id);
+    if (function_exists('fieldTaskHasOpenBlocker') && fieldTaskHasOpenBlocker($task_id)) {
+        return [false, 'Resolve the field issue linked to this task before completing it.'];
+    }
     $task = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT task_state, task_evidence_required
         FROM tasks WHERE task_id = $task_id LIMIT 1"));
     if (!$task) {

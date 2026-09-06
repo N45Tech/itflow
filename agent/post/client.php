@@ -340,6 +340,10 @@ if (isset($_GET['delete_client'])) {
         if (agreementClientHasAuditHistory($client_id)) {
             throw new DomainException('The client has immutable agreement, SLA, or service-review history');
         }
+        if (fieldRows("SELECT visit_id FROM field_visits WHERE visit_client_id = $client_id LIMIT 1")
+            || fieldRows("SELECT blocker_id FROM field_blockers WHERE blocker_client_id = $client_id LIMIT 1")) {
+            throw new DomainException('The client has field visit or issue history. Archive the client to preserve it.');
+        }
 
         // Delete every database association inside the same transaction. Each
         // query throws on failure so a partial client teardown is rolled back.
@@ -364,6 +368,7 @@ if (isset($_GET['delete_client'])) {
         }
         automationDbQuery("DELETE FROM invoices WHERE invoice_client_id = $client_id", 'Could not delete client invoices');
 
+        automationDbQuery("DELETE FROM field_site_pins WHERE pin_client_id = $client_id", 'Could not delete client field pins');
         automationDbQuery("DELETE FROM locations WHERE location_client_id = $client_id", 'Could not delete client locations');
         automationDbQuery("DELETE FROM credentials WHERE credential_client_id = $client_id", 'Could not delete client credentials');
         automationDbQuery("DELETE FROM logs WHERE log_client_id = $client_id", 'Could not delete client logs');

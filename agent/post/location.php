@@ -199,6 +199,7 @@ if(isset($_GET['delete_location'])){
 
     enforceClientAccess();
 
+    mysqli_query($mysqli,"DELETE FROM field_site_pins WHERE pin_location_id = $location_id");
     mysqli_query($mysqli,"DELETE FROM locations WHERE location_id = $location_id");
 
     logAudit("Location", "Delete", "$session_name deleted location $location_name", $client_id);
@@ -372,6 +373,7 @@ if (isset($_POST['bulk_delete_locations'])) {
 
             enforceClientAccess();
 
+            mysqli_query($mysqli, "DELETE FROM field_site_pins WHERE pin_location_id = $location_id AND pin_client_id = $client_id");
             mysqli_query($mysqli, "DELETE FROM locations WHERE location_id = $location_id AND location_client_id = $client_id");
 
             logAudit("Location", "Delete", "$session_name deleted location $location_name", $client_id);

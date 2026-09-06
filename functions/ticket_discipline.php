@@ -328,6 +328,9 @@ function ticketDisciplineUpdatePlan(int $ticket_id, array $input, int $actor_id)
 // client-bound history between this decision and the client update.
 function ticketDisciplineCanTransfer(int $ticket_id): array
 {
+    if (function_exists('fieldServiceHasHistory') && fieldServiceHasHistory($ticket_id)) {
+        return [false, 'This ticket has field visit or issue history tied to its client and cannot be transferred.'];
+    }
     $history = mysqli_fetch_assoc(ticketDisciplineDbQuery("SELECT
         EXISTS (SELECT 1 FROM ticket_work_notes
             WHERE ticket_work_note_ticket_id = $ticket_id)
@@ -489,6 +492,12 @@ function ticketDisciplineClearResolutionForReopen(int $ticket_id, string $actor_
 function ticketDisciplineCanResolve(int $ticket_id, bool $include_detail = false): array
 {
     $ticket_id = intval($ticket_id);
+    if (function_exists('fieldServiceCanResolve')) {
+        [$allowed, $reason] = fieldServiceCanResolve($ticket_id);
+        if (!$allowed) {
+            return [false, $include_detail ? $reason : 'A technician must finish the outstanding field work first.'];
+        }
+    }
     $ticket = mysqli_fetch_assoc(ticketDisciplineDbQuery("SELECT ticket_work_type,
         ticket_resolution_code, ticket_resolution_summary, ticket_root_cause,
         ticket_archived_at FROM tickets WHERE ticket_id = $ticket_id LIMIT 1",

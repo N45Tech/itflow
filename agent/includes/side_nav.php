@@ -57,6 +57,7 @@
                 <?php if (lookupUserPermission("module_support") >= 1) { ?>
                     <?php if ($config_module_enable_ticketing == 1) { ?>
                         <li class="nav-header mt-3">SUPPORT</li>
+                        <li class="nav-item"><a href="/agent/field/" class="nav-link"><i class="nav-icon fas fa-mobile-alt"></i><p>Field Mode</p></a></li>
                         <li class="nav-item">
                             <a href="/agent/operations.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "operations.php") { echo "active"; } ?>">
                                 <i class="nav-icon fas fa-wave-square"></i>

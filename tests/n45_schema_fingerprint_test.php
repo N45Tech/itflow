@@ -91,6 +91,7 @@ $assertTrue(
         'n45-0021-client-ticket-retention',
         'n45-0022-recoverable-ticket-deletion',
         'n45-0023-ticket-operational-discipline',
+        'n45-0024-technician-field-mode',
     ],
     'The post-integration migration reservations are missing'
 );

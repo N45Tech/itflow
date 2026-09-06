@@ -89,6 +89,12 @@ jobs:
             exit 1
           fi
 
+      - name: Exercise Field Mode browser recovery
+        run: |
+          npm install --prefix "$RUNNER_TEMP/n45-field-browser" --no-save --ignore-scripts playwright@1.62.1
+          "$RUNNER_TEMP/n45-field-browser/node_modules/.bin/playwright" install --with-deps chromium
+          NODE_PATH="$RUNNER_TEMP/n45-field-browser/node_modules" node tests/field/browser.cjs
+
       - name: Validate final schema and N45 upgrade path
         env:
           MYSQL_PWD: n45-ci-root-password
