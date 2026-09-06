@@ -336,7 +336,7 @@ $assertContains('DELETE FROM runbook_executions', $ticket_retention,
 $assertContains('DELETE FROM tasks', $ticket_retention,
     'An approved retention override cannot remove ticket tasks');
 foreach ([$single_ticket_delete, $bulk_ticket_delete] as $delete_handler) {
-    $assertContains('ticketDeletionSoftDelete($ticket_id, $session_user_id, $deletion_reason)', $delete_handler,
+    $assertContains('ticketDeletionSoftDelete($ticket_id,$session_user_id,$deletion_reason)', preg_replace('/\s+/', '', $delete_handler),
         'Ticket deletion bypasses recoverable retention');
     $assertNotContains('ticketDeletionPurge($ticket_id)', $delete_handler,
         'Ordinary ticket deletion permanently destroys its evidence');
