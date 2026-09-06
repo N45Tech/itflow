@@ -10,7 +10,8 @@ enforceClientAccess();
 
 $sql = mysqli_query($mysqli, "SELECT client_abbreviation, client_archived_at, client_created_at, client_lead, client_name,
     client_net_terms, client_notes, client_rate, client_referral, client_tax_id_number,
-    client_type, client_website FROM clients WHERE client_id = $client_id LIMIT 1");
+    client_ticket_retention_policy, client_type, client_website
+    FROM clients WHERE client_id = $client_id LIMIT 1");
 
 $row = mysqli_fetch_assoc($sql);
 $client_name = escapeHtml($row['client_name']);
@@ -23,8 +24,10 @@ $client_tax_id_number = escapeHtml($row['client_tax_id_number']);
 $client_abbreviation = escapeHtml($row['client_abbreviation']);
 $client_rate = floatval($row['client_rate']);
 $client_notes = escapeHtml($row['client_notes']);
+$client_ticket_retention_policy = ticketDeletionNormalizePolicy($row['client_ticket_retention_policy']);
 $client_created_at = escapeHtml($row['client_created_at']);
 $client_archived_at = escapeHtml($row['client_archived_at']);
+$can_manage_ticket_retention = lookupUserPermission('module_client') >= 3;
 
 // Client SLA assignments
 $client_sla_assignments = [];
@@ -77,6 +80,11 @@ ob_start();
         <li class="nav-item">
             <a class="nav-link" data-bs-toggle="pill" href="#pills-client-notes<?= $client_id ?>">Notes</a>
         </li>
+        <?php if ($can_manage_ticket_retention) { ?>
+            <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="pill" href="#pills-client-governance<?= $client_id ?>">Governance</a>
+            </li>
+        <?php } ?>
     </ul>
 
     <div class="modal-body">
@@ -261,6 +269,27 @@ ob_start();
                 <?php } ?>
 
             </div>
+
+            <?php if ($can_manage_ticket_retention) { ?>
+                <div class="tab-pane fade" id="pills-client-governance<?= $client_id ?>">
+                    <div class="mb-3">
+                        <label class="form-label" for="client_ticket_retention_policy_<?= $client_id ?>">Ticket audit retention</label>
+                        <select class="form-select" name="client_ticket_retention_policy"
+                                id="client_ticket_retention_policy_<?= $client_id ?>"
+                                aria-describedby="client_ticket_retention_help_<?= $client_id ?>">
+                            <option value="override" <?= $client_ticket_retention_policy === 'override' ? 'selected' : '' ?>>Retain with administrator override</option>
+                            <option value="strict" <?= $client_ticket_retention_policy === 'strict' ? 'selected' : '' ?>>Strict retention — no deletion override</option>
+                        </select>
+                        <div class="form-text" id="client_ticket_retention_help_<?= $client_id ?>">
+                            Protected workflow, approval, documentation, agreement, portal-request, and integration history is retained by default. The administrator-override option permits a permanent deletion only after a written reason is recorded.
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border mb-0" role="note">
+                        This setting applies only to this client. Changing it does not delete anything by itself.
+                    </div>
+                </div>
+            <?php } ?>
 
         </div>
     </div>

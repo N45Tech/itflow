@@ -139,9 +139,24 @@ if (isset($_POST['edit_client'])) {
     require_once 'client_model.php';
 
     $client_id = intval($_POST['client_id']);
+    enforceClientAccess($client_id);
+
+    $ticket_retention_update = '';
+    $ticket_retention_changed = false;
+    $ticket_retention_policy = '';
+    if (lookupUserPermission('module_client') >= 3 && isset($_POST['client_ticket_retention_policy'])) {
+        $ticket_retention_policy = strtolower(trim((string) $_POST['client_ticket_retention_policy']));
+        if (!in_array($ticket_retention_policy, ticketDeletionPolicies(), true)) {
+            flashAlert('Choose an available ticket audit-retention policy.', 'error');
+            redirect();
+        }
+        $current_ticket_retention_policy = ticketDeletionPolicyForClient($client_id);
+        $ticket_retention_changed = $current_ticket_retention_policy !== $ticket_retention_policy;
+        $ticket_retention_update = ", client_ticket_retention_policy = '$ticket_retention_policy'";
+    }
 
     // Update client
-    mysqli_query($mysqli, "UPDATE clients SET client_name = '$name', client_type = '$type', client_website = '$website', client_referral = '$referral', client_rate = $rate, client_net_terms = $net_terms, client_tax_id_number = '$tax_id_number', client_lead = $lead, client_abbreviation = '$abbreviation', client_notes = '$notes' WHERE client_id = $client_id");
+    mysqli_query($mysqli, "UPDATE clients SET client_name = '$name', client_type = '$type', client_website = '$website', client_referral = '$referral', client_rate = $rate, client_net_terms = $net_terms, client_tax_id_number = '$tax_id_number', client_lead = $lead, client_abbreviation = '$abbreviation', client_notes = '$notes' $ticket_retention_update WHERE client_id = $client_id");
 
     // Create referral category if it doesn't exist
     $sql = mysqli_query($mysqli, "SELECT category_name FROM categories WHERE category_type = 'Referral' AND category_archived_at IS NULL AND category_name = '$referral'");
@@ -197,6 +212,10 @@ if (isset($_POST['edit_client'])) {
     }
 
     logAudit("Client", "Edit", "$session_name edited client $name", $client_id, $client_id);
+    if ($ticket_retention_changed) {
+        $ticket_retention_label = escapeSql(ticketDeletionPolicyLabel($ticket_retention_policy));
+        logAudit('Client', 'Ticket Retention Policy', "$session_name set ticket audit retention to $ticket_retention_label for $name", $client_id, $client_id);
+    }
 
     flashAlert("Client <strong>$name</strong> updated");
 

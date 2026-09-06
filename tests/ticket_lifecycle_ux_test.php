@@ -20,12 +20,23 @@ $assertOrder = static function (string $first, string $second, string $haystack,
         $failures[] = $message;
     }
 };
+$assertNotContains = static function (string $needle, string $haystack, string $message) use (&$failures): void {
+    if (str_contains($haystack, $needle)) {
+        $failures[] = $message;
+    }
+};
 
 $assertContains('aria-label="Ticket lifecycle"', $ticket, 'Ticket detail does not expose a concise lifecycle');
 $assertContains('Next action', $ticket, 'Ticket detail does not identify the next action');
 $assertOrder('id="ticket-update"', 'id="ticket-request"', $ticket, 'The update action is not ahead of the original request');
 $assertContains('$ticket_reply_render_index >= 4', $ticket, 'Long ticket conversations are not bounded');
 $assertContains('id="ticketActivityToggle"', $ticket, 'Earlier ticket activity cannot be expanded');
+$assertContains('class="btn btn-primary ticket-lifecycle-action confirm-link', $ticket, 'Resolve does not use the themed primary action treatment');
+$assertOrder('aria-label="More ticket actions"', 'class="btn btn-primary ticket-lifecycle-action confirm-link', $ticket, 'Resolve is not the rightmost ticket-header action');
+$assertNotContains('class="btn btn-dark confirm-link', $ticket, 'Resolve still uses the low-contrast neutral button treatment');
+$assertContains('.ticket-header-actions {', $ticket_css, 'Ticket header actions have no stable top-right layout');
+$assertContains('.ticket-header-actions .ticket-lifecycle-action.disabled {', $ticket_css, 'Blocked resolution has no legible themed state');
+$assertNotContains('#ticket_close,', $ticket_css, 'Ticket action contrast is still patched with a fixed foreground color');
 $assertContains('grid-auto-flow: column', $ticket_css, 'Ticket context does not become a horizontal rail on smaller screens');
 $assertContains("update.hidden = !expanded", $ticket_workspace, 'The activity disclosure does not reveal earlier updates');
 $assertContains('Client review checklist', $service_review, 'Service reviews do not use the simplified checklist');

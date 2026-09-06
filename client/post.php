@@ -820,6 +820,7 @@ if (isset($_GET['close_ticket'])) {
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the ticket close');
             }
+            automationResolveTicketIncidentsSafely($ticket_id, 'ticket_closed');
         } catch (Throwable $exception) {
             mysqli_rollback($mysqli);
             error_log("Client portal ticket $ticket_id close failed safely: " . $exception->getMessage());

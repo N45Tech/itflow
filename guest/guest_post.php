@@ -244,6 +244,7 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket close');
         }
+        automationResolveTicketIncidentsSafely($ticket_id, 'ticket_closed');
 
         logTicketHistory($ticket_id, "The client closed the ticket from the guest link");
 

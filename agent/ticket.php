@@ -242,7 +242,7 @@ if (isset($_GET['ticket_id'])) {
          * How much else this contact has open. The old queries compared the
          * integer ticket_status column against the string 'Closed', which MySQL
          * casts to 0 - so "open" matched every ticket and "closed" matched none.
-         * Resolution state lives in ticket_resolved_at, same as the ticket list.
+         * Terminal state uses either lifecycle timestamp, same as the ticket list.
          */
         $contact_open_tickets = 0;
         if ($contact_id) {
@@ -251,7 +251,8 @@ if (isset($_GET['ticket_id'])) {
                 "SELECT COUNT(ticket_id) FROM tickets
                 WHERE ticket_contact_id = $contact_id
                 AND ticket_id != $ticket_id
-                AND ticket_resolved_at IS NULL"
+                AND ticket_resolved_at IS NULL
+                AND ticket_closed_at IS NULL"
             ))[0]);
         }
 
@@ -584,9 +585,9 @@ if (isset($_GET['ticket_id'])) {
         <div class="card mb-3">
             <div class="card-body pb-2">
 
-                <div class="d-flex flex-wrap justify-content-between">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
 
-                    <div class="me-3" style="min-width: 0;">
+                    <div class="me-3 flex-grow-1" style="min-width: 0;">
 
                         <!--
                             The breadcrumb band above the card is gone, so these lines
@@ -618,7 +619,7 @@ if (isset($_GET['ticket_id'])) {
                             <?php } ?>
 
                             <?php if ($ticket_category) { ?><span class="mx-1">&middot;</span><?= $ticket_category_display ?><?php } ?>
-                            <span class="mx-1">&middot;</span>Opened <?= $ticket_created_at_ago ?>
+                            <span class="mx-1">&middot;</span>Created <?= $ticket_created_at_ago ?>
                             <?php if ($ticket_created_by_display) { echo " by " . $ticket_created_by_display; } ?>
                             <?php if ($ticket_source) { ?><span class="mx-1">&middot;</span>via <?= $ticket_source ?><?php } ?>
                             <?php if ($ticket_updated_at) { ?>
@@ -631,16 +632,16 @@ if (isset($_GET['ticket_id'])) {
 
                     <!-- Actions -->
                     <?php if ($can_edit_ticket) {
-                        // Whether the joined button group has anything in it - an empty
-                        // btn-group would still contribute its separator margin
+                        // Keep supporting actions together, but leave the lifecycle
+                        // action separate so it remains the clear top-right control.
                         $show_quote_button = $config_module_enable_accounting && $ticket_billable == 1 && empty($quote_id) && empty($invoice_id) && lookupUserPermission("module_sales") >= 2;
                         $show_invoice_button = $config_module_enable_accounting && $ticket_billable == 1 && empty($invoice_id) && lookupUserPermission("module_sales") >= 2;
-                        $has_action_buttons = $show_quote_button || $show_invoice_button || !$ticket_is_closed;
+                        $show_reopen_button = !$ticket_is_closed && $ticket_is_resolved;
+                        $has_supporting_actions = $show_quote_button || $show_invoice_button || $show_reopen_button;
                         ?>
-                        <div class="d-print-none text-end">
-                        <div class="d-flex flex-wrap justify-content-end align-items-start">
-                            <?php if ($has_action_buttons) { ?>
-                            <div class="btn-group me-3 mb-1">
+                        <div class="ticket-header-actions d-print-none text-end ms-auto">
+                            <?php if ($has_supporting_actions) { ?>
+                            <div class="btn-group">
 
                                 <?php if ($show_quote_button) { ?>
                                     <a href="#" class="btn btn-light ajax-modal" data-modal-url="modals/ticket/ticket_quote_add.php?ticket_id=<?= $ticket_id ?>" data-modal-size="lg">
@@ -654,38 +655,16 @@ if (isset($_GET['ticket_id'])) {
                                     </a>
                                 <?php } ?>
 
-                                <?php if (!$ticket_is_closed) { ?>
-
-                                    <?php if ($ticket_is_resolved) { ?>
-                                        <a href="post.php?reopen_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-light">
-                                            <i class="fas fa-fw fa-redo me-2"></i>Reopen
-                                        </a>
-                                    <?php } ?>
-
-                                    <?php if (!$ticket_is_resolved) { ?>
-                                        <a href="post.php?resolve_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"
-                                            class="btn btn-dark confirm-link <?php if ($tasks_block_resolve) { echo "disabled"; } ?>"
-                                            id="ticket_close"
-                                            <?php if ($tasks_block_resolve) { ?>
-                                                title="<?= escapeHtml($ticket_resolution_gate_error) ?>"
-                                                onclick="return false;"
-                                            <?php } ?>
-                                        >
-                                            <i class="fas fa-fw fa-check me-2"></i>Resolve
-                                        </a>
-                                    <?php } else { ?>
-                                        <a href="#" class="btn btn-dark ajax-modal" id="ticket_close"
-                                           data-modal-url="modals/ticket/ticket_terminal.php?ticket_id=<?= $ticket_id ?>&action=close">
-                                            <i class="fas fa-fw fa-gavel me-2"></i>Close
-                                        </a>
-                                    <?php } ?>
-
+                                <?php if ($show_reopen_button) { ?>
+                                    <a href="post.php?reopen_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-light">
+                                        <i class="fas fa-fw fa-redo me-2"></i>Reopen
+                                    </a>
                                 <?php } ?>
 
                             </div>
                             <?php } ?>
 
-                            <div class="dropdown dropstart mb-1">
+                            <div class="dropdown dropstart">
                                     <button class="btn btn-secondary" type="button" data-bs-toggle="dropdown" title="More actions" aria-label="More ticket actions">
                                         <i class="fas fa-ellipsis-v"></i>
                                     </button>
@@ -723,15 +702,37 @@ if (isset($_GET['ticket_id'])) {
                                                 <i class="fas fa-fw fa-ban me-2"></i>Cancel ticket
                                             </a>
                                         <?php } ?>
-                                        <?php if (lookupUserPermission("module_support") == 3 && empty($ticket_closed_at)) { ?>
+                                        <?php if (lookupUserPermission("module_support") == 3) { ?>
                                             <div class="dropdown-divider"></div>
-                                            <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?delete_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                                            <a class="dropdown-item text-danger text-bold ajax-modal" href="#"
+                                               data-modal-url="modals/ticket/ticket_delete.php?ticket_id=<?= $ticket_id ?>">
                                                 <i class="fas fa-fw fa-trash me-2"></i>Delete
                                             </a>
                                         <?php } ?>
                                     </div>
                             </div>
-                        </div>
+
+                            <?php if (!$ticket_is_closed) { ?>
+                                <?php if (!$ticket_is_resolved) { ?>
+                                    <a href="post.php?resolve_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"
+                                       class="btn btn-primary ticket-lifecycle-action confirm-link<?php if ($tasks_block_resolve) { echo ' disabled'; } ?>"
+                                       id="ticket_close"
+                                       <?php if ($tasks_block_resolve) { ?>
+                                           aria-disabled="true"
+                                           tabindex="-1"
+                                           title="<?= escapeHtml($ticket_resolution_gate_error) ?>"
+                                           onclick="return false;"
+                                       <?php } ?>
+                                    >
+                                        <i class="fas fa-fw fa-check me-2"></i>Resolve
+                                    </a>
+                                <?php } else { ?>
+                                    <a href="#" class="btn btn-primary ticket-lifecycle-action ajax-modal" id="ticket_close"
+                                       data-modal-url="modals/ticket/ticket_terminal.php?ticket_id=<?= $ticket_id ?>&action=close">
+                                        <i class="fas fa-fw fa-gavel me-2"></i>Close
+                                    </a>
+                                <?php } ?>
+                            <?php } ?>
                         </div>
                     <?php } ?>
 

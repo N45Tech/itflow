@@ -1070,6 +1070,7 @@ CREATE TABLE `clients` (
   `client_tax_id_number` varchar(255) DEFAULT NULL,
   `client_abbreviation` varchar(10) DEFAULT NULL,
   `client_notes` text DEFAULT NULL,
+  `client_ticket_retention_policy` varchar(20) NOT NULL DEFAULT 'override',
   `client_favorite` tinyint(1) NOT NULL DEFAULT 0,
   `client_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `client_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),

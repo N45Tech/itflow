@@ -116,6 +116,7 @@ $assertTrue(
         'n45-0018-portal-business-review-access',
         'n45-0019-ticket-approval-gates',
         'n45-0020-specific-client-approvers',
+        'n45-0021-client-ticket-retention',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -134,8 +135,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0020-specific-client-approvers',
-    'The specific-client-approver migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0021-client-ticket-retention',
+    'The client ticket-retention migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -192,6 +193,25 @@ $assertTrue(
 $assertTrue(
     in_array('n45-0020-specific-client-approvers', $manifest['modules']['runbooks']['migrations'] ?? [], true),
     'Specific client approvers are not owned by the runbooks module'
+);
+$ticket_retention_migration = $manifest['migrations']['n45-0021-client-ticket-retention'] ?? [];
+$assertTrue(
+    ($ticket_retention_migration['fingerprint']['columns']['clients']['client_ticket_retention_policy'] ?? null)
+        !== null,
+    'The client ticket-retention migration does not fingerprint its policy column'
+);
+$assertTrue(
+    ($ticket_retention_migration['data_change'] ?? null) === true,
+    'The closed-incident reconciliation is not classified as a data-changing migration'
+);
+$assertTrue(
+    ($ticket_retention_migration['rollback'] ?? null)
+        === ($post_integration_reservations['n45-0021-client-ticket-retention']['rollback'] ?? null),
+    'The client ticket-retention migration does not preserve its rollback reservation'
+);
+$assertTrue(
+    in_array('n45-0021-client-ticket-retention', $manifest['modules']['runbooks']['migrations'] ?? [], true),
+    'Client ticket retention is not owned by the runbooks module'
 );
 
 $manifest_migration_files = array_map(
@@ -507,7 +527,7 @@ $assertContains('N45_FEATURE_AUTOMATION=1', $environment_example, 'Deployment en
 $automation_delete = $section(
     $automation_service,
     'function automationDeleteTicketOperations(',
-    'function automationResolveIdentityUnlocked(',
+    'function automationResolveTicketIncidents(',
     'Operations ticket cleanup'
 );
 $assertOrdered($automation_delete, [
@@ -517,18 +537,22 @@ $assertOrdered($automation_delete, [
 ], 'Operations cleanup can orphan durable custom actions when a ticket is deleted');
 
 // Deletion smoke: the automation flag must never bypass referential cleanup.
-$single_delete = $section($ticket_post, "if (isset(\$_GET['delete_ticket']))", "if (isset(\$_POST['bulk_delete_tickets']))", 'single ticket deletion');
+$ticket_retention = $read('functions/ticket_retention.php');
+$single_delete = $section($ticket_post, "if (isset(\$_POST['delete_ticket']))", "if (isset(\$_POST['bulk_delete_tickets']))", 'single ticket deletion');
 $bulk_delete = $section($ticket_post, "if (isset(\$_POST['bulk_delete_tickets']))", "if (isset(\$_POST['bulk_assign_ticket']))", 'bulk ticket deletion');
+$assertOrdered($ticket_retention, [
+    'automationDeleteTicketOperations($ticket_id)',
+    'DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id',
+    'DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id',
+    'DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id',
+    'DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id',
+    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
+], 'Shared ticket purge does not remove Operations and native children before the ticket');
 foreach ([$single_delete, $bulk_delete] as $index => $delete_handler) {
     $label = $index === 0 ? 'Single ticket deletion' : 'Bulk ticket deletion';
     $assertOrdered($delete_handler, [
         'mysqli_begin_transaction($mysqli)',
-        'automationDeleteTicketOperations($ticket_id)',
-        'DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id',
-        'DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id',
-        'DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id',
-        'DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id',
-        'DELETE FROM tickets WHERE ticket_id = $ticket_id',
+        'ticketDeletionPurge($ticket_id)',
         'mysqli_commit($mysqli)',
     ], "$label does not atomically remove Operations records with the ticket");
     $assertContains('mysqli_rollback($mysqli)', $delete_handler, "$label cannot roll back failed Operations cleanup");
@@ -573,6 +597,9 @@ foreach (glob($root . '/api/v1/tickets/*.php') ?: [] as $api_ticket_file) {
 // Repeatable parity review must remain repository native and read-only.
 $review_script = $read('scripts/n45-upstream-review.sh');
 $review_workflow = $read('.github/workflows/upstream-parity.yml');
+$php_lint_workflow = $read('.github/workflows/php-lint.yml');
+$database_workflow = $read('.github/workflows/dbsql-lint.yml');
+$production_notification_workflow = $read('.github/workflows/notify-production.yml');
 $release_database_test = $read('tests/n45_release_database_test.sh');
 $dockerignore = $read('.dockerignore');
 $assertContains('git merge-base', $review_script, 'Upstream review does not calculate a merge base');
@@ -590,12 +617,28 @@ $assertContains('grep -Fvxf', $review_script, 'Upstream review does not reject w
 $assertTrue(is_file($root . '/n45/upstream-diff-check.allowlist'), 'The exact historical whitespace allowlist is missing');
 $assertTrue(is_file($root . '/n45/security-sensitive-paths.regex'), 'Security-sensitive path rules are missing');
 $assertContains('https://github.com/itflow-org/itflow.git', $review_workflow, 'Parity workflow does not fetch authoritative ITFlow upstream');
-$assertContains('for test_file in tests/*_test.php', $review_workflow, 'Parity workflow does not run the full regression suite');
+$assertTrue(
+    substr_count($php_lint_workflow . $review_workflow . $database_workflow, 'for test_file in tests/*_test.php') === 1,
+    'The same PHP regression suite is executed more than once for a release pull request'
+);
+$assertNotContains('push:', $php_lint_workflow, 'PHP lint reruns after a next-to-main pull request is merged');
+$assertNotContains('push:', $database_workflow, 'Database validation reruns after a next-to-main pull request is merged');
+$assertNotContains('push:', $review_workflow, 'Upstream parity reruns after a next-to-main pull request is merged');
+$assertContains("github.event.pull_request.head.ref == 'next'", $php_lint_workflow, 'PHP lint is not restricted to next-to-main pull requests');
+$assertContains("github.event.pull_request.head.ref == 'next'", $database_workflow, 'Database validation is not restricted to next-to-main pull requests');
+$assertContains("github.event.pull_request.head.ref == 'next'", $review_workflow, 'Upstream parity is not restricted to next-to-main pull requests');
 $assertContains('PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}', $review_workflow, 'Parity workflow cannot identify same-repository integration PRs');
 $assertContains('[ "$GITHUB_EVENT_NAME" = pull_request ]', $review_workflow, 'Parity workflow does not automatically bind trusted integration PRs');
 $assertContains('[ "$GITHUB_BASE_REF" = main ]', $review_workflow, 'Automatic parity approval is not restricted to PRs targeting main');
+$assertContains('[ "$GITHUB_HEAD_REF" = next ]', $review_workflow, 'Automatic parity approval is not restricted to the next branch');
 $assertContains('[ "$PR_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]', $review_workflow, 'Automatic parity approval is not restricted to the repository write-access boundary');
 $assertContains('reviewed_head_sha="$(git rev-parse HEAD)"', $review_workflow, 'Trusted integration approval is not bound to the exact checked-out merge candidate');
+$assertContains('push:', $production_notification_workflow, 'Production notification is not triggered by the main merge');
+$assertNotContains('workflow_run:', $production_notification_workflow, 'Production notification still waits for duplicate post-merge test runs');
+$assertContains("pull.head?.ref === 'next'", $production_notification_workflow, 'Production notification accepts a merge from outside next');
+$assertContains('mainCommit.tree.sha !== headCommit.tree.sha', $production_notification_workflow, 'Production notification does not compare the release tree with the tested next tree');
+$assertContains("event: 'pull_request'", $production_notification_workflow, 'Production notification does not require pull-request test runs');
+$assertContains("core.setOutput('source_run_id', String(context.runId))", $production_notification_workflow, 'Production notification does not identify its exact attestation run');
 $assertContains('ensure_commit_available()', $release_database_test, 'Release database tests cannot recover pinned fixtures omitted from a clean checkout');
 $assertContains('git fetch --no-tags --no-write-fetch-head origin "$commit_sha"', $release_database_test, 'Release database tests do not fetch missing fixtures by exact SHA');
 $assertContains('ensure_commit_available "$LEGACY_SCHEMA_COMMIT"', $release_database_test, 'The legacy schema bridge does not ensure its pinned fixture is available');

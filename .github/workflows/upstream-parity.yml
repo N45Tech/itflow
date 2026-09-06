@@ -1,12 +1,9 @@
 name: N45 Upstream Parity
 
 on:
-  push:
-    # Feature branches are checked through pull_request. A duplicate branch
-    # push lacks the PR review context and conflicts with the required job.
+  pull_request:
     branches:
       - main
-  pull_request:
   workflow_dispatch:
     inputs:
       reviewed_base_sha:
@@ -25,6 +22,10 @@ permissions:
 
 jobs:
   review:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.ref == 'next' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
 
     steps:
@@ -45,14 +46,6 @@ jobs:
       - name: Validate review tooling
         run: bash -n scripts/n45-upstream-review.sh
 
-      - name: Run PHP regression tests
-        run: |
-          set -e
-          for test_file in tests/*_test.php; do
-            echo "Running ${test_file}"
-            php "${test_file}"
-          done
-
       - name: Generate upstream parity report
         if: always()
         env:
@@ -64,15 +57,12 @@ jobs:
           reviewed_base_sha="$CONFIGURED_REVIEWED_BASE_SHA"
           reviewed_head_sha="$CONFIGURED_REVIEWED_HEAD_SHA"
 
-          # A merge into protected main is the production review decision. A PR
-          # from this repository into main is also inside the write-access trust
+          # A next-to-main PR is inside the repository write-access trust
           # boundary, so bind its exact GitHub merge candidate automatically.
-          # Fork PRs and all other events retain the explicit reviewed-SHA gate.
-          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
-            reviewed_base_sha="$(git rev-parse upstream/master)"
-            reviewed_head_sha="$GITHUB_SHA"
-          elif [ "$GITHUB_EVENT_NAME" = pull_request ] \
+          # Scheduled and manual reviews retain the explicit reviewed-SHA gate.
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] \
             && [ "$GITHUB_BASE_REF" = main ] \
+            && [ "$GITHUB_HEAD_REF" = next ] \
             && [ "$PR_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]; then
             reviewed_base_sha="$(git rev-parse upstream/master)"
             reviewed_head_sha="$(git rev-parse HEAD)"

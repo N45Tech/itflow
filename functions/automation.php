@@ -501,6 +501,47 @@ function automationDeleteTicketOperations(int $ticket_id): int
     return mysqli_affected_rows($mysqli);
 }
 
+/**
+ * Keep the Operations projection aligned when a linked ticket is manually
+ * closed or cancelled. A later open source event can create a fresh ticket;
+ * until then the closed ticket must not continue to count as an open incident.
+ */
+function automationResolveTicketIncidents(int $ticket_id, string $action = 'ticket_closed'): int
+{
+    global $mysqli;
+
+    $ticket_id = intval($ticket_id);
+    if ($ticket_id < 1) {
+        return 0;
+    }
+    $action = automationLimitText($action, 40);
+    $action_sql = automationDbEscape($action === '' ? 'ticket_closed' : $action);
+    automationDbQuery("UPDATE automation_incidents SET
+        automation_incident_status = 'Resolved',
+        automation_incident_resolved_at = COALESCE(automation_incident_resolved_at, NOW()),
+        automation_incident_last_action = '$action_sql'
+        WHERE automation_incident_ticket_id = $ticket_id
+        AND automation_incident_status <> 'Resolved'",
+        'Could not align the Operations incident with the closed ticket');
+
+    return mysqli_affected_rows($mysqli);
+}
+
+/**
+ * Best-effort post-commit projection repair. Ticket closure is authoritative;
+ * an incident update failure must not turn that committed action into a 500.
+ */
+function automationResolveTicketIncidentsSafely(int $ticket_id, string $action = 'ticket_closed'): int
+{
+    try {
+        return automationResolveTicketIncidents($ticket_id, $action);
+    } catch (Throwable $exception) {
+        error_log("Closed ticket $ticket_id incident reconciliation will retry on a later event: "
+            . $exception->getMessage());
+        return 0;
+    }
+}
+
 function automationResolveIdentityUnlocked(array $input): array
 {
     $source = automationSource($input['source'] ?? '');

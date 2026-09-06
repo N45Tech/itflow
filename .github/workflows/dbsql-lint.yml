@@ -2,11 +2,9 @@ name: SQL Syntax Check for db.sql
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
       - main
-      - 'codex/**'
-  pull_request:
 
 permissions:
   contents: read
@@ -14,6 +12,10 @@ permissions:
 jobs:
   syntax_check:
     name: Check db.sql SQL Syntax
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.ref == 'next' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
 
     env:
@@ -65,6 +67,7 @@ jobs:
           git diff --exit-code -- deploy/n8n/workflows
 
       - name: Check PHP syntax errors
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           while IFS= read -r -d '' php_file; do

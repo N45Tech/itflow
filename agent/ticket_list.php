@@ -137,9 +137,10 @@ if ($tickets) {
                             </a>
                             <?php if (lookupUserPermission("module_support") === 3) { ?>
                                 <div class="dropdown-divider"></div>
-                                <button class="dropdown-item text-danger text-bold confirm-link" type="submit" form="bulkActions" name="bulk_delete_tickets">
+                                <a class="dropdown-item text-danger text-bold ajax-modal" href="#"
+                                   data-modal-url="modals/ticket/ticket_bulk_delete.php" data-bulk="true">
                                     <i class="fas fa-fw fa-trash me-2"></i>Delete
-                                </button>
+                                </a>
                             <?php } ?>
                         </div>
                     </div>

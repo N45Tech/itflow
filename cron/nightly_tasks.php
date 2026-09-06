@@ -603,6 +603,7 @@ while ($row = mysqli_fetch_assoc($sql_resolved_tickets_to_close)) {
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the automatic ticket closure');
         }
+        automationResolveTicketIncidentsSafely($ticket_id, 'ticket_auto_closed');
     } catch (Throwable $e) {
         mysqli_rollback($mysqli);
         logApp('Cron', 'warning', "Ticket $ticket_id was not automatically closed: " . escapeSql($e->getMessage()));

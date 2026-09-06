@@ -68,6 +68,26 @@
     word-break: break-word;
 }
 
+/* Keep the primary lifecycle action at the page's top-right edge. */
+.ticket-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: .5rem;
+}
+
+.ticket-header-actions .ticket-lifecycle-action {
+    min-width: 7rem;
+}
+
+.ticket-header-actions .ticket-lifecycle-action.disabled {
+    opacity: 1;
+    border-color: var(--n45-border-strong, #bcc6d3) !important;
+    background: var(--n45-surface-subtle, #f4f6f9) !important;
+    color: var(--n45-muted, #586579) !important;
+}
+
 @media (max-width: 575px) {
     .ticket-field {
         min-width: 45%;
@@ -392,20 +412,4 @@
     #replyTypePicker .btn {
         border-radius: .35rem;
     }
-}
-
-/* Preserve readable contrast for the resolved-ticket close action. */
-#ticket_close,
-#ticket_close:hover,
-#ticket_close:focus,
-#ticket_close:active,
-#ticket_close.disabled,
-#ticket_close:disabled {
-    color: #fff !important;
-    -webkit-text-fill-color: #fff;
-}
-
-#ticket_close i,
-#ticket_close svg {
-    color: currentColor !important;
 }

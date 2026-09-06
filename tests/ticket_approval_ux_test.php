@@ -51,6 +51,7 @@ $task_edit_modal = $read('agent/modals/ticket/ticket_task_edit.php');
 $ticket_css = $read('agent/css/ticket.css');
 $runbooks = $read('functions/runbooks.php');
 $approval_helpers = $read('functions/ticket_approvals.php');
+$ticket_retention = $read('functions/ticket_retention.php');
 $migration = $read('n45/migrations/n45-0019-ticket-approval-gates.php');
 $specific_approver_migration = $read('n45/migrations/n45-0020-specific-client-approvers.php');
 $manifest = $read('n45/manifest.php');
@@ -156,7 +157,7 @@ $assertContains('`ticket_approval_required_contact_id` int(11) DEFAULT NULL', $s
     'Fresh installs omit named ticket approvers');
 $assertContains('function ticketApprovalTicketHasAuditHistory(', $approval_helpers,
     'Ticket deletion does not have an approval-retention guard');
-$assertContains('ticketApprovalTicketHasAuditHistory($ticket_id)', $ticket_post,
+$assertContains('ticketApprovalTicketHasAuditHistory($ticket_id)', $ticket_retention,
     'Ticket hard deletion can orphan approval evidence');
 $assertContains('function ticketApprovalContactHasAuditHistory(', $approval_helpers,
     'Contact deletion does not have an approval-retention guard');

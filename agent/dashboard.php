@@ -585,10 +585,10 @@ if ($user_config_dashboard_technical_enable == 1) {
     $sql_assets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(asset_id) AS assets_added FROM assets WHERE YEAR(asset_created_at) = $year $dashboard_asset_scope"));
     $assets_added = $sql_assets['assets_added'];
 
-    $sql_tickets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS active_tickets FROM tickets WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
+    $sql_tickets = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS active_tickets FROM tickets WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL $dashboard_ticket_scope"));
     $active_tickets = $sql_tickets['active_tickets'];
 
-    $sql_your_ticket_count = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS your_tickets FROM tickets WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL AND ticket_assigned_to = $session_user_id $dashboard_ticket_scope"));
+    $sql_your_ticket_count = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(ticket_id) AS your_tickets FROM tickets WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL AND ticket_assigned_to = $session_user_id $dashboard_ticket_scope"));
     $your_ticket_count = intval($sql_your_ticket_count['your_tickets']);
 
     $sql_domains_expiring = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(domain_id) AS expiring_domains FROM domains WHERE domain_expire IS NOT NULL AND domain_expire > CURRENT_DATE AND domain_expire < CURRENT_DATE + INTERVAL 30 DAY AND domain_archived_at IS NULL $dashboard_domain_scope"));
@@ -609,7 +609,8 @@ if ($user_config_dashboard_technical_enable == 1) {
         SUM(ticket_sla_id > 0 AND (ticket_response_sla_alert_stage = 2 OR ticket_resolution_sla_alert_stage = 2 OR ticket_response_sla_met = 0 OR ticket_resolution_sla_met = 0)) AS sla_breached
         FROM tickets
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-        WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL $dashboard_ticket_scope"));
+        WHERE ticket_archived_at IS NULL AND ticket_resolved_at IS NULL
+        AND ticket_closed_at IS NULL $dashboard_ticket_scope"));
 
     $dashboard_incident_scope = clientScopeSql('automation_incident_client_id');
     $automation_pulse = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
@@ -637,6 +638,7 @@ if ($user_config_dashboard_technical_enable == 1) {
         WHERE ticket_assigned_to = $session_user_id
         AND ticket_archived_at IS NULL
         AND ticket_resolved_at IS NULL
+        AND ticket_closed_at IS NULL
         $dashboard_ticket_scope
         ORDER BY ticket_number DESC
     ");

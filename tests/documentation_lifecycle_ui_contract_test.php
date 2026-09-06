@@ -32,6 +32,7 @@ $lifecycle = $read('functions/documentation_lifecycle.php');
 $ticket_page = $read('agent/ticket.php');
 $ticket_css = $read('agent/css/ticket.css');
 $ticket_post = $read('agent/post/ticket.php');
+$ticket_retention = $read('functions/ticket_retention.php');
 $documentation_post = $read('agent/post/documentation.php');
 $document_post = $read('agent/post/document.php');
 $client_post = $read('agent/post/client.php');
@@ -115,7 +116,7 @@ $assertContains('Review the document set during onboarding and recurring service
 $assertContains('Document-level details', $queue, 'Detailed documentation records cannot be disclosed on demand');
 
 $assertContains('documentationDocumentHasObligations($document_id)', $document_post, 'Canonical documents can be archived or deleted without a guard');
-$assertContains('documentationTicketHasAuditRecords($ticket_id)', $ticket_post, 'Tickets with documentation history can be permanently deleted');
+$assertContains('documentationTicketHasAuditRecords($ticket_id)', $ticket_retention, 'Ticket deletion ignores documentation audit history');
 $assertContains('documentationTicketCanTransfer($ticket_id, $client_id)', $ticket_post, 'Ticket transfer does not preserve client-bound documentation history');
 $assertContains('documentationClientHasAuditRecords($client_id)', $client_post, 'Clients with documentation history can be permanently deleted');
 $assertContains('runbookLockOpenTicket($ticket_id)', $lifecycle, 'Documentation lifecycle mutation helpers do not lock their ticket context');
