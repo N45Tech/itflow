@@ -2145,6 +2145,20 @@ return [
             'fingerprint' => [
                 'tables' => ['ticket_deletion_events'],
                 'columns' => [
+                    'ticket_deletion_events' => [
+                        'ticket_deletion_event_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'ticket_deletion_event_ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'ticket_deletion_event_client_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_deletion_event_ticket_reference' => $column_fingerprint('varchar(255)', false, null),
+                        'ticket_deletion_event_ticket_subject' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_deletion_event_action' => $column_fingerprint('varchar(20)', false, null),
+                        'ticket_deletion_event_actor_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_deletion_event_reason' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_deletion_event_policy' => $column_fingerprint('varchar(20)', false, null),
+                        'ticket_deletion_event_restore_until' => $column_fingerprint('datetime', true, null),
+                        'ticket_deletion_event_context_hash' => $column_fingerprint('char(64)', false, null),
+                        'ticket_deletion_event_created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                    ],
                     'clients' => [
                         'client_ticket_retention_days' => $column_fingerprint('int(11)', false, 30),
                     ],
@@ -2155,6 +2169,12 @@ return [
                     ],
                 ],
                 'indexes' => [
+                    'ticket_deletion_events' => [
+                        'PRIMARY' => $index_fingerprint(true, ['ticket_deletion_event_id']),
+                        'ticket_deletion_event_ticket' => $index_fingerprint(false, ['ticket_deletion_event_ticket_id', 'ticket_deletion_event_created_at']),
+                        'ticket_deletion_event_client' => $index_fingerprint(false, ['ticket_deletion_event_client_id', 'ticket_deletion_event_created_at']),
+                        'ticket_deletion_event_action' => $index_fingerprint(false, ['ticket_deletion_event_action', 'ticket_deletion_event_created_at']),
+                    ],
                     'tickets' => [
                         'ticket_restore_queue' => $index_fingerprint(false, [
                             'ticket_archived_at', 'ticket_restore_until', 'ticket_client_id',
@@ -2183,6 +2203,78 @@ return [
                     'ticket_resolution_events',
                 ],
                 'columns' => [
+                    'ticket_work_notes' => [
+                        'ticket_work_note_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'ticket_work_note_ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'ticket_work_note_reply_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_work_note_client_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_work_note_action' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_work_note_result' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_work_note_next_step' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_work_note_blocking_dependency' => $column_fingerprint('varchar(500)', true, null),
+                        'ticket_work_note_waiting_on' => $column_fingerprint('varchar(20)', false, 'none'),
+                        'ticket_work_note_next_action_due_at' => $column_fingerprint('datetime', true, null),
+                        'ticket_work_note_actor_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_work_note_created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                    ],
+                    'ticket_handoffs' => [
+                        'ticket_handoff_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'ticket_handoff_ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'ticket_handoff_client_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_handoff_from_user_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_handoff_to_user_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_handoff_reason' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_handoff_current_state' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_handoff_next_action' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_handoff_actor_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_handoff_created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                    ],
+                    'ticket_relationships' => [
+                        'ticket_relationship_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'ticket_relationship_from_ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'ticket_relationship_to_ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'ticket_relationship_type' => $column_fingerprint('varchar(20)', false, null),
+                        'ticket_relationship_created_by' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_relationship_created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                        'ticket_relationship_archived_by' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_relationship_archived_at' => $column_fingerprint('datetime', true, null),
+                    ],
+                    'ticket_customer_promises' => [
+                        'ticket_customer_promise_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'ticket_customer_promise_ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'ticket_customer_promise_client_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_customer_promise_summary' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_customer_promise_due_at' => $column_fingerprint('datetime', false, null),
+                        'ticket_customer_promise_status' => $column_fingerprint('varchar(20)', false, 'open'),
+                        'ticket_customer_promise_created_by' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_customer_promise_created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                        'ticket_customer_promise_completed_by' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_customer_promise_completed_at' => $column_fingerprint('datetime', true, null),
+                    ],
+                    'ticket_customer_promise_events' => [
+                        'ticket_customer_promise_event_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'ticket_customer_promise_event_promise_id' => $column_fingerprint('bigint(20)', false, null),
+                        'ticket_customer_promise_event_ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'ticket_customer_promise_event_action' => $column_fingerprint('varchar(20)', false, null),
+                        'ticket_customer_promise_event_from_status' => $column_fingerprint('varchar(20)', true, null),
+                        'ticket_customer_promise_event_to_status' => $column_fingerprint('varchar(20)', false, null),
+                        'ticket_customer_promise_event_actor_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_customer_promise_event_reason' => $column_fingerprint('varchar(500)', false, null),
+                        'ticket_customer_promise_event_created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                    ],
+                    'ticket_resolution_events' => [
+                        'ticket_resolution_event_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'ticket_resolution_event_ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'ticket_resolution_event_client_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_resolution_event_action' => $column_fingerprint('varchar(20)', false, null),
+                        'ticket_resolution_event_resolution_code' => $column_fingerprint('varchar(40)', true, null),
+                        'ticket_resolution_event_resolution_summary' => $column_fingerprint('text', true, null),
+                        'ticket_resolution_event_root_cause' => $column_fingerprint('text', true, null),
+                        'ticket_resolution_event_closure_code' => $column_fingerprint('varchar(40)', true, null),
+                        'ticket_resolution_event_actor_type' => $column_fingerprint('varchar(20)', false, 'agent'),
+                        'ticket_resolution_event_actor_id' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_resolution_event_created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                    ],
                     'tickets' => [
                         'ticket_work_type' => $column_fingerprint('varchar(20)', false, 'incident'),
                         'ticket_impact' => $column_fingerprint('varchar(10)', false, 'medium'),
@@ -2197,6 +2289,35 @@ return [
                     ],
                 ],
                 'indexes' => [
+                    'ticket_work_notes' => [
+                        'PRIMARY' => $index_fingerprint(true, ['ticket_work_note_id']),
+                        'ticket_work_note_ticket' => $index_fingerprint(false, ['ticket_work_note_ticket_id', 'ticket_work_note_created_at']),
+                        'ticket_work_note_reply' => $index_fingerprint(false, ['ticket_work_note_reply_id']),
+                    ],
+                    'ticket_handoffs' => [
+                        'PRIMARY' => $index_fingerprint(true, ['ticket_handoff_id']),
+                        'ticket_handoff_ticket' => $index_fingerprint(false, ['ticket_handoff_ticket_id', 'ticket_handoff_created_at']),
+                        'ticket_handoff_receiver' => $index_fingerprint(false, ['ticket_handoff_to_user_id', 'ticket_handoff_created_at']),
+                    ],
+                    'ticket_relationships' => [
+                        'PRIMARY' => $index_fingerprint(true, ['ticket_relationship_id']),
+                        'ticket_relationship_from' => $index_fingerprint(false, ['ticket_relationship_from_ticket_id', 'ticket_relationship_archived_at']),
+                        'ticket_relationship_to' => $index_fingerprint(false, ['ticket_relationship_to_ticket_id', 'ticket_relationship_archived_at']),
+                    ],
+                    'ticket_customer_promises' => [
+                        'PRIMARY' => $index_fingerprint(true, ['ticket_customer_promise_id']),
+                        'ticket_customer_promise_ticket' => $index_fingerprint(false, ['ticket_customer_promise_ticket_id', 'ticket_customer_promise_status', 'ticket_customer_promise_due_at']),
+                        'ticket_customer_promise_queue' => $index_fingerprint(false, ['ticket_customer_promise_status', 'ticket_customer_promise_due_at']),
+                    ],
+                    'ticket_customer_promise_events' => [
+                        'PRIMARY' => $index_fingerprint(true, ['ticket_customer_promise_event_id']),
+                        'ticket_customer_promise_event_history' => $index_fingerprint(false, ['ticket_customer_promise_event_promise_id', 'ticket_customer_promise_event_created_at']),
+                        'ticket_customer_promise_event_ticket' => $index_fingerprint(false, ['ticket_customer_promise_event_ticket_id', 'ticket_customer_promise_event_created_at']),
+                    ],
+                    'ticket_resolution_events' => [
+                        'PRIMARY' => $index_fingerprint(true, ['ticket_resolution_event_id']),
+                        'ticket_resolution_event_ticket' => $index_fingerprint(false, ['ticket_resolution_event_ticket_id', 'ticket_resolution_event_created_at']),
+                    ],
                     'tickets' => [
                         'ticket_operations_queue' => $index_fingerprint(false, [
                             'ticket_archived_at', 'ticket_closed_at',

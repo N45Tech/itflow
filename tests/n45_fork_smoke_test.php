@@ -608,7 +608,7 @@ $assertContains('$failed_count++', $bulk_delete,
     'Bulk ticket deletion does not retain and report an item-level runtime failure');
 $assertNotContains('throw $e;', $bulk_delete,
     'Bulk ticket deletion still turns an item-level runtime failure into an empty HTTP 500');
-$assertContains('could not be deleted and were left unchanged', $bulk_delete,
+$assertContains('could not be moved and were left unchanged', $bulk_delete,
     'Bulk ticket deletion does not explain safely retained runtime failures');
 
 $client_handler = $read('agent/post/client.php');

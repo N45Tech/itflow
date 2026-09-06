@@ -105,13 +105,15 @@ foreach (['created', 'approved', 'declined', 're_requested', 'rerouted', 'waived
 $assertContains("'contact'", $client, 'Portal approval decisions lack contact event attribution');
 $assertContains("'guest'", $guest, 'Guest approval decisions lack guest event attribution');
 
-$transfer = $section($tickets, "if (isset(\$_POST['change_client_ticket']))", "if (isset(\$_GET['resolve_ticket']))");
+$transfer = $section($tickets, "if (isset(\$_POST['change_client_ticket']))", "if (isset(\$_POST['resolve_ticket']))");
 $assertOrdered(
     $transfer,
     ['mysqli_begin_transaction($mysqli)', 'FOR UPDATE', 'has_execution', 'has_task_approval', 'has_ticket_approval', 'has_evidence', 'UPDATE tickets SET ticket_client_id'],
     'Ticket transfer does not check all client-bound workflow artifacts after locking'
 );
 $assertContains('AND ticket_client_id = $source_client_id', $transfer, 'Ticket transfer lacks a source-client compare-and-swap');
+$assertOrdered($transfer, ['FOR UPDATE', 'ticketDisciplineCanTransfer($ticket_id)', 'UPDATE tickets SET ticket_client_id'],
+    'Ticket transfer does not protect client-bound operational history under its lock');
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);

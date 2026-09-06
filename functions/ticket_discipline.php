@@ -324,6 +324,33 @@ function ticketDisciplineUpdatePlan(int $ticket_id, array $input, int $actor_id)
     }
 }
 
+// Check under the ticket transition lock so a concurrent writer cannot add
+// client-bound history between this decision and the client update.
+function ticketDisciplineCanTransfer(int $ticket_id): array
+{
+    $history = mysqli_fetch_assoc(ticketDisciplineDbQuery("SELECT
+        EXISTS (SELECT 1 FROM ticket_work_notes
+            WHERE ticket_work_note_ticket_id = $ticket_id)
+        OR EXISTS (SELECT 1 FROM ticket_handoffs
+            WHERE ticket_handoff_ticket_id = $ticket_id)
+        OR EXISTS (SELECT 1 FROM ticket_relationships
+            WHERE ticket_relationship_from_ticket_id = $ticket_id
+                OR ticket_relationship_to_ticket_id = $ticket_id)
+        OR EXISTS (SELECT 1 FROM ticket_customer_promises
+            WHERE ticket_customer_promise_ticket_id = $ticket_id)
+        OR EXISTS (SELECT 1 FROM ticket_customer_promise_events
+            WHERE ticket_customer_promise_event_ticket_id = $ticket_id)
+        OR EXISTS (SELECT 1 FROM ticket_resolution_events
+            WHERE ticket_resolution_event_ticket_id = $ticket_id)
+        OR EXISTS (SELECT 1 FROM ticket_deletion_events
+            WHERE ticket_deletion_event_ticket_id = $ticket_id) AS has_history",
+        'Could not validate the ticket operational history'));
+    if (intval($history['has_history'] ?? 0)) {
+        return [false, 'This ticket has operational or deletion history tied to its current client and cannot be transferred.'];
+    }
+    return [true, ''];
+}
+
 function ticketDisciplineResolutionInput($code, $summary, $root_cause, string $work_type = 'incident', bool $allow_system = false): array
 {
     $code = strtolower(trim((string) $code));

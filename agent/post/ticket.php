@@ -4108,6 +4108,11 @@ if (isset($_POST['change_client_ticket'])) {
                 $client_change_error = $documentation_transfer_error;
                 throw new RuntimeException('The locked ticket has client-bound documentation history');
             }
+            [$discipline_transfer_allowed, $discipline_transfer_error] = ticketDisciplineCanTransfer($ticket_id);
+            if (!$discipline_transfer_allowed) {
+                $client_change_error = $discipline_transfer_error;
+                throw new RuntimeException('The locked ticket has client-bound operational history');
+            }
             $workflow_artifacts = mysqli_fetch_assoc(ticketCreationDbQuery("SELECT
                 EXISTS (SELECT 1 FROM runbook_executions
                     WHERE runbook_execution_ticket_id = $ticket_id) AS has_execution,

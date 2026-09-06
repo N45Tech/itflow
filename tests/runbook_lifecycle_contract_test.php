@@ -312,14 +312,20 @@ $assertContains('a.ticket_attachment_ticket_id = t.task_ticket_id', $runbooks, '
 $single_ticket_delete = $section(
     $ticket_post,
     "if (isset(\$_POST['delete_ticket']))",
-    "if (isset(\$_POST['bulk_delete_tickets']))",
+    "if (isset(\$_POST['restore_ticket']))",
     'ticket deletion handler'
 );
 $bulk_ticket_delete = $section(
     $ticket_post,
     "if (isset(\$_POST['bulk_delete_tickets']))",
-    "if (isset(\$_POST['bulk_assign_ticket']))",
+    "if (isset(\$_POST['purge_ticket']))",
     'bulk ticket deletion handler'
+);
+$ticket_purge = $section(
+    $ticket_post,
+    "if (isset(\$_POST['purge_ticket']))",
+    "if (isset(\$_POST['bulk_assign_ticket']))",
+    'permanent ticket deletion handler'
 );
 $assertContains('FROM runbook_executions', $ticket_retention,
     'Ticket deletion does not identify protected runbook execution history');
@@ -330,13 +336,19 @@ $assertContains('DELETE FROM runbook_executions', $ticket_retention,
 $assertContains('DELETE FROM tasks', $ticket_retention,
     'An approved retention override cannot remove ticket tasks');
 foreach ([$single_ticket_delete, $bulk_ticket_delete] as $delete_handler) {
-    $assertContains('ticketDeletionEvidenceSummary($ticket_id, $client_id)', $delete_handler,
-        'Ticket deletion bypasses the shared workflow evidence classification');
-    $assertContains('ticketDeletionPurge($ticket_id)', $delete_handler,
-        'Ticket deletion bypasses the shared child-record purge');
+    $assertContains('ticketDeletionSoftDelete($ticket_id, $session_user_id, $deletion_reason)', $delete_handler,
+        'Ticket deletion bypasses recoverable retention');
+    $assertNotContains('ticketDeletionPurge($ticket_id)', $delete_handler,
+        'Ordinary ticket deletion permanently destroys its evidence');
 }
-$assertContains('$retained_count++', $bulk_ticket_delete,
-    'Bulk deletion does not retain policy-protected tickets individually');
+$assertContains('$failed_count++', $bulk_ticket_delete,
+    'Bulk deletion does not retain failed tickets individually');
+$assertContains('ticketDeletionEvidenceSummary($ticket_id, $client_id)', $ticket_purge,
+    'Permanent deletion bypasses the shared workflow evidence classification');
+$assertContains("\$policy !== 'override'", $ticket_purge,
+    'Permanent deletion does not enforce strict client retention');
+$assertContains('ticketDeletionPurge($ticket_id)', $ticket_purge,
+    'Permanent deletion bypasses the shared child-record purge');
 
 $client_delete = $section(
     $client_post,

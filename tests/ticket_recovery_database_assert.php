@@ -52,6 +52,7 @@ try {
         $tickets[] = intval(mysqli_insert_id($mysqli));
     }
     [$first, $second, $third, $other_client] = $tickets;
+    $assert(ticketDisciplineCanTransfer($first)[0] === true, 'A new ticket is incorrectly blocked from transfer');
     $query("INSERT INTO ticket_replies SET ticket_reply = 'Original reply and time',
         ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:15:00',
         ticket_reply_by = 0, ticket_reply_ticket_id = $first");
@@ -71,6 +72,8 @@ try {
     });
     $assert(ticketDisciplineCanResolve($first, true)[0] === false,
         'An outstanding customer promise did not block resolution');
+    $assert(ticketDisciplineCanTransfer($first)[0] === false,
+        'Client-bound operational history can be transferred to another client');
     $promise_id = intval($scalar("SELECT ticket_customer_promise_id FROM ticket_customer_promises
         WHERE ticket_customer_promise_ticket_id = $first"));
     ticketDisciplineCompletePromise($promise_id, 'fulfilled', 0, 'Called the client and confirmed access');
@@ -121,6 +124,8 @@ try {
 
     ticketDisciplineAddRelationship($first, $second, 'child', 0);
     ticketDisciplineAddRelationship($second, $third, 'child', 0);
+    $assert(ticketDisciplineCanTransfer($third)[0] === false,
+        'A related ticket can be transferred across client boundaries');
     $reject(fn () => ticketDisciplineAddRelationship($third, $first, 'child', 0), 'Circular ticket hierarchy accepted');
     $reject(fn () => ticketDisciplineAddRelationship($first, $first, 'related', 0), 'Self-linked ticket accepted');
     $transaction(function () use ($other_client): void {
