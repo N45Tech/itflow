@@ -50,6 +50,9 @@ $assertAtomicPassport = static function ($contents, $label, $actor) use (&$failu
     if ($actor === 'session' && strpos($call, '$session_user_id') === false) {
         $failures[] = "$label does not attribute its Change Passport to the authenticated internal user";
     }
+    if ($actor === 'field' && strpos($call, '$user_id') === false) {
+        $failures[] = "$label does not attribute its Change Passport to the authenticated field user";
+    }
     if ($actor === 'system' && !preg_match('/,\s*0\s*,\s*true\s*\);\s*$/s', $call)) {
         $failures[] = "$label does not attribute its external/system Change Passport to actor 0";
     }
@@ -147,6 +150,16 @@ $project_call = $project_call_end === false ? '' : substr($project_close, $proje
 $assertTrue(strpos($project_call, '$session_user_id') !== false, 'Project close loses authenticated Change Passport attribution');
 $assertTrue(preg_match('/,\s*true\s*\);\s*$/s', $project_call) === 1, 'Project close does not use the caller transaction for Change Passports');
 
+// Field operations run inside fieldRequest's receipt transaction. Verify the
+// operation order together with its committing/rolling-back caller.
+$field_transition = $section($read('functions/field_workspace.php'),
+    'function fieldWorkspaceTransition(', 'function fieldWorkspaceCreate(', 'Field completion');
+$field_request = $section($read('functions/field_service_write.php'),
+    'function fieldRequest(', 'function fieldVisitEvent(', 'Field transaction');
+$assertAtomicPassport($field_transition . $field_request, 'Field completion', 'field');
+$assertTrue(strpos($field_request, '$result = $operation($batch)') < strpos($field_request, "fieldDb('UPDATE field_requests"),
+    'Field completion does not finish before its durable request receipt');
+
 // File-level counts make this inventory fail when a new gate or passport site
 // is added without an explicit transaction-order assertion above.
 $inventory = [
@@ -160,6 +173,7 @@ $inventory = [
     'guest/guest_post.php' => [1, 1],
     'functions/automation.php' => [1, 1],
     'cron/nightly_tasks.php' => [1, 1],
+    'functions/field_workspace.php' => [1, 1],
 ];
 $total_gates = 0;
 $total_passports = 0;
@@ -172,8 +186,8 @@ foreach ($inventory as $path => [$expected_gates, $expected_passports]) {
     $total_gates += $actual_gates;
     $total_passports += $actual_passports;
 }
-$assertTrue($total_gates === 17, 'The authoritative lifecycle-gate inventory is no longer exhaustive');
-$assertTrue($total_passports === 17, 'The authoritative Change Passport inventory is no longer exhaustive');
+$assertTrue($total_gates === 18, 'The authoritative lifecycle-gate inventory is no longer exhaustive');
+$assertTrue($total_passports === 18, 'The authoritative Change Passport inventory is no longer exhaustive');
 
 // Detect a new runtime gate or direct literal/dynamic terminal writer outside
 // the inventoried files. This deliberately excludes the gate definition itself.
@@ -188,6 +202,7 @@ $terminal_writer_files = array_fill_keys([
     'guest/guest_post.php',
     'functions/automation.php',
     'cron/nightly_tasks.php',
+    'functions/field_workspace.php',
 ], true);
 foreach ($runtime_roots as $runtime_root) {
     $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(
