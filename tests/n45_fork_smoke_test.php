@@ -120,6 +120,7 @@ $assertTrue(
         'n45-0022-recoverable-ticket-deletion',
         'n45-0023-ticket-operational-discipline',
         'n45-0024-technician-field-mode',
+        'n45-0025-inbound-mail-receipts',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -138,8 +139,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0024-technician-field-mode',
-    'The technician field-mode migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0025-inbound-mail-receipts',
+    'The inbound mail receipt migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(

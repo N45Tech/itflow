@@ -1,6 +1,6 @@
 # Ticket recovery and operational controls
 
-This release resumes the approved recoverable-deletion and ticket-operations work. Technician Field Mode remains deferred until its requirements are clarified with the owner.
+Recoverable deletion and ticket operations are implemented. Technician Field Mode shipped in PRs #22 and #23, including mobile job management, documentation, evidence, approvals, time and completion. See [field-mode.md](field-mode.md) for coverage and the remaining physical Android/PWA acceptance check.
 
 Deleting a ticket moves it to **Tickets → Deleted**. Replies, files, time entries, tasks, approvals, and operational evidence stay with it. Level 3 support users can restore it to its prior lifecycle state at any time before a deliberate permanent deletion.
 
