@@ -181,4 +181,3 @@ if (!mysqli_query($mysqli, "UPDATE tickets SET
     throw new RuntimeException('Could not reconcile historical ticket closures: '
         . mysqli_error($mysqli));
 }
-

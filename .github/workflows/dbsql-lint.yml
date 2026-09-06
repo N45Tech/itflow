@@ -77,10 +77,17 @@ jobs:
       - name: Run PHP regression tests
         run: |
           set -euo pipefail
+          failed_tests=()
           for test_file in tests/*_test.php; do
             echo "Running ${test_file}"
-            php "${test_file}"
+            if ! php "${test_file}"; then
+              failed_tests+=("${test_file}")
+            fi
           done
+          if ((${#failed_tests[@]})); then
+            printf 'Failed PHP regression tests:\n%s\n' "${failed_tests[@]}"
+            exit 1
+          fi
 
       - name: Validate final schema and N45 upgrade path
         env:

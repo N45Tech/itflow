@@ -62,4 +62,3 @@ if (!mysqli_query($mysqli, "UPDATE tickets SET
     throw new RuntimeException('Could not reconcile previously archived tickets: '
         . mysqli_error($mysqli));
 }
-

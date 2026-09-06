@@ -123,7 +123,8 @@ $assertOrdered(
     $attachment_delete,
     [
         'mysqli_begin_transaction($mysqli)',
-        'FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE',
+        'FROM tickets WHERE ticket_id = $ticket_id',
+        'AND ticket_archived_at IS NULL LIMIT 1 FOR UPDATE',
         'runbookRequireLockedTicketClient($locked_ticket, $client_id)',
         'FROM ticket_attachments WHERE ticket_attachment_id = $attachment_id',
         "LIMIT 1 FOR UPDATE",
