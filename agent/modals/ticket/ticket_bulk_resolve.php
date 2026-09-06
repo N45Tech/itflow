@@ -2,14 +2,25 @@
 
 require_once '../../../includes/modal_header.php';
 
-$ticket_ids = array_map('intval', $_GET['ticket_ids'] ?? []);
+$ticket_ids = array_values(array_unique(array_filter(
+    array_map('intval', $_GET['ticket_ids'] ?? []),
+    static fn ($ticket_id) => $ticket_id > 0
+)));
 
 $count = count($ticket_ids);
+$has_problem = false;
+if ($ticket_ids) {
+    $ticket_ids_sql = implode(',', $ticket_ids);
+    $problem_count = mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*) FROM tickets
+        WHERE ticket_id IN ($ticket_ids_sql) AND ticket_work_type = 'problem'
+        AND ticket_archived_at IS NULL " . clientScopeSql('ticket_client_id')));
+    $has_problem = intval($problem_count[0] ?? 0) > 0;
+}
 
 ob_start();
 
 ?>
-<div class="modal-header bg-dark">
+<div class="modal-header bg-dark text-light">
     <h5 class="modal-title"><i class="fas fa-fw fa-check me-2"></i>Resolve <strong><?= $count ?></strong> Tickets</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
@@ -21,7 +32,34 @@ ob_start();
 
     <div class="modal-body">
         <div class="mb-3">
-            <textarea class="form-control tinymce" rows="5" name="bulk_details" placeholder="Enter closing remarks"></textarea>
+            <label class="form-label" for="bulk_resolution_code">Resolution</label>
+            <select class="form-select" id="bulk_resolution_code" name="resolution_code" required>
+                <option value="">Choose the shared outcome</option>
+                <?php foreach (ticketResolutionCodeDefinitions() as $value => $label) { ?>
+                    <option value="<?= escapeHtml($value) ?>"><?= escapeHtml($label) ?></option>
+                <?php } ?>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="bulk_resolution_summary">Resolution summary</label>
+            <textarea class="form-control" id="bulk_resolution_summary" name="resolution_summary"
+                      rows="3" minlength="5" maxlength="2000" required
+                      placeholder="What was done and how the outcome was verified for every selected ticket"></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="bulk_root_cause">
+                Root cause<?= $has_problem ? ' *' : ' (optional)' ?>
+            </label>
+            <textarea class="form-control" id="bulk_root_cause" name="root_cause" rows="2"
+                      maxlength="2000" <?= $has_problem ? 'required minlength="5"' : '' ?>></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="bulk_details">Contact-facing resolution note</label>
+            <textarea class="form-control tinymce" id="bulk_details" rows="5" name="bulk_details"
+                      placeholder="Optional message sent to ticket contacts"></textarea>
         </div>
 
         <div class="col-3">

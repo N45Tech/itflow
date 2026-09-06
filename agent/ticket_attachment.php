@@ -47,6 +47,7 @@ if (mysqli_num_rows($sql) !== 1) {
 $row = mysqli_fetch_array($sql);
 $ticket_id = intval($row['ticket_id']);
 $client_id = intval($row['ticket_client_id']);
+$ticket_is_deleted = !empty($row['ticket_archived_at']);
 $attachment_name = $row['ticket_attachment_name'];
 $attachment_name_escaped = escapeSql($row['ticket_attachment_name']);
 $attachment_reference_name = $row['ticket_attachment_reference_name'];
@@ -54,6 +55,10 @@ $attachment_reference_name = $row['ticket_attachment_reference_name'];
 // Enforce client access against the ticket's client if the ticket is assigned to a client
 if ($client_id) {
     enforceClientAccess();
+}
+if ($ticket_is_deleted && lookupUserPermission('module_support') < 3) {
+    http_response_code(404);
+    exit("Attachment not found");
 }
 
 // Build the on-disk path, anchored to this file's directory

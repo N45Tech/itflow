@@ -1406,6 +1406,11 @@ function portalRequestInitiateLockedSubmission($submission, $definition, $actor_
         $priority = $responses['priority'];
     }
     $priority_sql = mysqli_real_escape_string($mysqli, $priority);
+    $work_type = $definition['type'] === 'incident' ? 'incident' : 'request';
+    $assessment = ticketDisciplineLegacyAssessment($priority, $work_type);
+    $work_type_sql = mysqli_real_escape_string($mysqli, $assessment['work_type']);
+    $impact_sql = mysqli_real_escape_string($mysqli, $assessment['impact']);
+    $urgency_sql = mysqli_real_escape_string($mysqli, $assessment['urgency']);
     $url_key = mysqli_real_escape_string($mysqli, randomString(32));
     $asset_id = 0;
     foreach ($definition['fields'] as $field) {
@@ -1438,7 +1443,8 @@ function portalRequestInitiateLockedSubmission($submission, $definition, $actor_
         ticket_source = 'Portal Catalog',
         ticket_category = $category_id,
         ticket_subject = '$subject', ticket_details = '$details',
-        ticket_priority = '$priority_sql', ticket_status = 1,
+        ticket_work_type = '$work_type_sql', ticket_priority = '$priority_sql',
+        ticket_impact = '$impact_sql', ticket_urgency = '$urgency_sql', ticket_status = 1,
         ticket_billable = " . intval($config_ticket_default_billable) . ",
         ticket_created_by = " . intval($submission['portal_request_submission_user_id']) . ",
         ticket_contact_id = $contact_id, ticket_asset_id = $asset_id,

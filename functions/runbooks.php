@@ -88,10 +88,13 @@ function runbookLockTicketForTransition($ticket_id, $allow_resolved = false) {
         ticket_created_at, ticket_prefix, ticket_number, ticket_subject,
         ticket_configuration_change, ticket_documentation_impact,
         ticket_documentation_assessed_by, ticket_documentation_assessed_at,
-        ticket_resolved_at, ticket_closed_at
+        ticket_resolved_at, ticket_closed_at, ticket_archived_at
         FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not lock the workflow ticket'));
     if (!$ticket) {
         throw new RuntimeException('The workflow ticket no longer exists');
+    }
+    if (!empty($ticket['ticket_archived_at'])) {
+        throw new RuntimeException('Deleted tickets cannot be changed');
     }
     if (intval($ticket['ticket_status']) === 5 || !empty($ticket['ticket_closed_at'])) {
         throw new RuntimeException('Closed tickets cannot be changed');
@@ -1834,7 +1837,7 @@ function runbookOnlyTicketCanResolve($ticket_id) {
  * view. External lifecycle surfaces receive a stable generic message so
  * requirement names, exception reasons and client context cannot leak.
  */
-function ticketLifecycleCanResolve($ticket_id, $include_documentation_detail = false) {
+function ticketLifecyclePrerequisitesCanResolve($ticket_id) {
     global $mysqli;
 
     [$runbook_allows_resolution, $runbook_error] = runbookOnlyTicketCanResolve($ticket_id);
@@ -1852,11 +1855,33 @@ function ticketLifecycleCanResolve($ticket_id, $include_documentation_detail = f
 
     return [true, ''];
 }
+
+function ticketLifecycleCanResolve($ticket_id, $include_documentation_detail = false) {
+    [$prerequisites_allow_resolution, $prerequisite_error] = ticketLifecyclePrerequisitesCanResolve($ticket_id);
+    if (!$prerequisites_allow_resolution) {
+        return [false, $prerequisite_error];
+    }
+
+    try {
+        [$discipline_allows_resolution, $discipline_error] = ticketDisciplineCanResolve(
+            $ticket_id,
+            (bool) $include_documentation_detail
+        );
+    } catch (Throwable $exception) {
+        error_log('Ticket operational gate failed closed: ' . $exception->getMessage());
+        return [false, 'The ticket operational record could not be validated.'];
+    }
+    if (!$discipline_allows_resolution) {
+        return [false, $discipline_error];
+    }
+
+    return [true, ''];
+}
 /**
  * Backwards-compatible public gate used by all existing terminal transitions.
  */
-function runbookTicketCanResolve($ticket_id) {
-    return ticketLifecycleCanResolve($ticket_id, false);
+function runbookTicketCanResolve($ticket_id, $include_documentation_detail = false) {
+    return ticketLifecycleCanResolve($ticket_id, (bool) $include_documentation_detail);
 }
 
 function runbookTaskStateBadge($state) {

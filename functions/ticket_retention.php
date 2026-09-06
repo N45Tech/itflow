@@ -13,6 +13,31 @@ function ticketDeletionPolicies(): array
     return ['override', 'strict'];
 }
 
+function ticketDeletionRestoreWindowDays(int $client_id = 0): int
+{
+    global $mysqli;
+
+    if ($client_id < 1) {
+        return 30;
+    }
+    $client = mysqli_fetch_assoc(ticketDeletionDbQuery("SELECT client_ticket_retention_days
+        FROM clients WHERE client_id = " . intval($client_id) . " LIMIT 1",
+        'Could not read the client ticket retention period'));
+    if (!$client) {
+        throw new RuntimeException('The ticket client no longer exists');
+    }
+    return ticketDeletionRetentionDays($client['client_ticket_retention_days']);
+}
+
+function ticketDeletionRetentionDays($value): int
+{
+    $days = filter_var($value, FILTER_VALIDATE_INT);
+    if ($days === false || $days < 1 || $days > 3650) {
+        throw new DomainException('Choose a ticket retention period between 1 and 3650 days.');
+    }
+    return $days;
+}
+
 function ticketDeletionNormalizePolicy($policy): string
 {
     $policy = strtolower(trim((string) $policy));
@@ -60,6 +85,32 @@ function ticketDeletionDbQuery(string $query, string $message)
     return $result;
 }
 
+/** Lock the client first, then the ticket, including archived clients/tickets. */
+function ticketDeletionLockTicket(int $ticket_id, ?int $expected_client_id = null): array
+{
+    $ticket_id = intval($ticket_id);
+    $prelock = mysqli_fetch_assoc(ticketDeletionDbQuery("SELECT ticket_client_id
+        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1",
+        'Could not locate the ticket for deletion'));
+    if (!$prelock) {
+        throw new RuntimeException('The ticket no longer exists');
+    }
+    $client_id = intval($prelock['ticket_client_id']);
+    if ($expected_client_id !== null && $client_id !== intval($expected_client_id)) {
+        throw new RuntimeException('The ticket client changed');
+    }
+    if ($client_id) {
+        documentationLockClient($client_id, true);
+    }
+    $ticket = mysqli_fetch_assoc(ticketDeletionDbQuery("SELECT * FROM tickets
+        WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE",
+        'Could not lock the ticket for deletion'));
+    if (!$ticket || intval($ticket['ticket_client_id']) !== $client_id) {
+        throw new RuntimeException('The ticket client changed before it was locked');
+    }
+    return $ticket;
+}
+
 /**
  * Return the protected evidence categories currently tied to a ticket.
  * Query failures fail closed through the strict helpers used below.
@@ -100,6 +151,17 @@ function ticketDeletionEvidenceSummary(int $ticket_id, int $client_id = 0): arra
             WHERE automation_event_ticket_id = $ticket_id) AS has_event",
         'Could not inspect ticket integration evidence'));
 
+    $operations = mysqli_fetch_assoc(ticketDeletionDbQuery("SELECT
+        EXISTS (SELECT 1 FROM ticket_work_notes
+            WHERE ticket_work_note_ticket_id = $ticket_id) AS has_work_notes,
+        EXISTS (SELECT 1 FROM ticket_handoffs
+            WHERE ticket_handoff_ticket_id = $ticket_id) AS has_handoffs,
+        EXISTS (SELECT 1 FROM ticket_customer_promise_events
+            WHERE ticket_customer_promise_event_ticket_id = $ticket_id) AS has_promises,
+        EXISTS (SELECT 1 FROM ticket_resolution_events
+            WHERE ticket_resolution_event_ticket_id = $ticket_id) AS has_resolutions",
+        'Could not inspect ticket operational evidence'));
+
     $summary = [
         'workflow' => intval($workflow['has_runbook'] ?? 0) > 0
             || intval($workflow['has_task_state'] ?? 0) > 0
@@ -113,6 +175,10 @@ function ticketDeletionEvidenceSummary(int $ticket_id, int $client_id = 0): arra
             || intval($portal['has_dispatch'] ?? 0) > 0,
         'integration' => intval($integration['has_incident'] ?? 0) > 0
             || intval($integration['has_event'] ?? 0) > 0,
+        'operations' => intval($operations['has_work_notes'] ?? 0) > 0
+            || intval($operations['has_handoffs'] ?? 0) > 0
+            || intval($operations['has_promises'] ?? 0) > 0
+            || intval($operations['has_resolutions'] ?? 0) > 0,
     ];
 
     return array_filter($summary);
@@ -127,6 +193,7 @@ function ticketDeletionEvidenceLabels(array $summary): array
         'agreement' => 'agreement and SLA decisions',
         'portal_request' => 'portal request history',
         'integration' => 'integration incident history',
+        'operations' => 'work notes, handoffs, promises, and resolution history',
     ];
 
     $result = [];
@@ -147,6 +214,159 @@ function ticketDeletionOverrideReason($reason): string
     return $reason;
 }
 
+function ticketDeletionReason($reason, string $label = 'deletion'): string
+{
+    $reason = trim((string) $reason);
+    if (mb_strlen($reason) < 3 || mb_strlen($reason) > 500) {
+        throw new DomainException("Provide a $label reason between 3 and 500 characters.");
+    }
+    return $reason;
+}
+
+function ticketDeletionRecordEvent(
+    array $ticket,
+    string $action,
+    int $actor_id,
+    string $reason,
+    string $policy,
+    ?string $restore_until = null
+): int {
+    global $mysqli;
+
+    if (!in_array($action, ['deleted', 'restored', 'purged'], true)) {
+        throw new InvalidArgumentException('Unsupported ticket deletion event');
+    }
+    $ticket_id = intval($ticket['ticket_id'] ?? 0);
+    if ($ticket_id < 1) {
+        throw new InvalidArgumentException('A ticket is required for deletion history');
+    }
+    $client_id = max(0, intval($ticket['ticket_client_id'] ?? 0));
+    $reference = mb_substr((string) ($ticket['ticket_prefix'] ?? '')
+        . intval($ticket['ticket_number'] ?? 0), 0, 255);
+    $subject = mb_substr(trim((string) ($ticket['ticket_subject'] ?? '')), 0, 500);
+    $reason = ticketDeletionReason($reason, $action);
+    $policy = ticketDeletionNormalizePolicy($policy);
+    $context = [
+        'ticket_id' => $ticket_id,
+        'client_id' => $client_id,
+        'reference' => $reference,
+        'subject' => $subject,
+        'action' => $action,
+        'actor_id' => max(0, $actor_id),
+        'reason' => $reason,
+        'policy' => $policy,
+        'restore_until' => $restore_until,
+    ];
+    $context_json = json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if ($context_json === false) {
+        throw new RuntimeException('Could not serialize ticket deletion history');
+    }
+    $reference_sql = mysqli_real_escape_string($mysqli, $reference);
+    $subject_sql = mysqli_real_escape_string($mysqli, $subject);
+    $action_sql = mysqli_real_escape_string($mysqli, $action);
+    $reason_sql = mysqli_real_escape_string($mysqli, $reason);
+    $policy_sql = mysqli_real_escape_string($mysqli, $policy);
+    $restore_until_sql = $restore_until === null
+        ? 'NULL'
+        : "'" . mysqli_real_escape_string($mysqli, $restore_until) . "'";
+    $hash_sql = hash('sha256', $context_json);
+
+    ticketDeletionDbQuery("INSERT INTO ticket_deletion_events SET
+        ticket_deletion_event_ticket_id = $ticket_id,
+        ticket_deletion_event_client_id = $client_id,
+        ticket_deletion_event_ticket_reference = '$reference_sql',
+        ticket_deletion_event_ticket_subject = '$subject_sql',
+        ticket_deletion_event_action = '$action_sql',
+        ticket_deletion_event_actor_id = " . max(0, $actor_id) . ",
+        ticket_deletion_event_reason = '$reason_sql',
+        ticket_deletion_event_policy = '$policy_sql',
+        ticket_deletion_event_restore_until = $restore_until_sql,
+        ticket_deletion_event_context_hash = '$hash_sql'",
+        'Could not record ticket deletion history');
+    return intval(mysqli_insert_id($mysqli));
+}
+
+/**
+ * Mark a locked ticket deleted without destroying any child record or file.
+ * The caller owns the transaction and client-before-ticket lock order.
+ */
+function ticketDeletionSoftDelete(int $ticket_id, int $actor_id, string $reason): array
+{
+    global $mysqli;
+
+    $ticket_id = intval($ticket_id);
+    $actor_id = max(0, intval($actor_id));
+    $reason = ticketDeletionReason($reason);
+    $ticket = mysqli_fetch_assoc(ticketDeletionDbQuery("SELECT ticket_id, ticket_client_id,
+        ticket_prefix, ticket_number, ticket_subject, ticket_archived_at
+        FROM tickets WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE",
+        'Could not lock the ticket for recoverable deletion'));
+    if (!$ticket) {
+        throw new RuntimeException('The ticket no longer exists');
+    }
+    if (!empty($ticket['ticket_archived_at'])) {
+        throw new DomainException('This ticket is already in Deleted tickets.');
+    }
+
+    $restore_until = date('Y-m-d H:i:s', time() + ticketDeletionRestoreWindowDays(intval($ticket['ticket_client_id'])) * 86400);
+    $reason_sql = mysqli_real_escape_string($mysqli, $reason);
+    $restore_until_sql = mysqli_real_escape_string($mysqli, $restore_until);
+    ticketDeletionDbQuery("UPDATE tickets SET ticket_archived_at = NOW(),
+        ticket_deleted_by = $actor_id, ticket_delete_reason = '$reason_sql',
+        ticket_restore_until = '$restore_until_sql'
+        WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL LIMIT 1",
+        'Could not move the ticket to Deleted tickets');
+    if (mysqli_affected_rows($mysqli) !== 1) {
+        throw new RuntimeException('The ticket changed before it could be deleted');
+    }
+
+    $policy = ticketDeletionPolicyForClient(intval($ticket['ticket_client_id']));
+    ticketDeletionRecordEvent($ticket, 'deleted', $actor_id, $reason, $policy, $restore_until);
+    $ticket['ticket_restore_until'] = $restore_until;
+    return $ticket;
+}
+
+function ticketDeletionRestore(int $ticket_id, int $actor_id, string $reason): array
+{
+    global $mysqli;
+
+    $ticket_id = intval($ticket_id);
+    $actor_id = max(0, intval($actor_id));
+    $reason = ticketDeletionReason($reason, 'restore');
+    $ticket = mysqli_fetch_assoc(ticketDeletionDbQuery("SELECT ticket_id, ticket_client_id,
+        ticket_prefix, ticket_number, ticket_subject, ticket_archived_at,
+        ticket_restore_until FROM tickets WHERE ticket_id = $ticket_id
+        LIMIT 1 FOR UPDATE", 'Could not lock the ticket for restoration'));
+    if (!$ticket || empty($ticket['ticket_archived_at'])) {
+        throw new DomainException('This ticket is not deleted.');
+    }
+    // The retention deadline prevents early purge; it never prevents recovery.
+
+    $archived_at_sql = mysqli_real_escape_string($mysqli, (string) $ticket['ticket_archived_at']);
+    ticketDeletionDbQuery("UPDATE tickets SET ticket_archived_at = NULL,
+        ticket_deleted_by = 0, ticket_delete_reason = NULL, ticket_restore_until = NULL
+        WHERE ticket_id = $ticket_id AND ticket_archived_at = '$archived_at_sql' LIMIT 1",
+        'Could not restore the ticket');
+    if (mysqli_affected_rows($mysqli) !== 1) {
+        throw new RuntimeException('The deleted ticket changed before it could be restored');
+    }
+
+    $policy = ticketDeletionPolicyForClient(intval($ticket['ticket_client_id']));
+    ticketDeletionRecordEvent($ticket, 'restored', $actor_id, $reason, $policy, null);
+    return $ticket;
+}
+
+function ticketDeletionRequirePurgeEligible(array $ticket): void
+{
+    if (empty($ticket['ticket_archived_at'])) {
+        throw new DomainException('Delete the ticket first. Permanent deletion is available only after the restore window.');
+    }
+    if (empty($ticket['ticket_restore_until'])
+        || strtotime((string) $ticket['ticket_restore_until']) >= time()) {
+        throw new DomainException('The minimum retention period has not ended. Restore the ticket or wait until permanent deletion is available.');
+    }
+}
+
 /**
  * Remove ticket-owned records after the caller has locked the client/ticket,
  * checked policy, and written the surviving audit entry in its transaction.
@@ -158,6 +378,18 @@ function ticketDeletionPurge(int $ticket_id): void
     $ticket_id = intval($ticket_id);
     if ($ticket_id < 1) {
         throw new InvalidArgumentException('A ticket is required for deletion');
+    }
+
+    $ticket = mysqli_fetch_assoc(ticketDeletionDbQuery("SELECT * FROM tickets
+        WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not verify the purge target'));
+    if (!$ticket) {
+        throw new DomainException('The deleted ticket is unavailable.');
+    }
+    ticketDeletionRequirePurgeEligible($ticket);
+    $client_id = intval($ticket['ticket_client_id']);
+    if (ticketDeletionPolicyForClient($client_id) !== 'override'
+        && ticketDeletionEvidenceSummary($ticket_id, $client_id)) {
+        throw new DomainException('This client uses strict retention. Protected ticket evidence cannot be permanently deleted.');
     }
 
     // Cross-domain records keep their own audit value but no longer point at a
@@ -236,6 +468,28 @@ function ticketDeletionPurge(int $ticket_id): void
         WHERE ticket_approval_event_ticket_id = $ticket_id", 'Could not delete ticket approval events');
     ticketDeletionDbQuery("DELETE FROM ticket_approvals
         WHERE ticket_approval_ticket_id = $ticket_id", 'Could not delete ticket approvals');
+
+    // Operational-discipline projections and audit records belong to the
+    // ticket. The dedicated deletion event remains client-scoped and survives.
+    ticketDeletionDbQuery("DELETE FROM ticket_customer_promise_events
+        WHERE ticket_customer_promise_event_ticket_id = $ticket_id",
+        'Could not delete ticket customer-promise events');
+    ticketDeletionDbQuery("DELETE FROM ticket_customer_promises
+        WHERE ticket_customer_promise_ticket_id = $ticket_id",
+        'Could not delete ticket customer promises');
+    ticketDeletionDbQuery("DELETE FROM ticket_resolution_events
+        WHERE ticket_resolution_event_ticket_id = $ticket_id",
+        'Could not delete ticket resolution events');
+    ticketDeletionDbQuery("DELETE FROM ticket_work_notes
+        WHERE ticket_work_note_ticket_id = $ticket_id",
+        'Could not delete ticket work notes');
+    ticketDeletionDbQuery("DELETE FROM ticket_handoffs
+        WHERE ticket_handoff_ticket_id = $ticket_id",
+        'Could not delete ticket handoffs');
+    ticketDeletionDbQuery("DELETE FROM ticket_relationships
+        WHERE ticket_relationship_from_ticket_id = $ticket_id
+        OR ticket_relationship_to_ticket_id = $ticket_id",
+        'Could not delete ticket relationships');
 
     // Task-owned evidence and projections must be removed before their tasks.
     ticketDeletionDbQuery("DELETE task_approval_events FROM task_approval_events

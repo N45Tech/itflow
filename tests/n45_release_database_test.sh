@@ -128,6 +128,7 @@ run_update "$FINAL_DATABASE" "$TEMP_DIRECTORY/final-update.log"
 grep -Fq "Database is already at the latest version ($CURRENT_UPSTREAM_MARKER). No updates were applied." "$TEMP_DIRECTORY/final-update.log" || fail 'the fresh-install update was not a durable no-op'
 assert_current "$FINAL_DATABASE" fresh
 php tests/n45_transaction_state_database_assert.php
+php tests/ticket_recovery_database_assert.php
 
 echo 'Upgrading the clean upstream 2.6.7 schema through the production CLI'
 reset_database "$UPGRADE_DATABASE"

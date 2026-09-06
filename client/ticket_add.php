@@ -38,22 +38,18 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
                 </div>
             </div>
 
-            <div class="row">
-                <div class="col">
+            <div class="row g-3">
+                <div class="col-md-6">
                     <div class="mb-3">
-                        <label for="ticketPriority">Priority <strong class="text-danger">*</strong></label>
-                        <div class="input-group">
-                                <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
-                            <select class="form-select select2" id="ticketPriority" name="priority" required>
-                                <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
-                                    <option value="<?= escapeHtml($priority) ?>" <?= $priority === 'Medium' ? 'selected' : '' ?>><?= escapeHtml("$priority — " . $definition['short']) ?></option>
-                                <?php } ?>
-                            </select>
-                        </div>
+                        <label for="ticketWorkType">What do you need? <strong class="text-danger">*</strong></label>
+                        <select class="form-select" id="ticketWorkType" name="work_type" required>
+                            <option value="incident">Something is broken</option>
+                            <option value="request">A service or access request</option>
+                        </select>
                     </div>
                 </div>
 
-                <div class="col">
+                <div class="col-md-6">
                     <div class="mb-3">
                     <label for="ticketCategory">Category</label>
                     <div class="input-group">
@@ -73,6 +69,29 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
                         </select>
                     </div>
                 </div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="ticketImpact">Who is affected? <strong class="text-danger">*</strong></label>
+                        <select class="form-select" id="ticketImpact" name="impact" required>
+                            <?php foreach (ticketImpactDefinitions() as $value => $label) { ?>
+                                <option value="<?= escapeHtml($value) ?>" <?= $value === 'medium' ? 'selected' : '' ?>><?= escapeHtml(ucfirst($value) . ' — ' . $label) ?></option>
+                            <?php } ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="ticketUrgency">How soon is action needed? <strong class="text-danger">*</strong></label>
+                        <select class="form-select" id="ticketUrgency" name="urgency" required>
+                            <?php foreach (ticketUrgencyDefinitions() as $value => $label) { ?>
+                                <option value="<?= escapeHtml($value) ?>" <?= $value === 'medium' ? 'selected' : '' ?>><?= escapeHtml(ucfirst($value) . ' — ' . $label) ?></option>
+                            <?php } ?>
+                        </select>
+                    </div>
                 </div>
             </div>
 

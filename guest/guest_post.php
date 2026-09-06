@@ -172,7 +172,8 @@ if (isset($_GET['reopen_ticket'], $_GET['url_key'])) {
         }
         $locked_ticket = runbookLockTicketForReopen($ticket_id);
         $key_row = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_url_key FROM tickets
-            WHERE ticket_id = $ticket_id LIMIT 1", 'Could not verify the guest ticket link'));
+            WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL LIMIT 1",
+            'Could not verify the guest ticket link'));
         if (!$key_row || !hash_equals((string) $key_row['ticket_url_key'], (string) $_GET['url_key'])) {
             throw new RuntimeException('Invalid or expired ticket link');
         }
@@ -180,6 +181,7 @@ if (isset($_GET['reopen_ticket'], $_GET['url_key'])) {
             || empty($locked_ticket['ticket_resolved_at'])) {
             throw new RuntimeException('Only a resolved ticket can be reopened');
         }
+        ticketDisciplineClearResolutionForReopen($ticket_id, 'guest', 0);
         runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
             WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
             AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
@@ -221,7 +223,8 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
         documentationLockClientTicket($ticket_id);
         $locked_ticket = runbookLockTicketForTransition($ticket_id, true);
         $key_row = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_url_key FROM tickets
-            WHERE ticket_id = $ticket_id LIMIT 1", 'Could not verify the guest ticket link'));
+            WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL LIMIT 1",
+            'Could not verify the guest ticket link'));
         if (!$key_row || !hash_equals((string) $key_row['ticket_url_key'], (string) $_GET['url_key'])) {
             throw new RuntimeException('Invalid or expired ticket link');
         }
@@ -233,6 +236,7 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
         if (!$can_close) {
             throw new RuntimeException('This ticket cannot be closed yet: ' . $close_error);
         }
+        ticketDisciplineStoreClosure($ticket_id, 'client_confirmed');
         runbookDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW()
             WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
             AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
@@ -240,6 +244,7 @@ if (isset($_GET['close_ticket'], $_GET['url_key'])) {
         if (mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket is no longer resolved and awaiting close');
         }
+        ticketDisciplineRecordResolutionEvent($ticket_id, 'closed', 'guest', 0);
         documentationRecordChangePassport($ticket_id, 5, 0, true);
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket close');
@@ -271,7 +276,9 @@ if (isset($_GET['add_ticket_feedback'], $_GET['url_key'])) {
     $feedback = escapeSql($_GET['feedback']);
 
     // Select only the necessary fields
-    $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key' AND ticket_closed_at IS NOT NULL");
+    $sql = mysqli_query($mysqli, "SELECT ticket_id FROM tickets WHERE ticket_id = $ticket_id
+        AND ticket_url_key = '$url_key' AND ticket_closed_at IS NOT NULL
+        AND ticket_archived_at IS NULL");
 
     if (mysqli_num_rows($sql) == 1) {
         // Add feedback

@@ -151,33 +151,32 @@ $ticket_retention = $read('functions/ticket_retention.php');
 $single_ticket_delete = $section(
     $ticket_post,
     "if (isset(\$_POST['delete_ticket']))",
-    "if (isset(\$_POST['bulk_delete_tickets']))",
+    "if (isset(\$_POST['restore_ticket']))",
     'single ticket delete'
 );
 $assertOrdered($single_ticket_delete, [
     'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id, true)',
-    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
-    'ticketDeletionPolicyForClient($client_id)',
-    'ticketDeletionPurge($ticket_id)',
+    'ticketDeletionLockTicket($ticket_id, $client_id)',
+    'ticketDeletionSoftDelete(',
     'mysqli_commit($mysqli)',
-    'removeDirectory(',
-], 'Single ticket delete');
-$bulk_ticket_delete = $section(
+], 'Recoverable single ticket delete');
+$permanent_ticket_delete = $section(
     $ticket_post,
-    "if (isset(\$_POST['bulk_delete_tickets']))",
+    "if (isset(\$_POST['purge_ticket']))",
     "if (isset(\$_POST['bulk_assign_ticket']))",
-    'bulk ticket delete'
+    'permanent ticket delete'
 );
-$assertOrdered($bulk_ticket_delete, [
+$assertOrdered($permanent_ticket_delete, [
     'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id, true)',
-    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
+    'ticketDeletionLockTicket($ticket_id, $client_id)',
+    'ticketDeletionRequirePurgeEligible($locked_ticket)',
     'ticketDeletionPolicyForClient($client_id)',
+    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
+    'ticketDeletionRecordEvent(',
     'ticketDeletionPurge($ticket_id)',
     'mysqli_commit($mysqli)',
     'removeDirectory(',
-], 'Bulk ticket delete');
+], 'Post-window permanent ticket delete');
 $assertOrdered($ticket_retention, [
     'documentationTicketHasAuditRecords($ticket_id)',
     "documentationEvidenceReferenceInUse('ticket'",

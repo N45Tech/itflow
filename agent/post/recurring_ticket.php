@@ -158,7 +158,10 @@ if (isset($_POST['bulk_force_recurring_tickets'])) {
                         throw new RuntimeException('The bulk recurring ticket number allocation returned no number');
                     }
 
-                    ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id", 'Could not create the bulk recurring ticket');
+                    $assessment = ticketDisciplineLegacyAssessment($priority, 'request');
+                    $impact = escapeSql($assessment['impact']);
+                    $urgency = escapeSql($assessment['urgency']);
+                    ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_work_type = 'request', ticket_priority = '$priority', ticket_impact = '$impact', ticket_urgency = '$urgency', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id", 'Could not create the bulk recurring ticket');
                     $id = intval(mysqli_insert_id($mysqli));
                     if (!$id) {
                         throw new RuntimeException('The bulk recurring ticket did not receive an ID');
@@ -346,7 +349,10 @@ if (isset($_GET['force_recurring_ticket'])) {
                 throw new RuntimeException('The forced recurring ticket number allocation returned no number');
             }
 
-            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id", 'Could not create the forced recurring ticket');
+            $assessment = ticketDisciplineLegacyAssessment($priority, 'request');
+            $impact = escapeSql($assessment['impact']);
+            $urgency = escapeSql($assessment['urgency']);
+            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_work_type = 'request', ticket_priority = '$priority', ticket_impact = '$impact', ticket_urgency = '$urgency', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id", 'Could not create the forced recurring ticket');
             $id = intval(mysqli_insert_id($mysqli));
             if (!$id) {
                 throw new RuntimeException('The forced recurring ticket did not receive an ID');

@@ -43,6 +43,26 @@ if (isset($_POST['ticket_priority']) && in_array($_POST['ticket_priority'], $all
     $priority = 'Medium';
 }
 
+$work_type_input = strtolower(trim((string) ($_POST['ticket_work_type'] ?? 'incident')));
+$impact_input = strtolower(trim((string) ($_POST['ticket_impact'] ?? '')));
+$urgency_input = strtolower(trim((string) ($_POST['ticket_urgency'] ?? '')));
+if (isset(ticketWorkTypeDefinitions()[$work_type_input])
+    && isset(ticketImpactDefinitions()[$impact_input])
+    && isset(ticketUrgencyDefinitions()[$urgency_input])) {
+    $assessment = ticketDisciplineAssessmentInput([
+        'work_type' => $work_type_input,
+        'impact' => $impact_input,
+        'urgency' => $urgency_input,
+        'waiting_on' => 'none',
+    ]);
+} else {
+    $assessment = ticketDisciplineLegacyAssessment($priority, $work_type_input);
+}
+$work_type = escapeSql($assessment['work_type']);
+$impact = escapeSql($assessment['impact']);
+$urgency = escapeSql($assessment['urgency']);
+$priority = escapeSql($assessment['priority']);
+
 
 if (isset($_POST['ticket_details'])) {
     $details = mysqli_real_escape_string($mysqli, $_POST['ticket_details'] . "<br>");

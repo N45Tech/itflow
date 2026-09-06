@@ -52,7 +52,7 @@ $documentation_migration = is_file($documentation_migration_path) ? file_get_con
 $assertContains('function runbookOnlyTicketCanResolve(', $runbooks, 'The runbook-only gate was not preserved');
 $assertContains('function ticketLifecycleCanResolve(', $runbooks, 'The composite lifecycle gate is missing');
 $assertNotContains('documentationTicketCanResolve(', $runbooks, 'Ticket completion is still coupled to per-document audit obligations');
-$assertContains('return ticketLifecycleCanResolve($ticket_id, false);', $runbooks, 'Legacy gate callers do not reach the composite lifecycle gate');
+$assertContains('return ticketLifecycleCanResolve($ticket_id, (bool) $include_documentation_detail);', $runbooks, 'Legacy gate callers do not reach the composite lifecycle gate');
 $assertContains("require_once __DIR__ . '/documentation_lifecycle.php';", $runbooks, 'Documentation lifecycle helpers are not loaded');
 
 $assertContains('name="configuration_change"', $ticket_add, 'New agent tickets do not explicitly assess configuration change');

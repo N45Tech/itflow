@@ -66,6 +66,7 @@ if (!empty($ticket_id) && !empty($reply)) {
         $mysqli,
         "SELECT * FROM tickets
          WHERE ticket_id = $ticket_id
+           AND ticket_archived_at IS NULL
            AND 1=1 " . apiClientScopeSql('ticket_client_id') . "
          LIMIT 1"
     );
@@ -118,6 +119,12 @@ if (!empty($ticket_id) && !empty($reply)) {
             if (!$reply_ticket_status_input_valid) {
                 throw new RuntimeException('The requested ticket status is invalid');
             }
+            if ($reply_ticket_status_supplied && in_array($reply_ticket_status, [4, 5], true)
+                && $reply_ticket_status !== $original_ticket_status) {
+                throw new RuntimeException(
+                    'Use the ticket resolve or close endpoint so completion evidence is recorded'
+                );
+            }
             if ($reply_ticket_status_supplied && $reply_ticket_status !== 0) {
                 $active_status = mysqli_fetch_assoc(runbookDbQuery("SELECT ticket_status_id
                     FROM ticket_statuses WHERE ticket_status_id = $reply_ticket_status
@@ -169,6 +176,14 @@ if (!empty($ticket_id) && !empty($reply)) {
             $insert_id = mysqli_insert_id($mysqli);
 
             if (!empty($reply_ticket_status) && $reply_ticket_status !== $original_ticket_status) {
+                if ($original_ticket_status === 4
+                    && !in_array($reply_ticket_status, [4, 5], true)) {
+                    ticketDisciplineClearResolutionForReopen(
+                        $ticket_id,
+                        'api',
+                        intval($session_user_id ?? 0)
+                    );
+                }
                 $locked_status = intval($locked_ticket['ticket_status']);
                 $resolved_at_predicate = empty($locked_ticket['ticket_resolved_at'])
                     ? 'ticket_resolved_at IS NULL'

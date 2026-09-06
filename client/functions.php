@@ -15,14 +15,16 @@ function verifyContactTicketAccess($requested_ticket_id, $expected_ticket_state)
     // Setup
     if ($expected_ticket_state == "Closed") {
         // Closed tickets
-        $ticket_state_snippet = "ticket_status = 5";
+        $ticket_state_snippet = "(ticket_status = 5 OR ticket_closed_at IS NOT NULL)";
     } else {
         // Open (working/hold) tickets
-        $ticket_state_snippet = "ticket_status != 5";
+        $ticket_state_snippet = "ticket_status != 5 AND ticket_closed_at IS NULL";
     }
 
     // Verify the contact has access to the provided ticket ID
-    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT * FROM tickets WHERE ticket_id = $requested_ticket_id AND $ticket_state_snippet AND ticket_client_id = $session_client_id LIMIT 1"));
+    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT * FROM tickets
+        WHERE ticket_id = $requested_ticket_id AND $ticket_state_snippet
+        AND ticket_client_id = $session_client_id AND ticket_archived_at IS NULL LIMIT 1"));
     if ($row) {
         $ticket_id = $row['ticket_id'];
 

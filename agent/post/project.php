@@ -168,7 +168,7 @@ if (isset($_POST['add_project'])) {
                 throw new RuntimeException('A project ticket number allocation returned no number');
             }
 
-            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Project Template', ticket_subject = '$ticket_template_subject', ticket_details = '$ticket_template_details', ticket_priority = 'Low', ticket_status = 1, ticket_created_by = $session_user_id, ticket_client_id = $client_id, ticket_project_id = $project_id, ticket_order = $ticket_template_order", 'Could not create a project ticket');
+            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Project Template', ticket_subject = '$ticket_template_subject', ticket_details = '$ticket_template_details', ticket_work_type = 'project_task', ticket_priority = 'Low', ticket_impact = 'low', ticket_urgency = 'low', ticket_status = 1, ticket_created_by = $session_user_id, ticket_client_id = $client_id, ticket_project_id = $project_id, ticket_order = $ticket_template_order", 'Could not create a project ticket');
             $ticket_id = intval(mysqli_insert_id($mysqli));
             if (!$ticket_id) {
                 throw new RuntimeException('A project ticket did not receive an ID');

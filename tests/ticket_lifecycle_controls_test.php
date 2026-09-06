@@ -31,7 +31,7 @@ $assertContains('syncDisclosure(toggle)', $ticketJs, 'Disclosure state is not sy
 $assertContains('ticket_terminal.php?ticket_id=<?= $ticket_id ?>&action=close', $ticket, 'Technicians have no direct close action');
 $assertContains('ticket_terminal.php?ticket_id=<?= $ticket_id ?>&action=cancel', $ticket, 'Technicians have no cancel action');
 $assertContains("in_array(\$terminal_action, ['close', 'cancel'], true)", $ticketPost, 'Terminal actions are not allowlisted server-side');
-$assertContains('runbookTicketCanResolve($ticket_id)', $ticketPost, 'Direct close does not enforce task and approval gates');
+$assertContains('runbookTicketCanResolve($ticket_id', $ticketPost, 'Direct close does not enforce task, approval, promise, and resolution gates');
 $assertContains("\$terminal_reason === ''", $ticketPost, 'Terminal actions do not require an audit reason');
 $assertContains('name="terminal_reason"', $terminalModal, 'Close and cancel modal does not collect an audit reason');
 

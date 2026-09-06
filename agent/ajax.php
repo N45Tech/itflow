@@ -678,9 +678,17 @@ if (isset($_POST['update_kanban_ticket'])) {
         $ticket_id = intval($position['ticket_id']);
 
         // Client perms check
-        $client_query = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id FROM tickets WHERE ticket_id = $ticket_id"));
+        $client_query = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_client_id
+            FROM tickets WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL"));
+        if (!$client_query) {
+            http_response_code(409);
+            echo 'The ticket is unavailable.';
+            exit;
+        }
         $client_id = intval($client_query['ticket_client_id']);
-        enforceClientAccess();
+        if ($client_id) {
+            enforceClientAccess($client_id);
+        }
 
         $kanban = intval($position['ticket_order']); // ticket kanban position
         $status = intval($position['ticket_status']); // ticket statuses
@@ -695,6 +703,12 @@ if (isset($_POST['update_kanban_ticket'])) {
         // Continue if status is null / Closed
         if ($status < 1 || $status === $statuses['Closed']) {
             continue;
+        }
+        if ($oldStatus !== false && $status === $statuses['Resolved']
+            && $oldStatus !== $statuses['Resolved']) {
+            http_response_code(409);
+            echo 'Use the Resolve action to record the resolution before completing this ticket.';
+            exit;
         }
 
 
@@ -733,6 +747,9 @@ if (isset($_POST['update_kanban_ticket'])) {
                     if (!$can_resolve) {
                         throw new RuntimeException($resolve_error);
                     }
+                }
+                if ($was_resolved && $status !== $statuses['Resolved']) {
+                    ticketDisciplineClearResolutionForReopen($ticket_id, 'agent', $session_user_id);
                 }
 
                 $resolved_at_predicate = empty($locked_ticket['ticket_resolved_at'])

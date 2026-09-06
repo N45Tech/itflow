@@ -45,7 +45,7 @@ ob_start();
 
 ?>
 
-<div class="modal-header bg-dark">
+<div class="modal-header bg-dark text-light">
     <h5 class="modal-title"><i class="fas fa-fw fa-download me-2"></i>Export Tickets</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>

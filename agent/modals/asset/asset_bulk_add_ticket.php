@@ -29,7 +29,7 @@ ob_start();
 
 ?>
 
-<div class="modal-header bg-dark">
+<div class="modal-header bg-dark text-light">
     <h5 class="modal-title"><i class="fas fa-fw fa-life-ring me-2"></i>Create Tickets for <strong><?= $count ?></strong> Assets</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
@@ -81,21 +81,28 @@ ob_start();
 
         <div class="row">
 
-            <div class="col">
+            <div class="col-md-4">
                 <div class="mb-3">
-                    <label>Priority <strong class="text-danger">*</strong></label>
-                    <div class="input-group">
-                            <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
-                        <select class="form-select select2" name="bulk_priority" required>
-                            <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
-                                <option value="<?= escapeHtml($priority) ?>" <?= $priority === 'Medium' ? 'selected' : '' ?>><?= escapeHtml("$priority — " . $definition['short']) ?></option>
-                            <?php } ?>
-                        </select>
-                    </div>
+                    <label for="bulk-asset-impact">Impact</label>
+                    <select class="form-select bulk-asset-assessment" id="bulk-asset-impact" name="bulk_impact" required>
+                        <?php foreach (ticketImpactDefinitions() as $key => $label) { ?>
+                            <option value="<?= escapeHtml($key) ?>" <?= $key === 'medium' ? 'selected' : '' ?>><?= escapeHtml(ucfirst($key)) ?></option>
+                        <?php } ?>
+                    </select>
                 </div>
             </div>
-
-            <div class="col">
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <label for="bulk-asset-urgency">Urgency</label>
+                    <select class="form-select bulk-asset-assessment" id="bulk-asset-urgency" name="bulk_urgency" required>
+                        <?php foreach (ticketUrgencyDefinitions() as $key => $label) { ?>
+                            <option value="<?= escapeHtml($key) ?>" <?= $key === 'medium' ? 'selected' : '' ?>><?= escapeHtml(ucfirst($key)) ?></option>
+                        <?php } ?>
+                    </select>
+                    <small class="form-text text-muted">Priority: <strong id="bulk-asset-priority">Medium</strong></small>
+                </div>
+            </div>
+            <div class="col-md-4">
                 <div class="mb-3">
                     <label>Category</label>
                     <div class="input-group">
@@ -118,6 +125,21 @@ ob_start();
             </div>
 
         </div>
+
+        <script>
+        (() => {
+            const impact = document.getElementById('bulk-asset-impact');
+            const urgency = document.getElementById('bulk-asset-urgency');
+            const output = document.getElementById('bulk-asset-priority');
+            const score = {low: 1, medium: 2, high: 3};
+            const refresh = () => {
+                const total = score[impact.value] + score[urgency.value];
+                output.textContent = total === 6 ? 'Urgent' : total === 5 ? 'High' : total >= 3 ? 'Medium' : 'Low';
+            };
+            impact.addEventListener('change', refresh);
+            urgency.addEventListener('change', refresh);
+        })();
+        </script>
 
         <div class="mb-3">
             <label>Assign to</label>

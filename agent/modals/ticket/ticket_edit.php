@@ -12,7 +12,9 @@ $ticket_id = intval($_GET['id']);
 $sql = mysqli_query($mysqli, "SELECT client_id, client_name, ticket_asset_id, ticket_assigned_to, ticket_billable,
     ticket_category, ticket_contact_id, ticket_created_at, ticket_details, ticket_due_at,
     ticket_location_id, ticket_number, ticket_prefix, ticket_priority, ticket_project_id,
-    ticket_subject, ticket_vendor_id, ticket_vendor_ticket_number FROM tickets LEFT JOIN clients ON client_id = ticket_client_id WHERE ticket_id = $ticket_id $access_permission_query_overide LIMIT 1");
+    ticket_work_type, ticket_impact, ticket_urgency, ticket_subject, ticket_vendor_id,
+    ticket_vendor_ticket_number FROM tickets LEFT JOIN clients ON client_id = ticket_client_id
+    WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL $access_permission_query_overide LIMIT 1");
 
 $row = mysqli_fetch_assoc($sql);
 $client_id = intval($row['client_id']);
@@ -23,6 +25,9 @@ $ticket_category = intval($row['ticket_category']);
 $ticket_subject = escapeHtml($row['ticket_subject']);
 $ticket_details = escapeHtml($row['ticket_details']);
 $ticket_priority = escapeHtml($row['ticket_priority']);
+$ticket_work_type = (string) $row['ticket_work_type'];
+$ticket_impact = (string) $row['ticket_impact'];
+$ticket_urgency = (string) $row['ticket_urgency'];
 $ticket_billable = intval($row['ticket_billable']);
 $ticket_vendor_ticket_number = escapeHtml($row['ticket_vendor_ticket_number']);
 $ticket_created_at = escapeHtml($row['ticket_created_at']);
@@ -50,7 +55,7 @@ ob_start();
 
 ?>
 
-<div class="modal-header bg-dark">
+<div class="modal-header bg-dark text-light">
     <h5 class="modal-title"><i class="fa fa-fw fa-life-ring me-2"></i>Ticket: <strong><?= "$ticket_prefix$ticket_number" ?></strong> - <?= $client_name ?></h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
@@ -93,20 +98,39 @@ ob_start();
                 </div>
 
                 <div class="row">
-                    <div class="col">
+                    <div class="col-md-4">
                         <div class="mb-3">
-                            <label>Priority <strong class="text-danger">*</strong></label>
-                            <div class="input-group">
-                                    <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
-                                <select class="form-select select2" name="priority" required>
-                                    <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
-                                        <option value="<?= escapeHtml($priority) ?>" <?php if ($ticket_priority == $priority) { echo "selected"; } ?>><?= escapeHtml("$priority — " . $definition['short']) ?></option>
-                                    <?php } ?>
-                                </select>
-                            </div>
+                            <label for="ticket-edit-work-type">Work type</label>
+                            <select class="form-select" id="ticket-edit-work-type" name="work_type" required>
+                                <?php foreach (ticketWorkTypeDefinitions() as $key => $label) { ?>
+                                    <option value="<?= escapeHtml($key) ?>" <?= $ticket_work_type === $key ? 'selected' : '' ?>><?= escapeHtml($label) ?></option>
+                                <?php } ?>
+                            </select>
                         </div>
                     </div>
-
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label for="ticket-edit-impact">Impact</label>
+                            <select class="form-select ticket-assessment-input" id="ticket-edit-impact" name="impact" required>
+                                <?php foreach (ticketImpactDefinitions() as $key => $label) { ?>
+                                    <option value="<?= escapeHtml($key) ?>" <?= $ticket_impact === $key ? 'selected' : '' ?>><?= escapeHtml(ucfirst($key)) ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label for="ticket-edit-urgency">Urgency</label>
+                            <select class="form-select ticket-assessment-input" id="ticket-edit-urgency" name="urgency" required>
+                                <?php foreach (ticketUrgencyDefinitions() as $key => $label) { ?>
+                                    <option value="<?= escapeHtml($key) ?>" <?= $ticket_urgency === $key ? 'selected' : '' ?>><?= escapeHtml(ucfirst($key)) ?></option>
+                                    <?php } ?>
+                                </select>
+                            <small class="form-text text-muted">Priority: <strong id="ticket-edit-derived-priority"><?= $ticket_priority ?></strong></small>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
                     <div class="col">
                         <div class="mb-3">
                             <label>Category</label>
@@ -140,7 +164,7 @@ ob_start();
                             <label>Assign to</label>
                             <div class="input-group">
                                     <span class="input-group-text"><i class="fa fa-fw fa-user-check"></i></span>
-                                <select class="form-select select2" name="assigned_to">
+                                <select class="form-select select2" name="assigned_to" id="ticket-edit-assigned-to" data-current-assignee="<?= $ticket_assigned_to ?>">
                                     <option value="0">Not Assigned</option>
                                     <?php
 
@@ -170,6 +194,22 @@ ob_start();
                                 <input type="datetime-local" class="form-control" name="due" value="<?= $ticket_due_at ?>">
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="border rounded p-3 mb-3 d-none" id="ticket-edit-handoff">
+                    <p class="mb-3"><strong>Ownership handoff</strong><br><span class="text-muted">Required when the assignee changes so the next technician receives usable context.</span></p>
+                    <div class="mb-3">
+                        <label for="ticket-edit-handoff-reason">Why is ownership changing?</label>
+                        <input class="form-control" id="ticket-edit-handoff-reason" name="handoff_reason" maxlength="500">
+                    </div>
+                    <div class="mb-3">
+                        <label for="ticket-edit-handoff-state">Current state</label>
+                        <textarea class="form-control" id="ticket-edit-handoff-state" name="handoff_current_state" rows="2" maxlength="500"></textarea>
+                    </div>
+                    <div>
+                        <label for="ticket-edit-handoff-next">Next action</label>
+                        <textarea class="form-control" id="ticket-edit-handoff-next" name="handoff_next_action" rows="2" maxlength="500"></textarea>
                     </div>
                 </div>
 
@@ -382,6 +422,32 @@ ob_start();
     </div>
 
 </form>
+
+<script>
+(() => {
+    const impact = document.getElementById('ticket-edit-impact');
+    const urgency = document.getElementById('ticket-edit-urgency');
+    const priority = document.getElementById('ticket-edit-derived-priority');
+    const assignee = document.getElementById('ticket-edit-assigned-to');
+    const handoff = document.getElementById('ticket-edit-handoff');
+    const handoffFields = handoff ? handoff.querySelectorAll('input, textarea') : [];
+    const score = {low: 1, medium: 2, high: 3};
+    const refreshPriority = () => {
+        const total = score[impact.value] + score[urgency.value];
+        priority.textContent = total === 6 ? 'Urgent' : total === 5 ? 'High' : total >= 3 ? 'Medium' : 'Low';
+    };
+    const refreshHandoff = () => {
+        const changed = assignee.value !== assignee.dataset.currentAssignee;
+        handoff.classList.toggle('d-none', !changed);
+        handoffFields.forEach((field) => field.required = changed);
+    };
+    impact.addEventListener('change', refreshPriority);
+    urgency.addEventListener('change', refreshPriority);
+    assignee.addEventListener('change', refreshHandoff);
+    refreshPriority();
+    refreshHandoff();
+})();
+</script>
 
 <?php
 require_once '../../../includes/modal_footer.php';

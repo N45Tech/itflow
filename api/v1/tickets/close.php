@@ -28,6 +28,17 @@ if (!empty($ticket_id)) {
         if (intval($locked_ticket['ticket_client_id']) !== $client_id) {
             throw new RuntimeException('The ticket is outside this API key client scope');
         }
+        $was_resolved = intval($locked_ticket['ticket_status']) === 4
+            && !empty($locked_ticket['ticket_resolved_at']);
+        if (!$was_resolved) {
+            ticketDisciplineStoreResolution(
+                $ticket_id,
+                $_POST['resolution_code'] ?? '',
+                $_POST['resolution_summary'] ?? '',
+                $_POST['root_cause'] ?? ''
+            );
+        }
+        ticketDisciplineStoreClosure($ticket_id, 'api_closed', true);
         [$can_close] = runbookTicketCanResolve($ticket_id);
         if (!$can_close) {
             throw new RuntimeException('The ticket close gate is not satisfied');
@@ -45,6 +56,20 @@ if (!empty($ticket_id)) {
         if (!$update_sql || mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket changed before it could be closed');
         }
+        if (!$was_resolved) {
+            ticketDisciplineRecordResolutionEvent(
+                $ticket_id,
+                'resolved',
+                'api',
+                intval($session_user_id ?? 0)
+            );
+        }
+        ticketDisciplineRecordResolutionEvent(
+            $ticket_id,
+            'closed',
+            'api',
+            intval($session_user_id ?? 0)
+        );
         documentationRecordChangePassport($ticket_id, 5, $session_user_id, true);
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the ticket closure');

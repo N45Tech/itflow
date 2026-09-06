@@ -67,7 +67,12 @@ $status_handler = $section($ticket_post, "if (isset(\$_POST['edit_ticket_status'
 $assertContains('validateCSRFToken();', $status_handler, 'Status edits lack CSRF protection');
 $assertContains('mysqli_begin_transaction($mysqli)', $status_handler, 'Status edits are not transactional');
 $assertContains('runbookLockTicketForReopen($ticket_id)', $status_handler, 'Resolved tickets are not safely reopened by the status editor');
-$assertContains('redirect("post.php?resolve_ticket=$ticket_id&csrf_token="', $status_handler,
+$resolve_status = $section($status_handler, 'if ($requested_status === 4)', '$transaction_started = false;');
+$assertContains('Use the Resolve action to record the resolution before completing this ticket.', $resolve_status,
+    'The status editor does not explain the structured resolution workflow');
+$assertContains('redirect();', $resolve_status,
+    'The status editor continues into a direct terminal status update');
+$assertNotContains('UPDATE tickets', $resolve_status,
     'The status editor bypasses the canonical resolution workflow');
 
 // Ticket and task requests share one plain-language modal.

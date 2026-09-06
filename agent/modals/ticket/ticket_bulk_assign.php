@@ -10,7 +10,7 @@ ob_start();
 
 ?>
 
-<div class="modal-header bg-dark">
+<div class="modal-header bg-dark text-light">
     <h5 class="modal-title"><i class="fa fa-fw fa-user-check me-2"></i>Assign Agent to <strong><?= $count ?></strong> Tickets</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
@@ -42,6 +42,24 @@ ob_start();
                         <option value="<?= $user_id_select ?>"><?= $user_name_select ?></option>
                     <?php } ?>
                 </select>
+            </div>
+        </div>
+        <div class="border-top pt-3">
+            <p class="small text-secondary">These handoff details are applied to any selected ticket that already has a different owner.</p>
+            <div class="mb-3">
+                <label class="form-label" for="bulk_handoff_reason">Reason for reassignment</label>
+                <textarea class="form-control" id="bulk_handoff_reason" name="handoff_reason"
+                          rows="2" minlength="3" maxlength="500" required></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="bulk_handoff_current_state">Current state</label>
+                <textarea class="form-control" id="bulk_handoff_current_state" name="handoff_current_state"
+                          rows="2" minlength="3" maxlength="500" required></textarea>
+            </div>
+            <div class="mb-0">
+                <label class="form-label" for="bulk_handoff_next_action">Next action</label>
+                <textarea class="form-control" id="bulk_handoff_next_action" name="handoff_next_action"
+                          rows="2" minlength="3" maxlength="500" required></textarea>
             </div>
         </div>
     </div>

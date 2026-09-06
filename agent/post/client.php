@@ -150,9 +150,18 @@ if (isset($_POST['edit_client'])) {
             flashAlert('Choose an available ticket audit-retention policy.', 'error');
             redirect();
         }
+        try {
+            $ticket_retention_days = ticketDeletionRetentionDays(
+                $_POST['client_ticket_retention_days'] ?? ticketDeletionRestoreWindowDays($client_id)
+            );
+        } catch (DomainException $exception) {
+            flashAlert(escapeHtml($exception->getMessage()), 'error');
+            redirect();
+        }
         $current_ticket_retention_policy = ticketDeletionPolicyForClient($client_id);
-        $ticket_retention_changed = $current_ticket_retention_policy !== $ticket_retention_policy;
-        $ticket_retention_update = ", client_ticket_retention_policy = '$ticket_retention_policy'";
+        $ticket_retention_changed = $current_ticket_retention_policy !== $ticket_retention_policy
+            || ticketDeletionRestoreWindowDays($client_id) !== $ticket_retention_days;
+        $ticket_retention_update = ", client_ticket_retention_policy = '$ticket_retention_policy', client_ticket_retention_days = $ticket_retention_days";
     }
 
     // Update client
@@ -214,7 +223,7 @@ if (isset($_POST['edit_client'])) {
     logAudit("Client", "Edit", "$session_name edited client $name", $client_id, $client_id);
     if ($ticket_retention_changed) {
         $ticket_retention_label = escapeSql(ticketDeletionPolicyLabel($ticket_retention_policy));
-        logAudit('Client', 'Ticket Retention Policy', "$session_name set ticket audit retention to $ticket_retention_label for $name", $client_id, $client_id);
+        logAudit('Client', 'Ticket Retention Policy', "$session_name set ticket audit retention to $ticket_retention_label with a $ticket_retention_days-day minimum for future deletions for $name", $client_id, $client_id);
     }
 
     flashAlert("Client <strong>$name</strong> updated");
@@ -803,7 +812,18 @@ if (isset($_POST['bulk_add_client_ticket'])) {
         $ticket_status = 2;
     }
     $subject_raw = trim((string) ($_POST['bulk_subject'] ?? ''));
-    $priority = escapeSql($_POST['bulk_priority'] ?? 'Low');
+    try {
+        $priority = ticketPriorityFromImpactUrgency(
+            strtolower(trim((string) ($_POST['bulk_impact'] ?? 'medium'))),
+            strtolower(trim((string) ($_POST['bulk_urgency'] ?? 'medium')))
+        );
+    } catch (DomainException $exception) {
+        flashAlert(escapeHtml($exception->getMessage()), 'error');
+        redirect();
+    }
+    $impact = escapeSql(strtolower(trim((string) ($_POST['bulk_impact'] ?? 'medium'))));
+    $urgency = escapeSql(strtolower(trim((string) ($_POST['bulk_urgency'] ?? 'medium'))));
+    $priority = escapeSql($priority);
     $category_id = intval($_POST['bulk_category'] ?? 0);
     $details = mysqli_real_escape_string($mysqli, $_POST['bulk_details'] ?? '');
     $project_id = intval($_POST['bulk_project'] ?? 0);
@@ -983,7 +1003,7 @@ if (isset($_POST['bulk_add_client_ticket'])) {
                 throw new RuntimeException('The bulk ticket number allocation returned no number');
             }
 
-            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Agent Bulk', ticket_category = $category_id, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_billable = $billable, ticket_status = $ticket_status, ticket_created_by = $session_user_id, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id, ticket_project_id = $project_id", 'Could not create a bulk client ticket');
+            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Agent Bulk', ticket_category = $category_id, ticket_subject = '$subject', ticket_details = '$details', ticket_work_type = 'incident', ticket_priority = '$priority', ticket_impact = '$impact', ticket_urgency = '$urgency', ticket_billable = $billable, ticket_status = $ticket_status, ticket_created_by = $session_user_id, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id, ticket_project_id = $project_id", 'Could not create a bulk client ticket');
             $ticket_id = intval(mysqli_insert_id($mysqli));
             if (!$ticket_id) {
                 throw new RuntimeException('The bulk client ticket did not receive an ID');

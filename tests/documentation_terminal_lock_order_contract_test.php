@@ -43,8 +43,8 @@ foreach ([
     ["if (isset(\$_POST['bulk_ticket_reply']))", "if (isset(\$_POST['bulk_add_ticket_project']))", 'Bulk reply'],
     ["if (isset(\$_POST['add_ticket_reply']))", "if (isset(\$_GET['delete_ticket_attachment']))", 'Agent reply'],
     ["if (isset(\$_POST['merge_ticket']))", "if (isset(\$_POST['change_client_ticket']))", 'Agent merge'],
-    ["if (isset(\$_GET['resolve_ticket']))", "if (isset(\$_GET['close_ticket']))", 'Agent resolve'],
-    ["if (isset(\$_GET['close_ticket']))", "if (isset(\$_GET['reopen_ticket']))", 'Agent close'],
+    ["if (isset(\$_POST['resolve_ticket']))", "if (isset(\$_POST['terminal_ticket']))", 'Agent resolve'],
+    ["if (isset(\$_POST['terminal_ticket']))", "if (isset(\$_GET['reopen_ticket']))", 'Agent close'],
 ] as [$start, $end, $label]) {
     $assertTerminalOrder($section($ticket_post, $start, $end, $label), $label);
 }

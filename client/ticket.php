@@ -31,6 +31,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
             LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
             LEFT JOIN categories ON ticket_category = category_id
             WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
+            AND ticket_archived_at IS NULL
              $ticket_contact_snippet"
     );
 
@@ -58,6 +59,10 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
         $ticket_assigned_to = escapeHtml($ticket_row['user_name']);
         $ticket_resolved_at = escapeHtml($ticket_row['ticket_resolved_at']);
         $ticket_closed_at = escapeHtml($ticket_row['ticket_closed_at']);
+        $ticket_status_id = intval($ticket_row['ticket_status']);
+        $ticket_is_closed = $ticket_status_id === 5 || !empty($ticket_closed_at);
+        $ticket_is_resolved = $ticket_is_closed || $ticket_status_id === 4
+            || !empty($ticket_resolved_at);
         $ticket_feedback = escapeHtml($ticket_row['ticket_feedback']);
         $ticket_category = escapeHtml($ticket_row['category_name']);
         $ticket_contact_id = intval($ticket_row['ticket_contact_id']);
@@ -105,7 +110,11 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                 AND required_contact.contact_client_id = $session_client_id
             WHERE ticket_approval_ticket_id = $ticket_id
             AND ticket_approval_scope = 'client' AND ticket_approval_status = 'pending'");
-        [$ticket_can_resolve] = ticketLifecycleCanResolve($ticket_id, false);
+        [$ticket_can_resolve] = ticketLifecyclePrerequisitesCanResolve($ticket_id);
+        $ticket_open_promises = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*)
+            FROM ticket_customer_promises WHERE ticket_customer_promise_ticket_id = $ticket_id
+            AND ticket_customer_promise_status = 'open'"))[0] ?? 0);
+        $ticket_can_resolve = $ticket_can_resolve && $ticket_open_promises === 0;
         $session_contact_is_portal_manager = contactCan('tickets_all') && contactCan('assets_all');
         ?>
 
@@ -126,7 +135,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                 </h4>
                 <div class="card-tools">
                     <?php
-                    if (empty($ticket_resolved_at) && $task_count == $completed_task_count && $ticket_can_resolve) { ?>
+                    if (!$ticket_is_resolved && $task_count == $completed_task_count && $ticket_can_resolve) { ?>
                         <a href="post.php?resolve_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-sm btn-outline-success float-end text-white confirm-link"><i class="fas fa-fw fa-check text-success"></i> Resolve ticket</a>
                     <?php } ?>
                 </div>
@@ -140,7 +149,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                     <?php if (!empty($ticket_category)) { ?>
                         <div><dt>Category</dt><dd><?= $ticket_category ?></dd></div>
                     <?php } ?>
-                    <?php if (empty($ticket_closed_at)) { ?>
+                    <?php if (!$ticket_is_closed) { ?>
                         <?php if ($task_count) { ?>
                             <div><dt>Tasks</dt><dd><?= $completed_task_count . " / " .$task_count ?> complete</dd></div>
                         <?php } ?>
@@ -265,7 +274,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
 
         <!-- Either show the reply comments box, option to re-open ticket, show ticket smiley feedback or thanks for feedback -->
 
-        <?php if (empty($ticket_resolved_at)) { ?>
+        <?php if (!$ticket_is_resolved) { ?>
             <!-- Reply -->
             <section class="n45-ticket-reply-composer" aria-labelledby="ticketReplyHeading">
                 <div class="n45-form-intro">
@@ -289,7 +298,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                 </form>
             </section>
 
-        <?php } elseif (empty($ticket_closed_at)) { ?>
+        <?php } elseif (!$ticket_is_closed) { ?>
             <!-- Re-open -->
 
             <h4>Your ticket has been resolved</h4>

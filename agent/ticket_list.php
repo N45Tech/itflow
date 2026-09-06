@@ -105,7 +105,7 @@ if ($tickets) {
         <form id="bulkActions" action="post.php" method="post">
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-            <?php if (lookupUserPermission("module_support") >= 2) { ?>
+            <?php if (lookupUserPermission("module_support") >= 2 && $state !== 'deleted') { ?>
                 <!-- Bulk actions - sits with the rows it acts on, and only appears once something is ticked -->
                 <div class="mb-2" id="bulkActionButton" hidden>
                     <div class="dropdown d-inline-block">
@@ -152,9 +152,11 @@ if ($tickets) {
                     <thead class="text-dark text-nowrap <?php if (!$num_rows[0]) { echo "d-none"; } ?>">
                     <tr>
                         <td class="checkbox-column border-end">
-                            <div class="form-check">
-                                <input class="form-check-input" id="selectAllCheckbox" type="checkbox" title="Select all on this page">
-                            </div>
+                            <?php if ($state !== 'deleted') { ?>
+                                <div class="form-check">
+                                    <input class="form-check-input" id="selectAllCheckbox" type="checkbox" title="Select all on this page">
+                                </div>
+                            <?php } ?>
                         </td>
 
                         <th>
@@ -233,7 +235,13 @@ if ($tickets) {
                         $ticket_created_at_time_ago = timeAgo($row['ticket_created_at']);
                         $ticket_closed_at = escapeHtml($row['ticket_closed_at']);
                         $ticket_resolved_at = escapeHtml($row['ticket_resolved_at']);
-                        $ticket_is_open = empty($ticket_resolved_at) && empty($ticket_closed_at);
+                        $ticket_archived_at = escapeHtml($row['ticket_archived_at']);
+                        $ticket_restore_until = escapeHtml($row['ticket_restore_until']);
+                        $ticket_is_deleted = !empty($ticket_archived_at);
+                        $ticket_is_closed = intval($row['ticket_status']) === 5 || !empty($ticket_closed_at);
+                        $ticket_is_resolved = !$ticket_is_closed
+                            && (intval($row['ticket_status']) === 4 || !empty($ticket_resolved_at));
+                        $ticket_is_open = !$ticket_is_deleted && !$ticket_is_closed && !$ticket_is_resolved;
 
                         // SLA alert stages are maintained by cron/ticket_sla.php (1 = warned, 2 = breached)
                         $ticket_sla_alert_stage = max(intval($row['ticket_response_sla_alert_stage']), intval($row['ticket_resolution_sla_alert_stage']));
@@ -330,7 +338,7 @@ if ($tickets) {
 
                             <td class="checkbox-column bg-light border-end">
                                 <!-- Ticket Bulk Select (for open tickets) -->
-                                <?php if (empty($ticket_closed_at)) { ?>
+                                <?php if (!$ticket_is_deleted && !$ticket_is_closed) { ?>
                                 <div class="form-check">
                                     <input class="form-check-input bulk-select" type="checkbox" name="ticket_ids[]" value="<?= $ticket_id ?>">
                                 </div>
@@ -356,6 +364,17 @@ if ($tickets) {
                                         <small class="text-muted"><?= "$completed_task_count / $task_count tasks" ?></small>
                                     </div>
                                 <?php } ?>
+                                <div class="small text-secondary mt-1">
+                                    <?= escapeHtml(ticketWorkTypeDefinitions()[$row['ticket_work_type']] ?? ucfirst((string) $row['ticket_work_type'])) ?>
+                                    <?php if (!empty($row['ticket_next_action'])) { ?>
+                                        · Next: <?= escapeHtml($row['ticket_next_action']) ?>
+                                    <?php } ?>
+                                    <?php if (!empty($row['ticket_next_action_due_at'])) { ?>
+                                        <span class="<?= strtotime($row['ticket_next_action_due_at']) < time() && $ticket_is_open ? 'text-danger' : '' ?>">
+                                            by <?= date('M j, g:i A', strtotime($row['ticket_next_action_due_at'])) ?>
+                                        </span>
+                                    <?php } ?>
+                                </div>
                             </td>
 
                             <!-- Ticket Client / Contact -->
@@ -394,7 +413,7 @@ if ($tickets) {
                             <!-- Ticket Priority -->
                             <td>
                                 <a href="#"
-                                    <?php if (lookupUserPermission("module_support") >= 2 && empty($ticket_closed_at)) { ?>
+                                    <?php if (lookupUserPermission("module_support") >= 2 && $ticket_is_open) { ?>
                                     class="ajax-modal"
                                     data-modal-url="modals/ticket/ticket_priority.php?id=<?= $ticket_id ?>"
                                     <?php } ?>
@@ -405,7 +424,24 @@ if ($tickets) {
 
                             <!-- Ticket Status -->
                             <td>
-                                <span class="badge rounded-pill text-light p-2" style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                                <?php if ($ticket_is_deleted) { ?>
+                                    <span class="badge rounded-pill bg-secondary text-light p-2">Deleted</span>
+                                    <div class="small text-secondary mt-1" title="<?= $ticket_archived_at ?>">
+                                        <?= timeAgo($ticket_archived_at) ?>
+                                    </div>
+                                    <?php if (lookupUserPermission('module_support') >= 3) { ?>
+                                        <a href="#" class="small ajax-modal"
+                                           data-modal-url="modals/ticket/ticket_restore.php?ticket_id=<?= $ticket_id ?>">Restore</a>
+                                    <?php } ?>
+                                    <?php if (lookupUserPermission('module_support') >= 3
+                                        && !empty($ticket_restore_until)
+                                        && strtotime($ticket_restore_until) < time()) { ?>
+                                        <a href="#" class="small text-danger ajax-modal"
+                                           data-modal-url="modals/ticket/ticket_purge.php?ticket_id=<?= $ticket_id ?>">Review retention</a>
+                                    <?php } ?>
+                                <?php } else { ?>
+                                    <span class="badge rounded-pill text-light p-2" style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                                <?php } ?>
                                 <?php if (!empty($ticket_scheduled_for)) { ?>
                                     <div class="mt-1"><small class="text-secondary"><i class="fas fa-fw fa-calendar-check me-1"></i><?= $ticket_scheduled_for ?></small></div>
                                 <?php } ?>
@@ -443,7 +479,7 @@ if ($tickets) {
                             <!-- Ticket Assigned agent -->
                             <td>
                                 <a href="#"
-                                    <?php if (lookupUserPermission("module_support") >= 2 && empty($ticket_closed_at)) { ?>
+                                    <?php if (lookupUserPermission("module_support") >= 2 && $ticket_is_open) { ?>
                                     class="ajax-modal"
                                     data-modal-url="modals/ticket/ticket_assign.php?id=<?= $ticket_id ?>"
                                     <?php } ?>
@@ -462,7 +498,7 @@ if ($tickets) {
 
                             <!-- Ticket Created At -->
                             <td>
-                                <?= $ticket_created_at_time_ago ?>
+                                <?= $ticket_is_deleted ? 'Created ' : '' ?><?= $ticket_created_at_time_ago ?>
                                 <br>
                                 <small class="text-secondary"><?= date("$config_date_format $config_time_format", strtotime($ticket_created_at)) ?></small>
                             </td>

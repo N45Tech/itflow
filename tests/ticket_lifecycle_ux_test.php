@@ -31,8 +31,8 @@ $assertContains('Next action', $ticket, 'Ticket detail does not identify the nex
 $assertOrder('id="ticket-update"', 'id="ticket-request"', $ticket, 'The update action is not ahead of the original request');
 $assertContains('$ticket_reply_render_index >= 4', $ticket, 'Long ticket conversations are not bounded');
 $assertContains('id="ticketActivityToggle"', $ticket, 'Earlier ticket activity cannot be expanded');
-$assertContains('class="btn btn-primary ticket-lifecycle-action confirm-link', $ticket, 'Resolve does not use the themed primary action treatment');
-$assertOrder('aria-label="More ticket actions"', 'class="btn btn-primary ticket-lifecycle-action confirm-link', $ticket, 'Resolve is not the rightmost ticket-header action');
+$assertContains('class="btn btn-primary ticket-lifecycle-action ajax-modal', $ticket, 'Resolve does not use the themed primary action treatment');
+$assertOrder('aria-label="More ticket actions"', 'class="btn btn-primary ticket-lifecycle-action ajax-modal', $ticket, 'Resolve is not the rightmost ticket-header action');
 $assertNotContains('class="btn btn-dark confirm-link', $ticket, 'Resolve still uses the low-contrast neutral button treatment');
 $assertContains('.ticket-header-actions {', $ticket_css, 'Ticket header actions have no stable top-right layout');
 $assertContains('.ticket-header-actions .ticket-lifecycle-action.disabled {', $ticket_css, 'Blocked resolution has no legible themed state');
