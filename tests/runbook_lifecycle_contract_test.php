@@ -80,6 +80,7 @@ $assertTransactionEnvelope = function (string $contents, string $label) use (&$f
 $starter = $read('admin/post/starter_content_model.php');
 $reconcile = $read('deploy/psa/reconcile_templates.php');
 $runbooks = $read('functions/runbooks.php');
+$ticket_retention = $read('functions/ticket_retention.php');
 $assertContains("'publish_runbook' => true", $starter, 'Starter content has no publishable runbook definitions');
 $assertTrue(substr_count($starter, "'publish_runbook' => true") === 8, 'The six portal workflows plus managed onboarding and client offboarding must be auto-published');
 $assertContains('reconcileTemplateDeleteTaskDrafts($mysqli, $template_id)', $reconcile, 'Template reconciliation does not replace stale editable task drafts');
@@ -310,7 +311,7 @@ $assertContains('a.ticket_attachment_ticket_id = t.task_ticket_id', $runbooks, '
 
 $single_ticket_delete = $section(
     $ticket_post,
-    "if (isset(\$_GET['delete_ticket']))",
+    "if (isset(\$_POST['delete_ticket']))",
     "if (isset(\$_POST['bulk_delete_tickets']))",
     'ticket deletion handler'
 );
@@ -320,10 +321,22 @@ $bulk_ticket_delete = $section(
     "if (isset(\$_POST['bulk_assign_ticket']))",
     'bulk ticket deletion handler'
 );
-$assertContains('runbook_executions', $single_ticket_delete, 'A ticket with an execution can be permanently deleted');
-$assertContains('cannot be permanently deleted', $single_ticket_delete, 'Single-ticket execution retention is not enforced');
-$assertContains('runbook_executions', $bulk_ticket_delete, 'Bulk deletion can remove a ticket execution');
-$assertContains('$skipped_count++', $bulk_ticket_delete, 'Bulk deletion does not retain execution tickets individually');
+$assertContains('FROM runbook_executions', $ticket_retention,
+    'Ticket deletion does not identify protected runbook execution history');
+$assertContains('FROM task_state_events', $ticket_retention,
+    'Ticket deletion does not identify protected task state history');
+$assertContains('DELETE FROM runbook_executions', $ticket_retention,
+    'An approved retention override cannot remove a ticket runbook execution');
+$assertContains('DELETE FROM tasks', $ticket_retention,
+    'An approved retention override cannot remove ticket tasks');
+foreach ([$single_ticket_delete, $bulk_ticket_delete] as $delete_handler) {
+    $assertContains('ticketDeletionEvidenceSummary($ticket_id, $client_id)', $delete_handler,
+        'Ticket deletion bypasses the shared workflow evidence classification');
+    $assertContains('ticketDeletionPurge($ticket_id)', $delete_handler,
+        'Ticket deletion bypasses the shared child-record purge');
+}
+$assertContains('$retained_count++', $bulk_ticket_delete,
+    'Bulk deletion does not retain policy-protected tickets individually');
 
 $client_delete = $section(
     $client_post,

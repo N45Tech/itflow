@@ -75,7 +75,7 @@ $ticket_post = $read('agent/post/ticket.php');
 $single_assignment = $section(
     $ticket_post,
     "if (isset(\$_POST['assign_ticket']))",
-    "if (isset(\$_GET['delete_ticket']))",
+    "if (isset(\$_POST['delete_ticket']))",
     'single ticket assignment handler'
 );
 $bulk_assignment = $section(

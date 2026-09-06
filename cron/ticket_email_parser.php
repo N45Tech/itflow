@@ -864,6 +864,7 @@ foreach ($messages as $message) {
                     "SELECT ticket_id, ticket_number, ticket_subject
                     FROM tickets
                     WHERE ticket_client_id = $client_id AND ticket_resolved_at IS NULL
+                    AND ticket_closed_at IS NULL
                     AND ticket_created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
                 );
 

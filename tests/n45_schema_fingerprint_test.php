@@ -51,6 +51,7 @@ $required_migration_prefix = [
     'n45-0018-portal-business-review-access.php',
     'n45-0019-ticket-approval-gates.php',
     'n45-0020-specific-client-approvers.php',
+    'n45-0021-client-ticket-retention.php',
 ];
 $disk_migration_files = array_map('basename', glob($root . '/n45/migrations/*.php') ?: []);
 sort($disk_migration_files);
@@ -85,6 +86,7 @@ $assertTrue(
         'n45-0018-portal-business-review-access',
         'n45-0019-ticket-approval-gates',
         'n45-0020-specific-client-approvers',
+        'n45-0021-client-ticket-retention',
     ],
     'The post-integration migration reservations are missing'
 );
@@ -207,9 +209,10 @@ unset(
     $skipped_reservation['n45-0017-automation-action-outbox'],
     $skipped_reservation['n45-0018-portal-business-review-access'],
     $skipped_reservation['n45-0019-ticket-approval-gates'],
-    $skipped_reservation['n45-0020-specific-client-approvers']
+    $skipped_reservation['n45-0020-specific-client-approvers'],
+    $skipped_reservation['n45-0021-client-ticket-retention']
 );
-$skipped_reservation['n45-0021-future-feature'] = ['legacy_version' => null];
+$skipped_reservation['n45-0022-future-feature'] = ['legacy_version' => null];
 $assertThrows(
     static function () use ($skipped_reservation): void {
         n45AssertMigrationNamespaceReservations($skipped_reservation);

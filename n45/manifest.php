@@ -329,6 +329,18 @@ return [
                 'altered_indexes' => [],
                 'legacy_bridge_index_overrides' => [],
             ],
+            'n45-0021-client-ticket-retention' => [
+                'module' => 'runbooks',
+                'legacy_version' => null,
+                'data_change' => true,
+                'rollback' => 'Keep ticket audit evidence and reconciled incident state, disable deletion overrides in application code, and restore the pre-upgrade database snapshot before removing the client policy column.',
+                'created_tables' => [],
+                'altered_columns' => [
+                    'clients' => ['client_ticket_retention_policy'],
+                ],
+                'altered_indexes' => [],
+                'legacy_bridge_index_overrides' => [],
+            ],
         ],
     ],
     'features' => [
@@ -432,11 +444,16 @@ return [
             'reason' => 'Published entitlements, SLA evidence, and service-review history are integrity controls.',
         ],
         'runbooks' => [
-            'runtime_files' => ['functions/runbooks.php', 'functions/ticket_approvals.php'],
+            'runtime_files' => [
+                'functions/runbooks.php',
+                'functions/ticket_approvals.php',
+                'functions/ticket_retention.php',
+            ],
             'migrations' => [
                 'n45-0010-versioned-runbooks',
                 'n45-0019-ticket-approval-gates',
                 'n45-0020-specific-client-approvers',
+                'n45-0021-client-ticket-retention',
             ],
             'toggleable' => false,
             'reason' => 'Lifecycle gates and evidence integrity must remain active after migration.',
@@ -2035,6 +2052,24 @@ return [
                 'failure_queries' => [
                     "SELECT COUNT(*) FROM task_approvals WHERE (approval_scope = 'internal' AND approval_type = 'specific' AND (approval_required_user_id IS NULL OR approval_required_user_id = 0 OR approval_required_contact_id IS NOT NULL)) OR (approval_scope = 'client' AND approval_type = 'specific' AND (approval_required_contact_id IS NULL OR approval_required_contact_id = 0 OR approval_required_user_id IS NOT NULL)) OR (approval_type <> 'specific' AND (approval_required_user_id IS NOT NULL OR approval_required_contact_id IS NOT NULL))",
                     "SELECT COUNT(*) FROM ticket_approvals WHERE (ticket_approval_scope = 'internal' AND ticket_approval_type = 'specific' AND (ticket_approval_required_user_id IS NULL OR ticket_approval_required_user_id = 0 OR ticket_approval_required_contact_id IS NOT NULL)) OR (ticket_approval_scope = 'client' AND ticket_approval_type = 'specific' AND (ticket_approval_required_contact_id IS NULL OR ticket_approval_required_contact_id = 0 OR ticket_approval_required_user_id IS NOT NULL)) OR (ticket_approval_type <> 'specific' AND (ticket_approval_required_user_id IS NOT NULL OR ticket_approval_required_contact_id IS NOT NULL))",
+                ],
+            ],
+        ],
+        'n45-0021-client-ticket-retention' => [
+            'module' => 'runbooks', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0021-client-ticket-retention.php',
+            'summary' => 'Store ticket retention policy per client and reconcile incidents linked to closed tickets.',
+            'data_change' => true,
+            'rollback' => 'Keep ticket audit evidence and reconciled incident state, disable deletion overrides in application code, and restore the pre-upgrade database snapshot before removing the client policy column.',
+            'fingerprint' => [
+                'columns' => [
+                    'clients' => [
+                        'client_ticket_retention_policy' => $column_fingerprint('varchar(20)', false, 'override'),
+                    ],
+                ],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM clients WHERE client_ticket_retention_policy NOT IN ('override','strict')",
+                    "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_closed_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
                 ],
             ],
         ],

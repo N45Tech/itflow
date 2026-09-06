@@ -1420,106 +1420,94 @@ if (isset($_POST['assign_ticket'])) {
 
 }
 
-if (isset($_GET['delete_ticket'])) {
+if (isset($_POST['delete_ticket'])) {
 
     validateCSRFToken();
 
     enforceUserPermission('module_support', 3);
 
-    $ticket_id = intval($_GET['delete_ticket']);
-
-    // Get Ticket and Client ID for logging and alert message
-    $sql = mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number, ticket_subject, ticket_status, ticket_closed_at, ticket_client_id FROM tickets WHERE ticket_id = $ticket_id");
-    $row = mysqli_fetch_assoc($sql);
-    $ticket_prefix = escapeSql($row['ticket_prefix']);
-    $ticket_number = escapeSql($row['ticket_number']);
-    $ticket_subject = escapeSql($row['ticket_subject']);
-    $ticket_status = escapeSql($row['ticket_status']);
-    $ticket_closed_at = escapeSql($row['ticket_closed_at']);
-    $client_id = intval($row['ticket_client_id']);
-
-    // Don't Enforce Client Access if Ticket doesn't have an assigned client
-    if ($client_id) {
-        enforceClientAccess();
+    $ticket_id = intval($_POST['ticket_id'] ?? 0);
+    if (intval($_POST['confirm_ticket_deletion'] ?? 0) !== 1) {
+        flashAlert('Confirm that the permanent ticket deletion is understood.', 'error');
+        redirect();
     }
 
-    if (empty($ticket_closed_at)) {
-        $transaction_started = false;
-        try {
-            if (!mysqli_begin_transaction($mysqli)) {
-                throw new RuntimeException('Could not start the ticket deletion transaction');
-            }
-            $transaction_started = true;
-            // Archived clients can still contain legacy or integration-created tickets.
-            // The client row must remain locked, but archival alone must not prevent a
-            // permitted hard delete after every audit-retention check passes.
-            $locked_delete_ticket = documentationLockClientTicket($ticket_id, $client_id, true);
-            if (!$locked_delete_ticket || intval($locked_delete_ticket['ticket_client_id']) !== $client_id
-                || !empty($locked_delete_ticket['ticket_closed_at'])) {
-                throw new RuntimeException('The ticket client changed before deletion');
-            }
-            $runbook_execution_count = intval(mysqli_fetch_row(documentationLifecycleDbQuery(
-                "SELECT COUNT(*) FROM runbook_executions WHERE runbook_execution_ticket_id = $ticket_id",
-                'Could not inspect the ticket workflow history'
-            ))[0] ?? 0);
-            if ($runbook_execution_count > 0) {
-                throw new DomainException('The ticket has immutable runbook execution history');
-            }
-            if (documentationTicketHasAuditRecords($ticket_id)) {
-                throw new DomainException('The ticket has documentation audit history');
-            }
-            if (documentationEvidenceReferenceInUse('ticket', $ticket_id, $client_id)) {
-                throw new DomainException('The ticket is retained in the Evidence Locker');
-            }
-            if (agreementTicketHasAuditHistory($ticket_id, $client_id)) {
-                throw new DomainException('The ticket has immutable agreement or SLA decision history');
-            }
-            if (ticketApprovalTicketHasAuditHistory($ticket_id)) {
-                throw new DomainException('The ticket has immutable approval history');
-            }
-            automationDeleteTicketOperations($ticket_id);
-            automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id",
-                'Could not delete the ticket replies');
-            automationDbQuery("DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id",
-                'Could not delete the ticket views');
-            automationDbQuery("DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id",
-                'Could not delete the ticket watchers');
-            automationDbQuery("DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id",
-                'Could not delete the ticket attachments');
-            automationDbQuery("DELETE FROM tickets WHERE ticket_id = $ticket_id",
-                'Could not delete the ticket');
-            if (mysqli_affected_rows($mysqli) !== 1) {
-                throw new RuntimeException('The ticket changed before deletion');
-            }
-            if (!mysqli_commit($mysqli)) {
-                throw new RuntimeException('Could not commit the ticket deletion transaction');
-            }
-            $transaction_started = false;
-        } catch (Throwable $e) {
-            if ($transaction_started) {
-                mysqli_rollback($mysqli);
-            }
-            error_log("Ticket $ticket_id could not be deleted: " . $e->getMessage());
-            flashAlert($e instanceof DomainException
-                ? 'Tickets with immutable workflow, approval, documentation, agreement, or SLA history cannot be permanently deleted. Close the ticket to preserve its audit trail.'
-                : 'The ticket and its Operations record could not be deleted.', 'error');
-            redirect();
+    $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_prefix, ticket_number,
+        ticket_subject, ticket_client_id FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
+    if (!$ticket) {
+        flashAlert('The ticket is no longer available.', 'error');
+        redirect('tickets.php');
+    }
+
+    $client_id = intval($ticket['ticket_client_id']);
+    if ($client_id) {
+        enforceClientAccess($client_id);
+    }
+    $ticket_reference = (string) $ticket['ticket_prefix'] . intval($ticket['ticket_number']);
+    $override_requested = intval($_POST['override_retention'] ?? 0) === 1;
+    $override_reason = '';
+
+    $transaction_started = false;
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not start the ticket deletion transaction');
+        }
+        $transaction_started = true;
+
+        // Archived clients can still contain deletable legacy or integration
+        // tickets. The client and ticket stay locked through policy evaluation,
+        // the surviving audit write, child cleanup, and hard deletion.
+        $locked_delete_ticket = documentationLockClientTicket($ticket_id, $client_id, true);
+        if (!$locked_delete_ticket || intval($locked_delete_ticket['ticket_client_id']) !== $client_id) {
+            throw new RuntimeException('The ticket client changed before deletion');
         }
 
-        // Database deletion committed before its non-transactional filesystem cleanup.
-        removeDirectory("../uploads/tickets/$ticket_id");
+        $evidence = ticketDeletionEvidenceSummary($ticket_id, $client_id);
+        $policy = ticketDeletionPolicyForClient($client_id);
+        $retention_overridden = !empty($evidence);
+        if ($retention_overridden) {
+            if ($policy !== 'override') {
+                throw new DomainException('This client uses strict ticket retention. Change the client policy before permanently deleting protected audit evidence.');
+            }
+            if (!$override_requested) {
+                throw new DomainException('This ticket has protected audit evidence. Reopen Delete and explicitly confirm the retention override.');
+            }
+            $override_reason = ticketDeletionOverrideReason($_POST['deletion_override_reason'] ?? '');
+        }
 
-        // No Need to delete ticket assets as this is cascadely deleted via the database.
+        $audit_action = $retention_overridden ? 'Delete Retention Override' : 'Delete';
+        $audit_description = "$session_name permanently deleted ticket $ticket_reference";
+        if ($retention_overridden) {
+            $audit_description .= ' and its protected evidence. Override reason: ' . $override_reason;
+        }
+        if (!logAudit('Ticket', $audit_action, escapeSql($audit_description), $client_id, $ticket_id)) {
+            throw new RuntimeException('Could not record the ticket deletion audit entry');
+        }
 
-        logAudit("Ticket", "Delete", "$session_name deleted $ticket_prefix$ticket_number along with all replies", $client_id);
-
-        flashAlert("Ticket <strong>$ticket_prefix$ticket_number</strong> along with all replies deleted", 'error');
-
-        triggerCustomAction('ticket_delete', $ticket_id);
-
-        redirect("tickets.php");
+        ticketDeletionPurge($ticket_id);
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the ticket deletion transaction');
+        }
+        $transaction_started = false;
+    } catch (Throwable $e) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        error_log("Ticket $ticket_id could not be deleted: " . $e->getMessage());
+        flashAlert($e instanceof DomainException
+            ? escapeHtml($e->getMessage())
+            : 'The ticket could not be deleted. It was left unchanged.', 'error');
+        redirect();
     }
 
+    // Database deletion commits before its non-transactional filesystem cleanup.
+    removeDirectory("../uploads/tickets/$ticket_id");
+
+    flashAlert('Ticket <strong>' . escapeHtml($ticket_reference) . '</strong> and its related records were permanently deleted.', 'error');
+
+    triggerCustomAction('ticket_delete', $ticket_id);
+
+    redirect('tickets.php');
 }
 
 if (isset($_POST['bulk_delete_tickets'])) {
@@ -1530,21 +1518,44 @@ if (isset($_POST['bulk_delete_tickets'])) {
 
     if (isset($_POST['ticket_ids'])) {
 
+        if (intval($_POST['confirm_ticket_deletion'] ?? 0) !== 1) {
+            flashAlert('Confirm that the selected permanent deletions are understood.', 'error');
+            redirect();
+        }
+
         $ticket_ids = array_values(array_unique(array_filter(
             array_map('intval', (array) $_POST['ticket_ids']),
             static fn ($ticket_id) => $ticket_id > 0
         )));
         $requested_count = count($ticket_ids);
         $deleted_count = 0;
-        $skipped_count = 0;
+        $retained_count = 0;
+        $overridden_count = 0;
         $failed_count = 0;
+        $override_requested = intval($_POST['override_retention'] ?? 0) === 1;
+        $override_reason = '';
+        if ($override_requested) {
+            try {
+                $override_reason = ticketDeletionOverrideReason($_POST['deletion_override_reason'] ?? '');
+            } catch (DomainException $exception) {
+                flashAlert(escapeHtml($exception->getMessage()), 'error');
+                redirect();
+            }
+        }
 
         // Process each selected ticket in its own transaction.
         foreach ($ticket_ids as $ticket_id) {
 
             $transaction_started = false;
             try {
-                $client_id = intval(getFieldById('tickets', $ticket_id, 'ticket_client_id'));
+                $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_prefix,
+                    ticket_number, ticket_client_id FROM tickets
+                    WHERE ticket_id = $ticket_id LIMIT 1"));
+                if (!$ticket) {
+                    throw new RuntimeException('The selected ticket no longer exists');
+                }
+                $client_id = intval($ticket['ticket_client_id']);
+                $ticket_reference = (string) $ticket['ticket_prefix'] . intval($ticket['ticket_number']);
 
                 // Don't Enforce Client Access if Ticket doesn't have an assigned client
                 if ($client_id) {
@@ -1561,39 +1572,24 @@ if (isset($_POST['bulk_delete_tickets'])) {
                 if (!$locked_delete_ticket || intval($locked_delete_ticket['ticket_client_id']) !== $client_id) {
                     throw new RuntimeException('The ticket client changed before bulk deletion');
                 }
-                $runbook_execution_count = intval(mysqli_fetch_row(documentationLifecycleDbQuery(
-                    "SELECT COUNT(*) FROM runbook_executions WHERE runbook_execution_ticket_id = $ticket_id",
-                    'Could not inspect the bulk ticket workflow history'
-                ))[0] ?? 0);
-                if ($runbook_execution_count > 0) {
-                    throw new DomainException('The ticket has immutable runbook execution history');
+
+                $evidence = ticketDeletionEvidenceSummary($ticket_id, $client_id);
+                $retention_overridden = !empty($evidence);
+                if ($retention_overridden
+                    && (ticketDeletionPolicyForClient($client_id) !== 'override' || !$override_requested)) {
+                    throw new DomainException('The selected ticket remains protected by its client retention policy');
                 }
-                if (documentationTicketHasAuditRecords($ticket_id)) {
-                    throw new DomainException('The ticket has documentation audit history');
+
+                $audit_action = $retention_overridden ? 'Delete Retention Override' : 'Delete';
+                $audit_description = "$session_name permanently deleted ticket $ticket_reference in a bulk action";
+                if ($retention_overridden) {
+                    $audit_description .= ' and its protected evidence. Override reason: ' . $override_reason;
                 }
-                if (documentationEvidenceReferenceInUse('ticket', $ticket_id, $client_id)) {
-                    throw new DomainException('The ticket is retained in the Evidence Locker');
+                if (!logAudit('Ticket', $audit_action, escapeSql($audit_description), $client_id, $ticket_id)) {
+                    throw new RuntimeException('Could not record the bulk ticket deletion audit entry');
                 }
-                if (agreementTicketHasAuditHistory($ticket_id, $client_id)) {
-                    throw new DomainException('The ticket has immutable agreement or SLA decision history');
-                }
-                if (ticketApprovalTicketHasAuditHistory($ticket_id)) {
-                    throw new DomainException('The ticket has immutable approval history');
-                }
-                automationDeleteTicketOperations($ticket_id);
-                automationDbQuery("DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id",
-                    'Could not delete the ticket replies');
-                automationDbQuery("DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id",
-                    'Could not delete the ticket views');
-                automationDbQuery("DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id",
-                    'Could not delete the ticket watchers');
-                automationDbQuery("DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id",
-                    'Could not delete the ticket attachments');
-                automationDbQuery("DELETE FROM tickets WHERE ticket_id = $ticket_id",
-                    'Could not delete the ticket');
-                if (mysqli_affected_rows($mysqli) !== 1) {
-                    throw new RuntimeException('The bulk ticket changed before deletion');
-                }
+
+                ticketDeletionPurge($ticket_id);
                 if (!mysqli_commit($mysqli)) {
                     throw new RuntimeException('Could not commit the bulk ticket deletion transaction');
                 }
@@ -1610,7 +1606,7 @@ if (isset($_POST['bulk_delete_tickets'])) {
                 error_log("Ticket $ticket_id could not be deleted during bulk deletion ["
                     . get_class($e) . ']: ' . $e->getMessage() . $database_context);
                 if ($e instanceof DomainException) {
-                    $skipped_count++;
+                    $retained_count++;
                     continue;
                 }
                 // A failure for one ticket must not turn the entire browser request
@@ -1623,23 +1619,26 @@ if (isset($_POST['bulk_delete_tickets'])) {
             // Database deletion committed before its non-transactional filesystem cleanup.
             removeDirectory("../uploads/tickets/$ticket_id");
 
-            // No Need to delete ticket assets as this is cascadely deleted via the database.
-
-            logAudit("Ticket", "Delete", "$session_name deleted ticket", 0, $ticket_id);
             $deleted_count++;
+            if ($retention_overridden) {
+                $overridden_count++;
+            }
 
         }
 
-        logAudit("Ticket", "Bulk Delete", "$session_name deleted $deleted_count of $requested_count requested ticket(s); $skipped_count ticket(s) with immutable workflow, approval, documentation, agreement, or SLA history retained; $failed_count ticket(s) failed safely and were retained");
+        logAudit("Ticket", "Bulk Delete", "$session_name deleted $deleted_count of $requested_count requested ticket(s); $overridden_count retention override(s); $retained_count retained by client policy; $failed_count failed safely and retained");
 
         $bulk_delete_message = "Deleted <strong>$deleted_count</strong> ticket(s).";
-        if ($skipped_count) {
-            $bulk_delete_message .= " Retained <strong>$skipped_count</strong> ticket(s) to preserve immutable workflow, approval, documentation, agreement, or SLA evidence.";
+        if ($overridden_count) {
+            $bulk_delete_message .= " Applied <strong>$overridden_count</strong> recorded audit-retention override(s).";
+        }
+        if ($retained_count) {
+            $bulk_delete_message .= " Retained <strong>$retained_count</strong> ticket(s) under their client policy.";
         }
         if ($failed_count) {
             $bulk_delete_message .= " <strong>$failed_count</strong> ticket(s) could not be deleted and were left unchanged. Retry once; if the problem continues, check the application error log for the ticket ID.";
         }
-        flashAlert($bulk_delete_message, $failed_count ? 'error' : ($skipped_count ? 'info' : 'error'));
+        flashAlert($bulk_delete_message, $failed_count ? 'error' : ($retained_count ? 'info' : 'error'));
     }
 
     redirect();
@@ -2001,6 +2000,7 @@ if (isset($_POST['bulk_merge_tickets'])) {
                         throw new RuntimeException('Could not commit the bulk merge');
                     }
                     $transaction_started = false;
+                    automationResolveTicketIncidentsSafely($ticket_id, 'ticket_merged');
                 } catch (Throwable $exception) {
                     if ($transaction_started) {
                         mysqli_rollback($mysqli);
@@ -2380,6 +2380,9 @@ if (isset($_POST['bulk_ticket_reply'])) {
                     throw new RuntimeException('Could not commit the bulk ticket reply');
                 }
                 $transaction_started = false;
+                if ($effective_ticket_status === 5) {
+                    automationResolveTicketIncidentsSafely($ticket_id, 'ticket_closed');
+                }
             } catch (Throwable $exception) {
                 if ($transaction_started) {
                     mysqli_rollback($mysqli);
@@ -2991,6 +2994,9 @@ if (isset($_POST['add_ticket_reply'])) {
             throw new RuntimeException('Could not commit the ticket reply');
         }
         $transaction_started = false;
+        if ($ticket_status === 5) {
+            automationResolveTicketIncidentsSafely($ticket_id, 'ticket_closed');
+        }
     } catch (Throwable $exception) {
         if ($transaction_started) {
             mysqli_rollback($mysqli);
@@ -3480,6 +3486,7 @@ if (isset($_POST['merge_ticket'])) {
             throw new RuntimeException('Could not commit the ticket merge');
         }
         $transaction_started = false;
+        automationResolveTicketIncidentsSafely($ticket_id, 'ticket_merged');
     } catch (Throwable $exception) {
         if ($transaction_started) {
             mysqli_rollback($mysqli);
@@ -3883,6 +3890,10 @@ if (isset($_GET['close_ticket'])) {
             throw new RuntimeException('Could not commit the ticket close');
         }
         $transaction_started = false;
+        automationResolveTicketIncidentsSafely(
+            $ticket_id,
+            $is_cancel ? 'ticket_cancelled' : 'ticket_closed'
+        );
     } catch (Throwable $exception) {
         if ($transaction_started) {
             mysqli_rollback($mysqli);
@@ -4304,14 +4315,14 @@ if (isExportRequest('export_tickets')) {
         }
         $filter_summary['Status'] = implode(', ', $status_names);
     } elseif (!empty($_POST['resolution']) && $_POST['resolution'] == 'Closed') {
-        $ticket_status_snippet = "ticket_resolved_at IS NOT NULL";
+        $ticket_status_snippet = "(ticket_resolved_at IS NOT NULL OR ticket_closed_at IS NOT NULL)";
         $filter_summary['Status'] = 'Closed';
     } elseif (!empty($_POST['resolution']) && $_POST['resolution'] == 'All') {
         $ticket_status_snippet = "1 = 1";
         $filter_summary['Status'] = 'Open and closed';
     } else {
         // Default - open tickets
-        $ticket_status_snippet = "ticket_resolved_at IS NULL";
+        $ticket_status_snippet = "ticket_resolved_at IS NULL AND ticket_closed_at IS NULL";
         $filter_summary['Status'] = 'Open';
     }
 

@@ -52,6 +52,7 @@ $assertOrdered = static function (string $contents, array $needles, string $mess
 $agreements = $read('functions/agreements.php');
 $sla = $read('functions/sla.php');
 $ticket_post = $read('agent/post/ticket.php');
+$ticket_retention = $read('functions/ticket_retention.php');
 $client_post = $read('agent/post/client.php');
 $agreement_post = $read('agent/post/agreement.php');
 $agreement_setup = $read('functions/agreement_setup.php');
@@ -234,19 +235,20 @@ $assertContains('mysqli_rollback($mysqli)', $agreement_setup, 'Incomplete agreem
 
 $single_delete = $section(
     $ticket_post,
-    "if (isset(\$_GET['delete_ticket']))",
+    "if (isset(\$_POST['delete_ticket']))",
     "if (isset(\$_POST['bulk_delete_tickets']))",
     'single ticket deletion'
 );
 $assertOrdered($single_delete, [
     'mysqli_begin_transaction($mysqli)',
     'documentationLockClientTicket($ticket_id, $client_id, true)',
-    'agreementTicketHasAuditHistory($ticket_id, $client_id)',
-    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
+    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
+    'ticketDeletionPolicyForClient($client_id)',
+    'ticketDeletionPurge($ticket_id)',
     'mysqli_commit($mysqli)',
 ], 'Single ticket deletion checks agreement evidence outside its retained locks');
-$assertContains('Close the ticket to preserve its audit trail', $single_delete,
-    'Single ticket retention does not give an actionable close alternative');
+$assertContains('ticketDeletionOverrideReason(', $single_delete,
+    'Single ticket retention override does not require a recorded reason');
 
 $bulk_delete = $section(
     $ticket_post,
@@ -257,12 +259,19 @@ $bulk_delete = $section(
 $assertOrdered($bulk_delete, [
     'mysqli_begin_transaction($mysqli)',
     'documentationLockClientTicket($ticket_id, $client_id, true)',
-    'agreementTicketHasAuditHistory($ticket_id, $client_id)',
-    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
+    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
+    'ticketDeletionPolicyForClient($client_id)',
+    'ticketDeletionPurge($ticket_id)',
     'mysqli_commit($mysqli)',
 ], 'Bulk ticket deletion checks agreement evidence outside its retained locks');
-$assertContains('workflow, approval, documentation, agreement, or SLA evidence', $bulk_delete,
-    'Bulk ticket retention does not explain why selected tickets were kept');
+$assertContains('$retained_count++', $bulk_delete,
+    'Bulk ticket retention does not report tickets kept by client policy');
+$assertContains('agreementTicketHasAuditHistory($ticket_id, $client_id)', $ticket_retention,
+    'Shared ticket-retention classification ignores agreement evidence');
+$assertContains('DELETE FROM ticket_agreement_decisions', $ticket_retention,
+    'An approved retention override cannot remove agreement decisions');
+$assertContains('DELETE FROM sla_history', $ticket_retention,
+    'An approved retention override cannot remove SLA history');
 
 $client_delete = $section(
     $client_post,

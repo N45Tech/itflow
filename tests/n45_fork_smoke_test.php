@@ -116,6 +116,7 @@ $assertTrue(
         'n45-0018-portal-business-review-access',
         'n45-0019-ticket-approval-gates',
         'n45-0020-specific-client-approvers',
+        'n45-0021-client-ticket-retention',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -134,8 +135,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0020-specific-client-approvers',
-    'The specific-client-approver migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0021-client-ticket-retention',
+    'The client ticket-retention migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -192,6 +193,25 @@ $assertTrue(
 $assertTrue(
     in_array('n45-0020-specific-client-approvers', $manifest['modules']['runbooks']['migrations'] ?? [], true),
     'Specific client approvers are not owned by the runbooks module'
+);
+$ticket_retention_migration = $manifest['migrations']['n45-0021-client-ticket-retention'] ?? [];
+$assertTrue(
+    ($ticket_retention_migration['fingerprint']['columns']['clients']['client_ticket_retention_policy'] ?? null)
+        !== null,
+    'The client ticket-retention migration does not fingerprint its policy column'
+);
+$assertTrue(
+    ($ticket_retention_migration['data_change'] ?? null) === true,
+    'The closed-incident reconciliation is not classified as a data-changing migration'
+);
+$assertTrue(
+    ($ticket_retention_migration['rollback'] ?? null)
+        === ($post_integration_reservations['n45-0021-client-ticket-retention']['rollback'] ?? null),
+    'The client ticket-retention migration does not preserve its rollback reservation'
+);
+$assertTrue(
+    in_array('n45-0021-client-ticket-retention', $manifest['modules']['runbooks']['migrations'] ?? [], true),
+    'Client ticket retention is not owned by the runbooks module'
 );
 
 $manifest_migration_files = array_map(
@@ -507,7 +527,7 @@ $assertContains('N45_FEATURE_AUTOMATION=1', $environment_example, 'Deployment en
 $automation_delete = $section(
     $automation_service,
     'function automationDeleteTicketOperations(',
-    'function automationResolveIdentityUnlocked(',
+    'function automationResolveTicketIncidents(',
     'Operations ticket cleanup'
 );
 $assertOrdered($automation_delete, [
@@ -517,18 +537,22 @@ $assertOrdered($automation_delete, [
 ], 'Operations cleanup can orphan durable custom actions when a ticket is deleted');
 
 // Deletion smoke: the automation flag must never bypass referential cleanup.
-$single_delete = $section($ticket_post, "if (isset(\$_GET['delete_ticket']))", "if (isset(\$_POST['bulk_delete_tickets']))", 'single ticket deletion');
+$ticket_retention = $read('functions/ticket_retention.php');
+$single_delete = $section($ticket_post, "if (isset(\$_POST['delete_ticket']))", "if (isset(\$_POST['bulk_delete_tickets']))", 'single ticket deletion');
 $bulk_delete = $section($ticket_post, "if (isset(\$_POST['bulk_delete_tickets']))", "if (isset(\$_POST['bulk_assign_ticket']))", 'bulk ticket deletion');
+$assertOrdered($ticket_retention, [
+    'automationDeleteTicketOperations($ticket_id)',
+    'DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id',
+    'DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id',
+    'DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id',
+    'DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id',
+    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
+], 'Shared ticket purge does not remove Operations and native children before the ticket');
 foreach ([$single_delete, $bulk_delete] as $index => $delete_handler) {
     $label = $index === 0 ? 'Single ticket deletion' : 'Bulk ticket deletion';
     $assertOrdered($delete_handler, [
         'mysqli_begin_transaction($mysqli)',
-        'automationDeleteTicketOperations($ticket_id)',
-        'DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id',
-        'DELETE FROM ticket_views WHERE view_ticket_id = $ticket_id',
-        'DELETE FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id',
-        'DELETE FROM ticket_attachments WHERE ticket_attachment_ticket_id = $ticket_id',
-        'DELETE FROM tickets WHERE ticket_id = $ticket_id',
+        'ticketDeletionPurge($ticket_id)',
         'mysqli_commit($mysqli)',
     ], "$label does not atomically remove Operations records with the ticket");
     $assertContains('mysqli_rollback($mysqli)', $delete_handler, "$label cannot roll back failed Operations cleanup");

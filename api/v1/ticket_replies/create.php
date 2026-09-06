@@ -203,6 +203,9 @@ if (!empty($ticket_id) && !empty($reply)) {
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the ticket reply');
             }
+            if ($reply_ticket_status === 5 && $status_changed) {
+                automationResolveTicketIncidentsSafely($ticket_id, 'ticket_closed');
+            }
         } catch (Throwable $e) {
             mysqli_rollback($mysqli);
             $insert_sql = false;

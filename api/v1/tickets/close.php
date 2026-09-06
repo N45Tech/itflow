@@ -50,6 +50,7 @@ if (!empty($ticket_id)) {
             throw new RuntimeException('Could not commit the ticket closure');
         }
         $transaction_started = false;
+        automationResolveTicketIncidentsSafely($ticket_id, 'ticket_closed');
         $update_count = 1;
         $ticket_prefix = escapeSql($locked_ticket['ticket_prefix']);
         $ticket_number = intval($locked_ticket['ticket_number']);

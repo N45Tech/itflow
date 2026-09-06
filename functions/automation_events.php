@@ -1181,11 +1181,14 @@ function automationProcessStoredEvent(int $event_id): array
                     automationEventSaveIncident($event, $resolved, $incident, $status, $action,
                         $ticket_id, $fingerprint, 0);
                 } else {
-                    if ($incident_status === 'Resolved' && $ticket_id > 0) {
+                    // Never reuse a terminal ticket, even if a prior best-effort
+                    // incident projection update was interrupted after closure.
+                    if ($ticket_id > 0) {
                         $lock_order->observe('ticket', $ticket_id);
                         $open_ticket = mysqli_fetch_assoc(automationDbQuery("SELECT ticket_id FROM tickets
                             WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL
-                            AND ticket_resolved_at IS NULL AND ticket_status <> 4 LIMIT 1 FOR UPDATE",
+                            AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL
+                            AND ticket_status NOT IN (4, 5) LIMIT 1 FOR UPDATE",
                             'Could not inspect the prior automation ticket'));
                         if (!$open_ticket) {
                             $ticket_id = 0;

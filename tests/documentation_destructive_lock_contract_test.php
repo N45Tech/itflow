@@ -147,20 +147,19 @@ $assertOrdered($document_delete, [
 ], 'Document delete');
 
 $ticket_post = $read('agent/post/ticket.php');
+$ticket_retention = $read('functions/ticket_retention.php');
 $single_ticket_delete = $section(
     $ticket_post,
-    "if (isset(\$_GET['delete_ticket']))",
+    "if (isset(\$_POST['delete_ticket']))",
     "if (isset(\$_POST['bulk_delete_tickets']))",
     'single ticket delete'
 );
 $assertOrdered($single_ticket_delete, [
     'mysqli_begin_transaction($mysqli)',
     'documentationLockClientTicket($ticket_id, $client_id, true)',
-    'SELECT COUNT(*) FROM runbook_executions',
-    'documentationTicketHasAuditRecords($ticket_id)',
-    "documentationEvidenceReferenceInUse('ticket'",
-    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
-    'mysqli_affected_rows($mysqli)',
+    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
+    'ticketDeletionPolicyForClient($client_id)',
+    'ticketDeletionPurge($ticket_id)',
     'mysqli_commit($mysqli)',
     'removeDirectory(',
 ], 'Single ticket delete');
@@ -173,14 +172,22 @@ $bulk_ticket_delete = $section(
 $assertOrdered($bulk_ticket_delete, [
     'mysqli_begin_transaction($mysqli)',
     'documentationLockClientTicket($ticket_id, $client_id, true)',
-    'SELECT COUNT(*) FROM runbook_executions',
-    'documentationTicketHasAuditRecords($ticket_id)',
-    "documentationEvidenceReferenceInUse('ticket'",
-    'DELETE FROM tickets WHERE ticket_id = $ticket_id',
-    'mysqli_affected_rows($mysqli)',
+    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
+    'ticketDeletionPolicyForClient($client_id)',
+    'ticketDeletionPurge($ticket_id)',
     'mysqli_commit($mysqli)',
     'removeDirectory(',
 ], 'Bulk ticket delete');
+$assertOrdered($ticket_retention, [
+    'documentationTicketHasAuditRecords($ticket_id)',
+    "documentationEvidenceReferenceInUse('ticket'",
+    'documentation_obligation_verification_ticket_id = $ticket_id',
+    "'verification_invalidated'",
+    'DELETE ticket_documentation_waiver_events',
+    'DELETE ticket_documentation_waivers',
+    'DELETE FROM documentation_evidence_locker',
+    'DELETE FROM ticket_documentation_obligations',
+], 'Shared ticket retention and override purge');
 
 if ($failures) {
     fwrite(STDERR, "Documentation destructive-lock contract test failed:\n- " . implode("\n- ", $failures) . "\n");
