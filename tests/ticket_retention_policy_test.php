@@ -122,6 +122,7 @@ $assertOrdered($retention, [
 ], 'A retention override can leave orphaned ticket-owned evidence');
 
 $assertContains('function automationResolveTicketIncidents(', $automation, 'Closed tickets cannot reconcile their linked Operations incident');
+$assertContains('function automationResolveTicketIncidentsSafely(', $automation, 'Ticket closure lacks a post-commit incident reconciliation wrapper');
 foreach ([
     'agent/post/ticket.php' => $ticket_post,
     'client/post.php' => $read('client/post.php'),
@@ -129,7 +130,7 @@ foreach ([
     'api/v1/tickets/close.php' => $read('api/v1/tickets/close.php'),
     'cron/nightly_tasks.php' => $read('cron/nightly_tasks.php'),
 ] as $surface => $source) {
-    $assertContains('automationResolveTicketIncidents($ticket_id', $source, "$surface leaves a linked incident open after ticket closure");
+    $assertContains('automationResolveTicketIncidentsSafely($ticket_id', $source, "$surface leaves a linked incident open after ticket closure");
 }
 $assertContains('AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL', $agent_tickets,
     'The Open ticket list includes terminal tickets');
