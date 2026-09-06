@@ -240,7 +240,7 @@ $single_delete = $section(
 );
 $assertOrdered($single_delete, [
     'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id)',
+    'documentationLockClientTicket($ticket_id, $client_id, true)',
     'agreementTicketHasAuditHistory($ticket_id, $client_id)',
     'DELETE FROM tickets WHERE ticket_id = $ticket_id',
     'mysqli_commit($mysqli)',
@@ -256,12 +256,12 @@ $bulk_delete = $section(
 );
 $assertOrdered($bulk_delete, [
     'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id)',
+    'documentationLockClientTicket($ticket_id, $client_id, true)',
     'agreementTicketHasAuditHistory($ticket_id, $client_id)',
     'DELETE FROM tickets WHERE ticket_id = $ticket_id',
     'mysqli_commit($mysqli)',
 ], 'Bulk ticket deletion checks agreement evidence outside its retained locks');
-$assertContains('agreement, or SLA evidence', $bulk_delete,
+$assertContains('workflow, approval, documentation, agreement, or SLA evidence', $bulk_delete,
     'Bulk ticket retention does not explain why selected tickets were kept');
 
 $client_delete = $section(

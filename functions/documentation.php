@@ -682,14 +682,15 @@ function documentationRollbackMutation($caller_transaction) {
     }
 }
 
-function documentationLockClient($client_id) {
+function documentationLockClient($client_id, $allow_archived = false) {
     $client_id = intval($client_id);
+    $allow_archived = (bool) $allow_archived;
     if (!$client_id) {
         throw new RuntimeException('A client is required for the documentation mutation');
     }
     $client = mysqli_fetch_assoc(documentationDbQuery("SELECT client_id, client_type, client_archived_at
         FROM clients WHERE client_id = $client_id LIMIT 1 FOR UPDATE", 'Could not lock the documentation client'));
-    if (!$client || !empty($client['client_archived_at'])) {
+    if (!$client || (!$allow_archived && !empty($client['client_archived_at']))) {
         throw new RuntimeException('The documentation client is unavailable');
     }
     return $client;
@@ -2642,9 +2643,10 @@ function documentationLockTicket($ticket_id) {
     return $ticket;
 }
 
-function documentationLockClientTicket($ticket_id, $expected_client_id = 0) {
+function documentationLockClientTicket($ticket_id, $expected_client_id = 0, $allow_archived_client = false) {
     $ticket_id = intval($ticket_id);
     $expected_client_id = max(0, intval($expected_client_id));
+    $allow_archived_client = (bool) $allow_archived_client;
     $prelock = mysqli_fetch_assoc(documentationDbQuery("SELECT ticket_client_id FROM tickets
         WHERE ticket_id = $ticket_id LIMIT 1", 'Could not locate the documentation ticket client'));
     if (!$prelock) {
@@ -2655,7 +2657,7 @@ function documentationLockClientTicket($ticket_id, $expected_client_id = 0) {
         throw new RuntimeException('The documentation ticket belongs to another client');
     }
     if ($client_id) {
-        documentationLockClient($client_id);
+        documentationLockClient($client_id, $allow_archived_client);
     }
     $ticket = documentationLockTicket($ticket_id);
     if (intval($ticket['ticket_client_id']) !== $client_id) {

@@ -89,7 +89,7 @@ if ($project_client === false || $project_ticket === false || $project_passport 
 
 $core = $read('functions/documentation.php');
 if (strpos($core, 'function documentationLockClientTicket(') !== false
-    && preg_match('/function documentationLockClientTicket\s*\(\s*\$ticket_id,\s*\$expected_client_id\s*=\s*0\s*\)/s', $core) !== 1) {
+    && preg_match('/function documentationLockClientTicket\s*\(\s*\$ticket_id,\s*\$expected_client_id\s*=\s*0,\s*\$allow_archived_client\s*=\s*false\s*\)/s', $core) !== 1) {
     $failures[] = 'Core client-ticket lock signature drifted from terminal callers';
 }
 
