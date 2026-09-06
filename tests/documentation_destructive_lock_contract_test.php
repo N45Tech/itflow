@@ -155,7 +155,7 @@ $single_ticket_delete = $section(
 );
 $assertOrdered($single_ticket_delete, [
     'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id)',
+    'documentationLockClientTicket($ticket_id, $client_id, true)',
     'SELECT COUNT(*) FROM runbook_executions',
     'documentationTicketHasAuditRecords($ticket_id)',
     "documentationEvidenceReferenceInUse('ticket'",
@@ -172,7 +172,7 @@ $bulk_ticket_delete = $section(
 );
 $assertOrdered($bulk_ticket_delete, [
     'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id)',
+    'documentationLockClientTicket($ticket_id, $client_id, true)',
     'SELECT COUNT(*) FROM runbook_executions',
     'documentationTicketHasAuditRecords($ticket_id)',
     "documentationEvidenceReferenceInUse('ticket'",

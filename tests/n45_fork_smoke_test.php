@@ -538,6 +538,16 @@ foreach ([$single_delete, $bulk_delete] as $index => $delete_handler) {
         'removeDirectory("../uploads/tickets/$ticket_id")',
     ], "$label mutates filesystem state before the database transaction commits");
 }
+$assertContains('documentationLockClientTicket($ticket_id, $client_id, true)', $single_delete,
+    'Single ticket deletion cannot remove an otherwise-deletable ticket from an archived client');
+$assertContains('documentationLockClientTicket($ticket_id, $client_id, true)', $bulk_delete,
+    'Bulk ticket deletion cannot remove otherwise-deletable tickets from an archived client');
+$assertContains('$failed_count++', $bulk_delete,
+    'Bulk ticket deletion does not retain and report an item-level runtime failure');
+$assertNotContains('throw $e;', $bulk_delete,
+    'Bulk ticket deletion still turns an item-level runtime failure into an empty HTTP 500');
+$assertContains('could not be deleted and were left unchanged', $bulk_delete,
+    'Bulk ticket deletion does not explain safely retained runtime failures');
 
 $client_handler = $read('agent/post/client.php');
 $client_delete = $section($client_handler, "if (isset(\$_GET['delete_client']))", "if (isExportRequest('export_clients'))", 'client deletion');
