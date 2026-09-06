@@ -178,7 +178,8 @@ function ticketDeletionEvidenceSummary(int $ticket_id, int $client_id = 0): arra
         'operations' => intval($operations['has_work_notes'] ?? 0) > 0
             || intval($operations['has_handoffs'] ?? 0) > 0
             || intval($operations['has_promises'] ?? 0) > 0
-            || intval($operations['has_resolutions'] ?? 0) > 0,
+            || intval($operations['has_resolutions'] ?? 0) > 0
+            || (function_exists('fieldServiceHasHistory') && fieldServiceHasHistory($ticket_id)),
     ];
 
     return array_filter($summary);
@@ -307,6 +308,9 @@ function ticketDeletionSoftDelete(int $ticket_id, int $actor_id, string $reason)
     if (!empty($ticket['ticket_archived_at'])) {
         throw new DomainException('This ticket is already in Deleted tickets.');
     }
+    if (function_exists('fieldServicePendingWork') && fieldServicePendingWork($ticket_id)) {
+        throw new DomainException('Finish the field visit and review its time before deleting this ticket.');
+    }
 
     $restore_until = date('Y-m-d H:i:s', time() + ticketDeletionRestoreWindowDays(intval($ticket['ticket_client_id'])) * 86400);
     $reason_sql = mysqli_real_escape_string($mysqli, $reason);
@@ -403,6 +407,9 @@ function ticketDeletionPurge(int $ticket_id): void
 
     // Integration incidents and events are ticket-owned in the Operations UI.
     automationDeleteTicketOperations($ticket_id);
+    if (function_exists('fieldPurgeTicket')) {
+        fieldPurgeTicket($ticket_id);
+    }
 
     // If this ticket supplied a client's current documentation verification,
     // invalidate that projection before removing its Evidence Locker row. The

@@ -727,6 +727,7 @@ if (isset($_GET['ticket_id'])) {
 
                         <!-- Who it belongs to, where it came from, and anyone else in here right now -->
                         <div class="ticket-meta">
+                            <a href="/agent/field/?ticket_id=<?= $ticket_id ?>" class="btn btn-sm btn-outline-secondary me-2">Open Field Mode</a>
                             <span class="badge rounded-pill bg-dark me-2"><?= $ticket_reference ?></span>
 
                             <?php if ($client_id) { ?>

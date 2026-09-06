@@ -242,6 +242,7 @@ if (isset($_GET['project_id'])) {
 <div class="card-group mb-3">
     <div class="card card-body">
         <h5 class="mb-0"><?= $project_name ?></h5>
+        <a class="mt-2" href="/agent/field/?project_id=<?= $project_id ?>">Open project in Field Mode</a>
         <div><small class="text-secondary"><?= $project_description ?></small></div>
     </div>
     <div class="card card-body">

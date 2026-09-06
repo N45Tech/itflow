@@ -183,6 +183,9 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
             </div>
         </div>
 
+        <section class="card card-body mb-3" data-field-appointment="<?= $ticket_id ?>" aria-live="polite" hidden></section>
+        <script src="/js/field_portal.js" defer></script>
+
         <!-- Approvals -->
         <?php if (mysqli_num_rows($sql_ticket_approvals) > 0 || mysqli_num_rows($sql_task_approvals) > 0) { ?>
             <div class="card">

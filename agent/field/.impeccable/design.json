@@ -1,0 +1,481 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-06T19:33:48.802647+00:00",
+  "title": "Design System: N45 Field Mode",
+  "extensions": {
+    "colorMeta": {
+      "action": {
+        "role": "primary",
+        "displayName": "Action Teal",
+        "tonalRamp": [
+          "oklch(0.150 0.0828 180.37)",
+          "oklch(0.264 0.0828 180.37)",
+          "oklch(0.379 0.0828 180.37)",
+          "oklch(0.493 0.0828 180.37)",
+          "oklch(0.607 0.0828 180.37)",
+          "oklch(0.721 0.0828 180.37)",
+          "oklch(0.836 0.0828 180.37)",
+          "oklch(0.950 0.0828 180.37)"
+        ]
+      },
+      "action-dark": {
+        "role": "primary",
+        "displayName": "Action Mint",
+        "tonalRamp": [
+          "oklch(0.150 0.1032 173.47)",
+          "oklch(0.264 0.1032 173.47)",
+          "oklch(0.379 0.1032 173.47)",
+          "oklch(0.493 0.1032 173.47)",
+          "oklch(0.607 0.1032 173.47)",
+          "oklch(0.721 0.1032 173.47)",
+          "oklch(0.836 0.1032 173.47)",
+          "oklch(0.950 0.1032 173.47)"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Focus Teal",
+        "tonalRamp": [
+          "oklch(0.150 0.0936 179.28)",
+          "oklch(0.264 0.0936 179.28)",
+          "oklch(0.379 0.0936 179.28)",
+          "oklch(0.493 0.0936 179.28)",
+          "oklch(0.607 0.0936 179.28)",
+          "oklch(0.721 0.0936 179.28)",
+          "oklch(0.836 0.0936 179.28)",
+          "oklch(0.950 0.0936 179.28)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Trail Paper",
+        "tonalRamp": [
+          "oklch(0.150 0.0115 84.58)",
+          "oklch(0.264 0.0115 84.58)",
+          "oklch(0.379 0.0115 84.58)",
+          "oklch(0.493 0.0115 84.58)",
+          "oklch(0.607 0.0115 84.58)",
+          "oklch(0.721 0.0115 84.58)",
+          "oklch(0.836 0.0115 84.58)",
+          "oklch(0.950 0.0115 84.58)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Warm Surface",
+        "tonalRamp": [
+          "oklch(0.150 0.0069 88.64)",
+          "oklch(0.264 0.0069 88.64)",
+          "oklch(0.379 0.0069 88.64)",
+          "oklch(0.493 0.0069 88.64)",
+          "oklch(0.607 0.0069 88.64)",
+          "oklch(0.721 0.0069 88.64)",
+          "oklch(0.836 0.0069 88.64)",
+          "oklch(0.950 0.0069 88.64)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Mountain Ink",
+        "tonalRamp": [
+          "oklch(0.150 0.0317 191.80)",
+          "oklch(0.264 0.0317 191.80)",
+          "oklch(0.379 0.0317 191.80)",
+          "oklch(0.493 0.0317 191.80)",
+          "oklch(0.607 0.0317 191.80)",
+          "oklch(0.721 0.0317 191.80)",
+          "oklch(0.836 0.0317 191.80)",
+          "oklch(0.950 0.0317 191.80)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Field Stone",
+        "tonalRamp": [
+          "oklch(0.150 0.0250 174.06)",
+          "oklch(0.264 0.0250 174.06)",
+          "oklch(0.379 0.0250 174.06)",
+          "oklch(0.493 0.0250 174.06)",
+          "oklch(0.607 0.0250 174.06)",
+          "oklch(0.721 0.0250 174.06)",
+          "oklch(0.836 0.0250 174.06)",
+          "oklch(0.950 0.0250 174.06)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Quiet Border",
+        "tonalRamp": [
+          "oklch(0.150 0.0178 159.06)",
+          "oklch(0.264 0.0178 159.06)",
+          "oklch(0.379 0.0178 159.06)",
+          "oklch(0.493 0.0178 159.06)",
+          "oklch(0.607 0.0178 159.06)",
+          "oklch(0.721 0.0178 159.06)",
+          "oklch(0.836 0.0178 159.06)",
+          "oklch(0.950 0.0178 159.06)"
+        ]
+      },
+      "soft": {
+        "role": "neutral",
+        "displayName": "Soft Green",
+        "tonalRamp": [
+          "oklch(0.150 0.0194 167.91)",
+          "oklch(0.264 0.0194 167.91)",
+          "oklch(0.379 0.0194 167.91)",
+          "oklch(0.493 0.0194 167.91)",
+          "oklch(0.607 0.0194 167.91)",
+          "oklch(0.721 0.0194 167.91)",
+          "oklch(0.836 0.0194 167.91)",
+          "oklch(0.950 0.0194 167.91)"
+        ]
+      },
+      "paper-dark": {
+        "role": "neutral",
+        "displayName": "Dark Mountain Canvas",
+        "tonalRamp": [
+          "oklch(0.150 0.0317 191.80)",
+          "oklch(0.264 0.0317 191.80)",
+          "oklch(0.379 0.0317 191.80)",
+          "oklch(0.493 0.0317 191.80)",
+          "oklch(0.607 0.0317 191.80)",
+          "oklch(0.721 0.0317 191.80)",
+          "oklch(0.836 0.0317 191.80)",
+          "oklch(0.950 0.0317 191.80)"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Deep Spruce",
+        "tonalRamp": [
+          "oklch(0.150 0.0398 187.44)",
+          "oklch(0.264 0.0398 187.44)",
+          "oklch(0.379 0.0398 187.44)",
+          "oklch(0.493 0.0398 187.44)",
+          "oklch(0.607 0.0398 187.44)",
+          "oklch(0.721 0.0398 187.44)",
+          "oklch(0.836 0.0398 187.44)",
+          "oklch(0.950 0.0398 187.44)"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Light Ink",
+        "tonalRamp": [
+          "oklch(0.150 0.0108 118.02)",
+          "oklch(0.264 0.0108 118.02)",
+          "oklch(0.379 0.0108 118.02)",
+          "oklch(0.493 0.0108 118.02)",
+          "oklch(0.607 0.0108 118.02)",
+          "oklch(0.721 0.0108 118.02)",
+          "oklch(0.836 0.0108 118.02)",
+          "oklch(0.950 0.0108 118.02)"
+        ]
+      },
+      "muted-dark": {
+        "role": "neutral",
+        "displayName": "Light Supporting Green",
+        "tonalRamp": [
+          "oklch(0.150 0.0290 165.32)",
+          "oklch(0.264 0.0290 165.32)",
+          "oklch(0.379 0.0290 165.32)",
+          "oklch(0.493 0.0290 165.32)",
+          "oklch(0.607 0.0290 165.32)",
+          "oklch(0.721 0.0290 165.32)",
+          "oklch(0.836 0.0290 165.32)",
+          "oklch(0.950 0.0290 165.32)"
+        ]
+      },
+      "line-dark": {
+        "role": "neutral",
+        "displayName": "Dark Border",
+        "tonalRamp": [
+          "oklch(0.150 0.0385 178.62)",
+          "oklch(0.264 0.0385 178.62)",
+          "oklch(0.379 0.0385 178.62)",
+          "oklch(0.493 0.0385 178.62)",
+          "oklch(0.607 0.0385 178.62)",
+          "oklch(0.721 0.0385 178.62)",
+          "oklch(0.836 0.0385 178.62)",
+          "oklch(0.950 0.0385 178.62)"
+        ]
+      },
+      "soft-dark": {
+        "role": "neutral",
+        "displayName": "Dark Soft Green",
+        "tonalRamp": [
+          "oklch(0.150 0.0442 177.58)",
+          "oklch(0.264 0.0442 177.58)",
+          "oklch(0.379 0.0442 177.58)",
+          "oklch(0.493 0.0442 177.58)",
+          "oklch(0.607 0.0442 177.58)",
+          "oklch(0.721 0.0442 177.58)",
+          "oklch(0.836 0.0442 177.58)",
+          "oklch(0.950 0.0442 177.58)"
+        ]
+      },
+      "masthead-support": {
+        "role": "neutral",
+        "displayName": "Masthead Supporting Mint",
+        "tonalRamp": [
+          "oklch(0.150 0.0302 167.41)",
+          "oklch(0.264 0.0302 167.41)",
+          "oklch(0.379 0.0302 167.41)",
+          "oklch(0.493 0.0302 167.41)",
+          "oklch(0.607 0.0302 167.41)",
+          "oklch(0.721 0.0302 167.41)",
+          "oklch(0.836 0.0302 167.41)",
+          "oklch(0.950 0.0302 167.41)"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Error Red",
+        "tonalRamp": [
+          "oklch(0.150 0.1417 28.95)",
+          "oklch(0.264 0.1417 28.95)",
+          "oklch(0.379 0.1417 28.95)",
+          "oklch(0.493 0.1417 28.95)",
+          "oklch(0.607 0.1417 28.95)",
+          "oklch(0.721 0.1417 28.95)",
+          "oklch(0.836 0.1417 28.95)",
+          "oklch(0.950 0.1417 28.95)"
+        ]
+      },
+      "danger-dark": {
+        "role": "secondary",
+        "displayName": "Light Error Red",
+        "tonalRamp": [
+          "oklch(0.150 0.0992 30.03)",
+          "oklch(0.264 0.0992 30.03)",
+          "oklch(0.379 0.0992 30.03)",
+          "oklch(0.493 0.0992 30.03)",
+          "oklch(0.607 0.0992 30.03)",
+          "oklch(0.721 0.0992 30.03)",
+          "oklch(0.836 0.0992 30.03)",
+          "oklch(0.950 0.0992 30.03)"
+        ]
+      },
+      "attention-surface": {
+        "role": "secondary",
+        "displayName": "Attention Paper",
+        "tonalRamp": [
+          "oklch(0.150 0.0431 72.90)",
+          "oklch(0.264 0.0431 72.90)",
+          "oklch(0.379 0.0431 72.90)",
+          "oklch(0.493 0.0431 72.90)",
+          "oklch(0.607 0.0431 72.90)",
+          "oklch(0.721 0.0431 72.90)",
+          "oklch(0.836 0.0431 72.90)",
+          "oklch(0.950 0.0431 72.90)"
+        ]
+      },
+      "attention-ink": {
+        "role": "secondary",
+        "displayName": "Attention Brown",
+        "tonalRamp": [
+          "oklch(0.150 0.0824 61.08)",
+          "oklch(0.264 0.0824 61.08)",
+          "oklch(0.379 0.0824 61.08)",
+          "oklch(0.493 0.0824 61.08)",
+          "oklch(0.607 0.0824 61.08)",
+          "oklch(0.721 0.0824 61.08)",
+          "oklch(0.836 0.0824 61.08)",
+          "oklch(0.950 0.0824 61.08)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Current page or job title; job titles use 1.75rem on narrow screens."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Work-section headings."
+      },
+      "subhead": {
+        "displayName": "Subhead",
+        "purpose": "Task and record names."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Instructions and ordinary prose."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Form labels and wide navigation text."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Text actions at the base interface size."
+      },
+      "hint": {
+        "displayName": "Hint",
+        "purpose": "Supporting explanations and field help."
+      },
+      "metadata": {
+        "displayName": "Metadata",
+        "purpose": "Secondary operational context."
+      },
+      "tag": {
+        "displayName": "Tag",
+        "purpose": "Compact readable state labels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "notice",
+        "value": "0 8px 24px #0a242326",
+        "purpose": "Separates a transient status notice from the work beneath it."
+      },
+      {
+        "name": "dialog",
+        "value": "0 18px 70px #0a24234d",
+        "purpose": "Lifts a focused modal form above the dimmed work surface."
+      }
+    ],
+    "motion": [
+      {
+        "name": "active-visit-reveal",
+        "value": ".28s cubic-bezier(.16,1,.3,1)",
+        "purpose": "Clip-path reveal for the active-visit panel, enabled only by prefers-reduced-motion: no-preference."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide",
+        "value": "760px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Text-led action with the shared touch target, hover, focus, and disabled treatments.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\">Confirm onsite</button>",
+      "css": ".ds-button-primary{font-family:\"Segoe UI\",system-ui,sans-serif;font-size:1rem;font-weight:650;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:11px 18px;border:1px solid transparent;border-radius:9px;cursor:pointer;text-decoration:none;touch-action:manipulation;background:var(--action,#126e61);color:var(--surface,#fffdf8);}.ds-button-primary:hover{filter:brightness(.92)}.ds-button-primary:focus-visible{outline:3px solid var(--focus,#087b6b);outline-offset:3px}.ds-button-primary:disabled{opacity:.5;cursor:not-allowed}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Text-led action with the shared touch target, hover, focus, and disabled treatments.",
+      "html": "<button type=\"button\" class=\"ds-button-secondary\">Start travel</button>",
+      "css": ".ds-button-secondary{font-family:\"Segoe UI\",system-ui,sans-serif;font-size:1rem;font-weight:650;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:11px 18px;border:1px solid transparent;border-radius:9px;cursor:pointer;text-decoration:none;touch-action:manipulation;background:transparent;color:var(--ink,#0a2423);border-color:var(--line,#c9d6ce);}.ds-button-secondary:hover{filter:brightness(.92)}.ds-button-secondary:focus-visible{outline:3px solid var(--focus,#087b6b);outline-offset:3px}.ds-button-secondary:disabled{opacity:.5;cursor:not-allowed}"
+    },
+    {
+      "name": "Quiet button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Text-led action with the shared touch target, hover, focus, and disabled treatments.",
+      "html": "<button type=\"button\" class=\"ds-button-quiet\">Close</button>",
+      "css": ".ds-button-quiet{font-family:\"Segoe UI\",system-ui,sans-serif;font-size:1rem;font-weight:650;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:11px 18px;border:1px solid transparent;border-radius:9px;cursor:pointer;text-decoration:none;touch-action:manipulation;background:transparent;color:var(--ink,#0a2423);padding:8px 11px;}.ds-button-quiet:hover{filter:brightness(.92)}.ds-button-quiet:focus-visible{outline:3px solid var(--focus,#087b6b);outline-offset:3px}.ds-button-quiet:disabled{opacity:.5;cursor:not-allowed}"
+    },
+    {
+      "name": "Labeled field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A visible label, surface-filled control, and supporting hint.",
+      "html": "<label class=\"ds-field\">Photo caption<input class=\"ds-field-input\" placeholder=\"What this photo shows\"><span class=\"ds-field-hint\">Describe the evidence in ordinary language.</span></label>",
+      "css": ".ds-field{display:grid;gap:7px;font-family:\"Segoe UI\",system-ui,sans-serif;font-size:.95rem;font-weight:600;color:var(--ink,#0a2423)}.ds-field-input{width:100%;min-height:46px;padding:11px 12px;font-family:\"Segoe UI\",system-ui,sans-serif;font-size:1rem;font-weight:400;color:var(--ink,#0a2423);background:var(--surface,#fffdf8);border:1px solid var(--line,#c9d6ce);border-radius:8px;caret-color:var(--action,#126e61)}.ds-field-input::placeholder{color:var(--muted,#50635d);opacity:1}.ds-field-input:focus-visible{outline:3px solid var(--focus,#087b6b);outline-offset:3px}.ds-field-hint{font-size:.91rem;font-weight:400;line-height:1.5;color:var(--muted,#50635d)}"
+    },
+    {
+      "name": "Field navigation",
+      "kind": "nav",
+      "refersTo": "navigation-item-active",
+      "description": "Five text destinations with a soft fill and explicit current-page state; placement responds to the app viewport.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Field navigation\"><a href=\"#today\" aria-current=\"page\">Today</a><a href=\"#projects\">Projects</a><a href=\"#time\">Time</a><a href=\"#issues\">Issues</a><a href=\"#drafts\">Drafts</a></nav>",
+      "css": ".ds-nav{display:flex;justify-content:center;gap:8px;padding:8px 16px;background:var(--surface,#fffdf8);border-top:1px solid var(--line,#c9d6ce);font-family:\"Segoe UI\",system-ui,sans-serif}.ds-nav a{min-width:105px;min-height:48px;display:grid;place-items:center;border-radius:8px;text-decoration:none;font-size:.95rem;color:var(--muted,#50635d);font-weight:600}.ds-nav a[aria-current=page]{background:var(--soft,#dcece5);color:var(--ink,#0a2423)}.ds-nav a:focus-visible{outline:3px solid var(--focus,#087b6b);outline-offset:3px}@media(max-width:759px){.ds-nav{gap:0;padding-left:5px;padding-right:5px}.ds-nav a{min-width:0;flex:1;font-size:.82rem}}"
+    },
+    {
+      "name": "State tags",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "Ordinary words carry the state; neutral and attention fills support them.",
+      "html": "<span class=\"ds-tag\">In Progress</span> <span class=\"ds-tag ds-tag-attention\">Open</span>",
+      "css": ".ds-tag{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:5px;font-family:\"Segoe UI\",system-ui,sans-serif;font-size:.79rem;font-weight:600;background:var(--soft,#dcece5);color:var(--ink,#0a2423);line-height:1.4}.ds-tag-attention{background:#fae4c9;color:#71451b}"
+    },
+    {
+      "name": "Scheduled work row",
+      "kind": "custom",
+      "refersTo": "work-list-row",
+      "description": "A divided operational row with schedule, job title, and client/site context.",
+      "html": "<div class=\"ds-list\"><div class=\"ds-row\"><div class=\"ds-time\">10:00</div><div class=\"ds-row-main\"><a class=\"ds-row-title\" href=\"#job/1/overview\">Replace the branch firewall</a><p class=\"ds-row-context\">Example Client · North branch</p><div class=\"ds-row-meta\">N45-1042 · Branch network refresh</div></div></div></div>",
+      "css": ".ds-list{border-top:1px solid var(--line,#c9d6ce);font-family:\"Segoe UI\",system-ui,sans-serif;color:var(--ink,#0a2423)}.ds-row{padding:19px 0;border-bottom:1px solid var(--line,#c9d6ce);display:flex;gap:20px;align-items:flex-start;justify-content:space-between}.ds-time{font-size:.91rem;font-weight:600;min-width:75px;padding-top:3px;font-variant-numeric:tabular-nums}.ds-row-main{flex:1;min-width:0}.ds-row-title{font-size:1.08rem;font-weight:650;color:var(--ink,#0a2423);text-decoration:none}.ds-row-title:hover{text-decoration:underline}.ds-row-title:focus-visible{outline:3px solid var(--focus,#087b6b);outline-offset:3px}.ds-row-context{margin:5px 0 0;font-size:.91rem;line-height:1.5;color:var(--muted,#50635d)}.ds-row-meta{margin-top:7px;font-size:.86rem;color:var(--muted,#50635d)}@media(max-width:759px){.ds-row{gap:13px}.ds-time{min-width:58px;font-size:.81rem}}"
+    },
+    {
+      "name": "Active visit",
+      "kind": "card",
+      "refersTo": "active-visit",
+      "description": "A tonal panel keeps the active job, state, and visit actions together.",
+      "html": "<section class=\"ds-visit\" aria-label=\"Active visit\"><div><span class=\"ds-visit-tag\">Onsite</span><h2>Replace the branch firewall</h2><p>Example Client · 0h 18m in this activity</p></div><div class=\"ds-visit-actions\"><a class=\"ds-visit-button\" href=\"#job/1/overview\">Open current job</a><a class=\"ds-visit-button ds-visit-secondary\" href=\"#time\">Manage visit</a></div></section>",
+      "css": ".ds-visit{font-family:\"Segoe UI\",system-ui,sans-serif;color:var(--ink,#0a2423);background:var(--soft,#dcece5);border-radius:14px;padding:23px 25px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;gap:22px}.ds-visit h2{font-size:1.35rem;font-weight:650;line-height:1.25;letter-spacing:-.015em;margin:8px 0}.ds-visit p{margin:0;color:var(--muted,#50635d);font-size:.91rem;line-height:1.5;font-variant-numeric:tabular-nums}.ds-visit-tag{display:inline-flex;padding:4px 9px;border-radius:5px;background:var(--soft,#dcece5);font-size:.79rem;font-weight:600;line-height:1.4}.ds-visit-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.ds-visit-button{font-family:\"Segoe UI\",system-ui,sans-serif;font-size:1rem;font-weight:650;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:11px 18px;border:1px solid transparent;border-radius:9px;cursor:pointer;text-decoration:none;touch-action:manipulation;background:var(--action,#126e61);color:var(--surface,#fffdf8)}.ds-visit-secondary{background:transparent;color:var(--ink,#0a2423);border-color:var(--line,#c9d6ce)}.ds-visit-button:hover{filter:brightness(.92)}.ds-visit-button:focus-visible{outline:3px solid var(--focus,#087b6b);outline-offset:3px}.ds-visit-button:disabled{opacity:.5;cursor:not-allowed}@media(max-width:759px){.ds-visit{display:block;padding:21px}.ds-visit-actions{margin-top:17px}.ds-visit-button{flex:1}}@media(prefers-reduced-motion:no-preference){.ds-visit{animation:ds-visit-arrive .28s cubic-bezier(.16,1,.3,1)}@keyframes ds-visit-arrive{from{clip-path:inset(0 0 8% 0 round 14px)}to{clip-path:inset(0 round 14px)}}}"
+    },
+    {
+      "name": "Arrival confirmation",
+      "kind": "card",
+      "refersTo": "arrival-panel",
+      "description": "A bordered surface presents the arrival question and the technician’s explicit next action.",
+      "html": "<section class=\"ds-arrival\"><h2>At the right stop?</h2><p>Your location and schedule match this job. Confirm before marking yourself onsite.</p><div class=\"ds-arrival-actions\"><button class=\"ds-arrival-button\" type=\"button\">Mark onsite</button><button class=\"ds-arrival-button ds-arrival-secondary\" type=\"button\">Start travel</button></div></section>",
+      "css": ".ds-arrival{font-family:\"Segoe UI\",system-ui,sans-serif;color:var(--ink,#0a2423);border:1px solid var(--line,#c9d6ce);border-radius:14px;padding:22px;margin-bottom:24px;background:var(--surface,#fffdf8)}.ds-arrival h2{font-size:1.35rem;font-weight:650;line-height:1.25;letter-spacing:-.015em;margin:0 0 8px}.ds-arrival p{color:var(--muted,#50635d);font-size:.91rem;line-height:1.5;margin:0;max-width:70ch}.ds-arrival-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:20px}.ds-arrival-button{font-family:\"Segoe UI\",system-ui,sans-serif;font-size:1rem;font-weight:650;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:11px 18px;border:1px solid transparent;border-radius:9px;cursor:pointer;text-decoration:none;touch-action:manipulation;background:var(--action,#126e61);color:var(--surface,#fffdf8)}.ds-arrival-secondary{background:transparent;color:var(--ink,#0a2423);border-color:var(--line,#c9d6ce)}.ds-arrival-button:hover{filter:brightness(.92)}.ds-arrival-button:focus-visible{outline:3px solid var(--focus,#087b6b);outline-offset:3px}.ds-arrival-button:disabled{opacity:.5;cursor:not-allowed}"
+    },
+    {
+      "name": "Focused form surface",
+      "kind": "card",
+      "refersTo": "dialog",
+      "description": "The dialog’s titled surface, close action, and modal elevation, shown as an inline specimen.",
+      "html": "<section class=\"ds-sheet\" role=\"dialog\" aria-labelledby=\"ds-sheet-title\"><div class=\"ds-sheet-top\"><h2 id=\"ds-sheet-title\">Confirm arrival</h2><button class=\"ds-sheet-close\" type=\"button\">Close</button></div><p>Mark yourself onsite and begin recording time for this job?</p></section>",
+      "css": ".ds-sheet{font-family:\"Segoe UI\",system-ui,sans-serif;border:0;border-radius:16px;background:var(--surface,#fffdf8);color:var(--ink,#0a2423);padding:26px;width:540px;max-width:calc(100vw - 24px);max-height:90dvh;box-shadow:0 18px 70px #0a24234d}.ds-sheet-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px}.ds-sheet h2{margin:0;font-size:1.5rem;font-weight:650;line-height:1.25;letter-spacing:-.015em}.ds-sheet p{margin:0;font-size:1rem;line-height:1.55;max-width:72ch}.ds-sheet-close{font-family:\"Segoe UI\",system-ui,sans-serif;font-size:1rem;font-weight:650;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:11px 18px;border:1px solid transparent;border-radius:9px;cursor:pointer;text-decoration:none;touch-action:manipulation;background:transparent;color:var(--ink,#0a2423);padding:8px 11px}.ds-sheet-close:hover{filter:brightness(.92)}.ds-sheet-close:focus-visible{outline:3px solid var(--focus,#087b6b);outline-offset:3px}.ds-sheet-close:disabled{opacity:.5;cursor:not-allowed}@media(max-width:759px){.ds-sheet{padding:22px}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "N45 in the field",
+    "overview": "Field Mode carries N45's calm, capable operational identity into work at a client site. Warm paper, dark spruce, clear type, and restrained green actions keep job context legible beside the next useful action. The interface is compact enough for real work, with generous touch controls and ordinary language.\n\nThis document records the built system within `agent/field/`, from `field.css`, `shell.html`, and the rendered components in `app.mjs`. It extends the incumbent identity in the root `DESIGN.md` and `PRODUCT.md`; it does not replace guidance for the wider PSA or customer email. The accepted workflow remains in `docs/n45/field-mode.md`. The customer appointment projection keeps its existing portal components.",
+    "keyCharacteristics": [
+      "Warm neutral work surfaces beneath a steady dark spruce masthead.",
+      "Text-led lists and task sections with quiet dividing rules.",
+      "Large, plainly labeled controls and visible keyboard focus.",
+      "Tonal emphasis for an active visit, selection, and arrival confirmation.",
+      "A saved light/dark preference with the same information hierarchy."
+    ],
+    "rules": [
+      {
+        "name": "The State Has Words Rule",
+        "body": "Pair status color with a readable state label, an active navigation state, or an explanatory message.",
+        "section": "colors"
+      },
+      {
+        "name": "The Context Before Detail Rule",
+        "body": "Make the job or section title strongest, then support it with client, site, time, and status in the smaller text roles.",
+        "section": "typography"
+      },
+      {
+        "name": "The Rows Carry Work Rule",
+        "body": "Use divided rows for schedules, documents, assets, notes, issues, and time history; reserve enclosed panels for arrival choices, active visits, and focused forms.",
+        "section": "layout"
+      },
+      {
+        "name": "The Transient Lift Rule",
+        "body": "Keep lists and persistent panels free of shadows; use depth to distinguish notices and modal forms from the work beneath them.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the paired light and dark roles together, including action text and supporting text.",
+      "Do retain N45's existing mark and the dark spruce masthead.",
+      "Do preserve readable state labels, descriptive action text, and visible keyboard focus.",
+      "Do keep operational records in divided rows and let long content wrap.",
+      "Do keep the bottom navigation, safe-area allowance, and reserved content space working together on narrow screens."
+    ],
+    "donts": [
+      "Don't introduce decorative gradients, promotional display treatments, or generic SaaS styling into this operational surface.",
+      "Don't replace state words with color alone or use decorative glyphs as controls.",
+      "Don't add shadows to persistent rows or panels that the built system keeps flat.",
+      "Don't extend the active-visit reveal into ambient or repeated decorative animation.",
+      "Don't apply these scoped field tokens to the wider PSA, portal, or email without checking their incumbent guidance."
+    ]
+  }
+}
