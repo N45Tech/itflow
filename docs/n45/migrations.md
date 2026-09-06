@@ -48,6 +48,9 @@ The manifest reserves the next four feature IDs and all post-integration migrati
 | — | `n45-0022-recoverable-ticket-deletion` | Runbooks |
 | — | `n45-0023-ticket-operational-discipline` | Runbooks |
 | — | `n45-0024-technician-field-mode` | Runbooks |
+| — | `n45-0025-inbound-mail-receipts` | Inbound mail |
+
+`n45-0025-inbound-mail-receipts` adds durable mailbox/message receipts and a custom-action outbox without rewriting existing records. Preserve receipts and retained source mail when recovering. Rollback requires the matching pre-upgrade database and application snapshot; do not delete receipts while a mailbox can replay committed messages.
 
 When integrating each feature, rename its file into `n45/migrations/`, change its guard to `FROM_N45_DB_UPDATER`, and make its header name the stable ID. Remove checks that read `settings.config_current_database_version` or require the preceding numeric fork marker; stable manifest order is the N45 prerequisite after the namespaces separate. Add the module and ordered migration definition to `n45/manifest.php`; copy the reservation's `legacy_version`, `data_change`, and rollback contract exactly; add complete column, index, and data fingerprints; update the released-file inventory and baseline-schema assertions; then add the migration to the released inventory below. `n45-0011` must retain `legacy_version => '2.7.8'`, not `null`. Remove no reservation: the durable mapping is needed to detect old installations whose upstream marker already contains that former fork number.
 

@@ -170,16 +170,7 @@ $paths = [
         'side_effect' => 'logAudit("Ticket", "Create"',
         'failure' => "logApp('Cron', 'error'",
     ],
-    [
-        'label' => 'Parsed-email',
-        'source' => $email_parser,
-        'client_lock' => 'agreementLockClientForAuditRetention($client_id)',
-        'insert' => 'ticketCreationDbQuery("INSERT INTO tickets SET',
-        'sla' => 'applyTicketSla($id, null, null, true);',
-        'catch' => 'catch (Throwable $exception)',
-        'side_effect' => 'mkdirMissing(\'../uploads/tickets/\');',
-        'failure' => 'throw $exception;',
-    ],
+
 ];
 
 foreach ($paths as $path) {
@@ -203,6 +194,27 @@ foreach ($paths as $path) {
         "$label ticket creation still invokes an independently committed SLA transaction"
     );
 }
+
+$assertOrdered($email_parser, [
+    'ticketEmailRequireTransaction();',
+    'agreementLockClientForAuditRetention($client_id)',
+    'UPDATE settings',
+    'ticketCreationDbQuery("INSERT INTO tickets SET',
+    'applyTicketSla($id, null, null, true);',
+    'ticketEmailStoreFiles($id, 0, $attachments, $allowed_extensions);',
+    'ticketEmailEnqueueAction(\'ticket_create\', $id, $client_id);',
+], 'Inbound ticket creation must keep its client lock, SLA, verified files and outbox in the receipt transaction');
+$assertNotContains($email_parser, 'mysqli_commit($mysqli)', 'Inbound ticket helper must not commit independently of its receipt');
+$ingestion = $read('functions/ticket_email_ingestion.php');
+$assertOrdered($ingestion, [
+    '!mysqli_begin_transaction($mysqli)',
+    'FOR UPDATE',
+    '$processor()',
+    "receipt_status = 'Completed'",
+    'if (!mysqli_commit($mysqli))',
+    'catch (Throwable $exception)',
+    'mysqli_rollback($mysqli)',
+], 'Inbound mail receipt must commit with the processor and roll back on failure');
 
 // Clientless parsed emails remain supported while every positive tenant ID is
 // locked before the ticket insert and before applyTicketSla locks the ticket.

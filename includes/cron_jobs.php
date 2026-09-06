@@ -116,6 +116,14 @@ function cronJobRegistry(): array
             'interval_minutes' => 60,
         ],
         [
+            'name' => 'ticket_email_actions',
+            'label' => 'Inbound Email Actions',
+            'script' => 'ticket_email_actions.php',
+            'description' => 'Retries durable custom actions after inbound ticket messages commit.',
+            'schedule' => 'Interval',
+            'interval_minutes' => 1,
+        ],
+        [
             'name' => 'portal_request_outbox',
             'label' => 'Portal Request Actions',
             'script' => 'portal_request_outbox.php',

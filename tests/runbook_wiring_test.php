@@ -288,11 +288,11 @@ $assertContains('runbookTicketCanResolve($ticket_id)', $nightly, 'Nightly automa
 $assertAtomicTicketGate($nightly, 'Nightly automatic ticket closure');
 
 $email_parser = $read('cron/ticket_email_parser.php');
-$parser_begin = strpos($email_parser, 'mysqli_begin_transaction($mysqli)');
+$parser_begin = strpos($email_parser, 'ticketEmailRequireTransaction();', strpos($email_parser, 'function addReply('));
 $parser_lock = strpos($email_parser, 'runbookLockTicketForReopen($ticket_id)', $parser_begin ?: 0);
 $parser_update = strpos($email_parser, 'UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL', $parser_lock ?: 0);
 $parser_affected = strpos($email_parser, 'mysqli_affected_rows($mysqli) !== 1', $parser_update ?: 0);
-$parser_commit = strpos($email_parser, 'mysqli_commit($mysqli)', $parser_affected ?: 0);
+$parser_commit = strpos($email_parser, 'ticketEmailResult($closed_reply', $parser_affected ?: 0);
 $assertTrue(
     $parser_begin !== false && $parser_lock !== false && $parser_update !== false
         && $parser_affected !== false && $parser_commit !== false
@@ -300,7 +300,8 @@ $assertTrue(
         && $parser_update < $parser_affected && $parser_affected < $parser_commit,
     'Inbound email replies do not atomically lock and compare-and-set a ticket reopen'
 );
-$assertContains('mysqli_rollback($mysqli)', $email_parser, 'A failed inbound email ticket reopen cannot roll back');
+$assertContains('mysqli_rollback($mysqli)', $read('functions/ticket_email_ingestion.php'), 'A failed inbound email ticket reopen cannot roll back');
+$assertContains('ticketEmailProcess(', $email_parser, 'Inbound mail is not owned by a receipt transaction');
 
 $assertContains('runbookTicketCanResolve(intval($project_ticket[\'ticket_id\']))', $project_post, 'Project closure can bypass child ticket runbook gates');
 $project_close = $section(
