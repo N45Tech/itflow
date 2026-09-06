@@ -341,6 +341,66 @@ return [
                 'altered_indexes' => [],
                 'legacy_bridge_index_overrides' => [],
             ],
+            'n45-0022-recoverable-ticket-deletion' => [
+                'module' => 'runbooks',
+                'legacy_version' => null,
+                'data_change' => true,
+                'rollback' => 'Preserve deletion history, restore the pre-upgrade database snapshot, and revert application code before removing recoverable-deletion fields.',
+                'created_tables' => ['ticket_deletion_events'],
+                'altered_columns' => [
+                    'clients' => ['client_ticket_retention_days'],
+                    'tickets' => [
+                        'ticket_deleted_by',
+                        'ticket_delete_reason',
+                        'ticket_restore_until',
+                    ],
+                ],
+                'altered_indexes' => [
+                    'tickets' => [
+                        'ticket_restore_queue' => $index_fingerprint(false, [
+                            'ticket_archived_at', 'ticket_restore_until', 'ticket_client_id',
+                        ]),
+                    ],
+                ],
+                'legacy_bridge_index_overrides' => [],
+            ],
+            'n45-0023-ticket-operational-discipline' => [
+                'module' => 'runbooks',
+                'legacy_version' => null,
+                'data_change' => true,
+                'rollback' => 'Preserve ticket operational evidence, restore the pre-upgrade database snapshot, and revert application code before removing structured ticket fields.',
+                'created_tables' => [
+                    'ticket_work_notes',
+                    'ticket_handoffs',
+                    'ticket_relationships',
+                    'ticket_customer_promises',
+                    'ticket_customer_promise_events',
+                    'ticket_resolution_events',
+                ],
+                'altered_columns' => [
+                    'tickets' => [
+                        'ticket_work_type',
+                        'ticket_impact',
+                        'ticket_urgency',
+                        'ticket_waiting_on',
+                        'ticket_next_action',
+                        'ticket_next_action_due_at',
+                        'ticket_resolution_code',
+                        'ticket_resolution_summary',
+                        'ticket_root_cause',
+                        'ticket_closure_code',
+                    ],
+                ],
+                'altered_indexes' => [
+                    'tickets' => [
+                        'ticket_operations_queue' => $index_fingerprint(false, [
+                            'ticket_archived_at', 'ticket_closed_at',
+                            'ticket_waiting_on', 'ticket_next_action_due_at',
+                        ]),
+                    ],
+                ],
+                'legacy_bridge_index_overrides' => [],
+            ],
         ],
     ],
     'features' => [
@@ -445,6 +505,7 @@ return [
         ],
         'runbooks' => [
             'runtime_files' => [
+                'functions/ticket_discipline.php',
                 'functions/runbooks.php',
                 'functions/ticket_approvals.php',
                 'functions/ticket_retention.php',
@@ -454,6 +515,8 @@ return [
                 'n45-0019-ticket-approval-gates',
                 'n45-0020-specific-client-approvers',
                 'n45-0021-client-ticket-retention',
+                'n45-0022-recoverable-ticket-deletion',
+                'n45-0023-ticket-operational-discipline',
             ],
             'toggleable' => false,
             'reason' => 'Lifecycle gates and evidence integrity must remain active after migration.',
@@ -2070,6 +2133,84 @@ return [
                 'failure_queries' => [
                     "SELECT COUNT(*) FROM clients WHERE client_ticket_retention_policy NOT IN ('override','strict')",
                     "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_closed_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
+                ],
+            ],
+        ],
+        'n45-0022-recoverable-ticket-deletion' => [
+            'module' => 'runbooks', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0022-recoverable-ticket-deletion.php',
+            'summary' => 'Replace ticket hard deletion with client-scoped retention and restoration until deliberate purge and surviving append-only deletion history.',
+            'data_change' => true,
+            'rollback' => 'Preserve deletion history, restore the pre-upgrade database snapshot, and revert application code before removing recoverable-deletion fields.',
+            'fingerprint' => [
+                'tables' => ['ticket_deletion_events'],
+                'columns' => [
+                    'clients' => [
+                        'client_ticket_retention_days' => $column_fingerprint('int(11)', false, 30),
+                    ],
+                    'tickets' => [
+                        'ticket_deleted_by' => $column_fingerprint('int(11)', false, 0),
+                        'ticket_delete_reason' => $column_fingerprint('varchar(500)', true, null),
+                        'ticket_restore_until' => $column_fingerprint('datetime', true, null),
+                    ],
+                ],
+                'indexes' => [
+                    'tickets' => [
+                        'ticket_restore_queue' => $index_fingerprint(false, [
+                            'ticket_archived_at', 'ticket_restore_until', 'ticket_client_id',
+                        ]),
+                    ],
+                ],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM tickets WHERE ticket_archived_at IS NOT NULL AND (ticket_restore_until IS NULL OR ticket_delete_reason IS NULL OR ticket_delete_reason = '')",
+                    "SELECT COUNT(*) FROM ticket_deletion_events WHERE ticket_deletion_event_action NOT IN ('deleted','restored','purged') OR ticket_deletion_event_context_hash = ''",
+                ],
+            ],
+        ],
+        'n45-0023-ticket-operational-discipline' => [
+            'module' => 'runbooks', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0023-ticket-operational-discipline.php',
+            'summary' => 'Add structured work, priority assessment, handoff, relationship, promise, and resolution controls to tickets.',
+            'data_change' => true,
+            'rollback' => 'Preserve ticket operational evidence, restore the pre-upgrade database snapshot, and revert application code before removing structured ticket fields.',
+            'fingerprint' => [
+                'tables' => [
+                    'ticket_work_notes',
+                    'ticket_handoffs',
+                    'ticket_relationships',
+                    'ticket_customer_promises',
+                    'ticket_customer_promise_events',
+                    'ticket_resolution_events',
+                ],
+                'columns' => [
+                    'tickets' => [
+                        'ticket_work_type' => $column_fingerprint('varchar(20)', false, 'incident'),
+                        'ticket_impact' => $column_fingerprint('varchar(10)', false, 'medium'),
+                        'ticket_urgency' => $column_fingerprint('varchar(10)', false, 'medium'),
+                        'ticket_waiting_on' => $column_fingerprint('varchar(20)', false, 'none'),
+                        'ticket_next_action' => $column_fingerprint('varchar(500)', true, null),
+                        'ticket_next_action_due_at' => $column_fingerprint('datetime', true, null),
+                        'ticket_resolution_code' => $column_fingerprint('varchar(40)', true, null),
+                        'ticket_resolution_summary' => $column_fingerprint('text', true, null),
+                        'ticket_root_cause' => $column_fingerprint('text', true, null),
+                        'ticket_closure_code' => $column_fingerprint('varchar(40)', true, null),
+                    ],
+                ],
+                'indexes' => [
+                    'tickets' => [
+                        'ticket_operations_queue' => $index_fingerprint(false, [
+                            'ticket_archived_at', 'ticket_closed_at',
+                            'ticket_waiting_on', 'ticket_next_action_due_at',
+                        ]),
+                    ],
+                ],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM tickets WHERE ticket_work_type NOT IN ('incident','request','problem','change','onboarding','project_task')",
+                    "SELECT COUNT(*) FROM tickets WHERE ticket_impact NOT IN ('low','medium','high') OR ticket_urgency NOT IN ('low','medium','high') OR ticket_waiting_on NOT IN ('none','client','vendor','internal','scheduled')",
+                    "SELECT COUNT(*) FROM tickets WHERE (ticket_resolved_at IS NOT NULL OR ticket_closed_at IS NOT NULL) AND (ticket_resolution_code IS NULL OR ticket_resolution_summary IS NULL OR ticket_resolution_summary = '')",
+                    "SELECT COUNT(*) FROM tickets WHERE ticket_closed_at IS NOT NULL AND ticket_closure_code IS NULL",
+                    "SELECT COUNT(*) FROM ticket_customer_promises WHERE ticket_customer_promise_status NOT IN ('open','fulfilled','cancelled')",
+                    "SELECT COUNT(*) FROM ticket_relationships WHERE ticket_relationship_from_ticket_id = ticket_relationship_to_ticket_id OR ticket_relationship_type NOT IN ('related','parent','duplicate')",
                 ],
             ],
         ],

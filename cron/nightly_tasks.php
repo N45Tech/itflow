@@ -404,7 +404,10 @@ if (mysqli_num_rows($sql_recurring_tickets) > 0) {
                 throw new RuntimeException('The nightly recurring ticket number allocation returned no number');
             }
 
-            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id", 'Could not create the nightly recurring ticket');
+            $assessment = ticketDisciplineLegacyAssessment($priority, 'request');
+            $impact = escapeSql($assessment['impact']);
+            $urgency = escapeSql($assessment['urgency']);
+            ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Recurring', ticket_subject = '$subject', ticket_details = '$details', ticket_work_type = 'request', ticket_priority = '$priority', ticket_impact = '$impact', ticket_urgency = '$urgency', ticket_status = '$ticket_status', ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = $created_id, ticket_assigned_to = $assigned_id, ticket_contact_id = $contact_id, ticket_client_id = $client_id, ticket_asset_id = $asset_id, ticket_category = $category, ticket_recurring_ticket_id = $recurring_ticket_id", 'Could not create the nightly recurring ticket');
             $id = intval(mysqli_insert_id($mysqli));
             if (!$id) {
                 throw new RuntimeException('The nightly recurring ticket did not receive an ID');
@@ -562,6 +565,7 @@ $sql_resolved_tickets_to_close = mysqli_query(
     "SELECT ticket_assigned_to, ticket_client_id, ticket_id, ticket_number, ticket_prefix,
         ticket_status, ticket_subject FROM tickets
     WHERE ticket_status = 4
+    AND ticket_archived_at IS NULL
     AND ticket_updated_at < NOW() - INTERVAL $config_ticket_autoclose_hours HOUR"
 );
 
@@ -588,6 +592,7 @@ while ($row = mysqli_fetch_assoc($sql_resolved_tickets_to_close)) {
         if (!$can_close) {
             throw new RuntimeException($close_error);
         }
+        ticketDisciplineStoreClosure($ticket_id, 'auto_closed', true);
 
         $resolved_at = escapeSql($locked_ticket['ticket_resolved_at']);
         $close_sql = mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 5,
@@ -599,6 +604,7 @@ while ($row = mysqli_fetch_assoc($sql_resolved_tickets_to_close)) {
         if (!$close_sql || mysqli_affected_rows($mysqli) !== 1) {
             throw new RuntimeException('The ticket changed before it could be automatically closed');
         }
+        ticketDisciplineRecordResolutionEvent($ticket_id, 'closed', 'system', 0);
         documentationRecordChangePassport($ticket_id, 5, 0, true);
         if (!mysqli_commit($mysqli)) {
             throw new RuntimeException('Could not commit the automatic ticket closure');

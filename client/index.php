@@ -24,6 +24,8 @@ $sql_active_tickets = mysqli_query(
     WHERE ticket_client_id = $session_client_id
         $ticket_contact_scope
         AND ticket_archived_at IS NULL
+        AND ticket_status NOT IN (4, 5)
+        AND ticket_resolved_at IS NULL
         AND ticket_closed_at IS NULL
     ORDER BY COALESCE(ticket_updated_at, ticket_created_at) DESC, ticket_id DESC
     LIMIT 5"
@@ -45,6 +47,8 @@ $sql_active_ticket_count = mysqli_query(
     WHERE ticket_client_id = $session_client_id
         $ticket_contact_scope
         AND ticket_archived_at IS NULL
+        AND ticket_status NOT IN (4, 5)
+        AND ticket_resolved_at IS NULL
         AND ticket_closed_at IS NULL"
 );
 $active_ticket_count_row = mysqli_fetch_assoc($sql_active_ticket_count);

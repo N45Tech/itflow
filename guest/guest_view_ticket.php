@@ -41,7 +41,8 @@ $ticket_sql = mysqli_query($mysqli,
     "SELECT * FROM tickets
             LEFT JOIN users on ticket_assigned_to = user_id
             LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
-            WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'"
+            WHERE ticket_id = $ticket_id AND ticket_url_key = '$url_key'
+            AND ticket_archived_at IS NULL"
 );
 
 if (mysqli_num_rows($ticket_sql) !== 1) {
@@ -65,13 +66,17 @@ if ($ticket_row) {
     $ticket_assigned_to = escapeHtml($ticket_row['user_name']);
     $ticket_resolved_at = escapeHtml($ticket_row['ticket_resolved_at']);
     $ticket_closed_at = escapeHtml($ticket_row['ticket_closed_at']);
+    $ticket_status_id = intval($ticket_row['ticket_status']);
+    $ticket_is_closed = $ticket_status_id === 5 || !empty($ticket_closed_at);
+    $ticket_is_resolved = $ticket_is_closed || $ticket_status_id === 4
+        || !empty($ticket_resolved_at);
     $ticket_feedback = escapeHtml($ticket_row['ticket_feedback']);
 
     ?>
 
     <div class="card mt-3">
-        <div class="card-header bg-dark text-center">
-            <h4 class="mt-1">
+        <div class="card-header bg-dark text-light text-center">
+            <h4 class="mt-1 text-light">
                 Ticket <?= $ticket_prefix, $ticket_number ?>
             </h4>
         </div>
@@ -84,7 +89,7 @@ if ($ticket_row) {
                 <br>
                 <strong>Priority:</strong> <?= $ticket_priority ?>
                 <br>
-                <?php if (!empty($ticket_assigned_to) && empty($ticket_closed_at)) { ?>
+                <?php if (!empty($ticket_assigned_to) && !$ticket_is_closed) { ?>
                     <strong>Assigned to: </strong> <?= $ticket_assigned_to ?>
                 <?php } ?>
             </p>
@@ -96,11 +101,11 @@ if ($ticket_row) {
 
     <!-- Either show the reply comments box, option to re-open ticket, show ticket smiley feedback or thanks for feedback -->
 
-    <?php if (empty($ticket_resolved_at)) { ?>
+    <?php if (!$ticket_is_resolved) { ?>
         <!-- Reply - guest users should email or login so we know exactly who replied -->
         <h6><i>Please <a href="../client">log in</a> or reply to the ticket via email to respond</i></h6>
 
-    <?php } elseif (empty($ticket_closed_at)) { ?>
+    <?php } elseif (!$ticket_is_closed) { ?>
         <!-- Re-open -->
 
         <h4>Your ticket has been resolved</h4>

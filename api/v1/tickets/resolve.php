@@ -15,7 +15,10 @@ $update_count = false;
 
 if (!empty($ticket_id)) {
 
-    $ticket_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_first_response_at, ticket_id, ticket_number, ticket_prefix FROM tickets WHERE ticket_id = '$ticket_id' AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL AND ticket_client_id = $client_id LIMIT 1"));
+    $ticket_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_first_response_at,
+        ticket_id, ticket_number, ticket_prefix FROM tickets WHERE ticket_id = '$ticket_id'
+        AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL
+        AND ticket_archived_at IS NULL AND ticket_client_id = $client_id LIMIT 1"));
 
     if ($ticket_row) {
         // Grab what we need, not using the model
@@ -33,6 +36,12 @@ if (!empty($ticket_id)) {
             if (intval($locked_ticket['ticket_client_id']) !== intval($client_id)) {
                 throw new RuntimeException('The ticket is outside this API key client scope');
             }
+            ticketDisciplineStoreResolution(
+                $ticket_id,
+                $_POST['resolution_code'] ?? '',
+                $_POST['resolution_summary'] ?? '',
+                $_POST['root_cause'] ?? ''
+            );
             [$can_resolve] = runbookTicketCanResolve($ticket_id);
             if (!$can_resolve) {
                 mysqli_rollback($mysqli);
@@ -51,6 +60,12 @@ if (!empty($ticket_id)) {
             if (!$update_sql || mysqli_affected_rows($mysqli) !== 1) {
                 throw new RuntimeException('The ticket changed before it could be resolved');
             }
+            ticketDisciplineRecordResolutionEvent(
+                $ticket_id,
+                'resolved',
+                'api',
+                intval($session_user_id ?? 0)
+            );
             documentationRecordChangePassport($ticket_id, 4, $session_user_id, true);
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the ticket resolution');

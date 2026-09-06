@@ -145,7 +145,7 @@ $assertContains('automationEventQueueAudit(', $create,
     'Ticket audit is not buffered into the event transaction');
 $assertContains('bool $caller_transaction = false', $reply,
     'Incident replies cannot join the event transaction');
-$assertContains('runbookTicketCanResolve($ticket_id)', $reply,
+$assertContains('runbookTicketCanResolve($ticket_id', $reply,
     'Recovery resolution bypasses the runbook gate');
 $assertContains('documentationRecordChangePassport($ticket_id, 4, 0, true)', $reply,
     'Recovery resolution does not create its passport in the caller transaction');

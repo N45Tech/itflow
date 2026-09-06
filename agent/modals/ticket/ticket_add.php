@@ -16,7 +16,7 @@ if ($client_id) {
 ob_start();
 
 ?>
-<div class="modal-header bg-dark">
+<div class="modal-header bg-dark text-light">
     <h5 class="modal-title"><i class="fas fa-fw fa-life-ring me-2"></i>New Ticket</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
@@ -129,23 +129,19 @@ ob_start();
                     </div>
                 </div>
 
-                <div class="row">
-
-                    <div class="col">
+                <div class="row g-3">
+                    <div class="col-md-6">
                         <div class="mb-3">
-                            <label>Priority <strong class="text-danger">*</strong></label>
-                            <div class="input-group">
-                                    <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
-                                <select class="form-select select2" name="priority" required>
-                                    <?php foreach (ticketPriorityDefinitions() as $priority => $definition) { ?>
-                                        <option value="<?= escapeHtml($priority) ?>" <?= $priority === 'Medium' ? 'selected' : '' ?>><?= escapeHtml("$priority — " . $definition['short']) ?></option>
-                                    <?php } ?>
-                                </select>
-                            </div>
+                            <label for="new_ticket_work_type">Work type <strong class="text-danger">*</strong></label>
+                            <select class="form-select" name="work_type" id="new_ticket_work_type" required>
+                                <?php foreach (ticketWorkTypeDefinitions() as $value => $label) { ?>
+                                    <option value="<?= escapeHtml($value) ?>" <?= $value === 'incident' ? 'selected' : '' ?>><?= escapeHtml($label) ?></option>
+                                <?php } ?>
+                            </select>
                         </div>
                     </div>
 
-                    <div class="col">
+                    <div class="col-md-6">
                         <div class="mb-3">
                             <label>Category</label>
                             <div class="input-group">
@@ -170,6 +166,33 @@ ob_start();
                         </div>
                     </div>
 
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="new_ticket_impact">Impact <strong class="text-danger">*</strong></label>
+                            <select class="form-select" name="impact" id="new_ticket_impact" required>
+                                <?php foreach (ticketImpactDefinitions() as $value => $label) { ?>
+                                    <option value="<?= escapeHtml($value) ?>" <?= $value === 'medium' ? 'selected' : '' ?>><?= escapeHtml(ucfirst($value) . ' — ' . $label) ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="new_ticket_urgency">Urgency <strong class="text-danger">*</strong></label>
+                            <select class="form-select" name="urgency" id="new_ticket_urgency" required>
+                                <?php foreach (ticketUrgencyDefinitions() as $value => $label) { ?>
+                                    <option value="<?= escapeHtml($value) ?>" <?= $value === 'medium' ? 'selected' : '' ?>><?= escapeHtml(ucfirst($value) . ' — ' . $label) ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-light border py-2" aria-live="polite">
+                    Derived priority: <strong id="new_ticket_priority">Medium</strong>
                 </div>
 
                 <div class="row">
@@ -326,6 +349,21 @@ document.getElementById('configurationChange')?.addEventListener('change', funct
         document.getElementById('documentationImpact').value = 'Required';
     }
 });
+
+(function () {
+    const impact = document.getElementById('new_ticket_impact');
+    const urgency = document.getElementById('new_ticket_urgency');
+    const output = document.getElementById('new_ticket_priority');
+    if (!impact || !urgency || !output) return;
+    const update = () => {
+        const score = {low: 1, medium: 2, high: 3}[impact.value]
+            + {low: 1, medium: 2, high: 3}[urgency.value];
+        output.textContent = score === 6 ? 'Urgent' : (score === 5 ? 'High' : (score >= 3 ? 'Medium' : 'Low'));
+    };
+    impact.addEventListener('change', update);
+    urgency.addEventListener('change', update);
+    update();
+}());
 </script>
 
 <?php

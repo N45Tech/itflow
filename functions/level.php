@@ -1934,11 +1934,18 @@ function levelHandleAlertActive(array $alert, ?string $event_time = null,
 
     $ticket_id = intval($existing['level_ticket_id'] ?? 0);
     if ($ticket_id > 0) {
-        levelUpsertAlertLink($alert, $ticket_id, null, $event_time);
-        if (!empty($existing['level_alert_resolved_at'])) {
-            logTicketHistory($ticket_id, escapeSql('Level.io alert became active again; ticket left in its current workflow state.'));
+        $active_ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id FROM tickets
+            WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL
+            AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL
+            AND ticket_status NOT IN (4, 5) LIMIT 1"));
+        if ($active_ticket) {
+            levelUpsertAlertLink($alert, $ticket_id, null, $event_time);
+            if (!empty($existing['level_alert_resolved_at'])) {
+                logTicketHistory($ticket_id, escapeSql('Level.io alert became active again; ticket left in its current workflow state.'));
+            }
+            return ['result' => 'existing', 'ticket_id' => $ticket_id];
         }
-        return ['result' => 'existing', 'ticket_id' => $ticket_id];
+        $ticket_id = 0;
     }
 
     if ($device_already_synced) {
@@ -2025,8 +2032,15 @@ function levelHandleAlertActive(array $alert, ?string $event_time = null,
             FROM level_alert_links WHERE level_alert_id = '$alert_id_sql' LIMIT 1"));
         $ticket_id = intval($existing['level_ticket_id'] ?? 0);
         if ($ticket_id > 0) {
-            levelUpsertAlertLink($alert, $ticket_id, $asset_id, $event_time);
-            return ['result' => 'existing', 'ticket_id' => $ticket_id];
+            $active_ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id FROM tickets
+                WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL
+                AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL
+                AND ticket_status NOT IN (4, 5) LIMIT 1"));
+            if ($active_ticket) {
+                levelUpsertAlertLink($alert, $ticket_id, $asset_id, $event_time);
+                return ['result' => 'existing', 'ticket_id' => $ticket_id];
+            }
+            $ticket_id = 0;
         }
 
         $contact_id = 0;
@@ -2041,6 +2055,7 @@ function levelHandleAlertActive(array $alert, ?string $event_time = null,
             $severity = 'information';
         }
         $priority = levelAlertPriority($severity);
+        $assessment = ticketDisciplineLegacyAssessment($priority, 'incident');
         $hostname = levelLimitText(($alert['device_hostname'] ?? '') ?: ($asset['asset_name'] ?? ''), 200);
         $alert_name = levelLimitText($alert['name'] ?? 'Level.io alert', 255);
         $subject = levelLimitText("[Level " . ucfirst($severity) . "] $alert_name - $hostname", 500);
@@ -2061,6 +2076,8 @@ function levelHandleAlertActive(array $alert, ?string $event_time = null,
         $subject_sql = levelDbEscape($subject);
         $details_sql = levelDbEscape($details);
         $priority_sql = levelDbEscape($priority);
+        $impact_sql = levelDbEscape($assessment['impact']);
+        $urgency_sql = levelDbEscape($assessment['urgency']);
         $prefix_sql = levelDbEscape(levelLimitText($settings['ticket_prefix'], 200));
         $assigned_to = intval($settings['alert_assigned_to']);
         $billable = intval($settings['ticket_default_billable']);
@@ -2093,6 +2110,9 @@ function levelHandleAlertActive(array $alert, ?string $event_time = null,
                 ticket_subject = '$subject_sql',
                 ticket_details = '$details_sql',
                 ticket_priority = '$priority_sql',
+                ticket_work_type = 'incident',
+                ticket_impact = '$impact_sql',
+                ticket_urgency = '$urgency_sql',
                 ticket_status = 1,
                 ticket_billable = $billable,
                 ticket_url_key = '$url_key',
@@ -2169,11 +2189,15 @@ function levelHandleAlertResolved(array $alert, ?string $event_time = null): arr
 
     levelUpsertAlertLink($alert, $ticket_id ?: null, $asset_id ?: null, $event_time);
 
-    if ($ticket_id > 0 && empty($existing['level_alert_resolved_at'])) {
+    $active_ticket = $ticket_id > 0
+        ? mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id FROM tickets
+            WHERE ticket_id = $ticket_id AND ticket_archived_at IS NULL LIMIT 1"))
+        : null;
+    if ($active_ticket && empty($existing['level_alert_resolved_at'])) {
         logTicketHistory($ticket_id, escapeSql('Level.io reported the alert resolved; ticket left open for technician review.'));
     }
 
-    return ['result' => $ticket_id ? 'updated' : 'recorded', 'ticket_id' => $ticket_id];
+    return ['result' => $active_ticket ? 'updated' : 'recorded', 'ticket_id' => $active_ticket ? $ticket_id : 0];
 }
 
 function levelProcessWebhookEvent(array $event): array

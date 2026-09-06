@@ -117,7 +117,14 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
             throw new RuntimeException('The parsed-email ticket number allocation returned no number');
         }
 
-        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$ticket_prefix_esc', ticket_number = $ticket_number, ticket_source = 'Email', ticket_subject = '$subject', ticket_details = '$message_esc', ticket_priority = 'Medium', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = 0, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id", 'Could not create the parsed-email ticket');
+        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$ticket_prefix_esc',
+            ticket_number = $ticket_number, ticket_source = 'Email', ticket_subject = '$subject',
+            ticket_details = '$message_esc', ticket_priority = 'Medium',
+            ticket_work_type = 'incident', ticket_impact = 'medium', ticket_urgency = 'medium',
+            ticket_status = 1, ticket_billable = $config_ticket_default_billable,
+            ticket_created_by = 0, ticket_contact_id = $contact_id,
+            ticket_url_key = '$url_key', ticket_client_id = $client_id",
+            'Could not create the parsed-email ticket');
         $id = intval(mysqli_insert_id($mysqli));
         if (!$id) {
             throw new RuntimeException('The parsed-email ticket did not receive an ID');
@@ -174,11 +181,22 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
         mysqli_query($mysqli, "INSERT INTO ticket_watchers SET watcher_email = '$contact_email_esc', watcher_ticket_id = $id");
     }
 
-    // Add CCs as ticket watchers
+    // CC recipients can see future ticket updates, so client tickets only
+    // permit active contacts from that same client. Clientless triage tickets
+    // retain the historical watcher behavior for explicitly addressed guests.
     foreach ($ccs as $cc) {
         if (filter_var($cc, FILTER_VALIDATE_EMAIL) && !preg_match($bad_pattern, $cc)) {
             $cc_esc = mysqli_real_escape_string($mysqli, $cc);
-            mysqli_query($mysqli, "INSERT INTO ticket_watchers SET watcher_email = '$cc_esc', watcher_ticket_id = $id");
+            $allowed = $client_id === 0 || mysqli_fetch_assoc(mysqli_query($mysqli,
+                "SELECT contact_id FROM contacts WHERE contact_client_id = $client_id
+                AND contact_email = '$cc_esc' AND contact_archived_at IS NULL LIMIT 1"));
+            if ($allowed) {
+                mysqli_query($mysqli, "INSERT INTO ticket_watchers SET
+                    watcher_email = '$cc_esc', watcher_ticket_id = $id");
+            } else {
+                logApp('Cron-Email-Parser', 'warning',
+                    "Skipped cross-client or unknown CC watcher on ticket $id");
+            }
         }
     }
 
@@ -283,7 +301,8 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
         FROM tickets
         LEFT JOIN contacts on tickets.ticket_contact_id = contacts.contact_id
         LEFT JOIN clients on tickets.ticket_client_id = clients.client_id
-        WHERE ticket_number = $ticket_number_esc LIMIT 1"));
+        WHERE ticket_number = $ticket_number_esc
+        AND ticket_archived_at IS NULL LIMIT 1"));
 
     if ($row) {
         $ticket_id = intval($row['ticket_id']);
@@ -323,16 +342,28 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
             return true;
         }
 
-        if (empty($ticket_contact_email) || $ticket_contact_email !== $from_email) {
+        if (empty($ticket_contact_email)
+            || strtolower(trim((string) $ticket_contact_email)) !== strtolower($from_email)) {
             $from_email_esc2 = mysqli_real_escape_string($mysqli, $from_email);
-            $row2 = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT contact_id FROM contacts WHERE contact_email = '$from_email_esc2' AND contact_client_id = $client_id LIMIT 1"));
+            $row2 = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT contact_id FROM contacts
+                WHERE contact_email = '$from_email_esc2' AND contact_client_id = $client_id
+                AND contact_archived_at IS NULL LIMIT 1"));
             if ($row2) {
                 $ticket_reply_contact = intval($row2['contact_id']);
             } else {
-                $ticket_reply_type = 'Internal';
-                $ticket_reply_contact = '0';
-                $message = "<b>WARNING: Contact email mismatch</b><br>$message";
-                $message_esc = mysqli_real_escape_string($mysqli, $message);
+                appNotify(
+                    'Ticket',
+                    "Email parser rejected a reply to ticket $config_ticket_prefix$ticket_number_esc from an unrecognized sender. Review the support mailbox if the sender should be authorized.",
+                    "/agent/ticket.php?ticket_id=$ticket_id$client_uri",
+                    $client_id,
+                    $ticket_id
+                );
+                logApp(
+                    'Cron-Email-Parser',
+                    'warning',
+                    "Rejected inbound reply for ticket $ticket_id from an unrecognized sender"
+                );
+                return true;
             }
         }
 
@@ -357,6 +388,13 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
 
             $needs_reopen = $ticket_status !== 2 || !empty($locked_ticket['ticket_resolved_at']);
             if ($needs_reopen) {
+                if (!empty($locked_ticket['ticket_resolved_at'])) {
+                    ticketDisciplineClearResolutionForReopen(
+                        $ticket_id,
+                        'contact',
+                        $ticket_reply_contact
+                    );
+                }
                 $resolved_at_predicate = empty($locked_ticket['ticket_resolved_at'])
                     ? 'ticket_resolved_at IS NULL'
                     : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
@@ -738,14 +776,23 @@ foreach ($messages as $message) {
 
         // From
         $from_addr  = $message->from(); // ?Address
-        $from_email = escapeSql($from_addr?->email() ?: 'itflow-guest@example.com');
+        $from_email = strtolower(trim((string) ($from_addr?->email() ?: 'itflow-guest@example.com')));
+        if (!filter_var($from_email, FILTER_VALIDATE_EMAIL)) {
+            $from_email = 'itflow-guest@example.com';
+        }
         $from_name  = escapeSql($from_addr?->name() ?: 'Unknown');
 
         $from_domain = explode("@", $from_email);
         $from_domain = escapeSql(end($from_domain));
 
         // Subject
-        $subject = escapeSql((string)$message->subject() ?: 'No Subject');
+        $subject_raw = trim(preg_replace('/\s+/u', ' ', strip_tags(
+            (string) $message->subject()
+        )) ?? '');
+        if ($subject_raw === '') {
+            $subject_raw = 'No subject';
+        }
+        $subject = escapeSql(mb_substr($subject_raw, 0, 200));
 
         // Skip vacation/out-of-office auto-responders to prevent mail loops (RFC 3834)
         // Some* NDRs use "auto-generated" and are still handled by the NDR logic below
@@ -834,57 +881,9 @@ foreach ($messages as $message) {
             $email_processed = addReply($from_email, $date, $subject, $ticket_number, $message_body, $attachments);
         }
 
-        // 2. Fuzzy duplicate check using a known contact/domain and similar_text subject
-        if (!$email_processed && strlen(trim($subject)) > 10) {
-            $contact_id = 0;
-            $client_id  = 0;
-
-            // First: check if sender is a registered contact
-            $from_email_esc = mysqli_real_escape_string($mysqli, $from_email);
-            $contact_sql = mysqli_query($mysqli, "SELECT * FROM contacts WHERE contact_email = '$from_email_esc' AND contact_archived_at IS NULL LIMIT 1");
-            $contact_row = mysqli_fetch_assoc($contact_sql);
-
-            if ($contact_row) {
-                $contact_id = intval($contact_row['contact_id']);
-                $client_id  = intval($contact_row['contact_client_id']);
-            } else {
-                // Else: check if sender domain is registered
-                $from_domain_esc = mysqli_real_escape_string($mysqli, $from_domain);
-                $domain_sql = mysqli_query($mysqli, "SELECT domain_client_id, domain_name FROM domains WHERE domain_name = '$from_domain_esc' AND domain_archived_at IS NULL LIMIT 1");
-                $domain_row = mysqli_fetch_assoc($domain_sql);
-
-                if ($domain_row && $from_domain == $domain_row['domain_name']) {
-                    $client_id = intval($domain_row['domain_client_id']);
-                }
-            }
-
-            // If we found either a contact or a domain, check recent tickets for a matching subject
-            if ($client_id) {
-                $recent_tickets_sql = mysqli_query($mysqli,
-                    "SELECT ticket_id, ticket_number, ticket_subject
-                    FROM tickets
-                    WHERE ticket_client_id = $client_id AND ticket_resolved_at IS NULL
-                    AND ticket_closed_at IS NULL
-                    AND ticket_created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
-                );
-
-                while ($rowt = mysqli_fetch_assoc($recent_tickets_sql)) {
-                    $ticket_number = intval($rowt['ticket_number']);
-                    $existing_subject = $rowt['ticket_subject'];
-
-                    // Calculate similarity percentage
-                    similar_text(strtolower($subject), strtolower($existing_subject), $percent);
-
-                    if ($percent >= 95) {
-                        // Treat as a reply/duplicate
-                        $email_processed = addReply($from_email, $date, $subject, $ticket_number, $message_body, $attachments);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // 3. A known, registered contact?
+        // 2. A known, registered contact? Subject similarity is deliberately
+        // not used for threading; only an explicit ticket reference can attach
+        // inbound mail to an existing record.
         if (!$email_processed) {
             $from_email_esc = mysqli_real_escape_string($mysqli, $from_email);
             $any_contact_sql = mysqli_query($mysqli, "SELECT * FROM contacts WHERE contact_email = '$from_email_esc' AND contact_archived_at IS NULL LIMIT 1");
@@ -900,29 +899,9 @@ foreach ($messages as $message) {
             }
         }
 
-        // 4. A known domain?
-        if (!$email_processed) {
-            $from_domain_esc = mysqli_real_escape_string($mysqli, $from_domain);
-            $domain_sql = mysqli_query($mysqli, "SELECT domain_client_id, domain_name FROM domains WHERE domain_name = '$from_domain_esc' AND domain_archived_at IS NULL LIMIT 1");
-            $rowd = mysqli_fetch_assoc($domain_sql);
-
-            if ($rowd && $from_domain == $rowd['domain_name']) {
-                $client_id = intval($rowd['domain_client_id']);
-
-                // Create a new contact
-                $contact_name  = $from_name;
-                $contact_email = $from_email;
-                mysqli_query($mysqli, "INSERT INTO contacts SET contact_name = '".mysqli_real_escape_string($mysqli, $contact_name)."', contact_email = '".mysqli_real_escape_string($mysqli, $contact_email)."', contact_notes = 'Added automatically via email parsing.', contact_client_id = $client_id");
-                $contact_id = mysqli_insert_id($mysqli);
-
-                logAudit("Contact", "Create", "Email parser: created contact " . mysqli_real_escape_string($mysqli, $contact_name), $client_id, $contact_id);
-                triggerCustomAction('contact_create', $contact_id);
-
-                $email_processed = addTicket($contact_id, $contact_name, $contact_email, $client_id, $date, $subject, $message_body, $attachments, $original_message_file, $ccs);
-            }
-        }
-
-        // 5. Unknown sender allowed?
+        // 3. Unknown sender allowed? Known domains no longer create contacts or
+        // choose a client automatically; those messages enter the unassigned
+        // triage queue under the existing unknown-sender policy.
         if (!$email_processed && $config_ticket_email_parse_unknown_senders) {
 
             $bad_from_pattern = "/daemon|postmaster|bounce|mta/i"; //  Stop NDRs with bad subjects raising new tickets

@@ -16,16 +16,16 @@ if (!contactCan('tickets_all')) {
 if (!isset($_GET['status']) || ($_GET['status']) == 'Open') {
     // Default to showing open
     $status = 'Open';
-    $ticket_status_snippet = "ticket_closed_at IS NULL";
+    $ticket_status_snippet = "ticket_status NOT IN (4, 5) AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL";
 } elseif (isset($_GET['status']) && ($_GET['status']) == 'Closed') {
     $status = 'Closed';
-    $ticket_status_snippet = "ticket_closed_at IS NOT NULL";
+    $ticket_status_snippet = "(ticket_status IN (4, 5) OR ticket_resolved_at IS NOT NULL OR ticket_closed_at IS NOT NULL)";
 } else {
     $status = '%';
     $ticket_status_snippet = "ticket_status LIKE '%'";
 }
 
-$all_tickets = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number, ticket_subject, ticket_status_name, contact_name FROM tickets LEFT JOIN contacts ON ticket_contact_id = contact_id LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id WHERE $ticket_status_snippet AND ticket_client_id = $session_client_id ORDER BY ticket_id DESC");
+$all_tickets = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number, ticket_subject, ticket_status_name, contact_name FROM tickets LEFT JOIN contacts ON ticket_contact_id = contact_id LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id WHERE $ticket_status_snippet AND ticket_client_id = $session_client_id AND ticket_archived_at IS NULL ORDER BY ticket_id DESC");
 ?>
 
     <header class="n45-page-header">

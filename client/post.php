@@ -42,12 +42,25 @@ if (isset($_POST['add_ticket'])) {
     //Generate a unique URL key for clients to access
     $url_key = randomString(32);
 
-    // Ensure priority matches the shared impact definitions.
-    if (!array_key_exists($_POST['priority'] ?? '', ticketPriorityDefinitions())) {
-        $priority = "Medium";
-    } else {
-        $priority = escapeSql($_POST['priority']);
+    $portal_work_type = strtolower(trim((string) ($_POST['work_type'] ?? 'incident')));
+    if (!in_array($portal_work_type, ['incident', 'request'], true)) {
+        $portal_work_type = 'incident';
     }
+    try {
+        $discipline = ticketDisciplineAssessmentInput([
+            'work_type' => $portal_work_type,
+            'impact' => $_POST['impact'] ?? 'medium',
+            'urgency' => $_POST['urgency'] ?? 'medium',
+            'waiting_on' => 'none',
+        ]);
+    } catch (DomainException $exception) {
+        flashAlert(escapeHtml($exception->getMessage()), 'error');
+        redirect();
+    }
+    $priority = escapeSql($discipline['priority']);
+    $work_type = escapeSql($discipline['work_type']);
+    $impact = escapeSql($discipline['impact']);
+    $urgency = escapeSql($discipline['urgency']);
 
     $ticket_transaction_started = false;
     try {
@@ -71,7 +84,14 @@ if (isset($_POST['add_ticket'])) {
             throw new RuntimeException('The client portal ticket number allocation returned no number');
         }
 
-        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'Portal', ticket_category = $category, ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = $session_user_id, ticket_contact_id = $session_contact_id, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $session_client_id", 'Could not create the client portal ticket');
+        ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix',
+            ticket_number = $ticket_number, ticket_source = 'Portal', ticket_category = $category,
+            ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority',
+            ticket_work_type = '$work_type', ticket_impact = '$impact', ticket_urgency = '$urgency',
+            ticket_status = 1, ticket_billable = $config_ticket_default_billable,
+            ticket_created_by = $session_user_id, ticket_contact_id = $session_contact_id,
+            ticket_asset_id = $asset, ticket_url_key = '$url_key',
+            ticket_client_id = $session_client_id", 'Could not create the client portal ticket');
         $ticket_id = intval(mysqli_insert_id($mysqli));
         if (!$ticket_id) {
             throw new RuntimeException('The client portal ticket did not receive an ID');
@@ -150,6 +170,13 @@ if (isset($_POST['add_ticket_comment'])) {
             $original_ticket_status = intval($locked_ticket['ticket_status']);
             $was_resolved = $original_ticket_status === 4 || !empty($locked_ticket['ticket_resolved_at']);
             if ($original_ticket_status !== 2 || $was_resolved) {
+                if ($was_resolved) {
+                    ticketDisciplineClearResolutionForReopen(
+                        $ticket_id,
+                        'contact',
+                        $session_contact_id
+                    );
+                }
                 $resolved_predicate = empty($locked_ticket['ticket_resolved_at'])
                     ? 'ticket_resolved_at IS NULL'
                     : "ticket_resolved_at = '" . escapeSql($locked_ticket['ticket_resolved_at']) . "'";
@@ -676,6 +703,11 @@ if (isset($_GET['resolve_ticket'])) {
             if (intval($locked_ticket['ticket_client_id']) !== intval($session_client_id)) {
                 throw new RuntimeException('The ticket is outside your client scope');
             }
+            ticketDisciplineStoreResolution(
+                $ticket_id,
+                'client_confirmed',
+                'The client confirmed that the requested work is complete.'
+            );
             [$can_resolve, $resolve_error] = runbookTicketCanResolve($ticket_id);
             if (!$can_resolve) {
                 throw new RuntimeException($resolve_error);
@@ -687,6 +719,12 @@ if (isset($_GET['resolve_ticket'])) {
             if (mysqli_affected_rows($mysqli) !== 1) {
                 throw new RuntimeException('The ticket is no longer open');
             }
+            ticketDisciplineRecordResolutionEvent(
+                $ticket_id,
+                'resolved',
+                'contact',
+                $session_contact_id
+            );
             documentationRecordChangePassport($ticket_id, 4, 0, true);
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the ticket resolution');
@@ -748,6 +786,7 @@ if (isset($_GET['reopen_ticket'])) {
                 || empty($locked_ticket['ticket_resolved_at'])) {
                 throw new RuntimeException('Only a resolved ticket can be reopened');
             }
+            ticketDisciplineClearResolutionForReopen($ticket_id, 'contact', $session_contact_id);
             runbookDbQuery("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
                 AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
@@ -809,6 +848,7 @@ if (isset($_GET['close_ticket'])) {
             if (!$can_close) {
                 throw new RuntimeException($close_error);
             }
+            ticketDisciplineStoreClosure($ticket_id, 'client_confirmed');
             runbookDbQuery("UPDATE tickets SET ticket_status = 5, ticket_closed_at = NOW()
                 WHERE ticket_id = $ticket_id AND ticket_client_id = $session_client_id
                 AND ticket_status = 4 AND ticket_resolved_at IS NOT NULL
@@ -816,6 +856,12 @@ if (isset($_GET['close_ticket'])) {
             if (mysqli_affected_rows($mysqli) !== 1) {
                 throw new RuntimeException('The ticket is no longer resolved and awaiting close');
             }
+            ticketDisciplineRecordResolutionEvent(
+                $ticket_id,
+                'closed',
+                'contact',
+                $session_contact_id
+            );
             documentationRecordChangePassport($ticket_id, 5, 0, true);
             if (!mysqli_commit($mysqli)) {
                 throw new RuntimeException('Could not commit the ticket close');

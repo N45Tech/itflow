@@ -2635,10 +2635,13 @@ function documentationLockTicket($ticket_id) {
     $ticket_id = intval($ticket_id);
     $ticket = mysqli_fetch_assoc(documentationDbQuery("SELECT ticket_id, ticket_client_id,
         ticket_configuration_change, ticket_documentation_impact, ticket_status,
-        ticket_resolved_at, ticket_closed_at FROM tickets
+        ticket_resolved_at, ticket_closed_at, ticket_archived_at FROM tickets
         WHERE ticket_id = $ticket_id LIMIT 1 FOR UPDATE", 'Could not lock the documentation ticket'));
     if (!$ticket) {
         throw new RuntimeException('The documentation ticket no longer exists');
+    }
+    if (!empty($ticket['ticket_archived_at'])) {
+        throw new RuntimeException('Deleted tickets cannot be changed');
     }
     return $ticket;
 }

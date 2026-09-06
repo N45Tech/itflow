@@ -56,7 +56,7 @@ if (!empty($subject)) {
 
         // Insert ticket
         $url_key = randomString(32);
-        $insert_sql = ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'API', ticket_subject = '$subject', ticket_details = '$details', ticket_priority = '$priority', ticket_status = 1, ticket_billable = $billable, ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_created_by = 0, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $client_id", 'Could not create the API ticket');
+        $insert_sql = ticketCreationDbQuery("INSERT INTO tickets SET ticket_prefix = '$config_ticket_prefix', ticket_number = $ticket_number, ticket_source = 'API', ticket_subject = '$subject', ticket_details = '$details', ticket_work_type = '$work_type', ticket_priority = '$priority', ticket_impact = '$impact', ticket_urgency = '$urgency', ticket_status = 1, ticket_billable = $billable, ticket_vendor_ticket_number = '$vendor_ticket_number', ticket_vendor_id = $vendor_id, ticket_created_by = 0, ticket_assigned_to = $assigned_to, ticket_contact_id = $contact, ticket_asset_id = $asset, ticket_url_key = '$url_key', ticket_client_id = $client_id", 'Could not create the API ticket');
         $insert_id = intval(mysqli_insert_id($mysqli));
         if (!$insert_id) {
             throw new RuntimeException('The API ticket did not receive an ID');

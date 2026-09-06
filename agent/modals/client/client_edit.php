@@ -10,7 +10,7 @@ enforceClientAccess();
 
 $sql = mysqli_query($mysqli, "SELECT client_abbreviation, client_archived_at, client_created_at, client_lead, client_name,
     client_net_terms, client_notes, client_rate, client_referral, client_tax_id_number,
-    client_ticket_retention_policy, client_type, client_website
+    client_ticket_retention_policy, client_ticket_retention_days, client_type, client_website
     FROM clients WHERE client_id = $client_id LIMIT 1");
 
 $row = mysqli_fetch_assoc($sql);
@@ -25,6 +25,7 @@ $client_abbreviation = escapeHtml($row['client_abbreviation']);
 $client_rate = floatval($row['client_rate']);
 $client_notes = escapeHtml($row['client_notes']);
 $client_ticket_retention_policy = ticketDeletionNormalizePolicy($row['client_ticket_retention_policy']);
+$client_ticket_retention_days = intval($row['client_ticket_retention_days']);
 $client_created_at = escapeHtml($row['client_created_at']);
 $client_archived_at = escapeHtml($row['client_archived_at']);
 $can_manage_ticket_retention = lookupUserPermission('module_client') >= 3;
@@ -282,6 +283,17 @@ ob_start();
                         </select>
                         <div class="form-text" id="client_ticket_retention_help_<?= $client_id ?>">
                             Protected workflow, approval, documentation, agreement, portal-request, and integration history is retained by default. The administrator-override option permits a permanent deletion only after a written reason is recorded.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="client_ticket_retention_days_<?= $client_id ?>">Minimum deleted-ticket retention (days)</label>
+                        <input class="form-control" type="number" min="1" max="3650" required
+                               name="client_ticket_retention_days" id="client_ticket_retention_days_<?= $client_id ?>"
+                               value="<?= $client_ticket_retention_days ?>"
+                               aria-describedby="client_ticket_retention_days_help_<?= $client_id ?>">
+                        <div class="form-text" id="client_ticket_retention_days_help_<?= $client_id ?>">
+                            Applies to future deletions. Tickets remain restorable until an administrator deliberately purges them after this period. Nothing is purged automatically.
                         </div>
                     </div>
 

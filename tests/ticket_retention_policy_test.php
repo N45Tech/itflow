@@ -40,6 +40,8 @@ $ticket_page = $read('agent/ticket.php');
 $ticket_list = $read('agent/ticket_list.php');
 $delete_modal = $read('agent/modals/ticket/ticket_delete.php');
 $bulk_delete_modal = $read('agent/modals/ticket/ticket_bulk_delete.php');
+$restore_modal = $read('agent/modals/ticket/ticket_restore.php');
+$purge_modal = $read('agent/modals/ticket/ticket_purge.php');
 $client_modal = $read('agent/modals/client/client_edit.php');
 $client_post = $read('agent/post/client.php');
 $automation = $read('functions/automation.php');
@@ -48,6 +50,7 @@ $agent_tickets = $read('agent/tickets.php');
 $agent_dashboard = $read('agent/dashboard.php');
 $agent_operations = $read('agent/operations.php');
 $migration = $read('n45/migrations/n45-0021-client-ticket-retention.php');
+$recoverable_migration = $read('n45/migrations/n45-0022-recoverable-ticket-deletion.php');
 $manifest = $read('n45/manifest.php');
 $schema = $read('db.sql');
 
@@ -71,6 +74,9 @@ $assertContains("automation_incident_last_action = 'ticket_closed_reconciled'", 
 $assertContains('`client_ticket_retention_policy` varchar(20) NOT NULL DEFAULT \'override\'', $schema, 'Fresh installs omit client ticket retention policy');
 $assertContains("'n45-0021-client-ticket-retention'", $manifest, 'The client retention migration is absent from the manifest');
 $assertContains("'data_change' => true", $manifest, 'The incident reconciliation is not classified as a data change');
+$assertContains('ticket_restore_until', $recoverable_migration, 'Recoverable deletion migration omits the restore deadline');
+$assertContains('ticket_deletion_events', $recoverable_migration, 'Recoverable deletion migration omits surviving audit history');
+$assertContains('ticket_restore_queue', $schema, 'Fresh installs omit the deleted-ticket recovery queue');
 
 $assertContains('Ticket audit retention', $client_modal, 'Client settings do not expose ticket retention');
 $assertContains('Strict retention — no deletion override', $client_modal, 'Client settings do not offer strict retention');
@@ -79,12 +85,16 @@ $assertContains("in_array(\$ticket_retention_policy, ticketDeletionPolicies(), t
 $assertContains('enforceClientAccess($client_id)', $client_post, 'Client retention can be changed outside the user client scope');
 $assertContains("logAudit('Client', 'Ticket Retention Policy'", $client_post, 'Client retention policy changes are not audited');
 
-$assertContains('name="deletion_override_reason"', $delete_modal, 'Single-ticket override does not collect a reason');
+$assertContains('name="deletion_reason"', $delete_modal, 'Single-ticket soft deletion does not collect a reason');
 $assertContains('name="confirm_ticket_deletion"', $delete_modal, 'Single-ticket permanent deletion lacks explicit acknowledgment');
-$assertContains('Delete ticket and evidence', $delete_modal, 'The destructive override action is ambiguously labelled');
-$assertContains('Retained by strict client policy', $bulk_delete_modal, 'Bulk deletion does not explain strict-policy retention');
-$assertContains('name="override_retention"', $bulk_delete_modal, 'Bulk deletion cannot request an eligible override');
-$assertContains('name="deletion_override_reason"', $bulk_delete_modal, 'Bulk override does not collect a surviving audit reason');
+$assertContains('This is recoverable.', $delete_modal, 'Single-ticket deletion does not explain recovery');
+$assertContains('ticketDeletionRestoreWindowDays($client_id)', $delete_modal, 'Deletion does not use the client retention period');
+$assertContains('These tickets remain recoverable.', $bulk_delete_modal, 'Bulk deletion does not explain recovery');
+$assertContains('name="restore_reason"', $restore_modal, 'Ticket restoration does not collect a surviving reason');
+$assertContains('Permanently delete ticket', $purge_modal, 'The post-window purge decision is missing');
+$assertContains('name="purge_confirmation"', $purge_modal, 'Permanent deletion lacks typed confirmation');
+$assertContains('name="purge_reason"', $purge_modal, 'Permanent deletion does not collect a surviving reason');
+$assertContains('strict retention policy', $purge_modal, 'The permanent deletion preview ignores strict client retention');
 $assertContains('ticket_bulk_delete.php', $ticket_list, 'Bulk ticket deletion bypasses the retention preview');
 $assertContains('ticket_delete.php', $ticket_page, 'Single-ticket deletion bypasses the retention preview');
 $assertNotContains("post.php?delete_ticket=", $ticket_page, 'Ticket deletion still mutates through a GET link');
@@ -92,17 +102,33 @@ $assertNotContains("post.php?delete_ticket=", $ticket_page, 'Ticket deletion sti
 $assertOrdered($ticket_post, [
     "if (isset(\$_POST['delete_ticket']))",
     'mysqli_begin_transaction($mysqli)',
-    'documentationLockClientTicket($ticket_id, $client_id, true)',
-    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
+    'ticketDeletionLockTicket($ticket_id, $client_id)',
+    'ticketDeletionSoftDelete(',
+    'mysqli_commit($mysqli)',
+], 'Single-ticket deletion is not recoverable, locked, and transactional');
+$assertContains("if (isset(\$_POST['bulk_delete_tickets']))", $ticket_post, 'Bulk deletion handler is missing');
+$assertContains("\$failed_count++", $ticket_post, 'Bulk deletion does not isolate runtime failures');
+$assertOrdered($ticket_post, [
+    "if (isset(\$_POST['restore_ticket']))",
+    'ticketDeletionLockTicket($ticket_id, $client_id)',
+    'ticketDeletionRestore($ticket_id, $session_user_id, $restore_reason)',
+    'mysqli_commit($mysqli)',
+], 'Ticket restoration is not locked and transactional');
+$assertOrdered($ticket_post, [
+    "if (isset(\$_POST['purge_ticket']))",
+    'ticketDeletionRequirePurgeEligible($locked_ticket)',
     'ticketDeletionPolicyForClient($client_id)',
-    "logAudit('Ticket', \$audit_action",
+    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
+    'ticketDeletionRecordEvent(',
     'ticketDeletionPurge($ticket_id)',
     'mysqli_commit($mysqli)',
     'removeDirectory("../uploads/tickets/$ticket_id")',
-], 'Single-ticket override is not locked, audited, purged, and committed in the required order');
-$assertContains("if (isset(\$_POST['bulk_delete_tickets']))", $ticket_post, 'Bulk deletion handler is missing');
-$assertContains("\$retained_count++", $ticket_post, 'Bulk deletion does not retain strict or unconfirmed evidence tickets individually');
-$assertContains("\$failed_count++", $ticket_post, 'Bulk deletion does not isolate runtime failures');
+], 'Permanent deletion is not post-window, client-policy controlled, audited, and transactional');
+$assertContains('function ticketDeletionRestoreWindowDays(int $client_id', $retention, 'Retention is not client-scoped');
+$assertContains('client_ticket_retention_days', $retention, 'The client retention period is ignored');
+$assertNotContains('restore window has expired', $retention, 'Retained tickets cannot be restored after their protection period');
+$assertContains("ticketDeletionRecordEvent(\$ticket, 'restored'", $retention,
+    'Restoration does not append a surviving event');
 
 $assertOrdered($retention, [
     'function ticketDeletionPurge(',
@@ -134,7 +160,7 @@ foreach ([
 }
 $assertContains('AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL', $agent_tickets,
     'The Open ticket list includes terminal tickets');
-$assertContains('(ticket_resolved_at IS NOT NULL OR ticket_closed_at IS NOT NULL)', $agent_tickets,
+$assertContains('(ticket_status IN (4, 5) OR ticket_resolved_at IS NOT NULL OR ticket_closed_at IS NOT NULL)', $agent_tickets,
     'The Closed ticket list omits cancelled or otherwise terminal tickets');
 $assertContains('AND ticket_closed_at IS NULL', $agent_dashboard,
     'Dashboard ticket counts include terminal tickets');

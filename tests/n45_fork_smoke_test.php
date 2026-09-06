@@ -117,6 +117,8 @@ $assertTrue(
         'n45-0019-ticket-approval-gates',
         'n45-0020-specific-client-approvers',
         'n45-0021-client-ticket-retention',
+        'n45-0022-recoverable-ticket-deletion',
+        'n45-0023-ticket-operational-discipline',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -135,8 +137,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0021-client-ticket-retention',
-    'The client ticket-retention migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0023-ticket-operational-discipline',
+    'The ticket operational-discipline migration is not the final stable N45 migration'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -212,6 +214,25 @@ $assertTrue(
 $assertTrue(
     in_array('n45-0021-client-ticket-retention', $manifest['modules']['runbooks']['migrations'] ?? [], true),
     'Client ticket retention is not owned by the runbooks module'
+);
+$recoverable_deletion_migration = $manifest['migrations']['n45-0022-recoverable-ticket-deletion'] ?? [];
+$assertTrue(
+    ($recoverable_deletion_migration['fingerprint']['tables'] ?? null) === ['ticket_deletion_events'],
+    'Recoverable deletion does not fingerprint its surviving event table'
+);
+$assertTrue(
+    in_array('n45-0022-recoverable-ticket-deletion', $manifest['modules']['runbooks']['migrations'] ?? [], true),
+    'Recoverable ticket deletion is not owned by the runbooks module'
+);
+$ticket_discipline_migration = $manifest['migrations']['n45-0023-ticket-operational-discipline'] ?? [];
+$assertTrue(
+    in_array('ticket_work_notes', $ticket_discipline_migration['fingerprint']['tables'] ?? [], true)
+        && in_array('ticket_resolution_events', $ticket_discipline_migration['fingerprint']['tables'] ?? [], true),
+    'Ticket operational discipline does not fingerprint its evidence tables'
+);
+$assertTrue(
+    in_array('n45-0023-ticket-operational-discipline', $manifest['modules']['runbooks']['migrations'] ?? [], true),
+    'Ticket operational discipline is not owned by the runbooks module'
 );
 
 $manifest_migration_files = array_map(
@@ -538,8 +559,10 @@ $assertOrdered($automation_delete, [
 
 // Deletion smoke: the automation flag must never bypass referential cleanup.
 $ticket_retention = $read('functions/ticket_retention.php');
-$single_delete = $section($ticket_post, "if (isset(\$_POST['delete_ticket']))", "if (isset(\$_POST['bulk_delete_tickets']))", 'single ticket deletion');
-$bulk_delete = $section($ticket_post, "if (isset(\$_POST['bulk_delete_tickets']))", "if (isset(\$_POST['bulk_assign_ticket']))", 'bulk ticket deletion');
+$single_delete = $section($ticket_post, "if (isset(\$_POST['delete_ticket']))", "if (isset(\$_POST['restore_ticket']))", 'single ticket deletion');
+$restore_ticket = $section($ticket_post, "if (isset(\$_POST['restore_ticket']))", "if (isset(\$_POST['bulk_delete_tickets']))", 'ticket restoration');
+$bulk_delete = $section($ticket_post, "if (isset(\$_POST['bulk_delete_tickets']))", "if (isset(\$_POST['purge_ticket']))", 'bulk ticket deletion');
+$purge_ticket = $section($ticket_post, "if (isset(\$_POST['purge_ticket']))", "if (isset(\$_POST['bulk_assign_ticket']))", 'ticket purge');
 $assertOrdered($ticket_retention, [
     'automationDeleteTicketOperations($ticket_id)',
     'DELETE FROM ticket_replies WHERE ticket_reply_ticket_id = $ticket_id',
@@ -552,20 +575,35 @@ foreach ([$single_delete, $bulk_delete] as $index => $delete_handler) {
     $label = $index === 0 ? 'Single ticket deletion' : 'Bulk ticket deletion';
     $assertOrdered($delete_handler, [
         'mysqli_begin_transaction($mysqli)',
-        'ticketDeletionPurge($ticket_id)',
+        'ticketDeletionLockTicket($ticket_id, $client_id)',
+        'ticketDeletionSoftDelete(',
         'mysqli_commit($mysqli)',
-    ], "$label does not atomically remove Operations records with the ticket");
-    $assertContains('mysqli_rollback($mysqli)', $delete_handler, "$label cannot roll back failed Operations cleanup");
+    ], "$label does not atomically move the ticket into recoverable deletion");
+    $assertContains('mysqli_rollback($mysqli)', $delete_handler, "$label cannot roll back a failed soft deletion");
     $assertTrue(!str_contains($delete_handler, "n45FeatureEnabled('automation')"), "$label incorrectly skips cleanup when automation ingress is disabled");
-    $assertOrdered($delete_handler, [
-        'if (!mysqli_commit($mysqli))',
-        'removeDirectory("../uploads/tickets/$ticket_id")',
-    ], "$label mutates filesystem state before the database transaction commits");
+    $assertNotContains('ticketDeletionPurge($ticket_id)', $delete_handler,
+        "$label permanently removes a ticket during its restore window");
+    $assertNotContains('removeDirectory(', $delete_handler,
+        "$label removes ticket files during recoverable deletion");
 }
-$assertContains('documentationLockClientTicket($ticket_id, $client_id, true)', $single_delete,
-    'Single ticket deletion cannot remove an otherwise-deletable ticket from an archived client');
-$assertContains('documentationLockClientTicket($ticket_id, $client_id, true)', $bulk_delete,
-    'Bulk ticket deletion cannot remove otherwise-deletable tickets from an archived client');
+$assertOrdered($restore_ticket, [
+    'mysqli_begin_transaction($mysqli)',
+    'ticketDeletionLockTicket($ticket_id, $client_id)',
+    'ticketDeletionRestore($ticket_id, $session_user_id, $restore_reason)',
+    'mysqli_commit($mysqli)',
+], 'Ticket restoration is not locked and transactional');
+$assertOrdered($purge_ticket, [
+    'mysqli_begin_transaction($mysqli)',
+    'ticketDeletionLockTicket($ticket_id, $client_id)',
+    'ticketDeletionRequirePurgeEligible($locked_ticket)',
+    'ticketDeletionEvidenceSummary($ticket_id, $client_id)',
+    'ticketDeletionRecordEvent(',
+    'ticketDeletionPurge($ticket_id)',
+    'mysqli_commit($mysqli)',
+    'removeDirectory("../uploads/tickets/$ticket_id")',
+], 'Permanent ticket purge is not post-window, policy-aware, audited, and transactional');
+$assertContains('documentationLockClient($client_id, true)', $ticket_retention,
+    'Recoverable ticket deletion cannot lock an archived client safely');
 $assertContains('$failed_count++', $bulk_delete,
     'Bulk ticket deletion does not retain and report an item-level runtime failure');
 $assertNotContains('throw $e;', $bulk_delete,

@@ -65,8 +65,8 @@ $agent_handlers = [
     ["if (isset(\$_POST['bulk_ticket_reply']))", "if (isset(\$_POST['bulk_add_ticket_project']))", 'Bulk reply terminal transition'],
     ["if (isset(\$_POST['add_ticket_reply']))", "if (isset(\$_GET['delete_ticket_attachment']))", 'Agent reply terminal transition'],
     ["if (isset(\$_POST['merge_ticket']))", "if (isset(\$_POST['change_client_ticket']))", 'Ticket merge'],
-    ["if (isset(\$_GET['resolve_ticket']))", "if (isset(\$_GET['close_ticket']))", 'Agent resolve'],
-    ["if (isset(\$_GET['close_ticket']))", "if (isset(\$_GET['reopen_ticket']))", 'Agent close'],
+    ["if (isset(\$_POST['resolve_ticket']))", "if (isset(\$_POST['terminal_ticket']))", 'Agent resolve'],
+    ["if (isset(\$_POST['terminal_ticket']))", "if (isset(\$_GET['reopen_ticket']))", 'Agent close'],
 ];
 foreach ($agent_handlers as [$start, $end, $label]) {
     $assertAtomicPassport($section($ticket_post, $start, $end, $label), $label, 'session');

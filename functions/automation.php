@@ -953,6 +953,9 @@ function automationCreateIncidentTicket(array $event, array $resolved,
         'warning', 'medium' => 'Medium',
         default => 'Low',
     };
+    $assessment = ticketDisciplineLegacyAssessment($priority, 'incident');
+    $impact_sql = automationDbEscape($assessment['impact']);
+    $urgency_sql = automationDbEscape($assessment['urgency']);
     $location_id = intval($resolved['location_id'] ?? 0);
     $asset_id = intval($resolved['asset_id'] ?? 0);
     $assigned_to = max(0, intval($event['assigned_to'] ?? 0));
@@ -1017,7 +1020,9 @@ function automationCreateIncidentTicket(array $event, array $resolved,
         $url_key = automationDbEscape(randomString(32));
         automationDbQuery("INSERT INTO tickets SET ticket_prefix = '$prefix_sql',
             ticket_number = $ticket_number, ticket_source = 'Automation', ticket_subject = '$subject_sql',
-            ticket_details = '$details_sql', ticket_priority = '$priority_sql', ticket_status = 1,
+            ticket_details = '$details_sql', ticket_work_type = 'incident',
+            ticket_priority = '$priority_sql', ticket_impact = '$impact_sql',
+            ticket_urgency = '$urgency_sql', ticket_status = 1,
             ticket_category = $category_id, ticket_request_type_key = '$request_type_sql',
             ticket_billable = $billable, ticket_url_key = '$url_key', ticket_created_by = 0,
             ticket_assigned_to = $assigned_to, ticket_client_id = $client_id,
@@ -1088,7 +1093,8 @@ function automationAddIncidentReply(int $ticket_id, int $client_id, string $repl
         }
         $lock_order->observe('ticket', $ticket_id);
         $ticket = mysqli_fetch_assoc(automationDbQuery("SELECT ticket_id, ticket_status FROM tickets
-            WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id LIMIT 1 FOR UPDATE",
+            WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id
+            AND ticket_archived_at IS NULL LIMIT 1 FOR UPDATE",
             'Could not lock the mapped automation ticket'));
         if (!$ticket) {
             throw new AutomationConflictException('The mapped automation ticket is unavailable');
@@ -1103,7 +1109,14 @@ function automationAddIncidentReply(int $ticket_id, int $client_id, string $repl
         if ($resolve && intval($ticket['ticket_status']) !== 4) {
             documentationLockClientTicket($ticket_id, $client_id);
             $locked_ticket = runbookLockOpenTicket($ticket_id);
-            [$can_resolve] = runbookTicketCanResolve($ticket_id);
+            ticketDisciplineStoreResolution(
+                $ticket_id,
+                'monitor_recovered',
+                'Monitoring reported that the affected service recovered.',
+                '',
+                true
+            );
+            [$can_resolve] = runbookTicketCanResolve($ticket_id, true);
             if (!$can_resolve) {
                 $blocked = true;
                 if (!logTicketHistory($ticket_id, automationDbEscape(
@@ -1122,6 +1135,7 @@ function automationAddIncidentReply(int $ticket_id, int $client_id, string $repl
                 if (mysqli_affected_rows($mysqli) !== 1) {
                     throw new RuntimeException('The automation incident ticket changed before it could be resolved');
                 }
+                ticketDisciplineRecordResolutionEvent($ticket_id, 'resolved', 'system', 0);
                 documentationRecordChangePassport($ticket_id, 4, 0, true);
                 setTicketResolutionSlaMet($ticket_id, true);
                 if (!logTicketHistory($ticket_id,

@@ -114,8 +114,31 @@ if (isset($_GET['status']) && is_array($_GET['status']) && !empty($_GET['status'
  * is concerned, matching what the counts in the header report.
  */
 $state = $_GET['state'] ?? '';
-if (!in_array($state, array('open', 'closed', 'all'), true)) {
+if (!in_array($state, array('open', 'closed', 'all', 'deleted'), true)) {
     $state = 'open';
+}
+if ($state === 'deleted' && lookupUserPermission('module_support') < 3) {
+    $state = 'open';
+}
+
+$queue = (string) ($_GET['queue'] ?? '');
+$queue_labels = [
+    'unassigned' => 'Unassigned',
+    'aging' => 'Aging work',
+    'waiting_customer' => 'Waiting on client',
+    'promises_due' => 'Customer promises due',
+    'recently_closed' => 'Recently closed',
+];
+if (!isset($queue_labels[$queue])) {
+    $queue = '';
+}
+if ($queue === 'recently_closed') {
+    $state = 'closed';
+} elseif ($queue !== '') {
+    $state = 'open';
+}
+if ($state === 'deleted') {
+    $view = 'list';
 }
 
 // Billing filter
@@ -146,7 +169,7 @@ if ($billing_filter && !isset($_GET['state'])) {
 }
 
 // Status snippet - specific statuses win, otherwise the coarse state
-if ($status_filter) {
+if ($status_filter && $state !== 'deleted') {
     $status_ids = implode(',', $status_filter);
     $ticket_status_snippet = "ticket_status IN ($status_ids)";
 
@@ -157,11 +180,35 @@ if ($status_filter) {
     }
     $active_filters[] = array('label' => 'Status', 'value' => implode(', ', $status_names), 'drop' => 'status');
 } elseif ($state == 'closed') {
-    $ticket_status_snippet = '(ticket_resolved_at IS NOT NULL OR ticket_closed_at IS NOT NULL)';
+    $ticket_status_snippet = '(ticket_status IN (4, 5) OR ticket_resolved_at IS NOT NULL OR ticket_closed_at IS NOT NULL)';
 } elseif ($state == 'all') {
     $ticket_status_snippet = '1 = 1';
+} elseif ($state === 'deleted') {
+    $ticket_status_snippet = '1 = 1';
 } else {
-    $ticket_status_snippet = 'ticket_resolved_at IS NULL AND ticket_closed_at IS NULL';
+    $ticket_status_snippet = 'ticket_status NOT IN (4, 5) AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL';
+}
+$ticket_archive_snippet = $state === 'deleted'
+    ? 'AND ticket_archived_at IS NOT NULL'
+    : 'AND ticket_archived_at IS NULL';
+
+$ticket_queue_query = '';
+if ($queue === 'unassigned') {
+    $ticket_queue_query = 'AND ticket_assigned_to = 0';
+} elseif ($queue === 'aging') {
+    $ticket_queue_query = 'AND ticket_updated_at < NOW() - INTERVAL 3 DAY';
+} elseif ($queue === 'waiting_customer') {
+    $ticket_queue_query = "AND ticket_waiting_on = 'client'";
+} elseif ($queue === 'promises_due') {
+    $ticket_queue_query = "AND EXISTS (SELECT 1 FROM ticket_customer_promises
+        WHERE ticket_customer_promise_ticket_id = tickets.ticket_id
+        AND ticket_customer_promise_status = 'open'
+        AND ticket_customer_promise_due_at <= NOW() + INTERVAL 1 DAY)";
+} elseif ($queue === 'recently_closed') {
+    $ticket_queue_query = 'AND COALESCE(ticket_closed_at, ticket_resolved_at) >= NOW() - INTERVAL 7 DAY';
+}
+if ($queue !== '') {
+    $active_filters[] = ['label' => 'Queue', 'value' => $queue_labels[$queue], 'drop' => 'queue'];
 }
 
 // Category Filter
@@ -260,6 +307,9 @@ $ticket_select_columns =
     "ticket_id, ticket_prefix, ticket_number, ticket_subject, ticket_priority,
     ticket_status, ticket_billable, ticket_schedule, ticket_order,
     ticket_created_at, ticket_updated_at, ticket_resolved_at, ticket_closed_at,
+    ticket_archived_at, ticket_restore_until, ticket_delete_reason,
+    ticket_work_type, ticket_impact, ticket_urgency, ticket_waiting_on,
+    ticket_next_action, ticket_next_action_due_at,
     ticket_client_id, ticket_contact_id, ticket_assigned_to, ticket_project_id,
     ticket_invoice_id, ticket_quote_id, ticket_sla_id,
     ticket_first_response_at, ticket_response_due_at, ticket_resolution_due_at,
@@ -287,17 +337,36 @@ $ticket_where =
     $ticket_sla_query
     $ticket_billable_snippet
     $ticket_project_snippet
+    $ticket_queue_query
+    $ticket_archive_snippet
     $access_permission_query_overide
     $client_query
-    AND DATE(ticket_created_at) BETWEEN '$dtf' AND '$dtt'
+    " . (($state === 'deleted' && !$date_filter_active)
+        ? ''
+        : "AND DATE(" . ($state === 'deleted' ? 'ticket_archived_at' : 'ticket_created_at') . ") BETWEEN '$dtf' AND '$dtt'") . "
     AND (CONCAT(ticket_prefix,ticket_number) LIKE '%$q%' OR client_name LIKE '%$q%' OR ticket_subject LIKE '%$q%' OR ticket_status_name LIKE '%$q%' OR ticket_priority LIKE '%$q%' OR user_name LIKE '%$q%' OR contact_name LIKE '%$q%' OR asset_name LIKE '%$q%' OR vendor_name LIKE '%$q%' OR ticket_vendor_ticket_number LIKE '%$q%')";
 
 // Counts for the quick views in the header - scope-wide, not filter-aware
 $count_where = "$access_permission_query_overide $client_query";
-$total_tickets_open = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_resolved_at IS NULL AND ticket_closed_at IS NULL $count_where"))[0]);
-$total_tickets_closed = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE (ticket_resolved_at IS NOT NULL OR ticket_closed_at IS NOT NULL) $count_where"))[0]);
-$total_tickets_unassigned = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_assigned_to = 0 AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL $count_where"))[0]);
-$user_active_assigned_tickets = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_assigned_to = $session_user_id AND ticket_resolved_at IS NULL AND ticket_closed_at IS NULL $count_where"))[0]);
+$active_ticket_predicate = 'ticket_archived_at IS NULL';
+$open_ticket_predicate = "ticket_status NOT IN (4, 5) AND ticket_resolved_at IS NULL
+    AND ticket_closed_at IS NULL AND $active_ticket_predicate";
+$closed_ticket_predicate = "(ticket_status IN (4, 5) OR ticket_resolved_at IS NOT NULL
+    OR ticket_closed_at IS NOT NULL) AND $active_ticket_predicate";
+$total_tickets_open = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $open_ticket_predicate $count_where"))[0]);
+$total_tickets_closed = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $closed_ticket_predicate $count_where"))[0]);
+$total_tickets_unassigned = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_assigned_to = 0 AND $open_ticket_predicate $count_where"))[0]);
+$user_active_assigned_tickets = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_assigned_to = $session_user_id AND $open_ticket_predicate $count_where"))[0]);
+$total_tickets_aging = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $open_ticket_predicate AND ticket_updated_at < NOW() - INTERVAL 3 DAY $count_where"))[0]);
+$total_tickets_waiting_customer = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $open_ticket_predicate AND ticket_waiting_on = 'client' $count_where"))[0]);
+$total_tickets_promises_due = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $open_ticket_predicate AND EXISTS (
+    SELECT 1 FROM ticket_customer_promises WHERE ticket_customer_promise_ticket_id = tickets.ticket_id
+    AND ticket_customer_promise_status = 'open'
+    AND ticket_customer_promise_due_at <= NOW() + INTERVAL 1 DAY) $count_where"))[0]);
+$total_tickets_recently_closed = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $closed_ticket_predicate AND COALESCE(ticket_closed_at, ticket_resolved_at) >= NOW() - INTERVAL 7 DAY $count_where"))[0]);
+$total_tickets_deleted = lookupUserPermission('module_support') >= 3
+    ? intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_archived_at IS NOT NULL $count_where"))[0])
+    : 0;
 
 // Only offer the SLA filter once SLAs are actually in use
 $sla_filter_in_use = mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(sla_id) FROM slas WHERE sla_archived_at IS NULL"))[0] > 0;
@@ -324,12 +393,15 @@ if ($date_filter_active) {
 ?>
 
 <div class="card mb-3">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fa fa-fw fa-life-ring me-2"></i>Tickets
+    <div class="card-header bg-dark text-light py-2">
+        <h3 class="card-title mt-2 text-light"><i class="fa fa-fw fa-life-ring me-2"></i>Tickets
             <small class="ms-3">
-                <a href="<?= ticketsFilterUrl(['state' => 'open', 'status' => null]) ?>" class="badge rounded-pill p-1 <?= (!$status_filter && $state == 'open') ? 'bg-light text-dark' : 'text-light' ?>"><strong><?= $total_tickets_open ?></strong> Open</a> |
-                <a href="<?= ticketsFilterUrl(['state' => 'closed', 'status' => null]) ?>" class="badge rounded-pill p-1 <?= (!$status_filter && $state == 'closed') ? 'bg-light text-dark' : 'text-light' ?>"><strong><?= $total_tickets_closed ?></strong> Closed</a> |
-                <a href="<?= ticketsFilterUrl(['state' => 'all', 'status' => null]) ?>" class="badge rounded-pill p-1 <?= (!$status_filter && $state == 'all') ? 'bg-light text-dark' : 'text-light' ?>">All</a>
+                <a href="<?= ticketsFilterUrl(['state' => 'open', 'status' => null, 'queue' => null]) ?>" class="badge rounded-pill p-1 <?= (!$status_filter && $state == 'open' && !$queue) ? 'bg-light text-dark' : 'text-light' ?>"><strong><?= $total_tickets_open ?></strong> Open</a> |
+                <a href="<?= ticketsFilterUrl(['state' => 'closed', 'status' => null, 'queue' => null]) ?>" class="badge rounded-pill p-1 <?= (!$status_filter && $state == 'closed' && !$queue) ? 'bg-light text-dark' : 'text-light' ?>"><strong><?= $total_tickets_closed ?></strong> Closed</a> |
+                <a href="<?= ticketsFilterUrl(['state' => 'all', 'status' => null, 'queue' => null]) ?>" class="badge rounded-pill p-1 <?= (!$status_filter && $state == 'all' && !$queue) ? 'bg-light text-dark' : 'text-light' ?>">All</a>
+                <?php if (lookupUserPermission('module_support') >= 3) { ?> |
+                    <a href="<?= ticketsFilterUrl(['state' => 'deleted', 'status' => null, 'queue' => null]) ?>" class="badge rounded-pill p-1 <?= $state === 'deleted' ? 'bg-light text-dark' : 'text-light' ?>"><strong><?= $total_tickets_deleted ?></strong> Deleted</a>
+                <?php } ?>
             </small>
         </h3>
         <?php if (lookupUserPermission("module_support") >= 2) { ?>
@@ -357,6 +429,7 @@ if ($date_filter_active) {
             <?php } ?>
             <input type="hidden" name="view" value="<?= $view ?>">
             <input type="hidden" name="state" value="<?= $state ?>">
+            <?php if ($queue !== '') { ?><input type="hidden" name="queue" value="<?= escapeHtml($queue) ?>"><?php } ?>
             <input type="hidden" name="sort" value="<?= escapeHtml($sort) ?>">
             <input type="hidden" name="order" value="<?= escapeHtml($order) ?>">
             <?php if ($billing_filter && !$show_billing_column) { ?>
@@ -379,14 +452,38 @@ if ($date_filter_active) {
 
                 <div class="col-sm-8">
                     <div class="btn-group float-sm-end">
-                        <a href="<?= $ticket_assigned_filter_id === intval($session_user_id) ? ticketsFilterUrl(['assigned' => null]) : ticketsFilterUrl(['assigned' => $session_user_id]) ?>"
+                        <a href="<?= $ticket_assigned_filter_id === intval($session_user_id) && !$queue ? ticketsFilterUrl(['assigned' => null]) : ticketsFilterUrl(['assigned' => $session_user_id, 'queue' => null, 'state' => 'open']) ?>"
                             class="btn <?= $ticket_assigned_filter_id === intval($session_user_id) ? 'btn-primary' : 'btn-outline-primary' ?>" aria-label="Filter tickets assigned to me">
                             <i class="fas fa-fw fa-user"></i><span class="d-none d-xl-inline ms-2">Mine</span> | <strong><?= $user_active_assigned_tickets ?></strong>
                         </a>
-                        <a href="<?= $ticket_assigned_filter_id === 0 ? ticketsFilterUrl(['assigned' => null]) : ticketsFilterUrl(['assigned' => 'unassigned']) ?>"
+                        <a href="<?= $ticket_assigned_filter_id === 0 && !$queue ? ticketsFilterUrl(['assigned' => null]) : ticketsFilterUrl(['assigned' => 'unassigned', 'queue' => null, 'state' => 'open']) ?>"
                             class="btn <?= $ticket_assigned_filter_id === 0 ? 'btn-danger' : 'btn-outline-danger' ?>" aria-label="Filter unassigned tickets">
                             <i class="fas fa-fw fa-exclamation-triangle"></i><span class="d-none d-xl-inline ms-2">Unassigned</span> | <strong><?= $total_tickets_unassigned ?></strong>
                         </a>
+                        <div class="btn-group ms-2">
+                            <button class="btn <?= $queue ? 'btn-dark' : 'btn-outline-dark' ?> dropdown-toggle" type="button"
+                                    data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-fw fa-inbox"></i><span class="d-none d-xl-inline ms-2">Queues</span>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item d-flex justify-content-between gap-3" href="<?= ticketsFilterUrl(['queue' => 'aging', 'state' => null, 'status' => null, 'assigned' => null]) ?>">
+                                    <span>Aging work</span><strong><?= $total_tickets_aging ?></strong>
+                                </a>
+                                <a class="dropdown-item d-flex justify-content-between gap-3" href="<?= ticketsFilterUrl(['queue' => 'waiting_customer', 'state' => null, 'status' => null, 'assigned' => null]) ?>">
+                                    <span>Waiting on client</span><strong><?= $total_tickets_waiting_customer ?></strong>
+                                </a>
+                                <a class="dropdown-item d-flex justify-content-between gap-3" href="<?= ticketsFilterUrl(['queue' => 'promises_due', 'state' => null, 'status' => null, 'assigned' => null]) ?>">
+                                    <span>Promises due</span><strong><?= $total_tickets_promises_due ?></strong>
+                                </a>
+                                <a class="dropdown-item d-flex justify-content-between gap-3" href="<?= ticketsFilterUrl(['queue' => 'recently_closed', 'state' => null, 'status' => null, 'assigned' => null]) ?>">
+                                    <span>Recently closed</span><strong><?= $total_tickets_recently_closed ?></strong>
+                                </a>
+                                <?php if ($queue) { ?>
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item" href="<?= ticketsFilterUrl(['queue' => null, 'state' => 'open']) ?>">Clear queue</a>
+                                <?php } ?>
+                            </div>
+                        </div>
                         <a href="<?= ticketsFilterUrl(['view' => $view == 'kanban' ? 'list' : 'kanban']) ?>" class="btn btn-outline-dark ms-2" title="Switch to the <?= $view == 'kanban' ? 'list' : 'kanban' ?> view">
                             <i class="fa fa-fw <?= $view == 'kanban' ? 'fa-list' : 'fa-columns' ?>"></i>
                             <span class="d-none d-xl-inline ms-2"><?= $view == 'kanban' ? 'List' : 'Kanban' ?></span>

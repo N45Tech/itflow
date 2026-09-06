@@ -190,15 +190,15 @@ $agent_gate_sections = [
     ["if (isset(\$_POST['bulk_ticket_reply']))", "if (isset(\$_POST['bulk_add_ticket_project']))", 'bulk ticket reply'],
     ["if (isset(\$_POST['add_ticket_reply']))", "if (isset(\$_GET['delete_ticket_attachment']))", 'ticket reply'],
     ["if (isset(\$_POST['merge_ticket']))", "if (isset(\$_POST['change_client_ticket']))", 'ticket merge'],
-    ["if (isset(\$_GET['resolve_ticket']))", "if (isset(\$_GET['close_ticket']))", 'ticket resolve'],
-    ["if (isset(\$_GET['close_ticket']))", "if (isset(\$_GET['reopen_ticket']))", 'ticket close'],
+    ["if (isset(\$_POST['resolve_ticket']))", "if (isset(\$_POST['terminal_ticket']))", 'ticket resolve'],
+    ["if (isset(\$_POST['terminal_ticket']))", "if (isset(\$_GET['reopen_ticket']))", 'ticket close'],
 ];
 foreach ($agent_gate_sections as [$start, $end, $label]) {
     $gate_section = $section($ticket_post, $start, $end, $label . ' handler');
-    $assertContains('runbookTicketCanResolve($ticket_id)', $gate_section, ucfirst($label) . ' can bypass runbook gates');
+    $assertContains('runbookTicketCanResolve($ticket_id', $gate_section, ucfirst($label) . ' can bypass runbook gates');
     $assertAtomicTicketGate($gate_section, ucfirst($label));
 }
-$assertTrue(substr_count($ticket_post, 'runbookTicketCanResolve($ticket_id)') === 7, 'The agent ticket mutation surface does not contain all seven runbook gates');
+$assertTrue(substr_count($ticket_post, 'runbookTicketCanResolve($ticket_id') === 7, 'The agent ticket mutation surface does not contain all seven lifecycle gates');
 $assertContains('if (in_array($effective_ticket_status, [4, 5], true))', $ticket_post, 'Bulk replies do not gate close requests');
 $assertContains('if (in_array($ticket_status, [4, 5], true))', $ticket_post, 'Agent replies do not gate close requests');
 
@@ -277,7 +277,7 @@ $assertTrue(
 
 $automation = $read('functions/automation.php');
 $assertContains('if ($resolve && intval($ticket[\'ticket_status\']) !== 4)', $automation, 'Automation recovery resolution handling is missing');
-$assertContains('runbookTicketCanResolve($ticket_id)', $automation, 'Automation recovery can resolve through unfinished runbook work');
+$assertContains('runbookTicketCanResolve($ticket_id', $automation, 'Automation recovery can resolve through unfinished operational work');
 $assertContains('automatic resolution was blocked by unfinished runbook work', $automation, 'Blocked automation recovery is not recorded in ticket history');
 $automation_reply_start = strpos($automation, 'function automationAddIncidentReply(');
 $automation_reply = $automation_reply_start === false ? '' : substr($automation, $automation_reply_start);
