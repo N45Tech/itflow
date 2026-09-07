@@ -1,6 +1,6 @@
 <?php
 
-// Shared authorization and audit boundary for follow-ups and reviewed knowledge.
+// Follow-up authorization and audit boundary. Legacy knowledge records retain their history.
 // Mutation helpers run inside fieldRequest's transaction and durable receipt.
 function assistanceRequire(int $client_id, int $support = 1, int $client = 0): void
 {
@@ -79,10 +79,8 @@ function assistanceHasHistory(int $ticket_id): bool
 function assistanceWrite(string $action, array $input, int $actor): array
 {
     $ticket = assistanceTicket((int) ($input['ticket_id'] ?? 0));
-    $knowledge = str_starts_with($action, 'knowledge_');
-    $level = $knowledge && in_array($input['operation'] ?? '', ['publish','return'], true) ? 3 : 2;
-    assistanceRequire((int) $ticket['ticket_client_id'], $level, $knowledge ? 2 : 0);
-    $handlers = ['followup_plan' => 'followupSave', 'knowledge_capture' => 'knowledgeCapture', 'knowledge_save' => 'knowledgeSave'];
+    assistanceRequire((int) $ticket['ticket_client_id'], 2);
+    $handlers = ['followup_plan' => 'followupSave'];
     if (!isset($handlers[$action])) { throw new DomainException('Choose a valid service action.'); }
     return fieldRequest($action, $input, $actor, static fn (&$batch) => $handlers[$action]($input, $actor), true);
 }

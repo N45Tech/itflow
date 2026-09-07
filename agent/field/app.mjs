@@ -1,6 +1,8 @@
 import {DraftVault, knownAccounts} from './drafts.mjs';
 import {createWorkspace} from './workspace.mjs';
 import {createAssistance} from './assistance.mjs';
+
+if (window.n45FieldMobile) {
 const $ = (selector, root = document) => root.querySelector(selector);
 const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n = value => Number(value) || 0;
@@ -57,13 +59,13 @@ function today() {
   const scheduled=jobs.filter(j=>j.scheduled_at&&new Date(j.scheduled_at).toDateString()===todayKey).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));
   const other=jobs.filter(j=>!scheduled.includes(j));
   return header('Today’s work',new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}),actionButton('locate','Find my stop','',true)+`<a class="button secondary" href="#jobs">Find work</a>`+(writable()?workspace.button('create','New job'):''))
-    +`<div class="actions"><a class="button secondary" href="#followups">Follow-ups</a>${state.boot.user.documents?'<a class="button secondary" href="#knowledge">Knowledge review</a>':''}</div>`+activeBanner()+matchesMarkup()+`<p class="hint" id="location-message">${e(state.locationMessage||'Your schedule and location help identify the right stop. You confirm every arrival.')}</p>`
+    +activeBanner()+matchesMarkup()+`<p class="hint" id="location-message">${e(state.locationMessage||'Your schedule and location help identify the right stop. You confirm every arrival.')}</p>`
     +`<div class="section-head"><h2>On the schedule</h2><span class="muted">${scheduled.length} jobs</span></div>`
     +(scheduled.length?`<div class="list">${scheduled.map(jobRow).join('')}</div>`:empty('No scheduled stops today','Your assigned work appears below. You can open any job and check in manually.'))
     +(other.length?`<div class="section-head"><h2>Other assigned work</h2></div><div class="list">${other.map(jobRow).join('')}</div>`:'');
 }
 function jobTop(j,panel) {
-  const sections=[['overview','Job'],['fixes','Suggested fixes'],['docs','Documentation'],['tasks','Tasks'],['notes','Notes'],['issues','Issues'],['approvals','Approvals'],['conversation','Conversation'],['resources','Resources'],['photos','Files']];
+  const sections=[['overview','Job'],['docs','Documentation'],['tasks','Tasks'],['notes','Notes'],['issues','Issues'],['approvals','Approvals'],['conversation','Conversation'],['resources','Resources'],['photos','Files']];
   return `<a class="back" href="#today">Back to today</a><div class="job-top"><div class="meta"><strong>${e(j.reference)}</strong><span>${e(j.client_name)}</span><span class="tag">${e(j.status)}</span></div><div class="job-title-row"><h1>${e(j.subject)}</h1>${workspace.jobActions(j)}</div><p class="muted">${e(j.location_name)}${j.address?' · '+e(j.address):''}</p><div class="meta"><span>${e(fmt(j.scheduled_at))}</span><span>${e(j.assigned_name||'Unassigned')}</span>${j.project_id?`<a href="#project/${j.project_id}">${e(j.project_name)}</a>`:''}</div></div><nav class="job-tabs" aria-label="Job sections">${sections.map(([id,title])=>`<a href="${jobHref(j.ticket_id,id)}" ${panel===id?'aria-current="page"':''}>${title}</a>`).join('')}</nav><label class="job-section-picker">Job section<select id="job-section" aria-label="Job section">${sections.map(([id,title])=>`<option value="${id}" ${panel===id?'selected':''}>${title}</option>`).join('')}</select></label>`;
 }
 function visitControls(j) {
@@ -77,7 +79,7 @@ function visitControls(j) {
 }
 function overview(j) {
   const phone=(j.contact.phone||'').replace(/[^+\d,;#*]/g,'');
-  return visitControls(j)+`<div class="split"><div><section class="subsection"><h2>Work to do</h2><p class="prose">${e(j.details||'No job instructions have been added.')}</p></section>${j.next_action?`<section class="subsection"><h2>Next action</h2><p>${e(j.next_action)}</p></section>`:''}<div class="actions"><a class="button" href="${jobHref(j.ticket_id,'notes')}">Write a work note</a><a class="button secondary" href="${jobHref(j.ticket_id,'issues')}">Report an issue</a></div></div><aside class="aside"><h2>Before you start</h2><p><strong>${e(j.contact.name||'No contact set')}</strong></p>${phone?`<a class="button secondary" href="tel:${e(phone)}">Call contact</a>`:''}${j.address?`<p><a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(j.address)}" target="_blank" rel="noopener noreferrer">Directions to site</a></p>`:''}<p class="prose">${e(j.site_notes||'No site access notes available.')}</p>${j.site_hours?`<p class="muted">Hours: ${e(j.site_hours)}</p>`:''}<p class="hint">${j.pin_valid?'Arrival pin verified for this address.':'This address needs a verified arrival pin for automatic matching.'}</p>${state.boot.user.verify_site&&j.location_id&&!j.terminal?actionButton('pin',j.pin_valid?'Update site pin':'Verify this site',`data-ticket="${j.ticket_id}"`,true):''}</aside></div>`+workspace.promises(j);
+  return visitControls(j)+`<div class="split"><div><section class="subsection"><h2>Work to do</h2><p class="prose">${e(j.details||'No job instructions have been added.')}</p></section>${j.next_action?`<section class="subsection"><h2>Next action</h2><p>${e(j.next_action)}</p></section>`:''}<div class="actions"><a class="button" href="${jobHref(j.ticket_id,'notes')}">Write a work note</a><a class="button secondary" href="${jobHref(j.ticket_id,'issues')}">Report an issue</a></div></div><aside class="aside"><h2>Before you start</h2><p><strong>${e(j.contact.name||'No contact set')}</strong></p>${phone?`<a class="button secondary" href="tel:${e(phone)}">Call contact</a>`:''}${j.address?`<p><a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(j.address)}" target="_blank" rel="noopener noreferrer">Directions to site</a></p>`:''}<p class="prose">${e(j.site_notes||'No site access notes available.')}</p>${j.site_hours?`<p class="muted">Hours: ${e(j.site_hours)}</p>`:''}<p class="hint">${j.pin_valid?'Arrival pin verified for this address.':'This address needs a verified arrival pin for automatic matching.'}</p>${state.boot.user.verify_site&&j.location_id&&!j.terminal?actionButton('pin',j.pin_valid?'Update site pin':'Verify this site',`data-ticket="${j.ticket_id}"`,true):''}</aside></div>`+workspace.promises(j)+assistance.ticket(j);
 }
 function docRows(docs) {
   return docs.length?`<div class="list">${docs.map(d=>`<div class="list-row"><div class="row-main"><button class="quiet" data-action="document" data-id="${n(d.document_id)}">${e(d.document_name)}</button><p class="muted">${e(d.document_description||'')}</p><div class="meta"><span>${d.last_verified_at?'Verified '+e(fmt(d.last_verified_at)):'Verification not recorded'}</span>${n(d.asset_linked)?'<span class="tag">Linked asset</span>':''}</div></div></div>`).join('')}</div>`:empty('No matching documents','Report what is missing so the owner can correct it.');
@@ -141,9 +143,10 @@ async function route() {
     if(view==='job') {
       const job=await api('ticket',null,{ticket_id:id});if(version!==state.route)return;state.job=job;
       const task=n(new URLSearchParams(params).get('task'));
-      const panelHtml=await ({overview:()=>overview(job),fixes:()=>assistance.fixes(job),conversation:()=>workspace.communication(job),resources:()=>workspace.resources(job),approvals:()=>workspace.approvals(job),docs:()=>docs(job),tasks:()=>`<div class="section-head"><h2>Job tasks</h2>${writable()&&!job.terminal?workspace.button('task-new','Add task'):''}</div>`+taskRows(job.tasks,job.ticket_id),notes:()=>notes(job,task),issues:()=>`<div class="section-head"><h2>Job issues</h2>${writable()&&!job.terminal?actionButton('new-issue','Report issue'):''}</div>`+issueRows(job.blockers),photos:()=>photos(job,task)}[panel]||(()=>overview(job)))();
-      html=jobTop(job,panel)+panelHtml;
-    } else if(view==='followups'||view==='knowledge')html=await assistance.route(view,id);
+      const panelHtml=await ({overview:()=>overview(job),followups:()=>overview(job),conversation:()=>workspace.communication(job),resources:()=>workspace.resources(job),approvals:()=>workspace.approvals(job),docs:()=>docs(job),tasks:()=>`<div class="section-head"><h2>Job tasks</h2>${writable()&&!job.terminal?workspace.button('task-new','Add task'):''}</div>`+taskRows(job.tasks,job.ticket_id),notes:()=>notes(job,task),issues:()=>`<div class="section-head"><h2>Job issues</h2>${writable()&&!job.terminal?actionButton('new-issue','Report issue'):''}</div>`+issueRows(job.blockers),photos:()=>photos(job,task)}[panel]||(()=>overview(job)))();
+      html=jobTop(job,panel==='followups'?'overview':panel)+panelHtml;
+    } else if(view==='followups'){location.replace('#jobs?queue=followups&scope=all');return;}
+    else if(view==='knowledge'){location.replace('#jobs');return;}
     else if(view==='jobs'||view==='new')html=await workspace.route(view,id);
     else if(view==='project') {state.project=await api('project',null,{project_id:id});html=projectView(state.project);}
     else if(view==='projects')html=projects();
@@ -398,3 +401,5 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('/agent/field/s
   else if(!location.hash&&params.get('project_id'))history.replaceState(null,'','#project/'+n(params.get('project_id')));
   try{await boot();await route();startSharing();await locate(!explicit);}catch(error){connection(false);await route();notice(error.message);}
 })();
+
+}

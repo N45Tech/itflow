@@ -1,55 +1,41 @@
-# Follow-ups and resolution knowledge
+# Ticket follow-ups and canned responses
 
-These features extend the existing PSA and Field Mode. The implementation is staged for `next`; production deployment is a separate release action. Both use existing client scope and support permissions. Suggestions use recorded evidence and deterministic matching; they do not call an external AI service or share content across clients.
+This revision consolidates the earlier service-assistance workflow into tickets. Stage it on `next`; deployment requires separate release approval.
 
-## Follow-ups
+## Follow-ups on tickets
 
-Open **Tickets → Follow-ups** or **Today → Follow-ups** in Field Mode. Filter by assignment, due/upcoming, type or client name. The ticket sidebar also links to its own follow-ups.
+Use **Tickets → Queues → Follow-ups due**. The existing client, assignment, search, list/board, and pagination controls continue to apply. Each ticket appears once even when several sources need attention. Field Mode offers the same filter in **Find work → Follow-ups**.
 
-| Source | Initial follow-up deadline | Initial owner |
-| --- | --- | --- |
-| Next action / waiting on a client or vendor | Recorded next-action deadline | Ticket assignee |
-| Customer commitment | Recorded promise deadline | Commitment creator |
-| Pending ticket approval | 24 hours after the request | Requester |
-| Pending task approval on an incomplete task | 24 hours after the request | Requester |
-| Open or acknowledged field issue | Recorded response deadline | Issue owner |
+Sources are the ticket's next action, open customer commitments, pending ticket and task approvals, and unresolved field issues. Approval follow-ups become due 24 hours after the request. Completed, resolved, closed, deleted, inaccessible, and archived-client work is excluded.
 
-A plan adds an eligible internal owner, a future follow-up date, an optional different escalation recipient, a later escalation date, and a required next step/reason. An unplanned item has no escalation recipient. If an owner loses access, the ticket assignee or creator is used only if eligible; otherwise the queue says **Needs an owner**. An invalid escalation recipient must be replaced explicitly.
+The ticket's collapsed **Follow-ups** section holds the existing owner, follow-up deadline, next-step note, and optional escalation plan. It is also available within the mobile job. A valid future plan defers that item in the due filter; changing its source invalidates the old plan. The original commitment or approval is never extended or decided by a follow-up plan. Completing the source removes the item automatically.
 
-Planning does not extend a customer commitment, approve a request, resolve an issue or change ticket status. Source changes invalidate the old plan. Source completion removes the item; closed, deleted and archived-client tickets are excluded. Approval decisions retain their original routing. Local PSA deadlines are converted to UTC; Field Mode dates and follow-up plans are stored in UTC.
+Plans require Support write access and an eligible owner. Escalation remains an explicit choice of a different eligible technician. Reminders use internal notifications, at most once per UTC day per unchanged plan, recipient, and stage. The worker locks and re-reads the source before sending. Permissions are checked again before receipt replay and notification delivery.
 
-The **Service Follow-ups** cron job runs every 15 minutes under the existing global cron gate. It sends internal in-app reminders, plus escalation notices when explicitly planned. Each unchanged source/plan, recipient and notification stage is delivered at most once per UTC day. New plans may create a new reminder that day. Unique receipts and a transaction keep retrying and concurrent workers from duplicating notifications. Reads refresh after acquiring the canonical client/ticket locks, so work completed while a worker waits is no longer due.
+Legacy follow-up page links redirect to the ticket or its due filter. There is no separate follow-up navigation item or global queue page. The internal reminder scan remains bounded at 5,000 source items and reports that limit; ticket filtering/counting happens in SQL before pagination and has no 5,000-item cap.
 
-The queue examines at most 5,000 sources per filtered view and displays 40 items per page. It warns when the source limit is reached; the cron job also reports that capacity condition. Filter by client/type for inspection and review queue capacity before using this at substantially higher volumes. Items with no eligible owner need assignment from **All accessible work**.
+## Admin-managed canned responses
 
-## Suggested fixes
+Administrators create, edit, and delete reusable responses at **Administration → Canned Responses**. Responses can apply to every ticket category or one category. Technicians cannot create or maintain responses from tickets or Field Mode.
 
-The ticket sidebar and Field Mode's **Suggested fixes** section show successful prior resolutions and current documents for the same accessible client. Matching asset/service relationships and shared subject/resolution/document terms determine relevance; each result shows the reason, excerpt, timestamp and source link. The first version ranks the 200 most recent matching candidates per source, returns eight results and reports a candidate limit when reached.
+On desktop, choose an update visibility in the ticket composer and use **Canned response**. On mobile, use **Conversation → Write an update → Canned response**. Selection inserts text into the unsent message, preserves existing text, and leaves visibility unchanged. The technician can edit the result before saving or sending it. Selection itself never sends a reply.
 
-Successful resolutions require a resolved/closed ticket, a recorded summary and one of: fixed, workaround, configuration changed, access restored, request fulfilled or client confirmed. Failed, canceled, duplicate and generic legacy closures do not become suggested resolutions. Document access additionally requires client-module read permission.
+Bodies are fetched only when selected, with current ticket access, Support write access, category, and archive checks. Desktop insertion uses purified HTML; mobile insertion uses readable plain text. Responses and ticket data are not stored in the offline shell cache.
 
-## Knowledge review
+The earlier suggested-fix, resolution-capture, peer-review, and article-publication controls and endpoints have been retired. Existing client documents, knowledge records, and audit/retention evidence remain intact; client-specific knowledge is not automatically converted into globally available responses. Migration `n45-0026-service-assistance` remains immutable. This revision requires no schema migration or data conversion.
 
-From a successful resolved ticket, choose **Capture this resolution**. Capture creates one reusable draft per source ticket and opens that same draft on retries. Edit the problem/applicability, resolution steps, and checks/cautions; remove secrets and verify the scope before requesting review.
+## Automatic mobile experience
 
-| Action | Required permissions |
-| --- | --- |
-| Read knowledge and its source documents | Support read + client read + client access |
-| Capture, edit, submit, start a revision | Support write + client write + client access |
-| Publish or return for changes | Full Support + client write + client access; different from creator and last editor |
+Phones and tablets automatically enter Field Mode when they open the agent portal. Ticket and project links retain their context; a ticket follow-up link opens that job's follow-ups. A ticket-list link preserves search, client, due-follow-up, and open/completed context.
 
-Submitting requests an in-app review from currently eligible peers. If none exist, both interfaces explain which access an administrator must assign. Publication requires a review reason and a source resolution that still matches the reviewed draft. It creates an internal client document and links the source asset when valid. Drafts and pending reviews never become reviewed suggestions.
+The device decision uses mobile device signals, including iPadOS touch capability when it reports a Mac user agent. It does not use window width: desktop browsers remain in the PSA when resized, and phones remain in Field Mode in landscape. Desktop Field Mode links redirect to the corresponding ticket/project or ticket list before the application starts. Desktop navigation has no Field Mode option. Administration and customer portal routes retain their own workflows.
 
-Published articles can start a revision. The draft starts from the last reviewed article; authors must read and acknowledge relevant changes in the current client document. Review cannot overwrite a document edited concurrently. Publishing a revision preserves the previous document version and updates the same document ID, while invalidating linked documentation verification through the existing lifecycle helper. An edited document, changed source resolution or pending revision is excluded from reviewed suggestions until republished. Restore an unavailable published document before revising it.
+JavaScript is required for Field Mode and automatic routing. Device classification is a UI decision, not an authorization boundary; the shared APIs retain their session, role, client, CSRF, and receipt protections. Static shell cache version 4 includes the routing script and removes older shell caches.
 
-Desktop and Field Mode support the complete capture, edit, submission, return, publication, revision and pagination flow. These actions require a connection. Client data and drafts from this feature are not stored in the service worker or offline note vault; save drafts before navigating away.
+## Verification and rollback
 
-## Retention and release
+`tests/service_assistance_database_assert.php` covers source projection, ticket filtering, source changes, future plans, role/client access, idempotent writes, concurrent reminders, completion while a worker waits, canned response sanitization/access, and legacy knowledge retention.
 
-Migration `n45-0026-service-assistance` adds `service_followup_plans`, `service_followup_notices`, `service_assistance_events` and `service_knowledge`. It changes no existing ticket or document records. It is registered in the N45 reservation inventory, final schema and fingerprint checks, and is safe to replay before its ledger receipt is written.
+`tests/service_assistance_http_assert.php` uses real local PHP endpoints, sessions and a disposable database to exercise admin-only creation, technician insertion, CSRF, retired endpoints, ticket rendering and retained-client deletion protection. With `N45_ASSISTANCE_BROWSER=1`, it also runs `tests/field/assistance.cjs` for desktop/mobile filters, reply insertion without sending, exact retry, desktop redirection, mobile deep links, landscape and iPadOS routing. The existing Field Mode browser recovery suite uses explicit mobile device identities.
 
-Plan and knowledge history are protected ticket evidence. Client transfer is blocked after assistance history exists. Recoverable ticket deletion hides records and restoration reveals them again. Explicit ticket purge removes assistance metadata and receipts through the existing retention workflow; an already published client document remains an independent client record. The linked knowledge document and its versions inherit the existing canonical-document archive/deletion guard. Both desktop and legacy API client deletion refuse retained assistance history. Activity screens show the latest 20 events; the database keeps the complete history.
-
-Before eventual production release, use the existing `next` → `main` gates and a matched database/application backup. To roll back, stop the Service Follow-ups job, preserve review and notification evidence and restore the matching pre-upgrade snapshots. Do not drop these tables from an active installation.
-
-Verification covers fresh install, upstream/legacy upgrade, migration replay, canonical sources, role/client scope, stale plans, changed sources, concurrent notification workers, completion while waiting for locks, retry receipts, independent review, document revision conflicts, retention, actual HTTP sessions/CSRF/method checks, and desktop/Field Mode browser workflows. Local browser evidence uses disposable fixtures, not the live PSA or physical Android hardware.
+All fixtures use synthetic records and `.invalid` addresses. Browser emulation does not establish physical Android verification. Roll back the application revision to restore the previous UI if necessary; this revision does not alter or remove database records. Use the existing release gates and backup procedure before any production release.

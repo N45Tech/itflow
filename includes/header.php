@@ -22,6 +22,9 @@ header("X-Frame-Options: DENY");
 <html lang="en" data-bs-theme="<?= $user_config_theme_dark ? 'dark' : 'light' ?>"<?php if ($user_config_theme_dark) echo ' data-color-scheme="dark"'; ?> data-lte-color-mode="off" data-lte-print="plain">
 <head>
     <meta charset="utf-8">
+    <?php if (str_starts_with($_SERVER['SCRIPT_NAME'] ?? '', '/agent/') && lookupUserPermission('module_support') >= 1) { ?>
+        <script src="/js/field_device.js"></script>
+    <?php } ?>
     <?php /* Must come BEFORE the stylesheets. The browser applies a meta
              color-scheme while it parses the head, so the very first paint is
              already dark. Left to CSS alone the only declaration is

@@ -34,7 +34,7 @@ try {
             $result = ['candidates' => fieldArrivalCandidates(fieldToday($user_id), fieldPosition($input), time())];
         } elseif ($action === 'credential_reveal') {
             $result = fieldRevealCredential($input, $user_id);
-        } elseif (in_array($action, ['followup_plan','knowledge_capture','knowledge_save'], true)) {
+        } elseif ($action === 'followup_plan') {
             $result = assistanceWrite($action, $input, $user_id);
         } else {
             if (lookupUserPermission('module_support') < 2) {
@@ -74,16 +74,14 @@ try {
     } elseif ($action === 'ticket') {
         $result = array_merge(fieldTicketDetail($ticket_id, $user_id), fieldWorkspaceDetail($ticket_id));
         $result['recipients_hash'] = hash('sha256', json_encode($result['recipients']));
+        $result['canned_responses'] = cannedResponseChoices($ticket_id);
+        $result['followups'] = followupQueue(['ticket_id' => $ticket_id, 'scope' => 'all', 'due' => 'all'], $user_id);
     } elseif ($action === 'followups') {
         $result = followupQueue($_GET, $user_id);
     } elseif ($action === 'followup') {
         $result = followupDetail($ticket_id, (string) ($_GET['key'] ?? ''));
-    } elseif ($action === 'suggestions') {
-        $result = knowledgeSuggestions($ticket_id);
-    } elseif ($action === 'knowledge') {
-        $result = knowledgeLoad((int) ($_GET['knowledge_id'] ?? 0));
-    } elseif ($action === 'knowledge_queue') {
-        $result = knowledgeQueue($_GET);
+    } elseif ($action === 'canned_response') {
+        $result = cannedResponseForTicket($ticket_id, (int) ($_GET['response_id'] ?? 0));
     } elseif ($action === 'jobs') {
         $result = fieldSearchTickets($_GET, $user_id);
     } elseif ($action === 'clients') {

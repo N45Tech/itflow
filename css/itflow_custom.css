@@ -1188,6 +1188,9 @@ select.select2[multiple]:not(.tomselected) {
 [data-bs-theme=dark] .table-primary,
 [data-bs-theme=dark] .table-secondary {
     --bs-table-color: var(--bs-body-color);
+    --bs-table-striped-bg: rgba(255, 255, 255, .03);
+    --bs-table-hover-bg: rgba(255, 255, 255, .06);
+    --bs-table-active-bg: rgba(255, 255, 255, .08);
     --bs-table-striped-color: var(--bs-body-color);
     --bs-table-active-color: var(--bs-body-color);
     --bs-table-hover-color: var(--bs-body-color);

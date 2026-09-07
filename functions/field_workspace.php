@@ -61,6 +61,7 @@ function fieldSearchTickets(array $input, int $user_id): array
     if (($input['state'] ?? 'open') === 'open') {
         $where .= ' AND t.ticket_status NOT IN (4,5) AND t.ticket_resolved_at IS NULL AND t.ticket_closed_at IS NULL';
     }
+    if (($input['queue'] ?? '') === 'followups') { $where .= ' AND (' . followupTicketPredicate('t') . ')'; }
     $ids = fieldRows("SELECT t.ticket_id FROM tickets t JOIN clients c ON c.client_id = t.ticket_client_id
         WHERE t.ticket_archived_at IS NULL AND c.client_archived_at IS NULL $where
         AND (t.ticket_subject LIKE $search OR c.client_name LIKE $search
