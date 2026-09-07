@@ -1,0 +1,231 @@
+.n45-commercial-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin: .5rem 0 1.5rem;
+}
+
+.n45-commercial-heading h1 {
+    color: #0a2423;
+    font-size: clamp(1.7rem, 2.5vw, 2.35rem);
+    font-weight: 700;
+    letter-spacing: -.025em;
+    margin: 0 0 .35rem;
+}
+
+.n45-commercial-heading p {
+    color: #62736e;
+    margin: 0;
+    max-width: 72ch;
+}
+
+.n45-commercial-tabs {
+    border-bottom: 1px solid #d4e0da;
+    display: flex;
+    gap: .25rem;
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+    scrollbar-color: #49c8b1 #dde8e2;
+    scrollbar-width: thin;
+}
+
+.n45-commercial-tabs::-webkit-scrollbar {
+    height: 5px;
+}
+
+.n45-commercial-tabs::-webkit-scrollbar-track {
+    background: #dde8e2;
+}
+
+.n45-commercial-tabs::-webkit-scrollbar-thumb {
+    background: #49c8b1;
+    border-radius: 999px;
+}
+
+.n45-commercial-tabs a {
+    border-bottom: 3px solid transparent;
+    color: #385651;
+    font-weight: 600;
+    padding: .7rem .85rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.n45-commercial-tabs a:hover,
+.n45-commercial-tabs a:focus-visible {
+    color: #0a2423;
+    border-bottom-color: #49c8b1;
+}
+
+.n45-commercial-tabs a[aria-current="page"] {
+    border-bottom-color: #167f70;
+    color: #0a2423;
+}
+
+.n45-commercial-summary {
+    background: #123431;
+    border-radius: 14px;
+    color: #fff;
+    display: grid;
+    gap: 1px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.n45-commercial-summary > div {
+    background: rgba(255, 255, 255, .035);
+    padding: 1rem 1.15rem;
+}
+
+.n45-commercial-summary small {
+    color: #b9d2cb;
+    display: block;
+    margin-bottom: .25rem;
+}
+
+.n45-commercial-summary strong {
+    font-size: 1.35rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.n45-commercial-panel {
+    background: #fff;
+    border: 1px solid #d4e0da;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(10, 36, 35, .06);
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.n45-commercial-panel-header {
+    align-items: center;
+    background: #f4f0e8;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: .9rem 1rem;
+}
+
+.n45-commercial-panel-header h2 {
+    color: #0a2423;
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.n45-commercial-panel .table {
+    margin-bottom: 0;
+}
+
+.n45-commercial-panel .table th {
+    color: #385651;
+    font-size: .75rem;
+    letter-spacing: .035em;
+    text-transform: uppercase;
+}
+
+.n45-commercial-panel .table td,
+.n45-commercial-panel .table th {
+    padding: .75rem 1rem;
+    vertical-align: middle;
+}
+
+.n45-commercial-money,
+.n45-commercial-qty {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.n45-commercial-exception {
+    background: #fff6ec;
+}
+
+.n45-commercial-ok {
+    color: #126b5e;
+}
+
+.n45-commercial-loss {
+    color: #a33a2b;
+}
+
+.n45-commercial-empty {
+    color: #62736e;
+    padding: 2.5rem 1rem;
+    text-align: center;
+}
+
+.n45-commercial-form-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 1rem;
+}
+
+.n45-commercial-form-grid .wide {
+    grid-column: span 2;
+}
+
+.n45-commercial-actions {
+    align-items: center;
+    background: #f8faf9;
+    border-top: 1px solid #d4e0da;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+    justify-content: flex-end;
+    padding: .8rem 1rem;
+}
+
+.n45-commercial-row-input {
+    min-width: 6rem;
+    width: 8rem;
+}
+
+@media (max-width: 900px) {
+    .n45-commercial-summary,
+    .n45-commercial-form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .n45-commercial-heading {
+        display: block;
+    }
+
+    .n45-commercial-heading .btn {
+        margin-top: 1rem;
+        width: 100%;
+    }
+
+    .n45-commercial-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .n45-commercial-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .n45-commercial-summary > div {
+        padding: .75rem .9rem;
+    }
+
+    .n45-commercial-summary strong {
+        font-size: 1.1rem;
+    }
+
+    .n45-commercial-form-grid .wide {
+        grid-column: auto;
+    }
+
+    .n45-commercial-panel .table td,
+    .n45-commercial-panel .table th {
+        padding: .65rem .75rem;
+    }
+
+    .n45-commercial-panel .table {
+        min-width: 46rem;
+    }
+}

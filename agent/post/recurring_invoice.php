@@ -48,7 +48,7 @@ if (isset($_POST['add_invoice_recurring'])) {
     mysqli_query($mysqli,"INSERT INTO history SET history_status = 'Draft', history_description = 'Recurring Invoice Created from INVOICE!', history_recurring_invoice_id = $recurring_invoice_id");
 
     $sql_items = mysqli_query($mysqli,"SELECT item_description, item_id, item_name, item_order, item_price, item_quantity, item_subtotal,
-        item_tax, item_tax_id, item_total FROM invoice_items WHERE item_invoice_id = $invoice_id");
+        item_tax, item_tax_id, item_total, item_product_id FROM invoice_items WHERE item_invoice_id = $invoice_id");
     while($row = mysqli_fetch_assoc($sql_items)) {
         $item_id = intval($row['item_id']);
         $item_name = escapeSql($row['item_name']);
@@ -60,8 +60,9 @@ if (isset($_POST['add_invoice_recurring'])) {
         $item_total = floatval($row['item_total']);
         $item_order = intval($row['item_order']);
         $tax_id = intval($row['item_tax_id']);
+        $product_id = intval($row['item_product_id']);
 
-        mysqli_query($mysqli,"INSERT INTO recurring_invoice_items SET item_name = '$item_name', item_description = '$item_description', item_quantity = $item_quantity, item_price = $item_price, item_subtotal = $item_subtotal, item_tax = $item_tax, item_total = $item_total, item_order = $item_order, item_tax_id = $tax_id, item_recurring_invoice_id = $recurring_invoice_id");
+        mysqli_query($mysqli,"INSERT INTO recurring_invoice_items SET item_name = '$item_name', item_description = '$item_description', item_quantity = $item_quantity, item_price = $item_price, item_subtotal = $item_subtotal, item_tax = $item_tax, item_total = $item_total, item_order = $item_order, item_tax_id = $tax_id, item_product_id = $product_id, item_recurring_invoice_id = $recurring_invoice_id");
     }
 
     logAudit("Recurring Invoice", "Create", "$session_name created recurring Invoice from Invoice $invoice_prefix$invoice_number", $client_id, $recurring_invoice_id);
@@ -209,6 +210,7 @@ if (isset($_POST['add_recurring_invoice_item'])) {
     $qty = floatval($_POST['qty']);
     $price = floatval($_POST['price']);
     $tax_id = intval($_POST['tax_id']);
+    $product_id = intval($_POST['product_id'] ?? 0);
     $item_order = intval($_POST['item_order']);
 
     $client_id = intval(getFieldById('recurring_invoices', $recurring_invoice_id, 'recurring_invoice_client_id'));
@@ -228,7 +230,7 @@ if (isset($_POST['add_recurring_invoice_item'])) {
 
     $total = $subtotal + $tax_amount;
 
-    mysqli_query($mysqli,"INSERT INTO recurring_invoice_items SET item_name = '$name', item_description = '$description', item_quantity = $qty, item_price = $price, item_subtotal = $subtotal, item_tax = $tax_amount, item_total = $total, item_tax_id = $tax_id, item_order = $item_order, item_recurring_invoice_id = $recurring_invoice_id");
+    mysqli_query($mysqli,"INSERT INTO recurring_invoice_items SET item_name = '$name', item_description = '$description', item_quantity = $qty, item_price = $price, item_subtotal = $subtotal, item_tax = $tax_amount, item_total = $total, item_tax_id = $tax_id, item_product_id = $product_id, item_order = $item_order, item_recurring_invoice_id = $recurring_invoice_id");
 
 
     $sql = mysqli_query($mysqli,"SELECT recurring_invoice_client_id, recurring_invoice_discount_amount, recurring_invoice_number,
@@ -301,7 +303,7 @@ if (isset($_POST['edit_recurring_invoice_item'])) {
 
     enforceClientAccess();
 
-    mysqli_query($mysqli,"UPDATE recurring_invoice_items SET item_name = '$name', item_description = '$description', item_quantity = $qty, item_price = $price, item_subtotal = $subtotal, item_tax = $tax_amount, item_total = $total, item_tax_id = $tax_id WHERE item_id = $item_id");
+    mysqli_query($mysqli,"UPDATE recurring_invoice_items SET item_name = '$name', item_description = '$description', item_quantity = $qty, item_price = $price, item_subtotal = $subtotal, item_tax = $tax_amount, item_total = $total, item_tax_id = $tax_id, item_product_id = $product_id WHERE item_id = $item_id");
 
     //Update Invoice Balances by tallying up invoice items
     $sql_recurring_invoice_total = mysqli_query($mysqli,"SELECT SUM(item_total) AS recurring_invoice_total FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id");
@@ -409,7 +411,7 @@ if (isset($_GET['force_recurring'])) {
 
     //Copy Items from original invoice to new invoice
     $sql_invoice_items = mysqli_query($mysqli,"SELECT item_description, item_id, item_name, item_order, item_price, item_quantity, item_subtotal,
-        item_tax_id FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id ORDER BY item_id ASC");
+        item_tax_id, item_product_id FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id ORDER BY item_id ASC");
 
     while($row = mysqli_fetch_assoc($sql_invoice_items)) {
         $item_id = intval($row['item_id']);
@@ -420,6 +422,7 @@ if (isset($_GET['force_recurring'])) {
         $item_subtotal = floatval($row['item_subtotal']);
         $item_order = intval($row['item_order']);
         $tax_id = intval($row['item_tax_id']);
+        $product_id = intval($row['item_product_id']);
 
         //Recalculate Item Tax since Tax percents can change.
         if ($tax_id > 0) {
@@ -436,7 +439,7 @@ if (isset($_GET['force_recurring'])) {
         //Update Recurring Items with new tax
         mysqli_query($mysqli,"UPDATE recurring_invoice_items SET item_tax = $item_tax_amount, item_total = $item_total, item_tax_id = $tax_id, item_order = $item_order WHERE item_id = $item_id");
 
-        mysqli_query($mysqli,"INSERT INTO invoice_items SET item_name = '$item_name', item_description = '$item_description', item_quantity = $item_quantity, item_price = $item_price, item_subtotal = $item_subtotal, item_tax = $item_tax_amount, item_total = $item_total, item_tax_id = $tax_id, item_invoice_id = $new_invoice_id");
+        mysqli_query($mysqli,"INSERT INTO invoice_items SET item_name = '$item_name', item_description = '$item_description', item_quantity = $item_quantity, item_price = $item_price, item_subtotal = $item_subtotal, item_tax = $item_tax_amount, item_total = $item_total, item_tax_id = $tax_id, item_product_id = $product_id, item_invoice_id = $new_invoice_id");
     }
 
     mysqli_query($mysqli,"INSERT INTO history SET history_status = 'Sent', history_description = 'Invoice Generated from Recurring!', history_invoice_id = $new_invoice_id");

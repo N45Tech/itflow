@@ -122,6 +122,7 @@ $assertTrue(
         'n45-0024-technician-field-mode',
         'n45-0025-inbound-mail-receipts',
         'n45-0026-service-assistance',
+        'n45-0027-commercial-operations',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -140,8 +141,19 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0026-service-assistance',
-    'The service assistance migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0027-commercial-operations',
+    'The commercial operations migration is not the final stable N45 migration'
+);
+$commercial_migration = $manifest['migrations']['n45-0027-commercial-operations'] ?? [];
+$assertTrue(
+    ($commercial_migration['fingerprint']['tables'] ?? null)
+        === ($post_integration_reservations['n45-0027-commercial-operations']['created_tables'] ?? null),
+    'Commercial operations does not match its durable schema reservation'
+);
+$assertTrue(
+    ($manifest['modules']['commercial']['runtime_files'] ?? []) === ['functions/commercial_operations.php']
+        && ($manifest['modules']['commercial']['migrations'] ?? []) === ['n45-0027-commercial-operations'],
+    'Commercial workflows are not owned by the commercial module boundary'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
@@ -351,6 +363,7 @@ $assertOrdered($functions, [
     "n45RequireModule('runbooks');",
     "n45RequireModule('portal_requests');",
     "n45RequireModule('agreements');",
+    "n45RequireModule('commercial');",
     "require_once __DIR__ . '/functions/app.php';",
 ], 'Fork runtime modules are not loaded through the stable boundary in dependency order');
 $assertNotContains("require_once __DIR__ . '/functions/endpoint.php';", $functions, 'Endpoint runtime bypasses the stable module boundary');

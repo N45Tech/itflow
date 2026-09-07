@@ -41,6 +41,7 @@ if (isset($_GET['accept_quote'], $_GET['url_key'])) {
         // Notification
         appNotify("Quote Accepted", "Quote $quote_prefix$quote_number has been accepted by $client_name", "/agent/quote.php?quote_id=$quote_id", $client_id);
         triggerCustomAction('quote_accept', $quote_id);
+        commercialPrepareQuoteDelivery($quote_id, 0);
 
         // Internal email notification
 

@@ -94,6 +94,7 @@ $assertTrue(
         'n45-0024-technician-field-mode',
         'n45-0025-inbound-mail-receipts',
         'n45-0026-service-assistance',
+        'n45-0027-commercial-operations',
     ],
     'The post-integration migration reservations are missing'
 );

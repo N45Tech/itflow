@@ -34,6 +34,7 @@ n45RequireModule('documentation');
 n45RequireModule('runbooks');
 n45RequireModule('portal_requests');
 n45RequireModule('agreements');
+n45RequireModule('commercial');
 require_once __DIR__ . '/functions/app.php';
 require_once __DIR__ . '/functions/ticket_email_ingestion.php';
 require_once __DIR__ . '/functions/payments.php';
