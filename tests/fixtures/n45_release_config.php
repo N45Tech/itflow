@@ -31,5 +31,6 @@ if (!$mysqli) {
 $config_app_name = 'ITFlow N45 Release Test';
 $config_base_url = 'localhost';
 $config_https_only = true;
+$config_enable_setup = false;
 $repo_branch = 'n45-release-test';
 $installation_id = 'n45-release-test';

@@ -1,6 +1,6 @@
 /* Only the public shell and this explicit static asset list may enter CacheStorage. */
-const CACHE = 'n45-field-shell-v2';
-const ASSETS = ['/agent/field/shell.html','/agent/field/field.css','/agent/field/app.mjs','/agent/field/workspace.mjs','/agent/field/drafts.mjs','/agent/field/manifest.webmanifest','/agent/field/icon-192.png','/agent/field/icon-512.png','/assets/branding/n45-mark.svg'];
+const CACHE = 'n45-field-shell-v3';
+const ASSETS = ['/agent/field/shell.html','/agent/field/field.css','/agent/field/app.mjs','/agent/field/workspace.mjs','/agent/field/assistance.mjs','/agent/field/drafts.mjs','/agent/field/manifest.webmanifest','/agent/field/icon-192.png','/agent/field/icon-512.png','/assets/branding/n45-mark.svg'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('n45-field-shell-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', event => {

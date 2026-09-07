@@ -38,7 +38,7 @@ function fieldLockTickets(array $ids): array
     return $tickets;
 }
 
-function fieldRequest(string $action, array $input, int $user_id, callable $operation): array
+function fieldRequest(string $action, array $input, int $user_id, callable $operation, bool $read_committed = false): array
 {
     global $mysqli;
     $key = (string) ($input['request_key'] ?? '');
@@ -62,6 +62,9 @@ function fieldRequest(string $action, array $input, int $user_id, callable $oper
         fieldClient((int) ($input['client_id'] ?? 0));
     }
     $key_sql = fieldSql($key);
+    // Assistance joins several live source tables after waiting on the canonical
+    // client/ticket locks. Refresh those reads after the lock holder commits.
+    if ($read_committed) { fieldDb('SET TRANSACTION ISOLATION LEVEL READ COMMITTED'); }
     if (!mysqli_begin_transaction($mysqli)) {
         throw new RuntimeException('Could not begin the field update.');
     }

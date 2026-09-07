@@ -1,5 +1,6 @@
 import {DraftVault, knownAccounts} from './drafts.mjs';
 import {createWorkspace} from './workspace.mjs';
+import {createAssistance} from './assistance.mjs';
 const $ = (selector, root = document) => root.querySelector(selector);
 const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n = value => Number(value) || 0;
@@ -35,6 +36,7 @@ const jobHref = (id,panel='overview') => `#job/${n(id)}/${panel}`;
 const actionButton = (action,text,attrs='',secondary=false) => `<button type="button" data-action="${action}" ${attrs} class="${secondary?'secondary':''}">${text}</button>`;
 const empty = (title,copy) => `<div class="empty"><h2>${e(title)}</h2><p class="muted">${e(copy)}</p></div>`;
 const workspace=createWorkspace({$,e,n,state,api,write,reload,notice,sheet,closeSheet,header,empty,jobHref,jobRow,actionButton,fmt,taskOptions,route,boot});
+const assistance=createAssistance({$,e,n,state,api,write,reload,notice,sheet,closeSheet,header,empty,jobHref,fmt});
 function header(title,description,actions='') {return `<div class="page-head"><div><h1>${e(title)}</h1><p class="muted">${e(description)}</p></div>${actions?`<div class="heading-actions">${actions}</div>`:''}</div>`;}
 function jobRow(job) {
   return `<div class="list-row"><div class="schedule-time">${e(clock(job.scheduled_at))}</div><div class="row-main"><a class="title" href="${jobHref(job.ticket_id)}">${e(job.subject)}</a><p class="muted">${e(job.client_name)} · ${e(job.location_name)}</p><div class="meta"><span>${e(job.reference)}</span><span>${e(job.scheduled_at?fmt(job.scheduled_at,{hour:undefined,minute:undefined}):'Unscheduled')}</span>${job.project_name?`<span>${e(job.project_name)}</span>`:''}</div></div><span class="tag ${['high','critical'].includes(job.priority)?'attention':''}">${e(job.status||job.priority)}</span></div>`;
@@ -55,13 +57,13 @@ function today() {
   const scheduled=jobs.filter(j=>j.scheduled_at&&new Date(j.scheduled_at).toDateString()===todayKey).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));
   const other=jobs.filter(j=>!scheduled.includes(j));
   return header('Today’s work',new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}),actionButton('locate','Find my stop','',true)+`<a class="button secondary" href="#jobs">Find work</a>`+(writable()?workspace.button('create','New job'):''))
-    +activeBanner()+matchesMarkup()+`<p class="hint" id="location-message">${e(state.locationMessage||'Your schedule and location help identify the right stop. You confirm every arrival.')}</p>`
+    +`<div class="actions"><a class="button secondary" href="#followups">Follow-ups</a>${state.boot.user.documents?'<a class="button secondary" href="#knowledge">Knowledge review</a>':''}</div>`+activeBanner()+matchesMarkup()+`<p class="hint" id="location-message">${e(state.locationMessage||'Your schedule and location help identify the right stop. You confirm every arrival.')}</p>`
     +`<div class="section-head"><h2>On the schedule</h2><span class="muted">${scheduled.length} jobs</span></div>`
     +(scheduled.length?`<div class="list">${scheduled.map(jobRow).join('')}</div>`:empty('No scheduled stops today','Your assigned work appears below. You can open any job and check in manually.'))
     +(other.length?`<div class="section-head"><h2>Other assigned work</h2></div><div class="list">${other.map(jobRow).join('')}</div>`:'');
 }
 function jobTop(j,panel) {
-  const sections=[['overview','Job'],['docs','Documentation'],['tasks','Tasks'],['notes','Notes'],['issues','Issues'],['approvals','Approvals'],['conversation','Conversation'],['resources','Resources'],['photos','Files']];
+  const sections=[['overview','Job'],['fixes','Suggested fixes'],['docs','Documentation'],['tasks','Tasks'],['notes','Notes'],['issues','Issues'],['approvals','Approvals'],['conversation','Conversation'],['resources','Resources'],['photos','Files']];
   return `<a class="back" href="#today">Back to today</a><div class="job-top"><div class="meta"><strong>${e(j.reference)}</strong><span>${e(j.client_name)}</span><span class="tag">${e(j.status)}</span></div><div class="job-title-row"><h1>${e(j.subject)}</h1>${workspace.jobActions(j)}</div><p class="muted">${e(j.location_name)}${j.address?' · '+e(j.address):''}</p><div class="meta"><span>${e(fmt(j.scheduled_at))}</span><span>${e(j.assigned_name||'Unassigned')}</span>${j.project_id?`<a href="#project/${j.project_id}">${e(j.project_name)}</a>`:''}</div></div><nav class="job-tabs" aria-label="Job sections">${sections.map(([id,title])=>`<a href="${jobHref(j.ticket_id,id)}" ${panel===id?'aria-current="page"':''}>${title}</a>`).join('')}</nav><label class="job-section-picker">Job section<select id="job-section" aria-label="Job section">${sections.map(([id,title])=>`<option value="${id}" ${panel===id?'selected':''}>${title}</option>`).join('')}</select></label>`;
 }
 function visitControls(j) {
@@ -139,9 +141,10 @@ async function route() {
     if(view==='job') {
       const job=await api('ticket',null,{ticket_id:id});if(version!==state.route)return;state.job=job;
       const task=n(new URLSearchParams(params).get('task'));
-      const panelHtml=await ({overview:()=>overview(job),conversation:()=>workspace.communication(job),resources:()=>workspace.resources(job),approvals:()=>workspace.approvals(job),docs:()=>docs(job),tasks:()=>`<div class="section-head"><h2>Job tasks</h2>${writable()&&!job.terminal?workspace.button('task-new','Add task'):''}</div>`+taskRows(job.tasks,job.ticket_id),notes:()=>notes(job,task),issues:()=>`<div class="section-head"><h2>Job issues</h2>${writable()&&!job.terminal?actionButton('new-issue','Report issue'):''}</div>`+issueRows(job.blockers),photos:()=>photos(job,task)}[panel]||(()=>overview(job)))();
+      const panelHtml=await ({overview:()=>overview(job),fixes:()=>assistance.fixes(job),conversation:()=>workspace.communication(job),resources:()=>workspace.resources(job),approvals:()=>workspace.approvals(job),docs:()=>docs(job),tasks:()=>`<div class="section-head"><h2>Job tasks</h2>${writable()&&!job.terminal?workspace.button('task-new','Add task'):''}</div>`+taskRows(job.tasks,job.ticket_id),notes:()=>notes(job,task),issues:()=>`<div class="section-head"><h2>Job issues</h2>${writable()&&!job.terminal?actionButton('new-issue','Report issue'):''}</div>`+issueRows(job.blockers),photos:()=>photos(job,task)}[panel]||(()=>overview(job)))();
       html=jobTop(job,panel)+panelHtml;
-    } else if(view==='jobs'||view==='new')html=await workspace.route(view,id);
+    } else if(view==='followups'||view==='knowledge')html=await assistance.route(view,id);
+    else if(view==='jobs'||view==='new')html=await workspace.route(view,id);
     else if(view==='project') {state.project=await api('project',null,{project_id:id});html=projectView(state.project);}
     else if(view==='projects')html=projects();
     else if(view==='time')html=timeView();
@@ -272,6 +275,7 @@ document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-action]');if(!button)return;
   const action=button.dataset.action;
   try {
+    if(await assistance.click(action,button))return;
     if(await workspace.click(action,button))return;
     if(action==='close-sheet'){const checkout=!!state.checkout;closeSheet();if(checkout)restoreCheckout();}
     else if(action==='refresh')await reload();
@@ -324,6 +328,7 @@ document.addEventListener('click',async event=>{
 document.addEventListener('submit',async event=>{
   const form=event.target;if(!form.id)return;event.preventDefault();
   try {
+    if(await assistance.submit(form,event.submitter))return;
     if(await workspace.submit(form))return;
     if(form.id==='note-form'){
       snapshotNote();await saveDraft();

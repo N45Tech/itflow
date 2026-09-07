@@ -328,6 +328,9 @@ function ticketDisciplineUpdatePlan(int $ticket_id, array $input, int $actor_id)
 // client-bound history between this decision and the client update.
 function ticketDisciplineCanTransfer(int $ticket_id): array
 {
+    if (assistanceHasHistory($ticket_id)) {
+        return [false, 'This ticket has follow-up or knowledge review history tied to its client and cannot be transferred.'];
+    }
     if (function_exists('fieldServiceHasHistory') && fieldServiceHasHistory($ticket_id)) {
         return [false, 'This ticket has field visit or issue history tied to its client and cannot be transferred.'];
     }

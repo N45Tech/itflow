@@ -8,8 +8,16 @@ require_once '../require_post_method.php';
 $delete_count = false;
 
 if (!empty($client_id)) {
-    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT client_name FROM clients WHERE client_id = $client_id AND client_archived_at IS NOT NULL LIMIT 1"));
-    $client_name = $row['client_name'];
+    // Serialize with every assistance mutation before inspecting retained history.
+    fieldDb('START TRANSACTION');
+    $row = mysqli_fetch_assoc(fieldDb("SELECT client_name FROM clients WHERE client_id = $client_id
+        AND client_archived_at IS NOT NULL LIMIT 1 FOR UPDATE"));
+    if (assistanceClientHasHistory($client_id)) {
+        mysqli_rollback($mysqli);
+        http_response_code(409);
+        exit(json_encode(['success' => 'False', 'message' => 'This client has retained follow-up or knowledge history. Use the reviewed ticket retention workflow.']));
+    }
+    $client_name = $row['client_name'] ?? '';
 
     if (!empty($client_name)) {
         // Delete Associations
@@ -67,8 +75,6 @@ if (!empty($client_id)) {
         mysqli_query($mysqli, "DELETE FROM trips WHERE trip_client_id = $client_id");
         mysqli_query($mysqli, "DELETE FROM vendors WHERE vendor_client_id = $client_id");
 
-        removeDirectory("../../uploads/clients/$client_id");
-
         $delete_sql = mysqli_query($mysqli, "DELETE FROM clients WHERE client_id = $client_id");
 
         if ($delete_sql) {
@@ -78,6 +84,8 @@ if (!empty($client_id)) {
             logAudit("Client", "Delete", "$client_name and all associated data via API ($api_key_name)", $client_id);
         }
     }
+    if (!mysqli_commit($mysqli)) { throw new RuntimeException('Could not commit client deletion.'); }
+    if ($delete_count) { removeDirectory("../../uploads/clients/$client_id"); }
 }
 
 // Output

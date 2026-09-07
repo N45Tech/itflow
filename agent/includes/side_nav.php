@@ -58,6 +58,8 @@
                     <?php if ($config_module_enable_ticketing == 1) { ?>
                         <li class="nav-header mt-3">SUPPORT</li>
                         <li class="nav-item"><a href="/agent/field/" class="nav-link"><i class="nav-icon fas fa-mobile-alt"></i><p>Field Mode</p></a></li>
+                        <li class="nav-item"><a href="/agent/followups.php" class="nav-link <?php if (basename($_SERVER['PHP_SELF']) === 'followups.php') { echo 'active'; } ?>"><i class="nav-icon fas fa-calendar-check"></i><p>Follow-ups</p></a></li>
+                        <?php if (lookupUserPermission('module_client') >= 1) { ?><li class="nav-item"><a href="/agent/knowledge.php" class="nav-link <?php if (basename($_SERVER['PHP_SELF']) === 'knowledge.php') { echo 'active'; } ?>"><i class="nav-icon fas fa-book-open"></i><p>Resolution knowledge</p></a></li><?php } ?>
                         <li class="nav-item">
                             <a href="/agent/operations.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "operations.php") { echo "active"; } ?>">
                                 <i class="nav-icon fas fa-wave-square"></i>
