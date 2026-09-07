@@ -5380,3 +5380,164 @@ CREATE TABLE `service_knowledge` (
   UNIQUE KEY `knowledge_document` (`knowledge_document_id`),
   KEY `knowledge_client_state` (`knowledge_client_id`,`knowledge_state`,`knowledge_updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `commercial_settings`;
+CREATE TABLE `commercial_settings` (
+  `commercial_settings_id` tinyint(1) NOT NULL DEFAULT 1,
+  `commercial_labor_cost_rate` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `commercial_billing_increment_minutes` int(11) NOT NULL DEFAULT 15,
+  `commercial_updated_by` int(11) NOT NULL DEFAULT 0,
+  `commercial_updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`commercial_settings_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+INSERT INTO `commercial_settings` (`commercial_settings_id`) VALUES (1);
+
+DROP TABLE IF EXISTS `commercial_product_profiles`;
+CREATE TABLE `commercial_product_profiles` (
+  `commercial_product_id` int(11) NOT NULL,
+  `commercial_unit_cost` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `commercial_preferred_vendor_id` int(11) NOT NULL DEFAULT 0,
+  `commercial_vendor_sku` varchar(200) DEFAULT NULL,
+  `commercial_reorder_level` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `commercial_recurring` tinyint(1) NOT NULL DEFAULT 0,
+  `commercial_quantity_basis` varchar(20) NOT NULL DEFAULT 'manual',
+  `commercial_updated_by` int(11) NOT NULL DEFAULT 0,
+  `commercial_updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`commercial_product_id`),
+  KEY `commercial_product_vendor` (`commercial_preferred_vendor_id`),
+  KEY `commercial_product_recurring` (`commercial_recurring`,`commercial_quantity_basis`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `subscription_records`;
+CREATE TABLE `subscription_records` (
+  `subscription_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `subscription_vendor_id` int(11) NOT NULL,
+  `subscription_external_id` varchar(255) NOT NULL,
+  `subscription_client_id` int(11) NOT NULL,
+  `subscription_contract_id` int(11) NOT NULL DEFAULT 0,
+  `subscription_product_id` int(11) NOT NULL,
+  `subscription_purchased_quantity` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `subscription_managed_quantity` decimal(15,2) DEFAULT NULL,
+  `subscription_unit_cost` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `subscription_unit_price` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `subscription_status` varchar(20) NOT NULL DEFAULT 'active',
+  `subscription_observed_at` datetime NOT NULL,
+  `subscription_updated_by` int(11) NOT NULL DEFAULT 0,
+  `subscription_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `subscription_updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`subscription_id`),
+  UNIQUE KEY `subscription_source_identity` (`subscription_vendor_id`,`subscription_external_id`),
+  KEY `subscription_client_product` (`subscription_client_id`,`subscription_product_id`,`subscription_status`),
+  KEY `subscription_contract` (`subscription_contract_id`,`subscription_status`),
+  KEY `subscription_observed` (`subscription_status`,`subscription_observed_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `billing_review_items`;
+CREATE TABLE `billing_review_items` (
+  `billing_review_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `billing_source_type` varchar(30) NOT NULL,
+  `billing_source_id` bigint(20) NOT NULL,
+  `billing_client_id` int(11) NOT NULL,
+  `billing_contract_id` int(11) NOT NULL DEFAULT 0,
+  `billing_category_id` int(11) NOT NULL DEFAULT 0,
+  `billing_description` varchar(500) NOT NULL,
+  `billing_service_date` date NOT NULL,
+  `billing_quantity` decimal(15,3) NOT NULL DEFAULT 1.000,
+  `billing_unit_price` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `billing_revenue_amount` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `billing_cost_amount` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `billing_decision` varchar(20) NOT NULL DEFAULT 'pending',
+  `billing_note` varchar(1000) DEFAULT NULL,
+  `billing_invoice_id` int(11) NOT NULL DEFAULT 0,
+  `billing_reviewed_by` int(11) NOT NULL DEFAULT 0,
+  `billing_reviewed_at` datetime DEFAULT NULL,
+  `billing_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `billing_updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`billing_review_id`),
+  UNIQUE KEY `billing_source_identity` (`billing_source_type`,`billing_source_id`),
+  KEY `billing_review_queue` (`billing_decision`,`billing_client_id`,`billing_service_date`),
+  KEY `billing_review_invoice` (`billing_invoice_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `quote_delivery_plans`;
+CREATE TABLE `quote_delivery_plans` (
+  `delivery_quote_id` int(11) NOT NULL,
+  `delivery_client_id` int(11) NOT NULL,
+  `delivery_status` varchar(20) NOT NULL DEFAULT 'ready',
+  `delivery_project_template_id` int(11) NOT NULL DEFAULT 0,
+  `delivery_project_manager_id` int(11) NOT NULL DEFAULT 0,
+  `delivery_project_id` int(11) NOT NULL DEFAULT 0,
+  `delivery_invoice_id` int(11) NOT NULL DEFAULT 0,
+  `delivery_recurring_invoice_id` int(11) NOT NULL DEFAULT 0,
+  `delivery_due_date` date DEFAULT NULL,
+  `delivery_scope_snapshot` text NOT NULL,
+  `delivery_quote_hash` char(64) NOT NULL,
+  `delivery_created_by` int(11) NOT NULL DEFAULT 0,
+  `delivery_completed_by` int(11) NOT NULL DEFAULT 0,
+  `delivery_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `delivery_completed_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`delivery_quote_id`),
+  KEY `delivery_queue` (`delivery_status`,`delivery_created_at`),
+  KEY `delivery_client` (`delivery_client_id`,`delivery_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `quote_delivery_items`;
+CREATE TABLE `quote_delivery_items` (
+  `delivery_item_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `delivery_item_quote_id` int(11) NOT NULL,
+  `delivery_item_quote_item_id` int(11) NOT NULL,
+  `delivery_item_product_id` int(11) NOT NULL DEFAULT 0,
+  `delivery_item_name` varchar(200) NOT NULL,
+  `delivery_item_description` text DEFAULT NULL,
+  `delivery_item_quantity` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `delivery_item_unit_price` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `delivery_item_unit_cost` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `delivery_item_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`delivery_item_id`),
+  UNIQUE KEY `delivery_quote_item` (`delivery_item_quote_id`,`delivery_item_quote_item_id`),
+  KEY `delivery_product` (`delivery_item_product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `purchase_orders`;
+CREATE TABLE `purchase_orders` (
+  `purchase_order_id` int(11) NOT NULL AUTO_INCREMENT,
+  `purchase_order_number` varchar(40) NOT NULL,
+  `purchase_order_status` varchar(20) NOT NULL DEFAULT 'draft',
+  `purchase_order_vendor_id` int(11) NOT NULL,
+  `purchase_order_client_id` int(11) NOT NULL DEFAULT 0,
+  `purchase_order_project_id` int(11) NOT NULL DEFAULT 0,
+  `purchase_order_quote_id` int(11) NOT NULL DEFAULT 0,
+  `purchase_order_expected_at` date DEFAULT NULL,
+  `purchase_order_note` varchar(1000) DEFAULT NULL,
+  `purchase_order_created_by` int(11) NOT NULL,
+  `purchase_order_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `purchase_order_updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `purchase_order_submitted_at` datetime DEFAULT NULL,
+  `purchase_order_completed_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`purchase_order_id`),
+  UNIQUE KEY `purchase_order_number` (`purchase_order_number`),
+  KEY `purchase_order_queue` (`purchase_order_status`,`purchase_order_expected_at`),
+  KEY `purchase_order_vendor` (`purchase_order_vendor_id`,`purchase_order_status`),
+  KEY `purchase_order_quote` (`purchase_order_quote_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `purchase_order_items`;
+CREATE TABLE `purchase_order_items` (
+  `purchase_item_id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `purchase_item_order_id` int(11) NOT NULL,
+  `purchase_item_product_id` int(11) NOT NULL,
+  `purchase_item_quote_item_id` int(11) NOT NULL DEFAULT 0,
+  `purchase_item_description` varchar(500) NOT NULL,
+  `purchase_item_vendor_sku` varchar(200) DEFAULT NULL,
+  `purchase_item_quantity_ordered` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `purchase_item_quantity_received` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `purchase_item_unit_cost` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `purchase_item_unit_price` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `purchase_item_invoice_id` int(11) NOT NULL DEFAULT 0,
+  `purchase_item_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `purchase_item_updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`purchase_item_id`),
+  UNIQUE KEY `purchase_order_quote_item` (`purchase_item_order_id`,`purchase_item_quote_item_id`),
+  KEY `purchase_item_product` (`purchase_item_product_id`),
+  KEY `purchase_item_fulfillment` (`purchase_item_order_id`,`purchase_item_quantity_received`,`purchase_item_quantity_ordered`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

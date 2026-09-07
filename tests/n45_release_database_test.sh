@@ -133,6 +133,7 @@ php tests/field_service_database_assert.php
 php tests/field_workspace_database_assert.php
 php tests/service_assistance_database_assert.php
 php tests/service_assistance_http_assert.php
+php tests/commercial_operations_contract_test.php
 php tests/contact_api_database_assert.php
 php tests/inbound_email_database_assert.php
 

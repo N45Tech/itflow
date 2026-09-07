@@ -155,6 +155,24 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a href="/agent/billing_review.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "billing_review.php") { echo "active"; } ?>">
+                            <i class="nav-icon fas fa-clipboard-check"></i>
+                            <p>Billing Review</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/agent/subscriptions.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "subscriptions.php") { echo "active"; } ?>">
+                            <i class="nav-icon fas fa-sync-alt"></i>
+                            <p>Subscriptions</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/agent/purchasing.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "purchasing.php") { echo "active"; } ?>">
+                            <i class="nav-icon fas fa-truck-loading"></i>
+                            <p>Purchasing</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="/agent/products.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "products.php") { echo "active"; } ?>">
                             <i class="nav-icon fas fa-box-open"></i>
                             <p>Products</p>
@@ -175,6 +193,12 @@
                             <a href="/agent/expenses.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "expenses.php") { echo "active"; } ?>">
                                 <i class="nav-icon fas fa-shopping-cart"></i>
                                 <p>Expenses</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="/agent/profitability.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "profitability.php") { echo "active"; } ?>">
+                                <i class="nav-icon fas fa-chart-line"></i>
+                                <p>Profitability</p>
                             </a>
                         </li>
                         <li class="nav-item">

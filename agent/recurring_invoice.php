@@ -117,7 +117,14 @@ if (isset($_GET['recurring_invoice_id'])) {
     $sql_history = mysqli_query($mysqli, "SELECT history_created_at, history_description, history_status FROM history WHERE history_recurring_invoice_id = $recurring_invoice_id ORDER BY history_id DESC");
 
     //Product autocomplete
-    $products_sql = mysqli_query($mysqli, "SELECT product_name AS label, product_description AS description, product_price AS price, product_tax_id AS tax FROM products WHERE product_archived_at IS NULL");
+    $products_sql = mysqli_query($mysqli, "SELECT
+        IF(product_code IS NULL OR product_code = '', product_name, CONCAT(product_code, ' - ', product_name)) AS label,
+        product_name, product_code, product_type AS type, product_description AS description,
+        product_price AS price, product_tax_id AS tax, tax_percent, product_id AS prod_id,
+        COALESCE(SUM(product_stock.stock_qty), 0) AS available_stock
+        FROM products LEFT JOIN product_stock ON product_id = stock_product_id
+        LEFT JOIN taxes ON product_tax_id = tax_id WHERE product_archived_at IS NULL
+        GROUP BY product_id ORDER BY product_name ASC");
 
     if (mysqli_num_rows($products_sql) > 0) {
         while ($row = mysqli_fetch_assoc($products_sql)) {
@@ -340,6 +347,7 @@ if (isset($_GET['recurring_invoice_id'])) {
                                         <form action="post.php" method="post">
                                             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                             <input type="hidden" name="recurring_invoice_id" value="<?= $recurring_invoice_id ?>">
+                                            <input type="hidden" name="product_id" id="product_id" value="0">
                                             <input type="hidden" name="item_order" value="<?php
                                                 //find largest order number and add 1
                                                 $sql = mysqli_query($mysqli, "SELECT MAX(item_order) AS item_order FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id");

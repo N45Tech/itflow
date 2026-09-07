@@ -128,7 +128,14 @@ if (isset($_GET['quote_id'])) {
     }
 
     //Product autocomplete
-    $products_sql = mysqli_query($mysqli, "SELECT product_name AS label, product_description AS description, product_price AS price, product_tax_id AS tax FROM products WHERE product_archived_at IS NULL");
+    $products_sql = mysqli_query($mysqli, "SELECT
+        IF(product_code IS NULL OR product_code = '', product_name, CONCAT(product_code, ' - ', product_name)) AS label,
+        product_name, product_code, product_type AS type, product_description AS description,
+        product_price AS price, product_tax_id AS tax, tax_percent, product_id AS prod_id,
+        COALESCE(SUM(product_stock.stock_qty), 0) AS available_stock
+        FROM products LEFT JOIN product_stock ON product_id = stock_product_id
+        LEFT JOIN taxes ON product_tax_id = tax_id WHERE product_archived_at IS NULL
+        GROUP BY product_id ORDER BY product_name ASC");
 
     if (mysqli_num_rows($products_sql) > 0) {
         while ($row = mysqli_fetch_assoc($products_sql)) {
@@ -198,12 +205,15 @@ if (isset($_GET['quote_id'])) {
                 <?php } ?>
 
                 <?php if ($quote_status == 'Accepted') { ?>
+                    <a class="btn btn-primary me-2" href="quote_delivery.php?quote_id=<?= $quote_id ?>">
+                        <i class="fas fa-project-diagram me-2"></i>Start delivery
+                    </a>
                     <div class="btn-group fix-quote-dropdown">
-                        <button type="button" class="btn btn-primary ajax-modal"
+                        <button type="button" class="btn btn-outline-primary ajax-modal"
                             data-modal-url="modals/quote/quote_to_invoice.php?quote_id=<?= $quote_id ?>">
                             <i class="fas fa-check me-2"></i>Invoice
                         </button>
-                        <button type="button" class="btn btn-primary dropdown-toggle dropdown-icon" data-bs-toggle="dropdown" aria-expanded="false">
+                        <button type="button" class="btn btn-outline-primary dropdown-toggle dropdown-icon" data-bs-toggle="dropdown" aria-expanded="false">
                             <span class="visually-hidden">Toggle Dropdown</span>
                         </button>
                         <div class="dropdown-menu dropdown-menu-end">
@@ -212,6 +222,12 @@ if (isset($_GET['quote_id'])) {
                             </a>
                         </div>
                     </div>
+                <?php } ?>
+
+                <?php if ($quote_status == 'Invoiced') { ?>
+                    <a class="btn btn-outline-primary" href="quote_delivery.php?quote_id=<?= $quote_id ?>">
+                        <i class="fas fa-project-diagram me-2"></i>Delivery
+                    </a>
                 <?php } ?>
 
                 </div>
@@ -403,6 +419,7 @@ if (isset($_GET['quote_id'])) {
                                         <form action="post.php" method="post" autocomplete="off">
                                             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                             <input type="hidden" name="quote_id" value="<?= $quote_id ?>">
+                                            <input type="hidden" name="product_id" id="product_id" value="0">
                                             <input type="hidden" name="item_order" value="<?php
                                             //find largest order number and add 1
                                             $sql = mysqli_query($mysqli, "SELECT MAX(item_order) AS item_order FROM quote_items WHERE item_quote_id = $quote_id");
