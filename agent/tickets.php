@@ -127,6 +127,7 @@ $queue_labels = [
     'aging' => 'Aging work',
     'waiting_customer' => 'Waiting on client',
     'promises_due' => 'Customer promises due',
+    'followups' => 'Follow-ups due',
     'recently_closed' => 'Recently closed',
 ];
 if (!isset($queue_labels[$queue])) {
@@ -193,7 +194,9 @@ $ticket_archive_snippet = $state === 'deleted'
     : 'AND ticket_archived_at IS NULL';
 
 $ticket_queue_query = '';
-if ($queue === 'unassigned') {
+if ($queue === 'followups') {
+    $ticket_queue_query = 'AND (' . followupTicketPredicate() . ')';
+} elseif ($queue === 'unassigned') {
     $ticket_queue_query = 'AND ticket_assigned_to = 0';
 } elseif ($queue === 'aging') {
     $ticket_queue_query = 'AND ticket_updated_at < NOW() - INTERVAL 3 DAY';
@@ -364,6 +367,7 @@ $total_tickets_promises_due = intval(mysqli_fetch_row(mysqli_query($mysqli, "SEL
     AND ticket_customer_promise_status = 'open'
     AND ticket_customer_promise_due_at <= NOW() + INTERVAL 1 DAY) $count_where"))[0]);
 $total_tickets_recently_closed = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $closed_ticket_predicate AND COALESCE(ticket_closed_at, ticket_resolved_at) >= NOW() - INTERVAL 7 DAY $count_where"))[0]);
+$total_tickets_followups = intval(mysqli_fetch_row(mysqli_query($mysqli, 'SELECT COUNT(ticket_id) FROM tickets WHERE (' . followupTicketPredicate() . ") $count_where"))[0]);
 $total_tickets_deleted = lookupUserPermission('module_support') >= 3
     ? intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_archived_at IS NOT NULL $count_where"))[0])
     : 0;
@@ -466,6 +470,9 @@ if ($date_filter_active) {
                                 <i class="fas fa-fw fa-inbox"></i><span class="d-none d-xl-inline ms-2">Queues</span>
                             </button>
                             <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item d-flex justify-content-between gap-3" href="<?= ticketsFilterUrl(['queue' => 'followups', 'state' => null, 'status' => null, 'assigned' => null]) ?>">
+                                    <span>Follow-ups due</span><strong><?= $total_tickets_followups ?></strong>
+                                </a>
                                 <a class="dropdown-item d-flex justify-content-between gap-3" href="<?= ticketsFilterUrl(['queue' => 'aging', 'state' => null, 'status' => null, 'assigned' => null]) ?>">
                                     <span>Aging work</span><strong><?= $total_tickets_aging ?></strong>
                                 </a>

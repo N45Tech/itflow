@@ -9,10 +9,16 @@ $id = static fn () => (int) mysqli_insert_id($mysqli);
 fieldDb("INSERT INTO companies SET company_id = 1, company_name = 'N45 · Local test', company_country = 'United States', company_locale = 'en_US', company_currency = 'USD' ON DUPLICATE KEY UPDATE company_locale = 'en_US'");
 fieldDb("UPDATE settings SET config_timezone = 'America/New_York' WHERE company_id = 1");
 fieldDb("INSERT INTO user_roles SET role_name = 'Assistance HTTP fixture', role_is_admin = 1"); $role=$id();
+fieldDb("INSERT INTO user_roles SET role_name = 'Canned response technician', role_is_admin = 0");$technician_role=$id();
+foreach (['module_support','module_client'] as $module) {
+    $module_id=(int)mysqli_fetch_row(fieldDb('SELECT module_id FROM modules WHERE module_name = '.fieldSql($module)))[0];
+    fieldDb("INSERT INTO user_role_permissions SET user_role_id = $technician_role, module_id = $module_id, user_role_permission_level = 2");
+}
 $sessions=[];$users=[];$session_dir=sys_get_temp_dir().'/assistance-sessions-'.bin2hex(random_bytes(8));mkdir($session_dir,0700);
 ini_set('session.save_path',$session_dir);
 foreach (['Morgan Chen','Alex Rivera'] as $name) {
     fieldDb('INSERT INTO users SET user_name = '.fieldSql($name).", user_email = 'fixture@example.invalid', user_password = 'fixture', user_role_id = $role");$user=$id();$users[]=$user;
+    if(count($users)===2){fieldDb("UPDATE users SET user_role_id = $technician_role WHERE user_id = $user");}
     fieldDb("INSERT INTO user_settings SET user_id = $user, user_config_theme_dark = " . (count($users) === 2 ? 1 : 0));
     session_id('assistance-'.bin2hex(random_bytes(16)));session_start();$_SESSION=['logged'=>true,'user_id'=>$user,'csrf_token'=>'assistance-fixture-csrf'];$sessions[]=session_id();session_write_close();
 }
@@ -36,24 +42,41 @@ $process=proc_open([PHP_BINARY,'-c',php_ini_loaded_file(),'-d','session.save_pat
     [0=>['pipe','r'],1=>['file',$log,'a'],2=>['file',$log,'a']],$pipes,dirname(__DIR__));
 try {
     for($i=0;$i<50;$i++){ $socket=@stream_socket_client('tcp://'.$address,$errno,$error,.1);if($socket){fclose($socket);break;}usleep(100000); }
-    $request=static function($path,$input=null,$actor=0,$method=null)use($address,$sessions){
-        $opts=['method'=>$method??($input===null?'GET':'POST'),'header'=>'Cookie: PHPSESSID='.$sessions[$actor]."\r\nUser-Agent: N45 local regression\r\nContent-Type: application/json\r\n",'ignore_errors'=>true,'follow_location'=>0,'timeout'=>15];
-        if($input!==null){$opts['content']=json_encode($input);}
+    $request=static function($path,$input=null,$actor=0,$method=null,$form=false)use($address,$sessions){
+        $opts=['method'=>$method??($input===null?'GET':'POST'),'header'=>'Cookie: PHPSESSID='.$sessions[$actor]."\r\nUser-Agent: N45 local regression\r\nContent-Type: ".($form?'application/x-www-form-urlencoded':'application/json')."\r\n",'ignore_errors'=>true,'follow_location'=>0,'timeout'=>15];
+        if($input!==null){$opts['content']=$form?http_build_query($input):json_encode($input);}
         $body=file_get_contents('http://'.$address.$path,false,stream_context_create(['http'=>$opts]));
         preg_match('/HTTP\/\S+ (\d+)/',$http_response_header[0],$match);
         return ['status'=>(int)$match[1],'body'=>$body,'data'=>json_decode($body,true),'headers'=>$http_response_header];
     };
     $base=['ticket_id'=>$solved,'action'=>'knowledge_capture','request_key'=>assistanceUuid(),'csrf_token'=>'assistance-fixture-csrf'];
-    $response=$request('/agent/field/api.php',$base);$assert($response['status']===200,'HTTP capture failed: '.json_encode($response).' Log: '.file_get_contents($log));$knowledge=(int)$response['data']['data']['knowledge_id'];
-    $assert($request('/agent/field/api.php',$base)['data']===$response['data'],'HTTP retry changed its receipt');
+    $assert($request('/agent/field/api.php',$base)['status']===422,'Retired knowledge creation accepted');
     $assert($request('/agent/field/api.php',array_replace($base,['csrf_token'=>'wrong']))['status']===403,'Invalid CSRF accepted');
-    $assert($request('/agent/field/api.php?action=knowledge_capture&ticket_id='.$solved)['status']===404,'GET mutated knowledge');
+    $assert($request('/agent/field/api.php?action=knowledge_queue')['status']===404,'Retired knowledge queue remained available');
     $assert($request('/agent/field/api.php',null,0,'PUT')['status']===405,'Unsupported method accepted');
-    $assert($request('/agent/knowledge.php?id='.$knowledge)['status']===200,'Knowledge page failed');
-    $assert($request('/agent/followups.php?scope=all&client_id='.$client)['status']===200,'Follow-up page failed');
+    $assert($request('/agent/knowledge.php')['status']===302,'Legacy knowledge link did not redirect');
+    $assert($request('/agent/followups.php')['status']===302,'Legacy follow-up link did not redirect');
+    $assert($request('/agent/tickets.php?queue=followups&client_id='.$client)['status']===200,'Tickets follow-up filter failed');
+    $assert($request('/agent/ticket.php?ticket_id='.$ticket)['status']===200,'Ticket page failed');
     $q=$request('/agent/field/api.php?action=followups&scope=all&client_id='.$client);
     $assert(count($q['data']['data']['items'])===2,'HTTP queue lost canonical sources');
     $assert(str_contains(implode(' ',$q['headers']),'no-store'),'Queue data was cacheable');
+    $canned=['add_canned_response'=>'1','name'=>'Vendor status update','body'=>'<p>We are checking with the <strong>vendor</strong> and will update you shortly.</p>','category'=>0,'csrf_token'=>'assistance-fixture-csrf'];
+    $assert($request('/admin/post.php',$canned,1,null,true)['status']===403,'Technician created an admin canned response');
+    $assert(str_contains($request('/admin/canned_responses.php',null,1)['body'],'does not have admin access'),'Technician accessed canned response administration');
+    $before=(int)mysqli_fetch_row(fieldDb('SELECT COUNT(*) FROM canned_responses'))[0];
+    $request('/admin/post.php',array_replace($canned,['csrf_token'=>'wrong']),0,null,true);
+    $assert((int)mysqli_fetch_row(fieldDb('SELECT COUNT(*) FROM canned_responses'))[0]===$before,'Bad CSRF created an admin response');
+    $assert($request('/admin/post.php',$canned,0,null,true)['status']===302,'Admin response creation failed');
+    $response_id=(int)mysqli_fetch_row(fieldDb("SELECT canned_response_id FROM canned_responses WHERE canned_response_name = 'Vendor status update' ORDER BY canned_response_id DESC LIMIT 1"))[0];
+    $response=$request('/agent/field/api.php?action=canned_response&ticket_id='.$ticket.'&response_id='.$response_id,null,1);
+    $assert($response['status']===200&&str_contains($response['data']['data']['text'],'vendor'),'Technician could not insert an admin response');
+    $assert($request('/agent/ajax.php?get_canned_response='.$response_id.'&ticket_id='.$ticket,null,1)['status']===200,'Desktop response insertion failed');
+    $assert(str_contains(implode(' ',$response['headers']),'no-store'),'Response body was cacheable');
+    // Retained legacy knowledge must survive removal of the authoring workflow.
+    fieldDb("INSERT INTO service_knowledge SET knowledge_ticket_id = $solved, knowledge_client_id = $client,
+        knowledge_title = 'Legacy draft', knowledge_problem = 'Legacy problem', knowledge_solution = 'Legacy solution', knowledge_cautions = 'Legacy checks',
+        knowledge_source_hash = REPEAT('a',64), knowledge_created_by = {$users[0]}, knowledge_edited_by = {$users[0]}, knowledge_created_at = UTC_TIMESTAMP(), knowledge_updated_at = UTC_TIMESTAMP()");
     // The legacy API must also preserve assistance history on archived clients.
     fieldDb("UPDATE clients SET client_archived_at = NOW() WHERE client_id = $client");
     fieldDb("INSERT INTO api_keys SET api_key_name = 'Assistance HTTP fixture', api_key_secret = 'assistance-local-fixture-key', api_key_decrypt_hash = 'fixture', api_key_user_id = {$users[0]}, api_key_expire = DATE_ADD(CURRENT_DATE(), INTERVAL 1 DAY)");$api_key=$id();
@@ -63,12 +86,12 @@ try {
     fieldDb("UPDATE clients SET client_archived_at = NULL WHERE client_id = $client");fieldDb("DELETE FROM api_keys WHERE api_key_id = $api_key");
     if (getenv('N45_ASSISTANCE_BROWSER') === '1') {
         $fixture=tempnam(sys_get_temp_dir(),'assistance-browser-');
-        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'ticket'=>$ticket,'solved'=>$solved,'knowledge'=>$knowledge,'client'=>$client,'doc'=>$doc]));
+        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'ticket'=>$ticket,'solved'=>$solved,'response'=>$response_id,'client'=>$client,'doc'=>$doc]));
         $command=['node',__DIR__.'/field/assistance.cjs',$fixture];$browser=proc_open($command,[0=>['pipe','r'],1=>STDOUT,2=>STDERR],$browser_pipes,dirname(__DIR__));fclose($browser_pipes[0]);
         $assert(proc_close($browser)===0,'Service assistance browser checks failed');unlink($fixture);
     }
     $logtext=file_get_contents($log);$assert(!preg_match('/PHP (Warning|Fatal error):/',$logtext),'HTTP emitted a PHP warning: '.$logtext);
-    echo "Service assistance HTTP: real sessions, capture retry, CSRF, read-only GET, method gate, no-store pages and API retention passed.\n";
+    echo "Ticket workflow HTTP: admin-only response creation, technician insertion, retired knowledge gates, follow-up filter, CSRF, no-store and legacy retention passed.\n";
 } finally {
     proc_terminate($process);fclose($pipes[0]);proc_close($process);
     foreach(glob($session_dir.'/*')as$file){unlink($file);}rmdir($session_dir);@unlink($log);

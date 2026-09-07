@@ -35,6 +35,22 @@ function followupSourceSql(): string
         FROM field_blockers WHERE blocker_status <> 'resolved'";
 }
 
+/** One ticket row per match, before pagination/counting in either ticket view. */
+function followupTicketPredicate(string $alias = 'tickets'): string
+{
+    if (!in_array($alias, ['tickets', 't'], true)) { throw new InvalidArgumentException('Invalid ticket alias.'); }
+    $local_now = fieldSql(date('Y-m-d H:i:s'));
+    return "$alias.ticket_archived_at IS NULL AND $alias.ticket_status NOT IN (4,5)
+        AND $alias.ticket_resolved_at IS NULL AND $alias.ticket_closed_at IS NULL
+        AND EXISTS (SELECT 1 FROM clients fc WHERE fc.client_id = $alias.ticket_client_id AND fc.client_archived_at IS NULL)
+        AND EXISTS (SELECT 1 FROM (" . followupSourceSql() . ") fs
+            LEFT JOIN service_followup_plans fp ON fp.plan_key = fs.source_key AND fp.plan_client_id = $alias.ticket_client_id
+            WHERE fs.ticket_id = $alias.ticket_id AND IF(
+                fp.plan_source_hash = SHA2(CONCAT(fs.source_key, ':', $alias.ticket_client_id, ':', fs.source_revision), 256),
+                fp.plan_due_at <= UTC_TIMESTAMP(),
+                IF(fs.due_utc = 1, fs.due_raw <= UTC_TIMESTAMP(), fs.due_raw <= $local_now)))";
+}
+
 function followupProjection(array $row, array $owners, ?int $now = null): array
 {
     $now ??= time();
@@ -98,7 +114,7 @@ function followupQueue(array $filters, int $user_id, bool $system = false): arra
     $rows = fieldRows('SELECT s.*, t.ticket_client_id, t.ticket_subject, t.ticket_prefix, t.ticket_number,
         t.ticket_assigned_to, t.ticket_created_by, c.client_name, p.* FROM (' . followupSourceSql() . ') s
         JOIN tickets t ON t.ticket_id = s.ticket_id AND t.ticket_archived_at IS NULL AND t.ticket_closed_at IS NULL
-            AND t.ticket_status <> 5
+            AND t.ticket_status NOT IN (4,5) AND t.ticket_resolved_at IS NULL
         JOIN clients c ON c.client_id = t.ticket_client_id AND c.client_archived_at IS NULL
         LEFT JOIN service_followup_plans p ON p.plan_key = s.source_key AND p.plan_client_id = t.ticket_client_id
         WHERE 1 = 1' . $where . ' ORDER BY s.due_raw, s.source_key LIMIT 5001');
@@ -164,7 +180,7 @@ function followupSave(array $input, int $actor): array
             'source_due_at' => $item['source_due_at'], 'version' => $version]);
     if ($owner !== $actor) {
         assistanceNotify($owner, $client, $ticket_id, 'Follow-up assigned: ' . $item['reference'],
-            '/agent/followups.php?ticket_id=' . $ticket_id . '&key=' . rawurlencode($key));
+            '/agent/ticket.php?ticket_id=' . $ticket_id . '#followups');
     }
     return ['message' => 'Follow-up plan saved. The original commitment and approval deadlines are unchanged.'];
 }
@@ -195,7 +211,7 @@ function followupSendDueNotices(): array
                 if (mysqli_affected_rows($mysqli) !== 1) { continue; }
                 assistanceNotify($recipient, $item['client_id'], $item['ticket_id'],
                     ($stage === 'escalation' ? 'Escalated follow-up: ' : 'Follow-up due: ') . $item['reference'],
-                    '/agent/followups.php?ticket_id=' . $item['ticket_id'] . '&key=' . rawurlencode($item['key']));
+                    '/agent/ticket.php?ticket_id=' . $item['ticket_id'] . '#followups');
                 assistanceEvent('followup', $item['key'], $item['ticket_id'], $item['client_id'], 0,
                     $stage, 'In-app notification queued.', ['recipient_id' => $recipient]);
                 $sent++;

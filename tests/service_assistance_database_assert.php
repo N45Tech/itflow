@@ -61,6 +61,7 @@ fieldDb("INSERT INTO field_blockers SET blocker_ticket_id = $ticket, blocker_cli
     blocker_created_at = UTC_TIMESTAMP(), blocker_updated_at = UTC_TIMESTAMP()"); $blocker = $id();
 $queue = followupQueue(['scope'=>'all','client_id'=>$client], $author[0]);
 $assert($queue['total'] === 5, 'Queue omitted a canonical source');
+$assert((int)$scalar('SELECT COUNT(*) FROM tickets WHERE (' . followupTicketPredicate() . ") AND ticket_id = $ticket") === 1, 'Ticket filter duplicated a ticket with five due sources');
 $assert(!str_contains(json_encode($queue), 'private-fixture'), 'Approval token leaked in queue output');
 $assert(followupQueue(['client_query'=>'Assistance client','scope'=>'all','ticket_id'=>$ticket], $author[0])['total'] === 5, 'Client-name filter lost records');
 foreach ($queue['items'] as $f) {
@@ -131,69 +132,37 @@ $assert((int)$scalar("SELECT COUNT(*) FROM notifications WHERE notification_clie
 $assert(followupQueue(['scope'=>'all','due'=>'all','ticket_id'=>$ticket], $author[0])['total'] === 0, 'Completed source remained in queue');
 $before = (int)$scalar("SELECT COUNT(*) FROM notifications WHERE notification_client_id = $client"); followupSendDueNotices();
 $assert((int)$scalar("SELECT COUNT(*) FROM notifications WHERE notification_client_id = $client") === $before, 'Completed source still sent reminders');
-// Exact asset/service matches must be candidates even when they share no search terms.
-foreach (['Resolver appliance','Service peer'] as $name) { fieldDb('INSERT INTO assets SET asset_name = '.fieldSql($name).", asset_type = 'Network', asset_make = 'Fixture', asset_client_id = $client"); $assets[]=$id(); }
-[$asset,$peer_asset]=$assets;
-fieldDb("UPDATE tickets SET ticket_asset_id = $asset WHERE ticket_id IN ($ticket,$solved)");
-fieldDb("UPDATE tickets SET ticket_asset_id = $peer_asset WHERE ticket_id = $service_ticket");
-fieldDb("INSERT INTO services SET service_name = 'Branch DNS', service_description = '', service_category = 'Network', service_importance = 'High', service_notes = '', service_client_id = $client"); $service=$id();
-fieldDb("INSERT INTO service_assets (service_id,asset_id) VALUES ($service,$asset),($service,$peer_asset)");
-foreach ([$client,$foreign] as $doc_client) { fieldDb("INSERT INTO documents SET document_name = 'DNS resolver runbook', document_content = '<p>Verify resolver queries</p>', document_content_raw = 'Verify DNS resolver queries', document_client_id = $doc_client"); $docs[]=$id(); }
-$s = knowledgeSuggestions($ticket); $keys=array_map(static fn($i)=>$i['kind'].':'.$i['id'],$s['items']);
-$assert(in_array('ticket:'.$solved,$keys,true) && in_array('ticket:'.$service_ticket,$keys,true), 'Asset or service suggestion missing');
-$assert(!in_array('ticket:'.$unrelated,$keys,true) && !in_array('ticket:'.$foreign_ticket,$keys,true) && !in_array('document:'.$docs[1],$keys,true), 'Unrelated or foreign record suggested');
-$as($no_docs);$assert(!in_array('document',array_column(knowledgeSuggestions($ticket)['items'],'kind'),true),'Missing documentation permission disclosed documents');$as($author);
-$reject(fn () => $call('knowledge_capture',['ticket_id'=>$ticket]), 'Unresolved source captured');
-$capture=['ticket_id'=>$solved,'request_key'=>assistanceUuid()]; $knowledge=$call('knowledge_capture',$capture)['knowledge_id'];
-$assert($call('knowledge_capture',$capture)['knowledge_id']===$knowledge, 'Capture receipt replay returned another article');
-$assert($call('knowledge_capture',['ticket_id'=>$solved])['knowledge_id']===$knowledge, 'Separate capture duplicated the source article');
-$as($reader);$reject(fn () => $call('knowledge_capture',$capture),'Capture permission downgrade replayed a write');$as($author);
-$client_deny_array=[$client];
-$reject(fn () => knowledgeLoad($knowledge),'Denied article was readable');
-$reject(fn () => $call('knowledge_capture',$capture),'Denied client replayed capture');
-$assert(knowledgeQueue(['state'=>'draft','client_id'=>$client])['items']===[], 'Denied draft appeared in queue');
-$client_deny_array=[];
-$k=knowledgeLoad($knowledge);
-$draft=['ticket_id'=>$solved,'knowledge_id'=>$knowledge,'expected_revision'=>$k['knowledge_revision'],'operation'=>'submit',
-    'title'=>'DNS resolver recovery','problem'=>'Queries time out on the branch DNS appliance','solution'=>'Restore the resolver settings and verify queries','cautions'=>''];
-$reject(fn () => $call('knowledge_save',$draft), 'Review submission omitted validation/cautions');
-$draft['cautions']='Confirm the approved settings and test a lookup from the branch';
-$call('knowledge_save',$draft); $k=knowledgeLoad($knowledge);
-$review=['ticket_id'=>$solved,'knowledge_id'=>$knowledge,'expected_revision'=>$k['knowledge_revision'],'operation'=>'publish','note'=>'Verified the source, scope and validation steps','request_key'=>assistanceUuid()];
-$reject(fn () => $call('knowledge_save',$review),'Author published own draft');
-$assert((int)$scalar("SELECT COUNT(*) FROM notifications WHERE notification_client_id = $client AND notification_user_id IN ({$no_docs[0]},{$denied[0]})")===0,'Review request notified an ineligible recipient');
-$as($reviewer);$call('knowledge_save',$review);$call('knowledge_save',$review);
-$k=knowledgeLoad($knowledge);$doc=(int)$k['knowledge_document_id'];
-$assert($k['knowledge_state']==='published' && $doc>0 && (int)$scalar("SELECT document_client_visible FROM documents WHERE document_id = $doc")===0,'Reviewed publication was not internal');
-$assert(documentationDocumentHasObligations($doc), 'Published knowledge document and version history were not protected from deletion');
-$assert((int)$scalar("SELECT COUNT(*) FROM asset_documents WHERE document_id = $doc AND asset_id = $asset")===1,'Published article omitted source asset');
-$assert(in_array('Reviewed knowledge',array_column(knowledgeSuggestions($ticket)['items'],'label'),true),'Published article was not suggested');
-fieldDb("UPDATE documents SET document_content = '<p>Externally revised resolver instructions</p>' WHERE document_id = $doc");
-$assert(!in_array('Reviewed knowledge',array_column(knowledgeSuggestions($ticket)['items'],'label'),true),'Unreviewed document edit retained reviewed status');
-$as($author);$k=knowledgeLoad($knowledge);
-$call('knowledge_save',['ticket_id'=>$solved,'knowledge_id'=>$knowledge,'expected_revision'=>$k['knowledge_revision'],'expected_document_hash'=>$k['document_hash'],'operation'=>'revise','note'=>'Include the updated resolver instructions']);
-$k=knowledgeLoad($knowledge);$draft=array_replace($draft,['expected_revision'=>$k['knowledge_revision'],'expected_document_hash'=>$k['document_hash']]);
-$reject(fn () => $call('knowledge_save',$draft),'External document changes were not acknowledged');
-$draft['confirm_document']=1;$call('knowledge_save',$draft);
-$k=knowledgeLoad($knowledge);$as($reviewer);$review['expected_revision']=$k['knowledge_revision'];$review['request_key']=assistanceUuid();
-fieldDb("UPDATE documents SET document_content = '<p>A newer concurrent resolver edit</p>' WHERE document_id = $doc");
-$reject(fn () => $call('knowledge_save',$review),'Review overwrote a concurrent document edit');
-$assert((int)$scalar("SELECT COUNT(*) FROM document_versions WHERE document_version_document_id = $doc")===0,'Rejected publication left a version snapshot');
-$call('knowledge_save',array_replace($review,['operation'=>'return','request_key'=>assistanceUuid()]));
-$as($author);$k=knowledgeLoad($knowledge);$draft['expected_revision']=$k['knowledge_revision'];$draft['expected_document_hash']=$k['document_hash'];
-$call('knowledge_save',$draft);$as($reviewer);$review['expected_revision']=knowledgeLoad($knowledge)['knowledge_revision'];$review['request_key']=assistanceUuid();
-$call('knowledge_save',$review);$k=knowledgeLoad($knowledge);
-$assert((int)$k['knowledge_document_id']===$doc && (int)$scalar("SELECT COUNT(*) FROM document_versions WHERE document_version_document_id = $doc")===1,'Revision duplicated the document or lost its previous version');
-fieldDb("UPDATE tickets SET ticket_resolution_summary = 'A different recorded resolution' WHERE ticket_id = $solved");
-$assert(!knowledgeLoad($knowledge)['source_current'],'Source change was not detected');
-$assert(!in_array('Reviewed knowledge',array_column(knowledgeSuggestions($ticket)['items'],'label'),true),'Changed source was still suggested as reviewed knowledge');
-$assert(assistanceClientHasHistory($client) && ticketDisciplineCanTransfer($solved)[0]===false,'Client/ticket history not protected');
-$assert(!empty(ticketDeletionEvidenceSummary($solved,$client)['operations']),'Knowledge omitted from ticket retention evidence');
-fieldDb('START TRANSACTION');ticketDeletionLockTicket($solved);ticketDeletionSoftDelete($solved,$author[0],'Verify reversible knowledge retention');mysqli_commit($mysqli);
-$reject(fn () => knowledgeLoad($knowledge),'Deleted source article remained visible');
-fieldDb('START TRANSACTION');ticketDeletionLockTicket($solved);ticketDeletionRestore($solved,$author[0],'Restore the knowledge fixture');mysqli_commit($mysqli);
-$assert(knowledgeLoad($knowledge)['knowledge_id']==$knowledge,'Restoration lost the article');
-// The explicit purge helper removes assistance metadata and preserves the independent client document.
-fieldDb('START TRANSACTION');assistancePurgeTicket($solved);mysqli_commit($mysqli);
-$assert(!assistanceHasHistory($solved) && (int)$scalar("SELECT COUNT(*) FROM documents WHERE document_id = $doc")===1,'Purge left metadata or destroyed the published document');
-echo "Service assistance: five queue sources, UTC dates, permissions, receipts, concurrent reminders, lifecycle, suggestions, peer review, revision conflicts and retention passed.\n";
+// The ticket filter runs before pagination, deduplicates multiple sources, and honors plans.
+$assert((int)$scalar('SELECT COUNT(*) FROM tickets WHERE (' . followupTicketPredicate() . ") AND ticket_id = $ticket") === 0, 'Completed ticket matched follow-up filter');
+fieldDb("UPDATE tickets SET ticket_next_action = 'Check with the vendor', ticket_next_action_due_at = DATE_SUB(NOW(), INTERVAL 1 HOUR) WHERE ticket_id = $ticket");
+$assert((int)$scalar('SELECT COUNT(*) FROM tickets WHERE (' . followupTicketPredicate() . ") AND ticket_id = $ticket") === 1, 'Due source missing from ticket filter');
+$f=followupDetail($ticket, 'next_action:'.$ticket);
+$call('followup_plan',array_replace($plan,['key'=>$f['key'],'expected_version'=>$f['version'],'request_key'=>assistanceUuid()]));
+$assert((int)$scalar('SELECT COUNT(*) FROM tickets WHERE (' . followupTicketPredicate() . ") AND ticket_id = $ticket") === 0, 'Future plan remained in due filter');
+fieldDb("UPDATE tickets SET ticket_next_action = 'Check with revised vendor' WHERE ticket_id = $ticket");
+$assert((int)$scalar('SELECT COUNT(*) FROM tickets WHERE (' . followupTicketPredicate() . ") AND ticket_id = $ticket") === 1, 'Changed source reused a stale plan in filter');
+fieldDb("UPDATE tickets SET ticket_status = 4, ticket_resolved_at = NOW() WHERE ticket_id = $ticket");
+$assert((int)$scalar('SELECT COUNT(*) FROM tickets WHERE (' . followupTicketPredicate() . ") AND ticket_id = $ticket") === 0, 'Resolved ticket remained in due filter');
+fieldDb("UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL WHERE ticket_id = $ticket");
+$reject(fn () => $call('knowledge_capture',['ticket_id'=>$solved]), 'Retired knowledge creation remained writable');
+// Existing knowledge history keeps its retention protection without conversion to a global response.
+fieldDb("INSERT INTO service_knowledge SET knowledge_ticket_id = $solved, knowledge_client_id = $client,
+    knowledge_title = 'Legacy client-specific draft', knowledge_problem = 'Legacy problem', knowledge_solution = 'Legacy solution',
+    knowledge_cautions = 'Legacy cautions', knowledge_source_hash = REPEAT('a',64), knowledge_created_by = {$author[0]}, knowledge_edited_by = {$author[0]}, knowledge_created_at = UTC_TIMESTAMP(), knowledge_updated_at = UTC_TIMESTAMP()");
+$assert(assistanceHasHistory($solved) && assistanceClientHasHistory($client), 'Legacy knowledge retention was removed');
+$assert(ticketDisciplineCanTransfer($solved)[0]===false, 'Legacy knowledge history allowed a cross-client transfer');
+fieldDb("INSERT INTO canned_responses SET canned_response_name = 'General response', canned_response_body = '<p>Thanks for the update.</p><script>alert(1)</script>', canned_response_category_id = 0");$response=$id();
+$assert(in_array($response,array_map('intval',array_column(cannedResponseChoices($ticket),'canned_response_id')),true),'General response was missing');
+$body=cannedResponseForTicket($ticket,$response);$assert(!str_contains($body['body'],'<script') && str_contains($body['text'],'Thanks for the update.'),'Response was unsafe or unreadable');
+fieldDb("INSERT INTO categories SET category_name = 'Response category fixture', category_type = 'Ticket'");$response_category=$id();
+fieldDb("INSERT INTO canned_responses SET canned_response_name = 'Category response', canned_response_body = '<p>Category-specific update.</p>', canned_response_category_id = $response_category");$specific=$id();
+$assert(!in_array($specific,array_map('intval',array_column(cannedResponseChoices($ticket),'canned_response_id')),true),'Wrong-category response was listed');
+$reject(fn()=>cannedResponseForTicket($ticket,$specific),'Wrong-category response was fetchable');
+fieldDb("UPDATE tickets SET ticket_category = $response_category WHERE ticket_id = $ticket");
+$assert(str_contains(cannedResponseForTicket($ticket,$specific)['text'],'Category-specific'),'Matching category response was missing');
+fieldDb("UPDATE tickets SET ticket_category = 0 WHERE ticket_id = $ticket");
+$as($reader);$reject(fn()=>cannedResponseForTicket($ticket,$response),'Read-only technician could insert a response');$as($author);
+$client_deny_array=[$client];$reject(fn()=>cannedResponseChoices($ticket),'Client restriction exposed ticket responses');$client_deny_array=[];
+fieldDb("UPDATE canned_responses SET canned_response_archived_at = NOW() WHERE canned_response_id = $response");
+$reject(fn()=>cannedResponseForTicket($ticket,$response),'Archived response remained insertable');
+echo "Service follow-ups: source/plan filters, permissions, retry, races, notifications, retained legacy history and canned response access passed.\n";

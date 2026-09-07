@@ -7,6 +7,11 @@ require_once __DIR__ . "/../config.php";
 require_once __DIR__ . "/../functions.php";
 require_once __DIR__ . "/../includes/check_login.php";
 
+if (isset($_POST['add_canned_response']) || isset($_POST['edit_canned_response']) || isset($_GET['delete_canned_response'])) {
+    if (empty($session_is_admin)) { http_response_code(403); }
+    enforceAdminPermission();
+}
+
 // Only allow running post files via inclusion (prevents people/bots poking them directly)
 define('FROM_POST_HANDLER', true);
 

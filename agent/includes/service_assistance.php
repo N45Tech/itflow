@@ -21,8 +21,7 @@ function assistancePagePost(): ?string
     try {
         $result = assistanceWrite((string) ($_POST['action'] ?? ''), $_POST, (int) $session_user_id);
         flashAlert(escapeHtml($result['message']));
-        if (isset($result['knowledge_id'])) { redirect('/agent/knowledge.php?id=' . (int) $result['knowledge_id']); }
-        redirect('/agent/followups.php?scope=mine&due=all');
+        redirect('/agent/ticket.php?ticket_id=' . (int) $_POST['ticket_id'] . '#followups');
     } catch (DomainException $e) { unset($_POST['request_key']); return $e->getMessage(); }
     catch (Throwable $e) {
         error_log('Service assistance: ' . $e->getMessage());
@@ -37,21 +36,4 @@ function assistanceHistoryMarkup(array $history): void
         <li><strong><?= escapeHtml(ucfirst($event['event_action'])) ?></strong> · <?= escapeHtml($event['user_name'] ?: 'System') ?>
         <p><?= escapeHtml($event['event_note']) ?></p><small><?= escapeHtml(assistanceDate(fieldUtc($event['event_created_at']))) ?></small></li>
     <?php } ?></ol></details><?php
-}
-function assistanceSuggestionsMarkup(array $suggestions, int $ticket_id): void
-{
-    ?><div class="sa-suggestions">
-    <?php if (!$suggestions['items']) { ?><p class="text-muted">No relevant resolutions or documents found for this client yet.</p><?php } ?>
-    <?php foreach ($suggestions['items'] as $item) {
-        $url = $item['kind'] === 'ticket' ? '/agent/ticket.php?ticket_id=' . $item['id'] : '/agent/document.php?document_id=' . $item['id']; ?>
-        <article class="sa-suggestion"><small><?= escapeHtml($item['label']) ?></small>
-            <h3><a href="<?= escapeHtml($url) ?>"><?= escapeHtml($item['title']) ?></a></h3>
-            <p class="text-muted"><?= escapeHtml(implode(' · ', $item['reasons'])) ?></p>
-            <details><summary>Read excerpt</summary><p class="sa-prose"><?= escapeHtml($item['excerpt']) ?></p></details>
-            <small class="text-muted"><?= escapeHtml(assistanceDate($item['updated_at'])) ?></small>
-        </article>
-    <?php } ?>
-    <?php if ($suggestions['limited']) { ?><p class="text-muted">Suggestions use the 200 most recent matching records per source.</p><?php } ?>
-    <?php if ($suggestions['can_capture']) { ?><a class="btn btn-outline-secondary mt-3" href="/agent/knowledge.php?ticket_id=<?= $ticket_id ?>">Capture this resolution</a><?php } ?>
-    </div><?php
 }

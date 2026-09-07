@@ -525,7 +525,7 @@ return [
             'runtime_files' => [
                 'functions/service_assistance.php',
                 'functions/service_followups.php',
-                'functions/service_knowledge.php',
+                'functions/canned_responses.php',
                 'functions/ticket_discipline.php',
                 'functions/runbooks.php',
                 'functions/ticket_approvals.php',

@@ -8,7 +8,7 @@ export function createWorkspace(ctx) {
   const input = (title,name,value='',extra='') => `<label>${title}<input name="${name}" value="${e(value)}" ${extra}></label>`;
   const text = (title,name,value='',extra='') => `<label>${title}<textarea name="${name}" aria-label="${e(title)}" ${extra}>${e(value)}</textarea></label>`;
   const local = value => {if(!value)return '';const d=new Date(value);return new Date(d-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};
-  let secretVersion=0, secretTimer, search={q:'',scope:'mine',state:'open',client_id:0}, searchResult=null, newClient=null;
+  let secretVersion=0, secretTimer, search={q:'',scope:'mine',state:'open',client_id:0,queue:''}, searchResult=null, newClient=null;
   let asset=null, historyNext=null, fileNext=null, activeDocument=0;
 
   function clearSecrets() {
@@ -50,8 +50,10 @@ export function createWorkspace(ctx) {
   }
   async function route(view,id) {
     if(view==='jobs') {
+      const incoming = new URLSearchParams(location.hash.split('?')[1] || '');
+      if (incoming.size) search = {...search, ...Object.fromEntries(incoming)};
       searchResult=await api('jobs',null,search);
-      return header('Find work','Search scheduled, unscheduled, and previous jobs across clients you can access.',state.boot.user.write?button('create','New job','',false):'')+`<form id="workspace-job-search" class="form-grid inline-form"><label>Ticket or client<input type="search" name="q" value="${e(search.q)}" placeholder="Ticket number, subject, or client" maxlength="200"></label><div class="form-columns"><label>Assignment<select name="scope">${options({mine:'My work',all:'All accessible work'},search.scope)}</select></label><label>Include<select name="state">${options({open:'Open jobs',all:'Open and completed'},search.state)}</select></label></div><button>Search jobs</button></form><div id="job-results" class="list">${searchResult.jobs.map(jobRow).join('')||'<p class="hint">No jobs match these filters.</p>'}</div>${searchResult.next?button('jobs-more','Load more jobs'):''}`;
+      return header('Find work','Search scheduled, unscheduled, and previous jobs across clients you can access.',state.boot.user.write?button('create','New job','',false):'')+`<form id="workspace-job-search" class="form-grid inline-form"><label>Ticket or client<input type="search" name="q" value="${e(search.q)}" placeholder="Ticket number, subject, or client" maxlength="200"></label><div class="form-columns"><label>Assignment<select name="scope">${options({mine:'My work',all:'All accessible work'},search.scope)}</select></label><label>Include<select name="state">${options({open:'Open jobs',all:'Open and completed'},search.state)}</select></label></div><label>Follow-ups<select name="queue" aria-label="Follow-ups">${options({'':'All tickets',followups:'Follow-ups due'},search.queue)}</select></label><button>Search jobs</button></form><div id="job-results" class="list">${searchResult.jobs.map(jobRow).join('')||'<p class="hint">No jobs match these filters.</p>'}</div>${searchResult.next?button('jobs-more','Load more jobs'):''}`;
     }
     if(view==='new') {
       newClient=id?await api('client_context',null,{client_id:id}):null;
@@ -70,7 +72,7 @@ export function createWorkspace(ctx) {
   }
   function replyForm(j,time=false) {
     const emails=(j.recipients||[]).map(r=>r.name?`${r.name} <${r.email}>`:r.email).join(', ');
-    sheet(time?'Manual time entry':'Write a ticket update',`<form id="workspace-reply-form" class="form-grid">${time?`<input type="hidden" name="visibility" value="internal">${input('Minutes worked','minutes','','type="number" min="1" max="1440" required')}${input('When the work occurred','worked_at',local(new Date()),'type="datetime-local" required')}`:`<label>Visibility<select name="visibility">${options({internal:'Internal · technicians only',portal:'Customer portal',...(state.boot.options?.email_enabled?{email:'Customer portal and email'}:{})},'internal')}</select></label><input type="hidden" name="recipients_hash" value="${e(j.recipients_hash)}"><p id="reply-audience" class="hint">Only your team will see this note.</p><p id="reply-recipients" class="hint" hidden>Email recipients: ${e(emails||'No valid contact or watchers. Set a contact in Manage job.')}</p>`}${text(time?'Work performed':'Message','message','','required maxlength="20000"')}<p class="hint">${time?'Use this for work that was not recorded by a visit timer. Running visits must be finished first.':'Use Guided notes for a structured internal work record.'}</p><button>${time?'Save time entry':'Save update'}</button></form>`);
+    sheet(time?'Manual time entry':'Write a ticket update',`<form id="workspace-reply-form" class="form-grid">${time?`<input type="hidden" name="visibility" value="internal">${input('Minutes worked','minutes','','type="number" min="1" max="1440" required')}${input('When the work occurred','worked_at',local(new Date()),'type="datetime-local" required')}`:`<label>Visibility<select name="visibility">${options({internal:'Internal · technicians only',portal:'Customer portal',...(state.boot.options?.email_enabled?{email:'Customer portal and email'}:{})},'internal')}</select></label><input type="hidden" name="recipients_hash" value="${e(j.recipients_hash)}"><p id="reply-audience" class="hint">Only your team will see this note.</p><p id="reply-recipients" class="hint" hidden>Email recipients: ${e(emails||'No valid contact or watchers. Set a contact in Manage job.')}</p>`}${!time&&(j.canned_responses||[]).length?`<label>Canned response<select id="workspace-canned-response" aria-label="Canned response"><option value="">Insert a canned response…</option>${j.canned_responses.map(r=>`<option value="${n(r.canned_response_id)}">${e(r.canned_response_name)}</option>`).join('')}</select></label><p class="hint" id="canned-response-status" role="status"></p>`:''}${text(time?'Work performed':'Message','message','','required maxlength="20000"')}<p class="hint">${time?'Use this for work that was not recorded by a visit timer. Running visits must be finished first.':'Use Guided notes for a structured internal work record.'}</p><button>${time?'Save time entry':'Save update'}</button></form>`);
   }
   function showAsset(a,j) {
     asset=a;
@@ -118,7 +120,7 @@ export function createWorkspace(ctx) {
   async function submit(form) {
     if(!form.id.startsWith('workspace-'))return false;
     let data=Object.fromEntries(new FormData(form)), action;
-    if(form.id==='workspace-job-search'){search={...search,...data};location.hash='#jobs';await ctx.route();return true;}
+    if(form.id==='workspace-job-search'){search={...search,...data};history.replaceState(null,'','#jobs');await ctx.route();return true;}
     if(form.id==='workspace-client-search'){const clients=await api('clients',null,data);$('#client-results').innerHTML=clients.length?`<div class="list">${clients.map(c=>`<a class="list-row title" href="#new/${n(c.client_id)}">${e(c.client_name)}</a>`).join('')}</div>`:empty('No matching clients','Search for another client name.');return true;}
     action=({'workspace-approval-form':'approval','workspace-create-form':'create_job','workspace-plan-form':'plan','workspace-transition-form':'transition','workspace-reply-form':'reply','workspace-promise-form':'promise','workspace-task-form':'task_update','workspace-asset-form':'asset_update','workspace-asset-link-form':'asset_update','workspace-document-form':'document_update','workspace-file-form':'file','workspace-doc-action-form':'documentation_action'})[form.id];
     if(!action)return true;
@@ -133,7 +135,20 @@ export function createWorkspace(ctx) {
     else await reload();
     return true;
   }
-  document.addEventListener('change',ev=>{
+  document.addEventListener('change',async ev=>{
+    if(ev.target.id==='workspace-canned-response' && ev.target.value) {
+      const picker=ev.target, form=picker.closest('form'), message=form.elements.message, status=$('#canned-response-status');
+      const responseId=picker.value;picker.disabled=true;status.textContent='Loading response…';
+      try {
+        const response=await api('canned_response',null,{ticket_id:form.dataset.ticketId,response_id:responseId});
+        if(!form.isConnected)return;
+        if(message.value.length+response.text.length>20000)throw new Error('This response would exceed the message limit. Shorten the message first.');
+        message.setRangeText(response.text,message.selectionStart,message.selectionStart,'end');
+        message.dispatchEvent(new Event('input',{bubbles:true}));message.focus();
+        status.textContent='Response inserted. Review and edit before saving.';
+      } catch(error) { if(form.isConnected)status.textContent=error.message; }
+      finally {picker.disabled=false;picker.value='';}
+    }
     if(ev.target.id==='job-section'){state.sectionFocus=jobHref(state.job.ticket_id,ev.target.value);location.hash=state.sectionFocus;}
     if(ev.target.matches('#workspace-approval-form [name=route]')){$('#approval-user').hidden=ev.target.value!=='internal:specific';$('#approval-contact').hidden=ev.target.value!=='client:specific';}
     if(ev.target.matches('#workspace-reply-form [name=visibility]')){const value=ev.target.value;$('#reply-audience').textContent=value==='internal'?'Only your team will see this note.':'The customer will see this update on the ticket.';$('#reply-recipients').hidden=value!=='email';$('#workspace-reply-form button').textContent=value==='email'?'Send customer update':'Save update';}

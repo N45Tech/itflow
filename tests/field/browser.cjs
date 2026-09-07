@@ -59,7 +59,7 @@ const server=http.createServer(async(req,res)=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  try {
-  const context=await browser.newContext({viewport:{width:393,height:852},isMobile:true,hasTouch:true,geolocation:{latitude:45.5,longitude:-73.5,accuracy:12},permissions:['geolocation']});
+  const context=await browser.newContext({viewport:{width:393,height:852},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36',geolocation:{latitude:45.5,longitude:-73.5,accuracy:12},permissions:['geolocation']});
   const page=await context.newPage();const errors=[];page.on('pageerror',err=>errors.push(err.message));
   await page.goto(base+'/agent/field/');await page.waitForURL('**/#job/101/overview');await page.getByRole('heading',{name:'At the right stop?'}).waitFor();
   assert.equal(writes.length,0,'Opening a matched job must not mark onsite');
@@ -91,7 +91,7 @@ const server=http.createServer(async(req,res)=>{
   await page.getByRole('button',{name:'Cover screen'}).click();await page.locator('#privacy').waitFor({state:'visible'});assert.equal(await page.locator('#work').evaluate(el=>el.inert),true);
   await page.getByRole('button',{name:'Reopen Field Mode'}).click();await page.getByRole('button',{name:'My tasks'}).waitFor();
   assert.equal(await desktop.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Desktop layout overflows');
-  const second=await browser.newContext({viewport:{width:393,height:852},geolocation:{latitude:45.5,longitude:-73.5,accuracy:12},permissions:['geolocation']});
+  const second=await browser.newContext({viewport:{width:393,height:852},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36',geolocation:{latitude:45.5,longitude:-73.5,accuracy:12},permissions:['geolocation']});
   const temp=await second.newPage();await temp.goto(base+'/agent/field/#job/101/notes');await temp.locator('[name=work_action]').fill('Keep this unsaved note in this tab');
   await temp.evaluate(()=>location.hash='#job/102/notes');await temp.getByRole('heading',{name:'Validate the guest network',exact:true}).waitFor();await temp.locator('[name=work_action]').fill('Separate second job note');
   await temp.evaluate(()=>location.hash='#job/101/notes');await temp.getByRole('heading',{name:'Replace the branch firewall',exact:true}).waitFor();assert.equal(await temp.locator('[name=work_action]').inputValue(),'Keep this unsaved note in this tab','Switching tickets lost a note without an unlocked vault');
@@ -106,7 +106,7 @@ const server=http.createServer(async(req,res)=>{
   await temp.evaluate(()=>navigator.geolocation.getCurrentPosition=window.originalGetPosition);noMatches=true;
   await temp.getByRole('button',{name:'Cover screen'}).click();await temp.getByRole('button',{name:'Reopen Field Mode'}).click();await temp.waitForFunction(()=>document.querySelector('#notice').textContent.startsWith('No verified scheduled stop'));assert.equal(await temp.getByRole('heading',{name:'At the right stop?',exact:true}).count(),0,'An empty match result retained the old job cue');
   await second.close();
-  const mobile=await browser.newContext({viewport:{width:393,height:852},isMobile:true,hasTouch:true});const work=await mobile.newPage();work.on('pageerror',err=>errors.push(err.message));
+  const mobile=await browser.newContext({viewport:{width:393,height:852},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36'});const work=await mobile.newPage();work.on('pageerror',err=>errors.push(err.message));
   await work.goto(base+'/agent/field/#job/101/overview');await work.getByRole('button',{name:'Manage job',exact:true}).click();await work.getByLabel('Next action',{exact:true}).fill('Confirm testing with the manager');await work.getByRole('button',{name:'Save job details'}).click();await work.waitForFunction(()=>!document.querySelector('#sheet').open);
   await work.getByLabel('Job section',{exact:true}).selectOption('approvals');await work.getByRole('heading',{name:'Approvals',exact:true}).waitFor();assert.equal(await work.getByRole('button',{name:'Record decision'}).count(),0,'Requester can see self-approval');await work.getByRole('button',{name:'Request again'}).click();await work.getByLabel('Reason',{exact:true}).fill('Requested evidence is now available');await work.getByRole('button',{name:'Send approval request'}).click();await work.waitForFunction(()=>!document.querySelector('#sheet').open);
   await work.getByLabel('Job section',{exact:true}).selectOption('conversation');await work.getByText('Customer reported an intermittent connection.').waitFor();assert.equal(await work.evaluate(()=>document.activeElement.id),'job-section','Section selection lost keyboard focus');assert.equal(await work.locator('#section-announcement').textContent(),'Conversation section loaded.');await work.getByRole('button',{name:'Load earlier entries'}).click();await work.getByText('Earlier fixture history').waitFor();

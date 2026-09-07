@@ -1,6 +1,6 @@
 # Technician Field Mode
 
-Field Mode is an Android-first, installable web app at `/agent/field/`. It extends the existing N45 PSA, using the signed-in technician’s support permission and current client access. Open it from the Support sidebar, a ticket, or a project. Android Chrome offers installation when the site meets the browser’s install criteria. HTTPS is required for device location, camera access, service workers, and encrypted recovery.
+Field Mode is an Android-first, installable web app at `/agent/field/`. It extends the existing N45 PSA, using the signed-in technician’s support permission and current client access. The agent portal automatically opens Field Mode on phones and tablets, preserving ticket and project links. Desktop browsers use the PSA and have no Field Mode option; direct Field Mode links return to the corresponding desktop record. Window width does not change the selected experience. Android Chrome offers installation when the site meets the browser’s install criteria. HTTPS is required for device location, camera access, service workers, and encrypted recovery.
 
 ## Accepted workflow and visual contract
 
@@ -29,6 +29,8 @@ Photos use the existing ticket attachment and file-staging system, with optional
 Issues record type, ticket/project/task context, impact, owner, response deadline, optional documentation reference, and optional photo. Owners receive an in-app notification and can acknowledge or resolve; support administrators may respond as well. Issue changes retain an event trail and internal ticket notes. An open issue blocks completion of its linked task and ticket. A scope request records a decision request without authorizing work.
 
 ## Complete a job within Field Mode
+
+Find due follow-ups with the Follow-ups filter in Find work. Administrators maintain canned responses in Administration; technicians insert them into an unsent message from Conversation → Write an update. See `service-assistance.md` for the consolidated ticket workflow.
 
 The mobile workspace uses the same ticket records and permissions as the PSA. Its main header opens **Find work**, and Today also offers **New job**. Routine work no longer depends on full-ticket, asset, or document links into the desktop PSA.
 

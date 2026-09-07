@@ -388,29 +388,15 @@ if (isset($_GET['get_active_clients'])) {
  * full HTML replies and an install can have a lot of them.
  */
 if (isset($_GET['get_canned_response'])) {
-    enforceUserPermission('module_support');
-
-    $canned_response_id = intval($_GET['get_canned_response']);
-
-    $canned_sql = mysqli_query($mysqli, "SELECT canned_response_body FROM canned_responses
-        WHERE canned_response_id = $canned_response_id AND canned_response_archived_at IS NULL LIMIT 1");
-
-    $canned_row = mysqli_fetch_assoc($canned_sql);
-
-    // Purified here rather than at save time, the same way ticket replies and ticket
-    // template details are - what lands in the editor is what would have been rendered
-    require_once "../libs/htmlpurifier/HTMLPurifier.standalone.php";
-
-    $canned_purifier_config = HTMLPurifier_Config::createDefault();
-    $canned_purifier_config->set('Cache.DefinitionImpl', null);
-    $canned_purifier_config->set('URI.AllowedSchemes', ['data' => true, 'src' => true, 'http' => true, 'https' => true]);
-    $canned_purifier = new HTMLPurifier($canned_purifier_config);
-
-    $response = [];
-    $response['body'] = $canned_row ? $canned_purifier->purify($canned_row['canned_response_body']) : '';
-
-    echo json_encode($response);
-
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, private');
+    try {
+        echo json_encode(cannedResponseForTicket((int) ($_GET['ticket_id'] ?? 0), (int) $_GET['get_canned_response']));
+    } catch (DomainException $e) {
+        http_response_code(403);
+        echo json_encode(['error' => $e->getMessage()]);
+    }
+    exit;
 }
 
 /*

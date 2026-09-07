@@ -1,5 +1,14 @@
 <?php
 
+$followup_error = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'followup_plan') {
+    require_once '../config.php';
+    require_once '../functions.php';
+    require_once '../includes/check_login.php';
+    require_once 'includes/service_assistance.php';
+    $followup_error = assistancePagePost();
+}
+
 // If client_id is in URI then show client Side Bar and client header
 if (isset($_GET['client_id'])) {
     require_once "includes/inc_all_client.php";
@@ -727,7 +736,6 @@ if (isset($_GET['ticket_id'])) {
 
                         <!-- Who it belongs to, where it came from, and anyone else in here right now -->
                         <div class="ticket-meta">
-                            <a href="/agent/field/?ticket_id=<?= $ticket_id ?>" class="btn btn-sm btn-outline-secondary me-2">Open Field Mode</a>
                             <span class="badge rounded-pill bg-dark me-2"><?= $ticket_reference ?></span>
 
                             <?php if ($client_id) { ?>
@@ -1503,6 +1511,7 @@ if (isset($_GET['ticket_id'])) {
                                         if ($canned_responses_for_category || $canned_responses_general) { ?>
 
                                             <div class="mb-3">
+                                                <label class="form-label" for="canned_response_picker">Canned response</label>
                                                 <select class="form-select" id="canned_response_picker">
                                                     <option value="">- Insert a canned response -</option>
                                                     <?php if ($canned_responses_for_category) { ?>
@@ -1826,7 +1835,7 @@ if (isset($_GET['ticket_id'])) {
             </div>
 
             <div class="col-lg-3 ticket-context-column">
-                <?php require __DIR__ . '/includes/ticket_suggestions.php'; ?>
+                <?php require __DIR__ . '/includes/ticket_followups.php'; ?>
                 <div class="ticket-context-rail" id="ticket-context" role="region" aria-label="Ticket context" tabindex="0">
 
                 <?php if ($level_alert_link) {
@@ -2508,8 +2517,8 @@ require_once "../includes/footer.php";
 
             cannedPicker.disabled = true;
 
-            fetch('ajax.php?get_canned_response=' + encodeURIComponent(cannedId))
-                .then(response => response.json())
+            fetch('ajax.php?get_canned_response=' + encodeURIComponent(cannedId) + '&ticket_id=<?= $ticket_id ?>', {cache: 'no-store'})
+                .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not load that canned response.'); return data; })
                 .then(data => {
                     const editor = window.tinymce ? tinymce.get('ticket_reply') : null;
 
@@ -2520,7 +2529,8 @@ require_once "../includes/footer.php";
                         // TinyMCE failed to load - fall back to the plain textarea
                         const textarea = document.getElementById('ticket_reply');
                         if (textarea) {
-                            textarea.value += data.body;
+                            textarea.setRangeText(data.body, textarea.selectionStart, textarea.selectionStart, 'end');
+                            textarea.dispatchEvent(new Event('input', {bubbles: true}));
                         }
                     }
                 })
