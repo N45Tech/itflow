@@ -43,6 +43,8 @@
 function cronJobRegistry(): array
 {
     return [
+        ['name' => 'service_followups', 'label' => 'Service Follow-ups', 'script' => 'service_followups.php', 'schedule' => 'Interval',
+            'interval_minutes' => 15, 'description' => 'Send deduplicated in-app follow-up reminders and escalations.'],
         [
             'name' => 'mail_queue',
             'label' => 'Mail Queue',

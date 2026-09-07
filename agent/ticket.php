@@ -1826,6 +1826,7 @@ if (isset($_GET['ticket_id'])) {
             </div>
 
             <div class="col-lg-3 ticket-context-column">
+                <?php require __DIR__ . '/includes/ticket_suggestions.php'; ?>
                 <div class="ticket-context-rail" id="ticket-context" role="region" aria-label="Ticket context" tabindex="0">
 
                 <?php if ($level_alert_link) {

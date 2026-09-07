@@ -328,6 +328,9 @@ if (isset($_GET['delete_client'])) {
         if ($runbook_execution_count > 0) {
             throw new DomainException('The client has immutable runbook history');
         }
+        if (assistanceClientHasHistory($client_id)) {
+            throw new RuntimeException('This client has follow-up or knowledge review history. Archive the client to preserve it.');
+        }
         if (documentationClientHasAuditRecords($client_id)) {
             throw new DomainException('The client has immutable documentation or evidence history');
         }

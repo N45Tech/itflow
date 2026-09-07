@@ -196,6 +196,8 @@ function documentationDocumentHasObligations($document_id) {
     $row = mysqli_fetch_row(documentationLifecycleDbQuery("SELECT EXISTS (
         SELECT 1 FROM client_documentation_obligations
         WHERE documentation_obligation_document_id = $document_id
+    ) OR EXISTS (
+        SELECT 1 FROM service_knowledge WHERE knowledge_document_id = $document_id
     )", 'Could not inspect document obligation links'));
     return intval($row[0] ?? 0) === 1;
 }

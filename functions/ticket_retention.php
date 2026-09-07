@@ -179,7 +179,8 @@ function ticketDeletionEvidenceSummary(int $ticket_id, int $client_id = 0): arra
             || intval($operations['has_handoffs'] ?? 0) > 0
             || intval($operations['has_promises'] ?? 0) > 0
             || intval($operations['has_resolutions'] ?? 0) > 0
-            || (function_exists('fieldServiceHasHistory') && fieldServiceHasHistory($ticket_id)),
+            || (function_exists('fieldServiceHasHistory') && fieldServiceHasHistory($ticket_id))
+            || assistanceHasHistory($ticket_id),
     ];
 
     return array_filter($summary);
@@ -407,6 +408,7 @@ function ticketDeletionPurge(int $ticket_id): void
 
     // Integration incidents and events are ticket-owned in the Operations UI.
     automationDeleteTicketOperations($ticket_id);
+    assistancePurgeTicket($ticket_id);
     if (function_exists('fieldPurgeTicket')) {
         fieldPurgeTicket($ticket_id);
     }
