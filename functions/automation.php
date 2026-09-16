@@ -503,7 +503,7 @@ function automationDeleteTicketOperations(int $ticket_id): int
 
 /**
  * Keep the Operations projection aligned when a linked ticket is manually
- * closed or cancelled. A later open source event can create a fresh ticket;
+ * closed, cancelled, merged, or deleted. A later open source event can create a fresh ticket;
  * until then the closed ticket must not continue to count as an open incident.
  */
 function automationResolveTicketIncidents(int $ticket_id, string $action = 'ticket_closed'): int
@@ -536,7 +536,7 @@ function automationResolveTicketIncidentsSafely(int $ticket_id, string $action =
     try {
         return automationResolveTicketIncidents($ticket_id, $action);
     } catch (Throwable $exception) {
-        error_log("Closed ticket $ticket_id incident reconciliation will retry on a later event: "
+        error_log("Terminal ticket $ticket_id incident reconciliation will retry on a later event: "
             . $exception->getMessage());
         return 0;
     }
