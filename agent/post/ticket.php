@@ -352,7 +352,7 @@ if (isset($_POST['add_ticket'])) {
             'contact_name' => $contact_name,
             'ticket_number' => $ticket_prefix . $ticket_number,
             'ticket_subject' => $ticket_subject,
-            'ticket_status' => 'Open',
+            'ticket_status' => $ticket_status_name,
             'message_html' => $ticket_details . getTicketSlaEmailNotice($ticket_id, $company_phone),
             'action_url' => "https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key",
             'footer_email' => $config_ticket_from_email,
