@@ -68,6 +68,8 @@ $assertContains("(string) (\$existing['automation_mapping_external_parent_id'] ?
     'The unscoped device identity repair can overwrite an existing tenant/site scope');
 $assertOrder('integrationIdentityUpsertMapping([', 'endpointReconcileAssetSourceUnlocked([', $service, 'Endpoint posture is published before its identity mapping');
 $assertContains('integrationIdentityRecordSnapshot([', $service, 'Source snapshots are not persisted');
+$assertContains("'asset_id' => \$mapped_asset_id", $service,
+    'Quarantined source snapshots do not retain their durable asset binding');
 $assertContains("integrationIdentityFindMapping(\$source, 'sync_scope', \$scope_id)", $service,
     'Automatic creation does not require an explicitly mapped source scope');
 $assertContains("automation_mapping_state'] ?? '') !== 'automatic'", $service,

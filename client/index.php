@@ -281,7 +281,6 @@ $status_class = static function ($status) {
 
 <section class="n45-portal-home-header" aria-labelledby="portal-home-title">
     <div>
-        <span class="n45-portal-eyebrow">Client portal</span>
         <h1 id="portal-home-title"><?= $greeting ?>, <?= $contact_first_name ?>.</h1>
         <p>Here’s what needs your attention across your N45 services.</p>
     </div>
@@ -296,7 +295,6 @@ $status_class = static function ($status) {
         <section class="n45-portal-panel n45-attention-panel" aria-labelledby="attention-title">
             <div class="n45-portal-section-heading">
                 <div>
-                    <span class="n45-portal-eyebrow">Next actions</span>
                     <h2 id="attention-title">Needs your attention</h2>
                 </div>
                 <?php if (count($attention_items) > 0) { ?>
@@ -335,7 +333,6 @@ $status_class = static function ($status) {
         <section class="n45-portal-panel n45-support-panel" aria-labelledby="support-title">
             <div class="n45-portal-section-heading">
                 <div>
-                    <span class="n45-portal-eyebrow">Current work</span>
                     <h2 id="support-title">Active support</h2>
                 </div>
                 <a href="tickets.php" class="n45-portal-text-action">
@@ -387,7 +384,6 @@ $status_class = static function ($status) {
                 <section class="n45-portal-panel n45-summary-panel" aria-labelledby="technology-title">
                     <div class="n45-portal-section-heading">
                         <div>
-                            <span class="n45-portal-eyebrow">Inventory</span>
                             <h2 id="technology-title">Your technology</h2>
                         </div>
                     </div>
@@ -422,7 +418,6 @@ $status_class = static function ($status) {
                 <section class="n45-portal-panel n45-summary-panel" aria-labelledby="billing-title">
                     <div class="n45-portal-section-heading">
                         <div>
-                            <span class="n45-portal-eyebrow">Account</span>
                             <h2 id="billing-title">Billing</h2>
                         </div>
                     </div>

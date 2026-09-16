@@ -3112,12 +3112,22 @@ label,
     font-size: 1rem;
     font-kerning: normal;
     line-height: 1.5;
+    accent-color: var(--n45-portal-action);
+    caret-color: var(--n45-portal-action);
     min-height: 100vh;
     overflow-x: hidden;
+    scrollbar-color: #9eb0aa var(--n45-portal-paper);
+    text-rendering: optimizeLegibility;
+}
+
+.n45-client-portal ::selection {
+    background: var(--n45-portal-action);
+    color: var(--n45-portal-white);
 }
 
 .n45-client-portal a {
     color: var(--n45-portal-action);
+    text-underline-offset: .18em;
 }
 
 .n45-client-portal a:hover {
@@ -3194,9 +3204,10 @@ label,
 .n45-portal-sidebar-brand > span {
     color: var(--n45-portal-mist);
     display: block;
-    font-family: Consolas, "SFMono-Regular", monospace;
-    font-size: .75rem;
-    letter-spacing: .12em;
+    font-family: inherit;
+    font-size: .6875rem;
+    font-weight: 650;
+    letter-spacing: .14em;
     margin-top: var(--n45-portal-space-2);
     text-transform: uppercase;
 }
@@ -3238,9 +3249,9 @@ label,
 }
 
 .n45-portal-nav-item.active {
-    background: var(--n45-portal-trail-18);
-    border-color: var(--n45-portal-trail-30);
-    box-shadow: inset 3px 0 0 var(--n45-portal-trail);
+    background: var(--n45-portal-trail-14);
+    border-color: transparent;
+    box-shadow: inset 1px 0 0 var(--n45-portal-trail);
     font-weight: 650;
 }
 
@@ -3308,9 +3319,10 @@ label,
 
 .n45-portal-nav-label {
     color: var(--n45-portal-mist-72);
-    font-family: Consolas, "SFMono-Regular", monospace;
-    font-size: .75rem;
-    letter-spacing: .1em;
+    font-family: inherit;
+    font-size: .6875rem;
+    font-weight: 650;
+    letter-spacing: .14em;
     margin: var(--n45-portal-space-6) var(--n45-portal-space-3) var(--n45-portal-space-2);
     text-transform: uppercase;
 }
@@ -3396,43 +3408,112 @@ label,
     display: none;
 }
 
+.n45-portal-context-bar {
+    align-items: center;
+    background: var(--n45-portal-surface);
+    border-bottom: 1px solid var(--n45-portal-border);
+    display: flex;
+    flex: 0 0 auto;
+    justify-content: space-between;
+    min-height: 4.5rem;
+    padding: .75rem clamp(2rem, 4vw, 3.5rem);
+}
+
+.n45-portal-context-copy span,
+.n45-portal-context-copy strong {
+    display: block;
+}
+
+.n45-portal-context-copy span {
+    color: var(--n45-portal-stone);
+    font-size: .6875rem;
+    font-weight: 650;
+    letter-spacing: .12em;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+.n45-portal-context-copy strong {
+    color: var(--n45-portal-mountain);
+    font-size: .9375rem;
+    font-weight: 650;
+    line-height: 1.35;
+    margin-top: .2rem;
+}
+
+.n45-portal-context-actions {
+    align-items: center;
+    display: flex;
+    gap: 1.5rem;
+}
+
+.n45-portal-context-actions > a,
+.n45-portal-context-status {
+    align-items: center;
+    display: inline-flex;
+    font-size: .8125rem;
+    font-weight: 650;
+    gap: .5rem;
+}
+
+.n45-portal-context-status {
+    color: var(--n45-portal-stone);
+}
+
+.n45-portal-context-status i {
+    color: var(--n45-portal-action);
+}
+
+.n45-portal-context-actions > a {
+    color: var(--n45-portal-action) !important;
+    min-height: 2.75rem;
+    text-decoration: none;
+}
+
+.n45-portal-context-actions > a:hover {
+    color: var(--n45-portal-action-hover) !important;
+    text-decoration: underline;
+}
+
+.n45-portal-context-actions > a i {
+    font-size: .7rem;
+    transition: transform var(--n45-ease);
+}
+
+.n45-portal-context-actions > a:hover i {
+    transform: translateX(.2rem);
+}
+
 .n45-portal-main {
     flex: 1 0 auto;
     margin: 0 auto;
-    max-width: 92rem;
-    padding: var(--n45-portal-space-12) var(--n45-portal-space-8);
+    max-width: 88rem;
+    padding: 2.75rem clamp(2rem, 4vw, 3.5rem) 4rem;
     width: 100%;
 }
 
 .n45-portal-home-header {
-    align-items: flex-end;
+    align-items: center;
+    border-bottom: 1px solid var(--n45-portal-border);
     display: flex;
     gap: var(--n45-portal-space-8);
     justify-content: space-between;
     margin-bottom: var(--n45-portal-space-8);
+    padding-bottom: var(--n45-portal-space-8);
     position: relative;
 }
 
 .n45-portal-home-header::after {
-    background: url("/assets/branding/n45-contours.svg") no-repeat right center / 20rem auto;
-    content: "";
-    height: 9rem;
-    opacity: .18;
-    pointer-events: none;
-    position: absolute;
-    right: 8rem;
-    top: -3rem;
-    width: 22rem;
-    z-index: -1;
+    display: none;
 }
 
 .n45-portal-home-header h1 {
     color: var(--n45-portal-mountain);
-    font-size: 2.25rem;
-    font-weight: 750;
-    letter-spacing: -.035em;
-    line-height: 1.14;
-    margin: var(--n45-portal-space-1) 0 var(--n45-portal-space-2);
+    font-size: clamp(2rem, 3vw, 2.625rem);
+    font-weight: 650;
+    letter-spacing: -.03em;
+    line-height: 1.08;
+    margin: 0 0 .625rem;
 }
 
 .n45-portal-home-header p {
@@ -3440,16 +3521,6 @@ label,
     font-size: 1rem;
     margin: 0;
     max-width: 65ch;
-}
-
-.n45-portal-eyebrow {
-    color: var(--n45-portal-action);
-    display: block;
-    font-family: Consolas, "SFMono-Regular", monospace;
-    font-size: .75rem;
-    font-weight: 700;
-    letter-spacing: .11em;
-    text-transform: uppercase;
 }
 
 .n45-portal-primary-action,
@@ -3530,9 +3601,10 @@ label,
 
 .n45-portal-count {
     align-items: center;
-    background: var(--n45-portal-mist);
-    border-radius: 50%;
-    color: var(--n45-portal-action);
+    background: transparent;
+    border: 1px solid var(--n45-portal-border);
+    border-radius: .375rem;
+    color: var(--n45-portal-mountain);
     display: flex;
     font-size: .875rem;
     font-variant-numeric: tabular-nums;
@@ -3562,8 +3634,9 @@ label,
 .n45-portal-empty-icon,
 .n45-service-desk-icon {
     align-items: center;
-    background: var(--n45-portal-trail-14);
-    border-radius: 50%;
+    background: #eef4f1;
+    border: 1px solid #d5e2dc;
+    border-radius: .625rem;
     color: var(--n45-portal-action);
     display: flex;
     flex: 0 0 auto;
@@ -3574,7 +3647,8 @@ label,
 
 .n45-attention-item--overdue .n45-attention-icon,
 .n45-attention-item--soon .n45-attention-icon {
-    background: var(--n45-portal-sunrise-soft);
+    background: #fff5e8;
+    border-color: #ead0af;
     color: var(--n45-portal-sunrise-ink);
 }
 
@@ -3852,19 +3926,21 @@ label,
 .n45-page-header h1 {
     color: var(--n45-portal-mountain);
     font-size: 2rem;
-    font-weight: 750;
-    letter-spacing: -.03em;
+    font-weight: 650;
+    letter-spacing: -.025em;
     line-height: 1.15;
     margin: 0 0 var(--n45-portal-space-6);
     text-wrap: balance;
 }
 
 .n45-page-header {
-    align-items: flex-end;
+    align-items: center;
+    border-bottom: 1px solid var(--n45-portal-border);
     display: flex;
     gap: var(--n45-portal-space-6);
     justify-content: space-between;
-    margin-bottom: var(--n45-portal-space-6);
+    margin-bottom: var(--n45-portal-space-8);
+    padding-bottom: var(--n45-portal-space-6);
 }
 
 .n45-page-header h1 {
@@ -4320,8 +4396,8 @@ label,
 
 .n45-client-portal .table thead th,
 .n45-client-portal .table .thead-dark th {
-    background: #e6eeea;
-    border-bottom: 1px solid #b9c9c3;
+    background: #f2f5f3;
+    border-bottom: 1px solid var(--n45-portal-border);
     border-top: 0;
     color: #334b46;
     font-size: .75rem;
@@ -4427,8 +4503,8 @@ label,
 .n45-client-portal .card-header,
 .n45-client-portal .card-header.bg-dark {
     align-items: center;
-    background: #e6eeea !important;
-    border-bottom: 1px solid #b9c9c3;
+    background: #f2f5f3 !important;
+    border-bottom: 1px solid var(--n45-portal-border);
     color: var(--n45-portal-mountain) !important;
     display: flex;
     justify-content: space-between;
@@ -4836,6 +4912,10 @@ label,
 }
 
 @media (max-width: 1023.98px) {
+    .n45-portal-context-bar {
+        display: none;
+    }
+
     .n45-portal-sidebar {
         height: 100dvh;
         left: 0;
@@ -4916,7 +4996,7 @@ label,
 
 @media (max-width: 767.98px) {
     .n45-portal-main {
-        padding: var(--n45-portal-space-6) var(--n45-portal-space-4);
+        padding: 1.75rem var(--n45-portal-space-4) 2.5rem;
     }
 
     .n45-portal-home-header {
