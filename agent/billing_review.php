@@ -37,20 +37,24 @@ $clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHE
 ?>
 <!--
 THESIS: Financial exceptions become a short review queue, not a spreadsheet reconstruction.
-OWN-WORLD: N45 spruce, paper and teal with one dense operational table and explicit state labels.
+OWN-WORLD: Existing N45 card hierarchy with dense operational tables and explicit state labels.
 STORY: Find unbilled work, verify price and cost, approve it, then create one traceable draft invoice.
 FIRST VIEWPORT: Date/client filters and the queue totals lead directly into candidate review actions.
 FORM: Existing N45 operational workspace extended without a separate visual system; seed key established-n45-commercial-operations.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 -->
-<?php require 'includes/commercial_tabs.php'; ?>
+<?php require 'includes/commercial_styles.php'; ?>
 
-<header class="n45-commercial-heading">
-    <div>
-        <h1>Billing review</h1>
-        <p>Confirm agreement treatment, rates, expenses, and fulfilled items before anything becomes an invoice.</p>
+<header class="card n45-commercial-page-header">
+    <div class="card-header bg-dark py-2">
+        <h3 class="card-title mt-2"><i class="fas fa-fw fa-clipboard-check me-2" aria-hidden="true"></i>Billing Review</h3>
+        <div class="card-tools">
+            <button class="btn btn-primary" type="submit" form="billing-filter"><i class="fas fa-filter me-2" aria-hidden="true"></i>Refresh Queue</button>
+        </div>
     </div>
-    <button class="btn btn-primary" type="submit" form="billing-filter"><i class="fas fa-filter me-2"></i>Refresh queue</button>
+    <div class="card-body py-3">
+        <p class="text-muted mb-0">Confirm agreement treatment, rates, expenses, and fulfilled items before anything becomes an invoice.</p>
+    </div>
 </header>
 
 <form id="billing-filter" class="n45-commercial-panel n45-commercial-form-grid" method="get">

@@ -44,18 +44,23 @@ $linked_invoice_id = intval($plan['delivery_invoice_id'] ?? 0);
 ?>
 <!--
 THESIS: An accepted quote becomes one delivery package instead of five disconnected administrative tasks.
-OWN-WORLD: N45 spruce, paper and teal organize immutable scope, ownership and downstream outputs.
+OWN-WORLD: Existing N45 card hierarchy organizes immutable scope, ownership and downstream outputs.
 STORY: Confirm the owner, template and due date, then create the project, billing, recurring service and purchasing records together.
 FIRST VIEWPORT: Quote context and output counts lead directly into one delivery plan with a single primary action.
 FORM: Existing quote, project, ticket, invoice, recurring invoice, vendor and stock records remain authoritative; seed key established-n45-commercial-operations.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 -->
-<link rel="stylesheet" href="css/commercial.css?v=<?= filemtime(__DIR__ . '/css/commercial.css') ?>">
+<?php require 'includes/commercial_styles.php'; ?>
 <ol class="breadcrumb d-print-none"><li class="breadcrumb-item"><a href="quotes.php">Quotes</a></li><li class="breadcrumb-item"><a href="quote.php?quote_id=<?= $quote_id ?>"><?= escapeHtml($quote['quote_prefix']) . intval($quote['quote_number']) ?></a></li><li class="breadcrumb-item active">Delivery</li></ol>
 
-<header class="n45-commercial-heading">
-    <div><h1>Turn approval into delivery</h1><p><?= escapeHtml($quote['client_name']) ?> approved <?= escapeHtml($quote['quote_prefix']) . intval($quote['quote_number']) ?>. Confirm the ownership and outputs once; the approved scope stays attached throughout delivery.</p></div>
-    <?php if ($completed) { ?><a class="btn btn-primary" href="project.php?project_id=<?= intval($plan['delivery_project_id']) ?>"><i class="fas fa-project-diagram me-2"></i>Open project</a><?php } ?>
+<header class="card n45-commercial-page-header">
+    <div class="card-header bg-dark py-2">
+        <h3 class="card-title mt-2"><i class="fas fa-fw fa-project-diagram me-2" aria-hidden="true"></i>Quote Delivery</h3>
+        <?php if ($completed) { ?><div class="card-tools"><a class="btn btn-primary" href="project.php?project_id=<?= intval($plan['delivery_project_id']) ?>"><i class="fas fa-project-diagram me-2" aria-hidden="true"></i>Open Project</a></div><?php } ?>
+    </div>
+    <div class="card-body py-3">
+        <p class="text-muted mb-0"><?= escapeHtml($quote['client_name']) ?> approved <?= escapeHtml($quote['quote_prefix']) . intval($quote['quote_number']) ?>. Confirm the ownership and outputs once; the approved scope stays attached throughout delivery.</p>
+    </div>
 </header>
 
 <section class="n45-commercial-summary" aria-label="Delivery summary">

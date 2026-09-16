@@ -29,11 +29,18 @@ FIRST VIEWPORT: Exception count and monthly economics precede the compact reconc
 FORM: Existing recurring invoice, vendor and product records remain authoritative; seed key established-n45-commercial-operations.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 -->
-<?php require 'includes/commercial_tabs.php'; ?>
+<?php require 'includes/commercial_styles.php'; ?>
 
-<header class="n45-commercial-heading">
-    <div><h1>Subscription reconciliation</h1><p>Compare vendor quantities, managed users or devices, and the quantities already on recurring invoices.</p></div>
-    <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#subscription-add" aria-expanded="false"><i class="fas fa-plus me-2"></i>Add vendor record</button>
+<header class="card n45-commercial-page-header">
+    <div class="card-header bg-dark py-2">
+        <h3 class="card-title mt-2"><i class="fas fa-fw fa-sync-alt me-2" aria-hidden="true"></i>Subscriptions</h3>
+        <div class="card-tools">
+            <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#subscription-add" aria-expanded="false" aria-controls="subscription-add"><i class="fas fa-plus me-2" aria-hidden="true"></i>Add Vendor Record</button>
+        </div>
+    </div>
+    <div class="card-body py-3">
+        <p class="text-muted mb-0">Compare vendor quantities, managed users or devices, and the quantities already on recurring invoices.</p>
+    </div>
 </header>
 
 <section class="n45-commercial-summary" aria-label="Subscription summary">
