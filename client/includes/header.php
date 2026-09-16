@@ -30,6 +30,7 @@ $portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title><?= escapeHtml($session_company_name) ?> | Client Portal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0a2423">
     <meta name="robots" content="noindex">
 
     <?php if (file_exists($_SERVER['DOCUMENT_ROOT'] . '/uploads/favicon.ico')) { ?>
@@ -178,6 +179,23 @@ $portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_
                 <span class="sr-only">Open navigation</span>
                 <i class="fas fa-bars" aria-hidden="true"></i>
             </button>
+        </header>
+
+        <header class="n45-portal-context-bar" aria-label="Client workspace">
+            <div class="n45-portal-context-copy">
+                <span>Client workspace</span>
+                <strong><?= escapeHtml($session_client_name) ?></strong>
+            </div>
+            <div class="n45-portal-context-actions">
+                <span class="n45-portal-context-status">
+                    <i class="fas fa-lock" aria-hidden="true"></i>
+                    Secure client access
+                </span>
+                <a href="/client/requests.php">
+                    Contact service desk
+                    <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                </a>
+            </div>
         </header>
 
         <main class="n45-portal-main n45-portal-page-<?= escapeHtml($portal_page_slug) ?>" id="main-content" tabindex="-1">
