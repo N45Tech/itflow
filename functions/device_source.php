@@ -305,12 +305,15 @@ function deviceSourcePublish(array $input): array
                 throw new RuntimeException('The source identity binding changed during publication');
             }
 
+            // The resolver deliberately masks quarantined asset bindings so
+            // they cannot publish endpoint posture. Snapshot evidence must
+            // still follow the durable mapping locked by the snapshot writer.
             $snapshot = integrationIdentityRecordSnapshot([
                 'source' => $source,
                 'entity_type' => 'device',
                 'external_id' => $external_id,
                 'client_id' => $client_id,
-                'asset_id' => $asset_id,
+                'asset_id' => $mapped_asset_id,
                 'observed_at' => $observed_at,
                 'facts' => $snapshot_facts,
             ]);
