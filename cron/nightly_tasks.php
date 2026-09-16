@@ -476,7 +476,7 @@ if (mysqli_num_rows($sql_recurring_tickets) > 0) {
                 'contact_name' => $contact_name,
                 'ticket_number' => $ticket_prefix . $ticket_number,
                 'ticket_subject' => $ticket_subject,
-                'ticket_status' => 'Open',
+                'ticket_status' => escapeSql(getTicketStatusName($ticket_status)),
                 'message_html' => $ticket_details . getTicketSlaEmailNotice($id, $company_phone),
                 'action_url' => "https://$config_base_url/client/ticket.php?id=$id",
                 'footer_email' => $config_ticket_from_email,
