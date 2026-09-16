@@ -325,6 +325,10 @@ function ticketDeletionSoftDelete(int $ticket_id, int $actor_id, string $reason)
         throw new RuntimeException('The ticket changed before it could be deleted');
     }
 
+    // The Operations incident is a projection of this ticket. Resolve it in
+    // the same transaction so an archived ticket cannot remain actionable.
+    automationResolveTicketIncidents($ticket_id, 'ticket_deleted');
+
     $policy = ticketDeletionPolicyForClient(intval($ticket['ticket_client_id']));
     ticketDeletionRecordEvent($ticket, 'deleted', $actor_id, $reason, $policy, $restore_until);
     $ticket['ticket_restore_until'] = $restore_until;
