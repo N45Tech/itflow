@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-17T12:14:35Z",
+  "title": "Design System: N45 ITFlow",
+  "extensions": {
+    "colorMeta": {
+      "mountain-ink": {"role": "secondary", "displayName": "Mountain Ink", "canonical": "#0A2423", "tonalRamp": ["#04100F", "#071918", "#0A2423", "#123431", "#365754", "#6F8983", "#B9CBC5", "#EEF4F1"]},
+      "action-teal": {"role": "primary", "displayName": "Action Teal", "canonical": "#167F70", "tonalRamp": ["#082D28", "#0B443B", "#0F5B4F", "#167F70", "#2AA08E", "#49C8B1", "#91DDCF", "#E4F3EF"]},
+      "sunrise": {"role": "tertiary", "displayName": "Sunrise", "canonical": "#F2A65A", "tonalRamp": ["#3C2108", "#63380D", "#8C5116", "#B97129", "#D88C42", "#F2A65A", "#F8C68F", "#FFF1E2"]},
+      "canvas": {"role": "neutral", "displayName": "Operational Canvas", "canonical": "#EEF2F1", "tonalRamp": ["#17201E", "#2C3835", "#46534F", "#62736E", "#8C9A96", "#B9C4C0", "#DCE4E1", "#F5F8F7"]}
+    },
+    "typographyMeta": {
+      "headline": {"displayName": "Page Headline", "purpose": "Compact page-level orientation."},
+      "title": {"displayName": "Workspace Title", "purpose": "Primary list and panel headings."},
+      "body": {"displayName": "Operational Body", "purpose": "Dense records, forms, and explanatory copy."},
+      "label": {"displayName": "Utility Label", "purpose": "Tables, KPIs, and compact control labels."}
+    },
+    "shadows": [{"name": "overlay", "value": "0 0.75rem 2rem rgba(10, 36, 35, 0.12)", "purpose": "Menus, dialogs, and authentication cards only."}],
+    "motion": [{"name": "state", "value": "180ms cubic-bezier(.22, 1, .36, 1)", "purpose": "Short state transitions; reduced-motion collapses the duration."}],
+    "breakpoints": [{"name": "phone", "value": "575.98px"}, {"name": "mobile-nav", "value": "767.98px"}, {"name": "tablet", "value": "991.98px"}]
+  },
+  "components": [
+    {
+      "name": "Primary Button", "kind": "button", "refersTo": "button-primary", "description": "The dominant action within a page region.",
+      "html": "<button class=\"ds-btn-primary\">New ticket</button>",
+      "css": ".ds-btn-primary { background: var(--n45-action, #167f70); border: 1px solid var(--n45-action, #167f70); border-radius: var(--n45-radius-sm, .45rem); color: #fff; font: 600 .875rem/1.25 Segoe UI, sans-serif; padding: .5rem .8rem; transition: background-color 180ms, border-color 180ms; } .ds-btn-primary:hover { background: var(--n45-action-hover, #10685c); border-color: var(--n45-action-hover, #10685c); } .ds-btn-primary:focus-visible { outline: 3px solid rgba(22,127,112,.3); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button", "kind": "button", "refersTo": "button-secondary", "description": "A quiet utility action.",
+      "html": "<button class=\"ds-btn-secondary\">Filters</button>",
+      "css": ".ds-btn-secondary { background: var(--n45-surface, #fff); border: 1px solid var(--n45-border-strong, #b9c8c1); border-radius: var(--n45-radius-sm, .45rem); color: var(--n45-muted-strong, #40524d); font: 600 .875rem/1.25 Segoe UI, sans-serif; padding: .5rem .8rem; } .ds-btn-secondary:hover { background: var(--n45-surface-strong, #e7eeeb); color: var(--n45-ink, #142421); } .ds-btn-secondary:focus-visible { outline: 3px solid rgba(22,127,112,.3); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input", "kind": "input", "refersTo": "input", "description": "Compact field for operational filters and forms.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-search\">Search tickets</label><input class=\"ds-field\" id=\"ds-search\" placeholder=\"Client, subject, or ticket\">",
+      "css": ".ds-field-label { color: var(--n45-muted-strong, #40524d); display: block; font: 600 .8rem/1.25 Segoe UI, sans-serif; margin-bottom: .3rem; } .ds-field { background: var(--n45-surface, #fff); border: 1px solid var(--n45-border-strong, #b9c8c1); border-radius: var(--n45-radius-sm, .45rem); color: var(--n45-ink, #142421); font: 400 .9rem/1.4 Segoe UI, sans-serif; min-height: 2.35rem; padding: .45rem .65rem; width: 100%; } .ds-field:focus { border-color: var(--n45-action, #167f70); outline: 3px solid rgba(22,127,112,.15); }"
+    },
+    {
+      "name": "Workspace Header", "kind": "card", "refersTo": "card", "description": "Dense page identity, state navigation, and primary action.",
+      "html": "<section class=\"ds-workspace\"><header><h2>Tickets</h2><nav aria-label=\"Ticket state\"><a aria-current=\"page\" href=\"#\">19 Open</a><a href=\"#\">142 Closed</a></nav><button>New ticket</button></header></section>",
+      "css": ".ds-workspace { border: 1px solid var(--n45-border, #d4ded9); border-radius: var(--n45-radius, .7rem); } .ds-workspace header { align-items: center; background: var(--n45-mountain, #0a2423); border-radius: calc(var(--n45-radius, .7rem) - 1px); color: #fff; display: flex; gap: 1rem; justify-content: space-between; padding: .65rem 1rem; } .ds-workspace h2 { font: 675 1.08rem/1.25 Segoe UI, sans-serif; margin: 0; } .ds-workspace nav { display: flex; gap: .2rem; } .ds-workspace a { border-radius: 999px; color: #c9d8d4; padding: .28rem .55rem; text-decoration: none; } .ds-workspace a:hover, .ds-workspace a[aria-current=\"page\"] { background: rgba(255,255,255,.12); color: #fff; } .ds-workspace a:focus-visible, .ds-workspace button:focus-visible { outline: 3px solid var(--n45-trail, #49c8b1); outline-offset: 2px; } .ds-workspace button { background: var(--n45-action, #167f70); border: 0; border-radius: var(--n45-radius-sm, .45rem); color: #fff; font-weight: 600; padding: .5rem .75rem; }"
+    },
+    {
+      "name": "Active Sidebar Item", "kind": "nav", "description": "The selected destination in the technician sidebar.",
+      "html": "<nav class=\"ds-sidebar\"><a aria-current=\"page\" href=\"#\">Tickets <span>19</span></a></nav>",
+      "css": ".ds-sidebar { background: var(--n45-spruce, #123431); padding: .55rem; } .ds-sidebar a { align-items: center; background: var(--n45-action, #167f70); border-radius: var(--n45-radius-sm, .45rem); color: #fff; display: flex; font: 600 .9rem/1.3 Segoe UI, sans-serif; justify-content: space-between; padding: .55rem .65rem; text-decoration: none; } .ds-sidebar span { background: rgba(255,255,255,.14); border-radius: 999px; padding: .1rem .4rem; } .ds-sidebar a:hover { background: var(--n45-action-hover, #10685c); } .ds-sidebar a:focus-visible { outline: 3px solid var(--n45-trail, #49c8b1); outline-offset: 2px; }"
+    },
+    {
+      "name": "Portal Panel", "kind": "card", "refersTo": "card", "description": "A calmer customer-facing summary container.",
+      "html": "<section class=\"ds-portal-panel\"><header><h2>Support</h2><a href=\"#\">View tickets</a></header><p>Your recent requests and approvals are collected here.</p></section>",
+      "css": ".ds-portal-panel { background: var(--n45-surface, #fff); border: 1px solid var(--n45-border, #d4ded9); border-radius: var(--n45-radius, .7rem); color: var(--n45-ink, #142421); padding: 1.5rem; } .ds-portal-panel header { align-items: center; border-bottom: 1px solid var(--n45-border, #d4ded9); display: flex; justify-content: space-between; margin-bottom: 1rem; padding-bottom: 1rem; } .ds-portal-panel h2 { font: 675 1.08rem/1.25 Segoe UI, sans-serif; margin: 0; } .ds-portal-panel a { color: var(--n45-action, #167f70); font-weight: 600; } .ds-portal-panel a:hover { color: var(--n45-action-hover, #10685c); } .ds-portal-panel a:focus-visible { outline: 3px solid rgba(22,127,112,.3); outline-offset: 2px; } .ds-portal-panel p { color: var(--n45-muted, #5b6d68); margin: 0; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Calm Operations Desk",
+    "overview": "N45 ITFlow should feel like a well-run technical workspace: capable, grounded, quietly modern, and immediately legible under pressure. The agent experience preserves information density and makes hierarchy through typography, borders, and restrained brand color instead of oversized cards or excessive whitespace. Customer-facing surfaces share the same identity with warmer paper backgrounds and more breathing room.",
+    "keyCharacteristics": ["Dense operational layouts with clear page, section, and row hierarchy.", "Deep spruce navigation, neutral work surfaces, and teal reserved for interaction.", "Flat-by-default containers with quiet borders and predictable responsive stacking.", "Semantic status color that never becomes the page's visual personality."],
+    "rules": [
+      {"name": "The One Action Rule", "body": "Use Action Teal for interaction; use success, warning, and danger only to communicate real state.", "section": "colors"},
+      {"name": "The Contrast Pair Rule", "body": "Filled teal states use the paired on-action foreground, including dark mode; never assume white is readable on every teal.", "section": "colors"},
+      {"name": "The Operational Scale Rule", "body": "A routine application page should not use marketing-scale typography.", "section": "typography"},
+      {"name": "The Flat-by-Default Rule", "body": "If a border or tonal shift can explain containment, do not add a shadow.", "section": "elevation"}
+    ],
+    "dos": ["Do preserve dense scanning on technician pages while maintaining 44-pixel mobile touch targets.", "Do use semantic headings, labeled navigation, aria-current, and visible keyboard focus.", "Do load the isolated N45 theme after upstream and compatibility CSS.", "Do use descriptive customer language such as ‘View ticket’ and ‘Review invoice.’", "Do verify both light and dark contrast when adding filled interactive states."],
+    "donts": ["Don't target retired AdminLTE 3 shell selectors in new theme work.", "Don't use decorative gradients, glass effects, excessive shadows, or oversized hero typography.", "Don't recolor destructive, warning, success, or informational actions as neutral menu items.", "Don't spend vertical space duplicating navigation already present in the sidebar.", "Don't rely on hover, web fonts, SVG support, or JavaScript for essential email meaning."]
+  }
+}

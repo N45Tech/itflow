@@ -37,8 +37,9 @@
              the foot of the document. */ ?>
     <link rel="stylesheet" href="/libs/sweetalert2/css/sweetalert2.min.css">
 
-    <!-- ITFlow style: loaded last so it wins. See includes/header.php -->
+    <!-- Compatibility first; the isolated N45 theme is the final visual layer. -->
     <link rel="stylesheet" href="/css/itflow_custom.css">
+    <link rel="stylesheet" href="/css/n45_theme.css?v=<?= filemtime(__DIR__ . '/../../css/n45_theme.css') ?>">
 
     <!-- Scripts -->
 

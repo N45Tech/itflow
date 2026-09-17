@@ -80,9 +80,11 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fa fa-fw fa-user-friends me-2"></i><?php if($leads_filter == 0){ echo "Clients"; } else { echo "Leads"; } ?></h3>
+<section class="card n45-workspace" aria-labelledby="clients-page-title">
+    <header class="card-header n45-workspace-header">
+        <div class="n45-workspace-heading">
+            <h1 class="n45-workspace-title" id="clients-page-title"><i class="fa fa-fw fa-user-friends me-2" aria-hidden="true"></i><?php if($leads_filter == 0){ echo "Clients"; } else { echo "Leads"; } ?></h1>
+        </div>
         <div class="card-tools">
             <?php if (lookupUserPermission("module_client") >= 2) { ?>
                 <div class="btn-group">
@@ -105,8 +107,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </div>
             <?php } ?>
         </div>
-    </div>
-    <div class="card-header py-3">
+    </header>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <input type="hidden" name="leads" value="<?= $leads_filter ?>">
             <input type="hidden" name="archived" value="<?= $archived ?>">
@@ -575,7 +577,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
      <!-- Ends Card Body -->
     <?php require_once "../includes/filter_footer.php"; ?>
 
-</div> <!-- End Card -->
+</section> <!-- End workspace -->
 
 <script src="../js/bulk_actions.js"></script>
 
