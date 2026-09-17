@@ -5,35 +5,20 @@ require_once "includes/inc_all.php";
 enforceUserPermission('module_support');
 $can_review_identities = lookupUserPermission('module_support') >= 2;
 
-$selected_source = preg_replace('/[^a-z0-9._-]/', '', strtolower((string) ($_GET['source'] ?? '')));
-if ($selected_source !== '' && automationSourceIsRetired($selected_source)) {
-    $selected_source = '';
-}
-$source_filter_incident = '';
-$source_filter_event = '';
-$source_filter_mapping = '';
-if ($selected_source !== '') {
-    $selected_source_sql = escapeSql($selected_source);
-    $source_filter_incident = "AND automation_incident_source = '$selected_source_sql'";
-    $source_filter_event = "AND automation_event_source = '$selected_source_sql'";
-    $source_filter_mapping = "AND automation_mapping_source = '$selected_source_sql'";
-}
-
 $incident_scope = clientScopeSql('automation_incident_client_id');
 $mapping_scope = clientScopeSql('automation_mapping_client_id');
 $bound_identity_scope = $session_is_admin ? '' : 'AND automation_mapping_client_id > 0';
 $ticket_scope = clientScopeSql('ticket_client_id');
 $level_asset_scope = clientScopeSql('assets.asset_client_id');
-$active_incident_sources = "AND automation_incident_source <> 'netbox'";
-$active_event_sources = "AND automation_event_source <> 'netbox'";
-$active_mapping_sources = "AND automation_mapping_source <> 'netbox'";
+$active_incident_sources = "AND automation_incident_source NOT IN ('netbox', 'checkmk')";
+$active_event_sources = "AND automation_event_source NOT IN ('netbox', 'checkmk')";
+$active_mapping_sources = "AND automation_mapping_source NOT IN ('netbox', 'checkmk')";
 
 $source_label = static function ($source) {
     $labels = [
         'uptime_kuma' => 'Uptime Kuma',
         'n8n' => 'n8n',
         'backup' => 'Backups',
-        'checkmk' => 'Checkmk',
         'cipp' => 'CIPP',
         'entra' => 'Microsoft Entra',
         'infrastructure' => 'Infrastructure',
@@ -51,7 +36,6 @@ $source_icon = static function ($source) {
         'uptime_kuma' => 'fa-heartbeat',
         'n8n' => 'fa-random',
         'backup' => 'fa-database',
-        'checkmk' => 'fa-heartbeat',
         'cipp', 'entra', 'intune' => 'fa-cloud',
         'infrastructure' => 'fa-server',
         'level', 'level_io' => 'fa-satellite',
@@ -100,7 +84,7 @@ $automation_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     SUM(automation_incident_status = 'Resolved' AND automation_incident_resolved_at >= NOW() - INTERVAL 24 HOUR) AS recovered_24h,
     MAX(automation_incident_last_event_at) AS last_event_at
     FROM automation_incidents
-    WHERE 1 = 1 $incident_scope $active_incident_sources $source_filter_incident"));
+    WHERE 1 = 1 $incident_scope $active_incident_sources"));
 
 $event_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     SUM(automation_event_received_at >= NOW() - INTERVAL 24 HOUR) AS events_24h,
@@ -111,7 +95,7 @@ $event_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     FROM automation_events
     INNER JOIN automation_incidents ON automation_incident_source = automation_event_source
         AND automation_incident_key = automation_event_incident_key
-    WHERE 1 = 1 $incident_scope $active_event_sources $source_filter_event"));
+    WHERE 1 = 1 $incident_scope $active_event_sources"));
 
 $event_queue_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     SUM(automation_event_status = 'Pending') AS pending_events,
@@ -121,12 +105,12 @@ $event_queue_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     FROM automation_events
     LEFT JOIN automation_incidents ON automation_incident_source = automation_event_source
         AND automation_incident_key = automation_event_incident_key
-    WHERE 1 = 1 $incident_scope $active_event_sources $source_filter_event"));
+    WHERE 1 = 1 $incident_scope $active_event_sources"));
 
 $active_maintenance_count = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*)
     FROM automation_maintenance_windows
     WHERE automation_maintenance_deleted_at IS NULL
-    AND automation_maintenance_source <> 'netbox'
+    AND automation_maintenance_source NOT IN ('netbox', 'checkmk')
     AND automation_maintenance_starts_at <= NOW()
     AND automation_maintenance_ends_at >= NOW()"))[0] ?? 0);
 
@@ -139,7 +123,7 @@ $mapping_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
         AND automation_mapping_state = 'conflicting') AS conflicting_devices,
     MAX(automation_mapping_last_seen_at) AS last_mapping_at
     FROM automation_entity_mappings
-    WHERE automation_mapping_deleted_at IS NULL $mapping_scope $active_mapping_sources $source_filter_mapping"));
+    WHERE automation_mapping_deleted_at IS NULL $mapping_scope $active_mapping_sources"));
 
 $ticket_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     COUNT(*) AS open_tickets,
@@ -245,7 +229,7 @@ while ($row = mysqli_fetch_assoc($sql_source_mappings)) {
     $source_health[$row['source']]['last_mapping_at'] = $row['last_mapping_at'];
 }
 
-foreach (['level', 'sentinelone', 'checkmk', 'cipp', 'entra', 'intune', 'backup', 'infrastructure', 'uptime_kuma', 'n8n'] as $known_source) {
+foreach (['level', 'sentinelone', 'cipp', 'entra', 'intune', 'backup', 'infrastructure', 'uptime_kuma', 'n8n'] as $known_source) {
     if (!isset($source_health[$known_source])) {
         $source_health[$known_source] = [
             'source' => $known_source,
@@ -261,7 +245,7 @@ foreach (['level', 'sentinelone', 'checkmk', 'cipp', 'entra', 'intune', 'backup'
 }
 
 $source_order = [
-    'level' => 10, 'sentinelone' => 20, 'checkmk' => 30, 'cipp' => 40,
+    'level' => 10, 'sentinelone' => 20, 'cipp' => 40,
     'entra' => 50, 'intune' => 60, 'backup' => 70, 'infrastructure' => 80,
     'uptime_kuma' => 90, 'n8n' => 100,
 ];
@@ -368,7 +352,7 @@ $sql_open_incidents = mysqli_query($mysqli, "SELECT automation_incidents.*,
     LEFT JOIN assets ON automation_incident_asset_id = asset_id
     LEFT JOIN services ON automation_incident_service_id = service_id
     LEFT JOIN tickets ON automation_incident_ticket_id = ticket_id
-    WHERE automation_incident_status = 'Open' $incident_scope $active_incident_sources $source_filter_incident
+    WHERE automation_incident_status = 'Open' $incident_scope $active_incident_sources
     ORDER BY CASE LOWER(automation_incident_severity)
         WHEN 'emergency' THEN 1 WHEN 'critical' THEN 2 WHEN 'high' THEN 3
         WHEN 'medium' THEN 4 WHEN 'low' THEN 5 ELSE 6 END,
@@ -380,7 +364,7 @@ $sql_recent_events = mysqli_query($mysqli, "SELECT automation_events.*,
     INNER JOIN automation_incidents ON automation_incident_source = automation_event_source
         AND automation_incident_key = automation_event_incident_key
     LEFT JOIN clients ON automation_incident_client_id = client_id
-    WHERE 1 = 1 $incident_scope $active_event_sources $source_filter_event
+    WHERE 1 = 1 $incident_scope $active_event_sources
     ORDER BY automation_event_last_received_at DESC LIMIT 20");
 
 $sql_recent_mappings = mysqli_query($mysqli, "SELECT automation_entity_mappings.*,
@@ -390,7 +374,7 @@ $sql_recent_mappings = mysqli_query($mysqli, "SELECT automation_entity_mappings.
     LEFT JOIN locations ON automation_mapping_location_id = location_id
     LEFT JOIN assets ON automation_mapping_asset_id = asset_id
     LEFT JOIN domains ON automation_mapping_domain_id = domain_id
-    WHERE automation_mapping_deleted_at IS NULL $mapping_scope $active_mapping_sources $source_filter_mapping
+    WHERE automation_mapping_deleted_at IS NULL $mapping_scope $active_mapping_sources
     ORDER BY automation_mapping_last_seen_at DESC, automation_mapping_id DESC LIMIT 20");
 
 $sql_identity_review = mysqli_query($mysqli, "SELECT automation_entity_mappings.*,
@@ -401,7 +385,7 @@ $sql_identity_review = mysqli_query($mysqli, "SELECT automation_entity_mappings.
     WHERE automation_mapping_entity_type = 'device'
     AND automation_mapping_deleted_at IS NULL
     AND automation_mapping_state IN ('unresolved', 'suggested', 'conflicting', 'stale')
-    $mapping_scope $bound_identity_scope $active_mapping_sources $source_filter_mapping
+    $mapping_scope $bound_identity_scope $active_mapping_sources
     ORDER BY FIELD(automation_mapping_state, 'conflicting', 'unresolved', 'suggested', 'stale'),
         automation_mapping_last_seen_at DESC, automation_mapping_id DESC LIMIT 100");
 
@@ -412,7 +396,7 @@ $sql_mapping_decisions = mysqli_query($mysqli, "SELECT automation_mapping_decisi
         ON automation_mapping_id = automation_mapping_decision_mapping_id
     LEFT JOIN clients ON automation_mapping_client_id = client_id
     LEFT JOIN users ON automation_mapping_decision_actor_user_id = user_id
-    WHERE 1 = 1 $mapping_scope $bound_identity_scope $active_mapping_sources $source_filter_mapping
+    WHERE 1 = 1 $mapping_scope $bound_identity_scope $active_mapping_sources
     ORDER BY automation_mapping_decision_occurred_at DESC,
         automation_mapping_decision_id DESC LIMIT 20");
 
@@ -453,16 +437,6 @@ foreach ($coverage_rows as $coverage_row) {
             <a class="btn btn-outline-secondary" href="https://automate.n45tech.com" target="_blank" rel="noopener noreferrer">n8n <i class="fas fa-external-link-alt ml-2"></i></a>
         </div>
     </header>
-
-    <nav class="n45-source-filter" aria-label="Filter operations by source">
-        <a href="/agent/operations.php" class="<?= $selected_source === '' ? 'active' : '' ?>">All sources</a>
-        <?php foreach ($source_health as $source => $health) { ?>
-            <a href="/agent/operations.php?source=<?= urlencode($source) ?>" class="<?= $selected_source === $source ? 'active' : '' ?>">
-                <i class="fas <?= $source_icon($source) ?> mr-1"></i><?= escapeHtml($source_label($source)) ?>
-                <?php if (intval($health['open_count'] ?? 0)) { ?><span><?= intval($health['open_count']) ?></span><?php } ?>
-            </a>
-        <?php } ?>
-    </nav>
 
     <div class="n45-kpi-strip" aria-label="Current operational summary">
         <a href="/agent/tickets.php?assigned=<?= $session_user_id ?>">
@@ -663,7 +637,7 @@ foreach ($coverage_rows as $coverage_row) {
                 </table>
             </div>
         <?php } else { ?>
-            <div class="n45-empty-state"><i class="fas fa-shield-alt"></i><strong>No open incidents</strong><span>New alerts from Level.io, SentinelOne, Checkmk, CIPP, backup, infrastructure, and other sources will appear here.</span></div>
+            <div class="n45-empty-state"><i class="fas fa-shield-alt"></i><strong>No open incidents</strong><span>New alerts from Level.io, SentinelOne, CIPP, backup, infrastructure, and other sources will appear here.</span></div>
         <?php } ?>
     </section>
 

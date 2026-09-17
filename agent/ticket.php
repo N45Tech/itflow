@@ -1884,7 +1884,6 @@ if (isset($_GET['ticket_id'])) {
                         'uptime_kuma' => 'Uptime Kuma',
                         'n8n' => 'n8n',
                         'backup' => 'Backups',
-                        'checkmk' => 'Checkmk',
                         'cipp' => 'CIPP',
                         'entra' => 'Microsoft Entra',
                         'infrastructure' => 'Infrastructure',
@@ -1897,7 +1896,6 @@ if (isset($_GET['ticket_id'])) {
                         'uptime_kuma' => 'fa-heartbeat',
                         'n8n' => 'fa-random',
                         'backup' => 'fa-database',
-                        'checkmk' => 'fa-heartbeat',
                         'cipp', 'entra', 'intune' => 'fa-cloud',
                         'infrastructure' => 'fa-server',
                         'level', 'level_io' => 'fa-satellite',
@@ -1953,7 +1951,7 @@ if (isset($_GET['ticket_id'])) {
                             <?php } ?>
 
                             <div class="mt-3 pt-2 border-top">
-                                <a href="operations.php?source=<?= urlencode($automation_source_raw) ?><?= $automation_incident_open ? '#incident-' . intval($automation_incident['automation_incident_id']) : '#recent-activity' ?>">Open in Operations <i class="fas fa-arrow-right ml-1"></i></a>
+                                <a href="operations.php<?= $automation_incident_open ? '#incident-' . intval($automation_incident['automation_incident_id']) : '#recent-activity' ?>">Open in Operations <i class="fas fa-arrow-right ml-1"></i></a>
                             </div>
                         </div>
                     </div>
