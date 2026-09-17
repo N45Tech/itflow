@@ -70,7 +70,7 @@ function automationSource($value): string
 
 function automationSourceIsRetired($value): bool
 {
-    return in_array(automationSource($value), ['netbox'], true);
+    return in_array(automationSource($value), ['netbox', 'checkmk'], true);
 }
 
 function automationEntityType($value): string
