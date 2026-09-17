@@ -124,6 +124,7 @@ $assertTrue(
         'n45-0026-service-assistance',
         'n45-0027-commercial-operations',
         'n45-0028-ticket-delete-operations-alignment',
+        'n45-0029-hetrix-monitoring-source',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -142,8 +143,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0028-ticket-delete-operations-alignment',
-    'The ticket-delete Operations alignment is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0029-hetrix-monitoring-source',
+    'The Hetrix monitoring-source migration is not the final stable N45 migration'
 );
 $commercial_migration = $manifest['migrations']['n45-0027-commercial-operations'] ?? [];
 $assertTrue(
@@ -161,6 +162,22 @@ $assertTrue(
     ($delete_alignment_migration['fingerprint']['failure_queries'] ?? null)
         === ($post_integration_reservations['n45-0028-ticket-delete-operations-alignment']['failure_queries'] ?? null),
     'Ticket-delete Operations alignment does not match its durable data reservation'
+);
+$hetrix_migration = $manifest['migrations']['n45-0029-hetrix-monitoring-source'] ?? [];
+$assertTrue(
+    ($hetrix_migration['module'] ?? '') === 'automation'
+        && ($hetrix_migration['data_change'] ?? false) === true
+        && ($hetrix_migration['fingerprint']['failure_queries'] ?? null)
+            === ($post_integration_reservations['n45-0029-hetrix-monitoring-source']['failure_queries'] ?? null)
+        && ($manifest['modules']['automation']['migrations'] ?? []) === [
+            'n45-0003-automation-integration',
+            'n45-0006-operations-ticket-delete-integrity',
+            'n45-0009-automation-event-lifecycle',
+            'n45-0017-automation-action-outbox',
+            'n45-0028-ticket-delete-operations-alignment',
+            'n45-0029-hetrix-monitoring-source',
+        ],
+    'Hetrix monitoring retirement is not owned by the automation module boundary'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(

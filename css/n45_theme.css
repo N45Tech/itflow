@@ -670,6 +670,33 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--n45-success) 14%, transparent);
 }
 
+.n45-live-dot-danger {
+    background: var(--n45-danger);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--n45-danger) 14%, transparent);
+}
+
+.n45-live-dot-warning {
+    background: var(--n45-warning);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--n45-warning) 16%, transparent);
+}
+
+.n45-live-dot-info {
+    background: var(--n45-action);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--n45-action) 14%, transparent);
+}
+
+.n45-live-dot-muted {
+    background: var(--n45-muted);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--n45-muted) 14%, transparent);
+}
+
+.n45-ops-status {
+    color: var(--n45-muted);
+    font-size: .75rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
 .n45-kpi-strip > a,
 .n45-tech-pulse-grid a {
     background: transparent;
