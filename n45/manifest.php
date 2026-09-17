@@ -440,7 +440,7 @@ return [
                 'created_tables' => [], 'altered_columns' => [], 'altered_indexes' => [],
                 'legacy_bridge_index_overrides' => [],
                 'failure_queries' => [
-                    "SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix')",
+                    "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix') THEN 0 ELSE 1 END",
                     "SELECT COUNT(*) FROM automation_event_policies WHERE automation_policy_source = 'uptime_kuma' AND (automation_policy_enabled <> 0 OR automation_policy_ticket_enabled <> 0 OR automation_policy_auto_resolve <> 0)",
                 ],
             ],
@@ -2897,7 +2897,7 @@ return [
             'rollback' => 'Preserve monitoring incident history and restore the matching database snapshot before reactivating the retired Uptime Kuma source.',
             'fingerprint' => [
                 'failure_queries' => [
-                    "SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix')",
+                    "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix') THEN 0 ELSE 1 END",
                     "SELECT COUNT(*) FROM automation_event_policies WHERE automation_policy_source = 'uptime_kuma' AND (automation_policy_enabled <> 0 OR automation_policy_ticket_enabled <> 0 OR automation_policy_auto_resolve <> 0)",
                 ],
             ],
