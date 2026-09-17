@@ -107,9 +107,20 @@ if ($contrastRatio('#ffffff', '#167f70') < 4.5) {
 }
 
 $assertContains('class="card n45-workspace mb-3"', $tickets, 'Tickets do not use the shared dense workspace pattern');
-$assertContains('class="n45-status-tabs" aria-label="Ticket state"', $tickets, 'Ticket state navigation is not semantic');
+$assertContains('class="n45-status-tabs n45-ticket-state-tabs" aria-label="Ticket state"', $tickets, 'Ticket state navigation is not semantic or ticket-specific');
 $assertContains('aria-current="page"', $tickets, 'Ticket state navigation does not expose its active state');
 $assertContains('id="tickets-page-title"', $tickets, 'Tickets do not expose a page-level heading');
+$assertContains('class="card-tools n45-page-actions"', $tickets, 'The ticket create action is not pinned to the workspace edge');
+$assertContains('class="input-group n45-ticket-search"', $tickets, 'The ticket search does not use the expanded shared treatment');
+$assertContains('placeholder="Search ticket number, subject, client, or contact"', $tickets, 'The ticket search does not explain its searchable fields');
+$assertContains('class="btn-group n45-ticket-view-controls float-lg-end"', $tickets, 'Ticket assignment, queue, and layout controls are not one aligned group');
+$assertContains('aria-label="Queues"', $tickets, 'The compact queue control has no accessible name');
+$assertContains('aria-label="Switch to the <?= $view == \'kanban\' ? \'list\' : \'kanban\' ?> view"', $tickets, 'The compact ticket layout control has no accessible name');
+$assertNotContains('class="btn-group ms-2"', $tickets, 'Queues retain one-off spacing outside the ticket control group');
+$assertNotContains('class="btn btn-outline-dark ms-2"', $tickets, 'The Kanban toggle retains one-off spacing outside the ticket control group');
+$assertContains('.n45-workspace-header::after {', $theme, 'AdminLTE clearfix content can displace right-aligned workspace actions');
+$assertContains('.n45-ticket-state-tabs {', $theme, 'Ticket state filters do not have a cohesive segmented treatment');
+$assertContains('.n45-ticket-view-controls {', $theme, 'Ticket view controls do not share a stable layout contract');
 $assertContains('class="card n45-workspace"', $clients, 'Clients do not use the shared dense workspace pattern');
 $assertContains('id="clients-page-title"', $clients, 'Clients do not expose a page-level heading');
 $assertContains('class="n45-page-lead"', $dashboard, 'The dashboard does not use the shared page lead pattern');

@@ -358,6 +358,7 @@ $closed_ticket_predicate = "(ticket_status IN (4, 5) OR ticket_resolved_at IS NO
     OR ticket_closed_at IS NOT NULL) AND $active_ticket_predicate";
 $total_tickets_open = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $open_ticket_predicate $count_where"))[0]);
 $total_tickets_closed = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $closed_ticket_predicate $count_where"))[0]);
+$total_tickets_all = $total_tickets_open + $total_tickets_closed;
 $total_tickets_unassigned = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_assigned_to = 0 AND $open_ticket_predicate $count_where"))[0]);
 $user_active_assigned_tickets = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE ticket_assigned_to = $session_user_id AND $open_ticket_predicate $count_where"))[0]);
 $total_tickets_aging = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(ticket_id) FROM tickets WHERE $open_ticket_predicate AND ticket_updated_at < NOW() - INTERVAL 3 DAY $count_where"))[0]);
@@ -397,20 +398,20 @@ if ($date_filter_active) {
 ?>
 
 <section class="card n45-workspace mb-3" aria-labelledby="tickets-page-title">
-    <header class="card-header n45-workspace-header">
+    <header class="card-header n45-workspace-header n45-ticket-workspace-header">
         <div class="n45-workspace-heading">
             <h1 class="n45-workspace-title" id="tickets-page-title"><i class="fa fa-fw fa-life-ring me-2" aria-hidden="true"></i>Tickets</h1>
-            <nav class="n45-status-tabs" aria-label="Ticket state">
-                <a href="<?= ticketsFilterUrl(['state' => 'open', 'status' => null, 'queue' => null]) ?>" <?= (!$status_filter && $state == 'open' && !$queue) ? 'aria-current="page"' : '' ?>><strong><?= $total_tickets_open ?></strong> Open</a>
-                <a href="<?= ticketsFilterUrl(['state' => 'closed', 'status' => null, 'queue' => null]) ?>" <?= (!$status_filter && $state == 'closed' && !$queue) ? 'aria-current="page"' : '' ?>><strong><?= $total_tickets_closed ?></strong> Closed</a>
-                <a href="<?= ticketsFilterUrl(['state' => 'all', 'status' => null, 'queue' => null]) ?>" <?= (!$status_filter && $state == 'all' && !$queue) ? 'aria-current="page"' : '' ?>>All</a>
+            <nav class="n45-status-tabs n45-ticket-state-tabs" aria-label="Ticket state">
+                <a href="<?= ticketsFilterUrl(['state' => 'open', 'status' => null, 'queue' => null]) ?>" <?= (!$status_filter && $state == 'open' && !$queue) ? 'aria-current="page"' : '' ?>>Open <strong><?= $total_tickets_open ?></strong></a>
+                <a href="<?= ticketsFilterUrl(['state' => 'closed', 'status' => null, 'queue' => null]) ?>" <?= (!$status_filter && $state == 'closed' && !$queue) ? 'aria-current="page"' : '' ?>>Closed <strong><?= $total_tickets_closed ?></strong></a>
+                <a href="<?= ticketsFilterUrl(['state' => 'all', 'status' => null, 'queue' => null]) ?>" <?= (!$status_filter && $state == 'all' && !$queue) ? 'aria-current="page"' : '' ?>>All <strong><?= $total_tickets_all ?></strong></a>
                 <?php if (lookupUserPermission('module_support') >= 3) { ?>
-                    <a href="<?= ticketsFilterUrl(['state' => 'deleted', 'status' => null, 'queue' => null]) ?>" <?= $state === 'deleted' ? 'aria-current="page"' : '' ?>><strong><?= $total_tickets_deleted ?></strong> Deleted</a>
+                    <a href="<?= ticketsFilterUrl(['state' => 'deleted', 'status' => null, 'queue' => null]) ?>" <?= $state === 'deleted' ? 'aria-current="page"' : '' ?>>Deleted <strong><?= $total_tickets_deleted ?></strong></a>
                 <?php } ?>
             </nav>
         </div>
         <?php if (lookupUserPermission("module_support") >= 2) { ?>
-            <div class="card-tools">
+            <div class="card-tools n45-page-actions">
                 <div class="btn-group">
                     <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/ticket/ticket_add.php?<?= $client_url ?>" data-modal-size="lg" aria-label="New ticket">
                         <i class="fas fa-plus" aria-hidden="true"></i><span class="ms-2">New Ticket</span>
@@ -442,21 +443,20 @@ if ($date_filter_active) {
                 <input type="hidden" name="billing" value="<?= escapeHtml($billing_filter) ?>">
             <?php } ?>
 
-            <div class="row g-2 align-items-end">
-                <div class="col-sm-4">
-                    <div>
-                        <div class="input-group">
-                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Tickets" aria-label="Search tickets">
-                                <button class="btn <?= $hidden_filter_count ? 'btn-warning' : 'btn-secondary' ?>" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilter" title="Filters" aria-controls="advancedFilter" aria-expanded="<?= $hidden_filter_count ? 'true' : 'false' ?>" aria-label="Toggle advanced filters">
-                                    <i class="fas fa-filter"></i><?php if ($hidden_filter_count) { ?><span class="ms-1"><?= $hidden_filter_count ?></span><?php } ?>
-                                </button>
-                                <button class="btn btn-primary" type="submit" aria-label="Search tickets"><i class="fa fa-search"></i></button>
-                        </div>
+            <div class="row g-2 align-items-center n45-ticket-filter-row">
+                <div class="col-lg-7">
+                    <label class="visually-hidden" for="ticket-search">Search tickets</label>
+                    <div class="input-group n45-ticket-search">
+                        <input type="search" class="form-control" id="ticket-search" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search ticket number, subject, client, or contact" aria-label="Search tickets">
+                        <button class="btn <?= $hidden_filter_count ? 'btn-warning' : 'btn-outline-secondary' ?>" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilter" title="Filters" aria-controls="advancedFilter" aria-expanded="<?= $hidden_filter_count ? 'true' : 'false' ?>" aria-label="Toggle advanced filters">
+                            <i class="fas fa-filter" aria-hidden="true"></i><span class="d-none d-xl-inline ms-2">Filters</span><?php if ($hidden_filter_count) { ?><span class="ms-1"><?= $hidden_filter_count ?></span><?php } ?>
+                        </button>
+                        <button class="btn btn-primary" type="submit"><i class="fa fa-search me-2" aria-hidden="true"></i>Search</button>
                     </div>
                 </div>
 
-                <div class="col-sm-8">
-                    <div class="btn-group float-sm-end">
+                <div class="col-lg-5">
+                    <div class="btn-group n45-ticket-view-controls float-lg-end" role="group" aria-label="Ticket assignment, queues, and layout">
                         <a href="<?= $ticket_assigned_filter_id === intval($session_user_id) && !$queue ? ticketsFilterUrl(['assigned' => null]) : ticketsFilterUrl(['assigned' => $session_user_id, 'queue' => null, 'state' => 'open']) ?>"
                             class="btn <?= $ticket_assigned_filter_id === intval($session_user_id) ? 'btn-primary' : 'btn-outline-primary' ?>" aria-label="Filter tickets assigned to me">
                             <i class="fas fa-fw fa-user"></i><span class="d-none d-xl-inline ms-2">Mine</span> | <strong><?= $user_active_assigned_tickets ?></strong>
@@ -465,9 +465,9 @@ if ($date_filter_active) {
                             class="btn <?= $ticket_assigned_filter_id === 0 ? 'btn-danger' : 'btn-outline-danger' ?>" aria-label="Filter unassigned tickets">
                             <i class="fas fa-fw fa-exclamation-triangle"></i><span class="d-none d-xl-inline ms-2">Unassigned</span> | <strong><?= $total_tickets_unassigned ?></strong>
                         </a>
-                        <div class="btn-group ms-2">
+                        <div class="btn-group">
                             <button class="btn <?= $queue ? 'btn-dark' : 'btn-outline-dark' ?> dropdown-toggle" type="button"
-                                    data-bs-toggle="dropdown" aria-expanded="false">
+                                    data-bs-toggle="dropdown" aria-expanded="false" aria-label="Queues">
                                 <i class="fas fa-fw fa-inbox"></i><span class="d-none d-xl-inline ms-2">Queues</span>
                             </button>
                             <div class="dropdown-menu dropdown-menu-end">
@@ -492,7 +492,7 @@ if ($date_filter_active) {
                                 <?php } ?>
                             </div>
                         </div>
-                        <a href="<?= ticketsFilterUrl(['view' => $view == 'kanban' ? 'list' : 'kanban']) ?>" class="btn btn-outline-dark ms-2" title="Switch to the <?= $view == 'kanban' ? 'list' : 'kanban' ?> view">
+                        <a href="<?= ticketsFilterUrl(['view' => $view == 'kanban' ? 'list' : 'kanban']) ?>" class="btn btn-outline-dark" title="Switch to the <?= $view == 'kanban' ? 'list' : 'kanban' ?> view" aria-label="Switch to the <?= $view == 'kanban' ? 'list' : 'kanban' ?> view">
                             <i class="fa fa-fw <?= $view == 'kanban' ? 'fa-list' : 'fa-columns' ?>"></i>
                             <span class="d-none d-xl-inline ms-2"><?= $view == 'kanban' ? 'List' : 'Kanban' ?></span>
                         </a>

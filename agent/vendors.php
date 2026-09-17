@@ -32,36 +32,70 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$vendor_action_items = array(
+    array(
+        'label' => 'Create from Template',
+        'icon' => 'fa-puzzle-piece',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/vendor/vendor_add_from_template.php?' . $client_url),
+    ),
+);
+if ($num_rows[0] > 0) {
+    $vendor_action_items[] = array('type' => 'separator');
+    $vendor_action_items[] = array(
+        'label' => 'Export',
+        'icon' => 'fa-download',
+        'class' => 'ajax-modal',
+        'attributes' => array(
+            'data-modal-url' => buildExportModalUrl('modals/vendor/vendor_export.php', array('client_id', 'archived', 'q')),
+        ),
+    );
+}
+
+$vendor_has_filters = $q !== '' || $archived == 1;
+$vendor_empty_action = $vendor_has_filters
+    ? array('label' => 'Clear filters', 'icon' => 'fa-times', 'variant' => 'secondary', 'href' => 'vendors.php?' . $client_url)
+    : array(
+        'type' => 'button',
+        'label' => 'New Vendor',
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/vendor/vendor_add.php?' . $client_url),
+    );
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2">
-            <i class="fas fa-fw fa-building me-2"></i>Vendors
-        </h3>
-        <div class="card-tools">
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/vendor/vendor_add.php?<?= $client_url ?>">
-                    <i class="fas fa-plus me-2"></i>New Vendor
-                </button>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                <div class="dropdown-menu">
-                    <a class="dropdown-item text-dark ajax-modal" href="#"
-                        data-modal-url="modals/vendor/vendor_add_from_template.php?<?= $client_url ?>">
-                        <i class="fa fa-fw fa-puzzle-piece me-2"></i>Create from Template
-                    </a>
-                    <?php if ($num_rows[0] > 0) { ?>
-                        <div class="dropdown-divider"></div>
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="<?= buildExportModalUrl('modals/vendor/vendor_export.php', ['client_id', 'archived', 'q']) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                    <?php } ?>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="card-header py-3">
+<section class="card n45-workspace" aria-labelledby="vendors-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Vendors',
+        'title_id' => 'vendors-page-title',
+        'icon' => 'fa-building',
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+        'actions' => array(
+            array(
+                'type' => 'split-menu',
+                'button' => array(
+                    'type' => 'button',
+                    'label' => 'New Vendor',
+                    'icon' => 'fa-plus',
+                    'variant' => 'primary',
+                    'class' => 'ajax-modal',
+                    'attributes' => array('data-modal-url' => 'modals/vendor/vendor_add.php?' . $client_url),
+                ),
+                'items' => $vendor_action_items,
+                'menu_label' => 'More vendor actions',
+                'align_end' => true,
+            ),
+        ),
+    ));
+    ?>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
                 <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -71,8 +105,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
                 <div class="col-md-4">
                     <div class="input-group">
-                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Vendors">
-                            <button class="btn btn-dark"><i class="fa fa-search"></i></button>
+                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search vendors">
+                            <button class="btn btn-dark" aria-label="Search vendors"><i class="fa fa-search" aria-hidden="true"></i></button>
                     </div>
                 </div>
 
@@ -115,8 +149,18 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
     <form id="bulkActions" action="post.php" method="post">
         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
+        <?php if ($num_rows[0] == 0) { ?>
+            <?php
+            n45RenderEmptyState(array(
+                'title' => $vendor_has_filters ? 'No vendors match these filters' : 'No vendors yet',
+                'description' => $vendor_has_filters ? 'Clear the current filters to return to the vendor list.' : 'Add the organizations that supply products and services.',
+                'icon' => 'fa-building',
+                'action' => $vendor_empty_action,
+            ));
+            ?>
+        <?php } else { ?>
         <div class="table-responsive">
-            <table class="table table-striped table-borderless table-hover mb-0">
+            <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
                 <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?> text-nowrap">
                 <tr>
                     <td class="checkbox-column border-end">
@@ -279,10 +323,11 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </tbody>
             </table>
         </div>
+        <?php } ?>
     </form>
     <?php require_once "../includes/filter_footer.php";
 ?>
-</div>
+</section>
 
 <script src="../js/bulk_actions.js"></script>
 
