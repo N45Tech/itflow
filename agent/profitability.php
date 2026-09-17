@@ -20,17 +20,24 @@ $margin_percent = $totals['revenue'] > 0 ? ($totals['margin'] / $totals['revenue
 ?>
 <!--
 THESIS: Every agreement earns an honest operating margin while unallocated client activity stays visible.
-OWN-WORLD: A dark summary rail and a single calm ledger keep financial comparison direct.
+OWN-WORLD: Existing N45 card hierarchy and compact summary metrics keep financial comparison direct.
 STORY: Set the internal labor cost once, choose a month, then identify agreements needing pricing or service review.
 FIRST VIEWPORT: Revenue, cost, margin and hours establish the month before the client-and-agreement ledger begins.
 FORM: Derived reporting over native invoices, expenses, agreement decisions and vendor-linked subscription snapshots; seed key established-n45-commercial-operations.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 -->
-<?php require 'includes/commercial_tabs.php'; ?>
+<?php require 'includes/commercial_styles.php'; ?>
 
-<header class="n45-commercial-heading">
-    <div><h1>Client &amp; agreement profitability</h1><p>See billed revenue beside agreement-attributed labor and vendor costs, with anything unallocated called out explicitly.</p></div>
-    <form method="get"><label class="visually-hidden" for="profit-month">Reporting month</label><input id="profit-month" class="form-control" type="month" name="month" value="<?= escapeHtml($month) ?>" onchange="this.form.submit()"></form>
+<header class="card n45-commercial-page-header">
+    <div class="card-header bg-dark py-2">
+        <h3 class="card-title mt-2"><i class="fas fa-fw fa-chart-line me-2" aria-hidden="true"></i>Profitability</h3>
+        <div class="card-tools">
+            <form method="get"><label class="visually-hidden" for="profit-month">Reporting month</label><input id="profit-month" class="form-control" type="month" name="month" value="<?= escapeHtml($month) ?>" onchange="this.form.submit()"></form>
+        </div>
+    </div>
+    <div class="card-body py-3">
+        <p class="text-muted mb-0">See billed revenue beside agreement-attributed labor and vendor costs, with anything unallocated called out explicitly.</p>
+    </div>
 </header>
 
 <section class="n45-commercial-summary" aria-label="Profitability summary">

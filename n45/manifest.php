@@ -425,6 +425,15 @@ return [
                 'created_tables' => ['commercial_settings','commercial_product_profiles','subscription_records','billing_review_items','quote_delivery_plans','quote_delivery_items','purchase_orders','purchase_order_items'],
                 'altered_columns' => [], 'altered_indexes' => [], 'legacy_bridge_index_overrides' => [],
             ],
+            'n45-0028-ticket-delete-operations-alignment' => [
+                'module' => 'automation', 'legacy_version' => null, 'data_change' => true,
+                'rollback' => 'Preserve reconciled incident history and restore the pre-upgrade database snapshot if the prior Operations projection must be reinstated.',
+                'created_tables' => [], 'altered_columns' => [], 'altered_indexes' => [],
+                'legacy_bridge_index_overrides' => [],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_archived_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
+                ],
+            ],
         ],
     ],
     'features' => [
@@ -486,6 +495,7 @@ return [
                 'n45-0006-operations-ticket-delete-integrity',
                 'n45-0009-automation-event-lifecycle',
                 'n45-0017-automation-action-outbox',
+                'n45-0028-ticket-delete-operations-alignment',
             ],
             'feature' => 'automation',
             'toggleable' => true,
@@ -2853,6 +2863,18 @@ return [
                     "SELECT COUNT(*) FROM quote_delivery_plans WHERE delivery_status NOT IN ('ready','completed') OR (delivery_status = 'completed' AND delivery_project_id = 0)",
                     "SELECT COUNT(*) FROM purchase_orders WHERE purchase_order_status NOT IN ('draft','ordered','partially_received','received','cancelled')",
                     "SELECT COUNT(*) FROM purchase_order_items WHERE purchase_item_quantity_received < 0 OR purchase_item_quantity_received > purchase_item_quantity_ordered",
+                ],
+            ],
+        ],
+        'n45-0028-ticket-delete-operations-alignment' => [
+            'module' => 'automation', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0028-ticket-delete-operations-alignment.php',
+            'summary' => 'Resolve Operations incidents when linked tickets are recoverably deleted and backfill historical drift.',
+            'data_change' => true,
+            'rollback' => 'Preserve reconciled incident history and restore the pre-upgrade database snapshot if the prior Operations projection must be reinstated.',
+            'fingerprint' => [
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_archived_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
                 ],
             ],
         ],

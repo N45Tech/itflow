@@ -123,6 +123,7 @@ $assertTrue(
         'n45-0025-inbound-mail-receipts',
         'n45-0026-service-assistance',
         'n45-0027-commercial-operations',
+        'n45-0028-ticket-delete-operations-alignment',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -141,8 +142,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0027-commercial-operations',
-    'The commercial operations migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0028-ticket-delete-operations-alignment',
+    'The ticket-delete Operations alignment is not the final stable N45 migration'
 );
 $commercial_migration = $manifest['migrations']['n45-0027-commercial-operations'] ?? [];
 $assertTrue(
@@ -154,6 +155,12 @@ $assertTrue(
     ($manifest['modules']['commercial']['runtime_files'] ?? []) === ['functions/commercial_operations.php']
         && ($manifest['modules']['commercial']['migrations'] ?? []) === ['n45-0027-commercial-operations'],
     'Commercial workflows are not owned by the commercial module boundary'
+);
+$delete_alignment_migration = $manifest['migrations']['n45-0028-ticket-delete-operations-alignment'] ?? [];
+$assertTrue(
+    ($delete_alignment_migration['fingerprint']['failure_queries'] ?? null)
+        === ($post_integration_reservations['n45-0028-ticket-delete-operations-alignment']['failure_queries'] ?? null),
+    'Ticket-delete Operations alignment does not match its durable data reservation'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(

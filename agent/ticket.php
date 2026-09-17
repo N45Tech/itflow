@@ -1878,11 +1878,10 @@ if (isset($_GET['ticket_id'])) {
                     </div>
                 <?php } ?>
 
-                <?php if ($automation_incident) {
+                <?php if ($automation_incident && !automationSourceIsRetired($automation_incident['automation_incident_source'])) {
                     $automation_source_raw = strtolower($automation_incident['automation_incident_source']);
                     $automation_source_name = match ($automation_source_raw) {
                         'uptime_kuma' => 'Uptime Kuma',
-                        'netbox' => 'NetBox',
                         'n8n' => 'n8n',
                         'backup' => 'Backups',
                         'checkmk' => 'Checkmk',
@@ -1896,7 +1895,6 @@ if (isset($_GET['ticket_id'])) {
                     };
                     $automation_source_icon = match ($automation_source_raw) {
                         'uptime_kuma' => 'fa-heartbeat',
-                        'netbox' => 'fa-project-diagram',
                         'n8n' => 'fa-random',
                         'backup' => 'fa-database',
                         'checkmk' => 'fa-heartbeat',

@@ -138,8 +138,9 @@ function n45MigrationReservationMetadataIsValid(array $reservation, array $addit
         'altered_indexes',
         'legacy_bridge_index_overrides',
     ], $additional_keys);
+    $allowed_keys = array_merge($required_keys, ['failure_queries']);
     $keys = array_keys($reservation);
-    if (array_diff($required_keys, $keys) || array_diff($keys, $required_keys)) {
+    if (array_diff($required_keys, $keys) || array_diff($keys, $allowed_keys)) {
         return false;
     }
     if (!is_string($reservation['module'])
@@ -154,7 +155,16 @@ function n45MigrationReservationMetadataIsValid(array $reservation, array $addit
         return false;
     }
 
-    return $reservation['created_tables'] || $reservation['altered_columns'] || $reservation['altered_indexes'];
+    $failure_queries = $reservation['failure_queries'] ?? [];
+    if ($failure_queries
+        && n45ValidateFingerprintContract('Migration reservation', ['failure_queries' => $failure_queries])) {
+        return false;
+    }
+
+    return $reservation['created_tables']
+        || $reservation['altered_columns']
+        || $reservation['altered_indexes']
+        || $failure_queries;
 }
 
 function n45MigrationReservationIdentifierListIsValid($identifiers, bool $allow_empty): bool
@@ -277,6 +287,10 @@ function n45MigrationReservationDefinitionMatches(array $definition, string $leg
                 return false;
             }
         }
+    }
+    if (array_key_exists('failure_queries', $reservation)
+        && ($fingerprint['failure_queries'] ?? []) !== $reservation['failure_queries']) {
+        return false;
     }
 
     $overrides = $reservation['legacy_bridge_index_overrides'];

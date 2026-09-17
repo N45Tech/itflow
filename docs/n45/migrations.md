@@ -51,6 +51,7 @@ The manifest reserves the next four feature IDs and all post-integration migrati
 | — | `n45-0025-inbound-mail-receipts` | Inbound mail |
 | — | `n45-0026-service-assistance` | Runbooks |
 | — | `n45-0027-commercial-operations` | Commercial operations |
+| — | `n45-0028-ticket-delete-operations-alignment` | Automation |
 
 `n45-0025-inbound-mail-receipts` adds durable mailbox/message receipts and a custom-action outbox without rewriting existing records. Preserve receipts and retained source mail when recovering. Rollback requires the matching pre-upgrade database and application snapshot; do not delete receipts while a mailbox can replay committed messages.
 
@@ -128,6 +129,7 @@ The legacy bridge remains deliberately read-only. A database whose upstream mark
 | `n45-0025-inbound-mail-receipts` | — | Runbooks | No | Preserve inbound mail receipts and source files; restore matching database and application snapshots before removing receipt tables. |
 | `n45-0026-service-assistance` | — | Runbooks | Yes | Disable the Service Follow-ups cron job; preserve plans, notification receipts, review history and published documents; restore matching database and application snapshots before removing the four assistance tables. |
 | `n45-0027-commercial-operations` | — | Commercial operations | No | Preserve billing decisions, accepted-scope snapshots, subscription observations and fulfillment history; restore matching database and application snapshots before removing commercial tables. |
+| `n45-0028-ticket-delete-operations-alignment` | — | Automation | Yes | Preserve reconciled incident history and restore the pre-upgrade database snapshot if the prior Operations projection must be reinstated. |
 
 Any environment that experimentally ran an earlier local `2.8.0.php` must be restored from its pre-upgrade snapshot or explicitly reconciled to the final portal request schema before release deployment. An advanced numeric marker alone is not proof of the final schema: the legacy bridge fails closed on an older or partial shape. Once namespace state is reconciled, an unrecorded `n45-0013` remains pending and the normal runner executes its retry-safe repair before recording the ledger row.
 

@@ -95,8 +95,16 @@ $assertTrue(
         'n45-0025-inbound-mail-receipts',
         'n45-0026-service-assistance',
         'n45-0027-commercial-operations',
+        'n45-0028-ticket-delete-operations-alignment',
     ],
     'The post-integration migration reservations are missing'
+);
+$delete_alignment_reservation = $post_integration_reservations['n45-0028-ticket-delete-operations-alignment'] ?? [];
+$assertTrue(
+    ($delete_alignment_reservation['failure_queries'] ?? []) === [
+        "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_archived_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
+    ],
+    'The data-only ticket-delete Operations reservation does not protect its reconciliation postcondition'
 );
 $repair_index = $post_integration_reservations['n45-0015-documentation-evidence-reference-index']['altered_indexes']['documentation_evidence_locker']['documentation_evidence_reference'] ?? [];
 $assertTrue(($repair_index['unique'] ?? null) === false, 'The compatibility repair would restore the obsolete unique evidence index');

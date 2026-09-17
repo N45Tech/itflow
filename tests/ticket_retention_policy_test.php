@@ -51,6 +51,7 @@ $agent_dashboard = $read('agent/dashboard.php');
 $agent_operations = $read('agent/operations.php');
 $migration = $read('n45/migrations/n45-0021-client-ticket-retention.php');
 $recoverable_migration = $read('n45/migrations/n45-0022-recoverable-ticket-deletion.php');
+$delete_alignment_migration = $read('n45/migrations/n45-0028-ticket-delete-operations-alignment.php');
 $manifest = $read('n45/manifest.php');
 $schema = $read('db.sql');
 
@@ -77,6 +78,10 @@ $assertContains("'data_change' => true", $manifest, 'The incident reconciliation
 $assertContains('ticket_restore_until', $recoverable_migration, 'Recoverable deletion migration omits the restore deadline');
 $assertContains('ticket_deletion_events', $recoverable_migration, 'Recoverable deletion migration omits surviving audit history');
 $assertContains('ticket_restore_queue', $schema, 'Fresh installs omit the deleted-ticket recovery queue');
+$assertContains("automation_incident_last_action = 'ticket_deleted'", $delete_alignment_migration,
+    'Existing Operations incidents linked to deleted tickets are not backfilled');
+$assertContains("'n45-0028-ticket-delete-operations-alignment'", $manifest,
+    'The ticket deletion Operations reconciliation is absent from the manifest');
 
 $assertContains('Ticket audit retention', $client_modal, 'Client settings do not expose ticket retention');
 $assertContains('Strict retention — no deletion override', $client_modal, 'Client settings do not offer strict retention');
@@ -129,6 +134,12 @@ $assertContains('client_ticket_retention_days', $retention, 'The client retentio
 $assertNotContains('restore window has expired', $retention, 'Retained tickets cannot be restored after their protection period');
 $assertContains("ticketDeletionRecordEvent(\$ticket, 'restored'", $retention,
     'Restoration does not append a surviving event');
+$assertOrdered($retention, [
+    'function ticketDeletionSoftDelete(',
+    'UPDATE tickets SET ticket_archived_at = NOW()',
+    "automationResolveTicketIncidents(\$ticket_id, 'ticket_deleted')",
+    "ticketDeletionRecordEvent(\$ticket, 'deleted'",
+], 'Recoverable deletion does not resolve its linked Operations incident atomically');
 
 $assertOrdered($retention, [
     'function ticketDeletionPurge(',

@@ -68,6 +68,11 @@ function automationSource($value): string
     return $source;
 }
 
+function automationSourceIsRetired($value): bool
+{
+    return in_array(automationSource($value), ['netbox'], true);
+}
+
 function automationEntityType($value): string
 {
     $type = strtolower(automationLimitText($value, 40));
@@ -503,7 +508,7 @@ function automationDeleteTicketOperations(int $ticket_id): int
 
 /**
  * Keep the Operations projection aligned when a linked ticket is manually
- * closed or cancelled. A later open source event can create a fresh ticket;
+ * closed, cancelled, merged, or deleted. A later open source event can create a fresh ticket;
  * until then the closed ticket must not continue to count as an open incident.
  */
 function automationResolveTicketIncidents(int $ticket_id, string $action = 'ticket_closed'): int
@@ -536,7 +541,7 @@ function automationResolveTicketIncidentsSafely(int $ticket_id, string $action =
     try {
         return automationResolveTicketIncidents($ticket_id, $action);
     } catch (Throwable $exception) {
-        error_log("Closed ticket $ticket_id incident reconciliation will retry on a later event: "
+        error_log("Terminal ticket $ticket_id incident reconciliation will retry on a later event: "
             . $exception->getMessage());
         return 0;
     }
@@ -868,6 +873,9 @@ function automationResolveIdentity(array $input): array
 
     if (!n45FeatureEnabled('automation')) {
         throw new RuntimeException('Automation identity resolution is disabled by deployment feature flag');
+    }
+    if (automationSourceIsRetired($input['source'] ?? '')) {
+        throw new InvalidArgumentException('The integration source is retired');
     }
 
     $acquired_locks = automationAcquireNamedLocks(automationIdentityLockNames($input));

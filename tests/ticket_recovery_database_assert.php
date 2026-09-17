@@ -25,6 +25,7 @@ $query = static fn (string $sql) => ticketDeletionDbQuery($sql, 'Ticket recovery
 $scalar = static fn (string $sql) => mysqli_fetch_row($query($sql))[0];
 $clients = [];
 $tickets = [];
+$incidents = [];
 $transaction = static function (callable $operation) use ($mysqli) {
     mysqli_begin_transaction($mysqli);
     try {
@@ -52,6 +53,17 @@ try {
         $tickets[] = intval(mysqli_insert_id($mysqli));
     }
     [$first, $second, $third, $other_client] = $tickets;
+    $query("INSERT INTO automation_incidents SET
+        automation_incident_source = 'ci-ticket-delete',
+        automation_incident_key = 'ticket-$first',
+        automation_incident_title = 'Deleted ticket projection fixture',
+        automation_incident_status = 'Open',
+        automation_incident_severity = 'high',
+        automation_incident_ticket_id = $first,
+        automation_incident_client_id = {$clients[0]},
+        automation_incident_opened_at = NOW(),
+        automation_incident_last_event_at = NOW()");
+    $incidents[] = intval(mysqli_insert_id($mysqli));
     $assert(ticketDisciplineCanTransfer($first)[0] === true, 'A new ticket is incorrectly blocked from transfer');
     $query("INSERT INTO ticket_replies SET ticket_reply = 'Original reply and time',
         ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:15:00',
@@ -89,6 +101,9 @@ try {
         'Rolled-back deletion hid the ticket');
     $assert(intval($scalar("SELECT COUNT(*) FROM ticket_deletion_events
         WHERE ticket_deletion_event_ticket_id = $first")) === 0, 'Rolled-back deletion left an audit event');
+    $assert($scalar("SELECT automation_incident_status FROM automation_incidents
+        WHERE automation_incident_id = {$incidents[0]}") === 'Open',
+        'Rolled-back deletion resolved the Operations incident');
 
     foreach ([$first => 7, $other_client => 90] as $ticket_id => $expected_days) {
         $deleted = $transaction(function () use ($ticket_id) {
@@ -102,6 +117,12 @@ try {
         'Soft deletion destroyed replies or time entries');
     $assert(intval($scalar("SELECT COUNT(*) FROM ticket_work_notes WHERE ticket_work_note_ticket_id = $first")) === 1,
         'Soft deletion destroyed work evidence');
+    $assert($scalar("SELECT CONCAT(automation_incident_status, ':', automation_incident_last_action)
+        FROM automation_incidents WHERE automation_incident_id = {$incidents[0]}")
+        === 'Resolved:ticket_deleted', 'Soft deletion left the Operations incident open');
+    $assert($scalar("SELECT automation_incident_resolved_at FROM automation_incidents
+        WHERE automation_incident_id = {$incidents[0]}") !== null,
+        'Soft deletion did not timestamp the Operations incident resolution');
     $reject(fn () => ticketDeletionRequirePurgeEligible(mysqli_fetch_assoc($query(
         "SELECT * FROM tickets WHERE ticket_id = $first"))), 'Early purge was allowed');
     try {
@@ -167,6 +188,10 @@ try {
     echo "Ticket recovery, client retention, promise gates, relationships, and migration replay passed.\n";
 } finally {
     mysqli_rollback($mysqli);
+    if ($incidents) {
+        $query('DELETE FROM automation_incidents WHERE automation_incident_id IN ('
+            . implode(',', $incidents) . ')');
+    }
     if ($tickets) {
         $ids = implode(',', $tickets);
         foreach ([

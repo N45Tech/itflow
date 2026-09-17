@@ -28,6 +28,8 @@ $quoteHandler = $read('agent/post/quote.php');
 $recurringHandler = $read('agent/post/recurring_invoice.php');
 $migration = $read('n45/migrations/n45-0027-commercial-operations.php');
 $baseline = $read('db.sql');
+$commercialStyles = $read('agent/includes/commercial_styles.php');
+$commercialCss = $read('agent/css/commercial.css');
 
 foreach (['quotes', 'quote_items', 'invoices', 'invoice_items', 'recurring_invoices', 'recurring_invoice_items',
           'products', 'product_stock', 'vendors', 'projects', 'tickets', 'expenses', 'contracts'] as $nativeTable) {
@@ -66,6 +68,25 @@ $contains('commercialProfitabilityRows', $service, 'Client and agreement profita
 $contains("'Outside agreement / unallocated'", $service, 'Profitability does not expose unallocated client activity');
 $contains('mysqli_begin_transaction', $handler, 'Commercial multi-record writes are not transactional');
 $contains('mysqli_rollback', $handler, 'Commercial transactional failures are not rolled back');
+
+foreach (['billing_review.php', 'subscriptions.php', 'purchasing.php', 'profitability.php', 'quote_delivery.php'] as $commercialPage) {
+    $page = $read("agent/$commercialPage");
+    $contains("require 'includes/commercial_styles.php'", $page, "$commercialPage does not load the shared commercial styles");
+    $contains('class="card n45-commercial-page-header"', $page, "$commercialPage does not use the standard commercial page header");
+    $contains('class="card-header bg-dark py-2"', $page, "$commercialPage does not match the established card-header treatment");
+}
+
+foreach (['billing_review.php', 'subscriptions.php', 'purchasing.php', 'profitability.php'] as $commercialPage) {
+    $page = $read("agent/$commercialPage");
+    $notContains('commercial_tabs.php', $page, "$commercialPage still loads duplicate in-page navigation");
+    $notContains('n45-commercial-tabs', $page, "$commercialPage still renders duplicate in-page navigation");
+}
+
+$contains('css/commercial.css', $commercialStyles, 'Commercial pages no longer load their shared stylesheet');
+$contains('var(--n45-surface', $commercialCss, 'Commercial page surfaces do not use the application theme tokens');
+$contains('var(--n45-border', $commercialCss, 'Commercial page borders do not use the application theme tokens');
+$notContains('.n45-commercial-heading', $commercialCss, 'The superseded commercial page heading style remains');
+$notContains('.n45-commercial-tabs', $commercialCss, 'The duplicate commercial navigation style remains');
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);

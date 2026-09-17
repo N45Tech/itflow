@@ -219,6 +219,12 @@ function automationEventPolicy(string $source): array
     global $mysqli;
 
     $policy = automationEventPolicyDefaults($source);
+    if (automationSourceIsRetired($policy['source'])) {
+        $policy['enabled'] = false;
+        $policy['ticket_enabled'] = false;
+        $policy['auto_resolve'] = false;
+        return $policy;
+    }
     $source_sql = automationDbEscape($policy['source']);
     mysqli_query($mysqli, "INSERT IGNORE INTO automation_event_policies
         (automation_policy_source) VALUES ('$source_sql')");
@@ -338,6 +344,9 @@ function automationEventQueue(array $input): array
     }
 
     $event = automationEventEnvelope($input);
+    if (automationSourceIsRetired($event['source'])) {
+        throw new InvalidArgumentException('The integration source is retired');
+    }
     $document = automationEventDocument($event);
     $policy = automationEventPolicy($event['source']);
 
@@ -1451,6 +1460,15 @@ function automationMirrorProcessedEvent(array $input, array $resolved,
     }
 
     $event = automationEventEnvelope($input);
+    if (automationSourceIsRetired($event['source'])) {
+        return [
+            'skipped' => true,
+            'reason' => 'source_retired',
+            'duplicate' => false,
+            'action' => 'skipped',
+            'ticket_id' => max(0, intval($resolved['ticket_id'] ?? 0)),
+        ];
+    }
     $document = automationEventDocument($event);
     $policy = automationEventPolicy($event['source']);
     $source_sql = automationDbEscape($event['source']);
