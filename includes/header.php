@@ -36,6 +36,11 @@ header("X-Frame-Options: DENY");
     <meta http-equiv="x-ua-compatible" content="ie=edge">
     <meta name="robots" content="noindex">
 
+    <?php /* Apply the technician's browser-local sidebar density before CSS is
+             parsed so navigation never flashes at the wrong spacing. The
+             control itself is in the account menu in includes/top_nav.php. */ ?>
+    <script src="/js/n45_sidebar_density.js?v=<?= filemtime(__DIR__ . '/../js/n45_sidebar_density.js') ?>"></script>
+
     <title><?= $session_company_name; ?></title>
 
     <!-- Favicon -->
