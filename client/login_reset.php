@@ -193,6 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
     <!-- Theme style -->
     <link rel="stylesheet" href="../libs/adminlte/css/adminlte.min.css">
     <link rel="stylesheet" href="../css/itflow_custom.css">
+    <link rel="stylesheet" href="../css/n45_theme.css?v=<?= filemtime(__DIR__ . '/../css/n45_theme.css') ?>">
 
 </head>
 

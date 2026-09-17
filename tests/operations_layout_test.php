@@ -3,11 +3,17 @@
 // Guards the Operations layout regression observed after the production release.
 $root = dirname(__DIR__);
 $operations = file_get_contents($root . '/agent/operations.php');
+$ticket = file_get_contents($root . '/agent/ticket.php');
 $css = file_get_contents($root . '/css/itflow_custom.css');
 
 $failures = [];
 $assertContains = static function (string $needle, string $haystack, string $message) use (&$failures): void {
     if (!str_contains($haystack, $needle)) {
+        $failures[] = $message;
+    }
+};
+$assertNotContains = static function (string $needle, string $haystack, string $message) use (&$failures): void {
+    if (str_contains($haystack, $needle)) {
         $failures[] = $message;
     }
 };
@@ -46,6 +52,31 @@ $assertContains(
     'font-size: 1rem;',
     $css,
     'Integration health icons remain visually smaller than adjacent system icons'
+);
+$assertNotContains(
+    'n45-source-filter',
+    $operations,
+    'Operations still renders source-specific service tabs'
+);
+$assertNotContains(
+    '?source=',
+    $operations,
+    'Operations still links to source-specific drill-down views'
+);
+$assertNotContains(
+    'operations.php?source=',
+    $ticket,
+    'Ticket detail still links to a source-specific Operations view'
+);
+$assertNotContains(
+    "\$_GET['source']",
+    $operations,
+    'Operations still accepts a source-specific dashboard filter'
+);
+$assertNotContains(
+    '.n45-source-filter',
+    $css,
+    'The removed Operations service-tab styles remain'
 );
 
 if ($failures) {

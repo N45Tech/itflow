@@ -548,6 +548,7 @@ if (isset($_POST['add_telemetry'])) {
     <!-- Custom Style Sheet -->
     <link href="/libs/tom-select/css/tom-select.bootstrap5.min.css" rel="stylesheet" type="text/css">
     <link rel="stylesheet" href="/css/itflow_custom.css">
+    <link rel="stylesheet" href="/css/n45_theme.css?v=<?= filemtime(__DIR__ . '/../css/n45_theme.css') ?>">
 
 </head>
 

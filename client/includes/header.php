@@ -48,6 +48,7 @@ $portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_
         <link rel="stylesheet" href="/libs/DataTables/datatables.min.css">
     <?php } ?>
     <link rel="stylesheet" href="/css/itflow_custom.css?v=<?= filemtime(__DIR__ . '/../../css/itflow_custom.css') ?>">
+    <link rel="stylesheet" href="/css/n45_theme.css?v=<?= filemtime(__DIR__ . '/../../css/n45_theme.css') ?>">
 </head>
 
 <body class="n45-client-portal">

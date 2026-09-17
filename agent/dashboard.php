@@ -45,40 +45,48 @@ $sql_years_select = mysqli_query($mysqli, "
   } */
 </style>
 
-<div class="n45-dashboard-controls">
-    <form class="d-flex flex-wrap align-items-center gap-2">
-        <input type="hidden" name="enable_financial" value="0">
-        <input type="hidden" name="enable_technical" value="0">
+<header class="n45-page-lead">
+    <div>
+        <h1>Dashboard</h1>
+        <p>Financial and service delivery signals for the selected year.</p>
+    </div>
+    <div class="n45-page-lead-actions">
+        <div class="n45-dashboard-controls">
+            <form class="d-flex flex-wrap align-items-center gap-2">
+                <input type="hidden" name="enable_financial" value="0">
+                <input type="hidden" name="enable_technical" value="0">
 
-        <label for="year" class="me-sm-2">Select Year:</label>
-        <select id="year" onchange="this.form.submit()" class="form-select w-auto me-sm-3" name="year">
-            <?php while ($row = mysqli_fetch_assoc($sql_years_select)) {
-                $year_select = $row['all_years'];
-                if (empty($year_select)) {
-                    $year_select = date('Y');
-                }
-            ?>
-                <option value="<?= $year_select ?>" <?php if ($year == $year_select) { echo "selected"; } ?>>
-                    <?= $year_select ?>
-                </option>
-            <?php } ?>
-        </select>
+                <label for="year" class="me-sm-2">Select Year:</label>
+                <select id="year" onchange="this.form.submit()" class="form-select w-auto me-sm-3" name="year">
+                    <?php while ($row = mysqli_fetch_assoc($sql_years_select)) {
+                        $year_select = $row['all_years'];
+                        if (empty($year_select)) {
+                            $year_select = date('Y');
+                        }
+                    ?>
+                        <option value="<?= $year_select ?>" <?php if ($year == $year_select) { echo "selected"; } ?>>
+                            <?= $year_select ?>
+                        </option>
+                    <?php } ?>
+                </select>
 
-        <?php if ($session_user_role == 1 || ($session_user_role == 3 && $config_module_enable_accounting == 1)) { ?>
-            <div class="form-check form-switch me-3">
-                <input type="checkbox" onchange="this.form.submit()" class="form-check-input" id="customSwitch1" name="enable_financial" value="1" <?php if ($user_config_dashboard_financial_enable == 1) { echo "checked"; } ?>>
-                <label class="form-check-label" for="customSwitch1">Financial</label>
-            </div>
-        <?php } ?>
+                <?php if ($session_user_role == 1 || ($session_user_role == 3 && $config_module_enable_accounting == 1)) { ?>
+                    <div class="form-check form-switch me-3">
+                        <input type="checkbox" onchange="this.form.submit()" class="form-check-input" id="customSwitch1" name="enable_financial" value="1" <?php if ($user_config_dashboard_financial_enable == 1) { echo "checked"; } ?>>
+                        <label class="form-check-label" for="customSwitch1">Financial</label>
+                    </div>
+                <?php } ?>
 
-        <?php if ($session_user_role >= 2 && $config_module_enable_ticketing == 1) { ?>
-            <div class="form-check form-switch">
-                <input type="checkbox" onchange="this.form.submit()" class="form-check-input" id="customSwitch2" name="enable_technical" value="1" <?php if ($user_config_dashboard_technical_enable == 1) { echo "checked"; } ?>>
-                <label class="form-check-label" for="customSwitch2">Technical</label>
-            </div>
-        <?php } ?>
-    </form>
-</div>
+                <?php if ($session_user_role >= 2 && $config_module_enable_ticketing == 1) { ?>
+                    <div class="form-check form-switch">
+                        <input type="checkbox" onchange="this.form.submit()" class="form-check-input" id="customSwitch2" name="enable_technical" value="1" <?php if ($user_config_dashboard_technical_enable == 1) { echo "checked"; } ?>>
+                        <label class="form-check-label" for="customSwitch2">Technical</label>
+                    </div>
+                <?php } ?>
+            </form>
+        </div>
+    </div>
+</header>
 
 <?php
 if ($user_config_dashboard_financial_enable == 1) {

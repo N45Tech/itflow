@@ -6,7 +6,7 @@ $webhook_url = 'https://' . rtrim((string) $config_base_url, '/') . '/api/v1/int
 
 $policies = [];
 $sql_policies = mysqli_query($mysqli, "SELECT * FROM automation_event_policies
-    WHERE automation_policy_source <> 'netbox'
+    WHERE automation_policy_source NOT IN ('netbox', 'checkmk')
     ORDER BY automation_policy_source ASC");
 while ($policy = mysqli_fetch_assoc($sql_policies)) {
     $policies[] = $policy;
@@ -43,7 +43,7 @@ $sql_maintenance = mysqli_query($mysqli, "SELECT automation_maintenance_windows.
     LEFT JOIN assets ON automation_maintenance_asset_id = assets.asset_id
     LEFT JOIN services ON automation_maintenance_service_id = services.service_id
     WHERE automation_maintenance_deleted_at IS NULL
-    AND automation_maintenance_source <> 'netbox'
+    AND automation_maintenance_source NOT IN ('netbox', 'checkmk')
     ORDER BY automation_maintenance_ends_at >= NOW() DESC,
         automation_maintenance_starts_at DESC LIMIT 50");
 while ($window = mysqli_fetch_assoc($sql_maintenance)) {
@@ -60,7 +60,7 @@ $queue_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     SUM(automation_event_suppressed_reason IS NOT NULL
         AND automation_event_received_at >= NOW() - INTERVAL 24 HOUR) AS suppressed_24h
     FROM automation_events
-    WHERE automation_event_source <> 'netbox'"));
+    WHERE automation_event_source NOT IN ('netbox', 'checkmk')"));
 
 $failed_events = mysqli_query($mysqli, "SELECT automation_event_id, automation_event_source,
     automation_event_external_id, automation_event_incident_key, automation_event_status,
@@ -69,7 +69,7 @@ $failed_events = mysqli_query($mysqli, "SELECT automation_event_id, automation_e
     automation_event_payload IS NOT NULL AS payload_available
     FROM automation_events
     WHERE automation_event_status IN ('Failed', 'Dead')
-    AND automation_event_source <> 'netbox'
+    AND automation_event_source NOT IN ('netbox', 'checkmk')
     ORDER BY automation_event_last_received_at DESC LIMIT 50");
 
 ?>
@@ -79,7 +79,7 @@ $failed_events = mysqli_query($mysqli, "SELECT automation_event_id, automation_e
         <h3 class="card-title"><i class="fas fa-fw fa-stream mr-2"></i>Operational Event Ingestion</h3>
     </div>
     <div class="card-body">
-        <p class="text-muted">Source-neutral alert correlation for Level.io, SentinelOne, Checkmk, CIPP, backups, infrastructure, and n8n workflows.</p>
+        <p class="text-muted">Source-neutral alert correlation for Level.io, SentinelOne, CIPP, backups, infrastructure, and n8n workflows.</p>
 
         <label>Authenticated event endpoint</label>
         <div class="input-group mb-2">

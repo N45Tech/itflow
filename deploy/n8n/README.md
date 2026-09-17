@@ -103,7 +103,7 @@ Example:
 
 Send a later event with the same `incident_key`, a new `event_id`, and `state: resolved` to add the recovery note and resolve the linked ticket.
 
-The same contract is used for Level.io, SentinelOne, Checkmk, CIPP, backup, infrastructure, Uptime Kuma, and n8n signals. Source adapters should translate vendor-specific payloads before posting them. Use a stable source identifier in `source`, a unique delivery identifier in `event_id`, and one stable lifecycle key in `incident_key`.
+The same contract is used for Level.io, SentinelOne, CIPP, backup, infrastructure, Uptime Kuma, and n8n signals. Source adapters should translate vendor-specific payloads before posting them. Use a stable source identifier in `source`, a unique delivery identifier in `event_id`, and one stable lifecycle key in `incident_key`.
 
 Optional `service_id` links the incident to an existing ITFlow service. `assigned_to`, `category_id`, `contact_id`, `contact_mode`, and `request_type_key` provide explicit ticket routing; referenced IDs are validated against the resolved client and active ITFlow records. The identity resolver links client, location, and device records from `identity`; it rejects attempts to remap an established incident to a different object.
 

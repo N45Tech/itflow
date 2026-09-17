@@ -772,6 +772,7 @@ if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_
 
     <link rel="stylesheet" href="libs/adminlte/css/adminlte.min.css">
     <link rel="stylesheet" href="/css/itflow_custom.css">
+    <link rel="stylesheet" href="/css/n45_theme.css?v=<?= filemtime(__DIR__ . '/css/n45_theme.css') ?>">
 </head>
 <body class="hold-transition login-page n45-auth-page">
 

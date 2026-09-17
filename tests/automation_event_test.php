@@ -105,12 +105,13 @@ $assertSame('[REDACTED]', $redacted['password'], 'Top-level password was not red
 $assertSame('[REDACTED]', $redacted['nested']['webhookSecret'], 'Nested webhook secret was not redacted');
 $assertSame('WKSTN-101', $redacted['nested']['hostname'], 'Allowed event data was redacted');
 
-$defaults = automationEventPolicyDefaults('CheckMK');
-$assertSame('checkmk', $defaults['source'], 'Policy source was not normalized');
+$defaults = automationEventPolicyDefaults('Infrastructure');
+$assertSame('infrastructure', $defaults['source'], 'Policy source was not normalized');
 $assertSame(1, $defaults['threshold_count'], 'Default policy should ticket on the first occurrence');
 $assertSame(5, $defaults['max_attempts'], 'Default retry limit changed');
 $assertSame(30, $defaults['payload_retention_days'], 'Default payload retention changed');
 $assertSame(true, automationSourceIsRetired('NetBox'), 'NetBox is not marked as a retired integration source');
+$assertSame(true, automationSourceIsRetired('CheckMK'), 'Checkmk is not marked as a retired integration source');
 $assertSame(false, automationSourceIsRetired('sentinelone'), 'An active integration source was marked retired');
 
 date_default_timezone_set('America/New_York');
@@ -118,12 +119,12 @@ $assertSame('2026-08-31 08:00:00', automationEventDateTime('2026-08-31T12:00:00Z
 date_default_timezone_set('UTC');
 
 $assertThrows(static fn () => automationEventEnvelope([
-    'source' => 'checkmk',
+    'source' => 'infrastructure',
     'event_id' => '',
     'incident_key' => 'host:123',
 ]), 'An event without an event id was accepted');
 $assertThrows(static fn () => automationEventEnvelope([
-    'source' => 'checkmk',
+    'source' => 'infrastructure',
     'event_id' => 'event-1',
     'incident_key' => 'host:123',
     'state' => 'closed',
@@ -134,7 +135,7 @@ $assertThrows(static fn () => automationEventEnvelope([
     'incident_key' => 'host:123',
 ]), 'An invalid source was accepted');
 $assertThrows(static fn () => automationEventEnvelope([
-    'source' => 'checkmk',
+    'source' => 'infrastructure',
     'event_id' => 'event-1',
     'incident_key' => 'host:123',
     'contact_mode' => 'guess',
