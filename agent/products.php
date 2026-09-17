@@ -53,39 +53,83 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$product_action_items = array();
+if ($type_display == 'Products') {
+    $product_action_items[] = array(
+        'label' => 'Import',
+        'icon' => 'fa-upload',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/product/product_import.php'),
+    );
+    $product_action_items[] = array('type' => 'separator');
+}
+$product_action_items[] = array(
+    'label' => 'Export',
+    'icon' => 'fa-download',
+    'class' => 'ajax-modal',
+    'attributes' => array(
+        'data-modal-url' => buildExportModalUrl('modals/product/product_export.php', array('type', 'category', 'archived', 'q')),
+    ),
+);
+
+$product_page_actions = array();
+if (lookupUserPermission("module_sales") >= 2) {
+    $product_page_actions[] = array(
+        'type' => 'split-menu',
+        'button' => array(
+            'type' => 'button',
+            'label' => 'New ' . ucwords($type_filter),
+            'icon' => 'fa-plus',
+            'variant' => 'primary',
+            'class' => 'ajax-modal',
+            'attributes' => array('data-modal-url' => 'modals/product/product_add.php?type=' . $type_filter),
+        ),
+        'items' => $product_action_items,
+        'menu_label' => 'More ' . strtolower($type_display) . ' actions',
+        'align_end' => true,
+    );
+} else {
+    $product_page_actions[] = array(
+        'type' => 'menu',
+        'label' => 'Actions',
+        'icon' => 'fa-ellipsis-h',
+        'variant' => 'secondary',
+        'items' => $product_action_items,
+        'align_end' => true,
+    );
+}
+
+$product_has_filters = $q !== '' || $category_filter !== '' || $archived == 1;
+$product_empty_action = $product_has_filters
+    ? array('label' => 'Clear filters', 'icon' => 'fa-times', 'variant' => 'secondary', 'href' => 'products.php?type=' . $type_filter)
+    : (lookupUserPermission("module_sales") >= 2 ? array(
+        'type' => 'button',
+        'label' => 'New ' . ucwords($type_filter),
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/product/product_add.php?type=' . $type_filter),
+    ) : null);
+
 ?>
 
-    <div class="card">
-        <div class="card-header bg-dark py-2">
-            <h3 class="card-title mt-2"><i class="fas fa-fw <?= $type_icon ?> me-2"></i><?= $type_display ?></h3>
-            <div class="card-tools">
-                <div class="btn-group">
-                    <?php if (lookupUserPermission("module_sales") >= 2) { ?>
-                    <button type="button"
-                        class="btn btn-primary ajax-modal"
-                        data-modal-url="modals/product/product_add.php?type=<?= $type_filter ?>">
-                        <i class="fas fa-plus me-2"></i>New <strong><?= ucwords($type_filter); ?></strong>
-                    </button>
-                    <?php } ?>
-                    <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                    <div class="dropdown-menu">
-                        <?php if ($type_display == 'Products') { ?>
-                            <a class="dropdown-item text-dark ajax-modal" href="#"
-                                data-modal-url="modals/product/product_import.php">
-                                <i class="fa fa-fw fa-upload me-2"></i>Import
-                            </a>
-                            <div class="dropdown-divider"></div>                            
-                        <?php } ?>                   
-                        <a class="dropdown-item text-dark ajax-modal"
-                            data-modal-url="<?= buildExportModalUrl('modals/product/product_export.php', ['type', 'category', 'archived', 'q']) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <section class="card n45-workspace" aria-labelledby="products-page-title">
+        <?php
+        n45RenderPageHeader(array(
+            'variant' => 'workspace',
+            'title' => $type_display,
+            'title_id' => 'products-page-title',
+            'icon' => $type_icon,
+            'tabs' => array(
+                array('label' => 'Services', 'icon' => 'fa-wrench', 'href' => '?type=service', 'active' => $type_filter === 'service'),
+                array('label' => 'Products', 'icon' => 'fa-cube', 'href' => '?type=product', 'active' => $type_filter === 'product'),
+            ),
+            'tabs_label' => 'Catalog type',
+            'actions' => $product_page_actions,
+        ));
+        ?>
 
-        <div class="card-header py-3">
+        <div class="card-header n45-filter-bar">
             <form autocomplete="off">
                 <input type="hidden" name="archived" value="<?= $archived ?>">
                 <input type="hidden" name="type" value="<?= $type_filter ?>">
@@ -93,8 +137,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <div class="row g-2 align-items-center">
                     <div class="col-sm-4">
                         <div class="input-group">
-                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) {echo stripslashes(escapeHtml($q));} ?>" placeholder="Search <?= $type_display ?>">
-                                <button class="btn btn-primary"><i class="fa fa-search"></i></button>
+                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) {echo stripslashes(escapeHtml($q));} ?>" placeholder="Search <?= strtolower($type_display) ?>">
+                                <button class="btn btn-primary" aria-label="Search <?= strtolower($type_display) ?>"><i class="fa fa-search" aria-hidden="true"></i></button>
                         </div>
                     </div>
                     <div class="col-sm-3">
@@ -125,10 +169,6 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     <div class="col-md-5">
                         <div class="btn-toolbar justify-content-md-end">
                             <div class="btn-group">
-                                <div class="btn-group me-2">
-                                    <a href="?type=service" class="btn btn-<?php if ($type_filter == 'service'){ echo"primary"; } else { echo "default"; } ?>"><i class="fa fa-fw fa-wrench"></i><span class="d-none d-sm-inline ms-2">Service</span></a>
-                                    <a href="?type=product" class="btn btn-<?php if ($type_filter == 'product'){ echo"primary"; } else { echo "default"; } ?>"><i class="fa fa-fw fa-cube"></i><span class="d-none d-sm-inline ms-2">Product</span></a>
-                                </div>
                                 <a href="?<?= $url_query_strings_sort ?>&archived=<?php if($archived == 1){ echo 0; } else { echo 1; } ?>"
                                     class="btn btn-<?php if($archived == 1){ echo"primary"; } else { echo "default"; } ?>">
                                     <i class="fa fa-fw fa-archive me-2"></i>Archived
@@ -172,8 +212,18 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         <form id="bulkActions" action="post.php" method="post">
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
+            <?php if ($num_rows[0] == 0) { ?>
+                <?php
+                n45RenderEmptyState(array(
+                    'title' => $product_has_filters ? 'No ' . strtolower($type_display) . ' match these filters' : 'No ' . strtolower($type_display) . ' yet',
+                    'description' => $product_has_filters ? 'Clear the current filters to return to the catalog.' : 'Add the items used for quotes, invoices, and recurring billing.',
+                    'icon' => $type_icon,
+                    'action' => $product_empty_action,
+                ));
+                ?>
+            <?php } else { ?>
             <div class="table-responsive">
-                <table class="table table-striped table-borderless table-hover mb-0">
+                <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
                     <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?> text-nowrap">
                     <tr>
                         <td class="checkbox-column border-end">
@@ -321,9 +371,10 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     </tbody>
                 </table>
             </div>
+            <?php } ?>
         </form>
         <?php require_once "../includes/filter_footer.php"; ?>
-    </div>
+    </section>
 
 <script src="/js/bulk_actions.js"></script>
 
