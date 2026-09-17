@@ -47,9 +47,9 @@ ob_start();
             <div class="input-group">
                     <span class="input-group-text"><i class="fa fa-fw fa-th-list"></i></span>
                 <select class="form-select select2" name="use_case">
-                    <option>General</option>
-                    <option>Tickets</option>
-                    <option>Documentation</option>
+                    <?php foreach (aiModelUseCases() as $available_use_case) { ?>
+                        <option><?= escapeHtml($available_use_case) ?></option>
+                    <?php } ?>
                 </select>
             </div>
         </div>
@@ -61,6 +61,11 @@ ob_start();
                 <input type="number" class="form-control" name="temperature" step="0.1" min="0" max="2" value="" placeholder="Provider default">
             </div>
             <small class="form-text text-muted">Optional. Leave blank to let the provider use its default - some newer models reject every other value.</small>
+        </div>
+
+        <div class="alert alert-light border small" role="note">
+            <strong>Automation Investigation</strong> is a read-only background workflow. It receives redacted
+            Operations evidence and never falls back to the General model.
         </div>
 
         <div class="mb-3">

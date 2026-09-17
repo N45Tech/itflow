@@ -602,7 +602,10 @@ if (isset($_GET['ticket_id'])) {
             LEFT JOIN services ON automation_incident_service_id = service_id
             WHERE automation_incident_ticket_id = $ticket_id LIMIT 1"));
         $automation_incident_events = [];
+        $automation_investigation = null;
+        $automation_investigation_result = [];
         if ($automation_incident) {
+            $automation_incident_id = intval($automation_incident['automation_incident_id']);
             $automation_source_sql = escapeSql($automation_incident['automation_incident_source']);
             $automation_key_sql = escapeSql($automation_incident['automation_incident_key']);
             $sql_automation_incident_events = mysqli_query($mysqli, "SELECT automation_event_action,
@@ -615,6 +618,23 @@ if (isset($_GET['ticket_id'])) {
                 ORDER BY automation_event_last_received_at DESC LIMIT 5");
             while ($automation_event = mysqli_fetch_assoc($sql_automation_incident_events)) {
                 $automation_incident_events[] = $automation_event;
+            }
+
+            $automation_investigation = mysqli_fetch_assoc(mysqli_query($mysqli,
+                "SELECT * FROM automation_investigations
+                WHERE automation_investigation_incident_id = $automation_incident_id
+                AND automation_investigation_ticket_id = $ticket_id
+                ORDER BY automation_investigation_id DESC LIMIT 1")) ?: null;
+            if ($automation_investigation
+                && $automation_investigation['automation_investigation_status'] === 'Completed') {
+                $decoded_investigation = json_decode(
+                    (string) $automation_investigation['automation_investigation_result'], true
+                );
+                if (is_array($decoded_investigation)
+                    && ($decoded_investigation['scope'] ?? '') === 'read_only'
+                    && ($decoded_investigation['remediation_attempted'] ?? null) === false) {
+                    $automation_investigation_result = $decoded_investigation;
+                }
             }
         }
 
@@ -1948,6 +1968,108 @@ if (isset($_GET['ticket_id'])) {
                                         </div>
                                     <?php } ?>
                                 </div>
+                            <?php } ?>
+
+                            <?php if ($automation_investigation
+                                && $automation_investigation['automation_investigation_status'] !== 'Skipped') {
+                                $investigation_status = (string) $automation_investigation['automation_investigation_status'];
+                                $investigation_badge = match ($investigation_status) {
+                                    'Completed' => 'info',
+                                    'Failed' => 'warning',
+                                    'Dead' => 'danger',
+                                    default => 'secondary',
+                                };
+                                $investigation_label = match ($investigation_status) {
+                                    'Completed' => 'Analysis ready',
+                                    'Processing' => 'Analyzing',
+                                    'Failed' => 'Retry scheduled',
+                                    'Dead' => 'Needs review',
+                                    default => 'Queued',
+                                };
+                                $investigation_completed_at = (string) ($automation_investigation['automation_investigation_completed_at'] ?? '');
+                                ?>
+                                <section class="n45-investigation" aria-labelledby="automation-investigation-heading">
+                                    <div class="n45-investigation-header">
+                                        <h6 id="automation-investigation-heading">
+                                            <i class="fas fa-fw fa-robot me-2" aria-hidden="true"></i>Automated investigation
+                                        </h6>
+                                        <div class="d-flex flex-wrap align-items-center gap-2">
+                                            <span class="badge badge-light border">Read-only</span>
+                                            <span class="badge badge-<?= $investigation_badge ?>"><?= escapeHtml($investigation_label) ?></span>
+                                        </div>
+                                    </div>
+
+                                    <?php if ($investigation_status === 'Completed' && $automation_investigation_result) {
+                                        $investigation_confidence = min(100, max(0, intval($automation_investigation_result['confidence'] ?? 0)));
+                                        $investigation_evidence = is_array($automation_investigation_result['evidence'] ?? null)
+                                            ? $automation_investigation_result['evidence'] : [];
+                                        $investigation_actions = is_array($automation_investigation_result['recommended_actions'] ?? null)
+                                            ? $automation_investigation_result['recommended_actions'] : [];
+                                        $investigation_unknowns = is_array($automation_investigation_result['unknowns'] ?? null)
+                                            ? $automation_investigation_result['unknowns'] : [];
+                                        ?>
+                                        <p class="n45-investigation-summary"><?= escapeHtml($automation_investigation_result['summary'] ?? '') ?></p>
+                                        <dl class="n45-investigation-findings">
+                                            <div>
+                                                <dt>Likely cause</dt>
+                                                <dd><?= escapeHtml($automation_investigation_result['likely_cause'] ?? '') ?></dd>
+                                            </div>
+                                            <div>
+                                                <dt>Impact</dt>
+                                                <dd><?= escapeHtml($automation_investigation_result['impact'] ?? '') ?></dd>
+                                            </div>
+                                            <div>
+                                                <dt>Confidence</dt>
+                                                <dd><?= $investigation_confidence ?>%</dd>
+                                            </div>
+                                        </dl>
+
+                                        <?php if ($investigation_evidence) { ?>
+                                            <div class="n45-investigation-list">
+                                                <strong>Evidence considered</strong>
+                                                <ul>
+                                                    <?php foreach ($investigation_evidence as $evidence_item) { ?>
+                                                        <li><?= escapeHtml($evidence_item) ?></li>
+                                                    <?php } ?>
+                                                </ul>
+                                            </div>
+                                        <?php } ?>
+
+                                        <?php if ($investigation_actions) { ?>
+                                            <div class="n45-investigation-list">
+                                                <strong>Recommended next steps</strong>
+                                                <ol>
+                                                    <?php foreach ($investigation_actions as $recommended_action) { ?>
+                                                        <li><?= escapeHtml($recommended_action) ?></li>
+                                                    <?php } ?>
+                                                </ol>
+                                            </div>
+                                        <?php } ?>
+
+                                        <?php if ($investigation_unknowns) { ?>
+                                            <details class="n45-investigation-unknowns">
+                                                <summary>Open questions</summary>
+                                                <ul>
+                                                    <?php foreach ($investigation_unknowns as $unknown) { ?>
+                                                        <li><?= escapeHtml($unknown) ?></li>
+                                                    <?php } ?>
+                                                </ul>
+                                            </details>
+                                        <?php } ?>
+
+                                        <p class="n45-investigation-footnote mb-0">
+                                            <i class="fas fa-fw fa-eye me-1" aria-hidden="true"></i>No remediation was attempted. Verify AI-generated findings before acting.<?php if ($investigation_completed_at) { ?>
+                                                <span title="<?= escapeHtml($investigation_completed_at) ?>"> · Completed <?= escapeHtml(timeAgo($investigation_completed_at)) ?></span>
+                                            <?php } ?>
+                                        </p>
+                                    <?php } elseif ($investigation_status === 'Dead') { ?>
+                                        <p class="n45-investigation-state mb-0">Analysis could not be completed after the retry limit. Review the source evidence and Admin &gt; App Logs.</p>
+                                    <?php } elseif ($investigation_status === 'Failed') { ?>
+                                        <p class="n45-investigation-state mb-0">The last analysis attempt failed. A bounded retry is scheduled automatically.</p>
+                                    <?php } else { ?>
+                                        <p class="n45-investigation-state mb-0">Redacted incident evidence is waiting for read-only analysis.</p>
+                                    <?php } ?>
+                                </section>
                             <?php } ?>
 
                             <div class="mt-3 pt-2 border-top">

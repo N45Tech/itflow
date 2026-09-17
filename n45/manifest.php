@@ -444,6 +444,13 @@ return [
                     "SELECT COUNT(*) FROM automation_event_policies WHERE automation_policy_source = 'uptime_kuma' AND (automation_policy_enabled <> 0 OR automation_policy_ticket_enabled <> 0 OR automation_policy_auto_resolve <> 0)",
                 ],
             ],
+            'n45-0030-automation-investigations' => [
+                'module' => 'automation', 'legacy_version' => null, 'data_change' => false,
+                'rollback' => 'Disable the Automation Investigator cron job, preserve investigation results for audit, and restore the matching database snapshot before removing its queue.',
+                'created_tables' => ['automation_investigations'],
+                'altered_columns' => [], 'altered_indexes' => [],
+                'legacy_bridge_index_overrides' => [],
+            ],
         ],
     ],
     'features' => [
@@ -499,7 +506,11 @@ return [
             'reason' => 'Ingress and processing can stop without deleting synchronized records.',
         ],
         'automation' => [
-            'runtime_files' => ['functions/automation.php', 'functions/automation_events.php'],
+            'runtime_files' => [
+                'functions/automation.php',
+                'functions/automation_events.php',
+                'functions/automation_investigations.php',
+            ],
             'migrations' => [
                 'n45-0003-automation-integration',
                 'n45-0006-operations-ticket-delete-integrity',
@@ -507,6 +518,7 @@ return [
                 'n45-0017-automation-action-outbox',
                 'n45-0028-ticket-delete-operations-alignment',
                 'n45-0029-hetrix-monitoring-source',
+                'n45-0030-automation-investigations',
             ],
             'feature' => 'automation',
             'toggleable' => true,
@@ -2899,6 +2911,60 @@ return [
                 'failure_queries' => [
                     "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix') THEN 0 ELSE 1 END",
                     "SELECT COUNT(*) FROM automation_event_policies WHERE automation_policy_source = 'uptime_kuma' AND (automation_policy_enabled <> 0 OR automation_policy_ticket_enabled <> 0 OR automation_policy_auto_resolve <> 0)",
+                ],
+            ],
+        ],
+        'n45-0030-automation-investigations' => [
+            'module' => 'automation', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0030-automation-investigations.php',
+            'summary' => 'Queue read-only, redacted AI investigations for open automation incidents and retain structured findings for ticket review.',
+            'data_change' => false,
+            'rollback' => 'Disable the Automation Investigator cron job, preserve investigation results for audit, and restore the matching database snapshot before removing its queue.',
+            'fingerprint' => [
+                'tables' => ['automation_investigations'],
+                'columns' => [
+                    'automation_investigations' => [
+                        'automation_investigation_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'automation_investigation_incident_id' => $column_fingerprint('bigint(20)', false, null),
+                        'automation_investigation_event_id' => $column_fingerprint('bigint(20)', false, null),
+                        'automation_investigation_ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'automation_investigation_status' => $column_fingerprint('varchar(20)', false, 'Pending'),
+                        'automation_investigation_attempts' => $column_fingerprint('int(11)', false, 0),
+                        'automation_investigation_max_attempts' => $column_fingerprint('int(11)', false, 3),
+                        'automation_investigation_available_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                        'automation_investigation_processing_at' => $column_fingerprint('datetime', true, null),
+                        'automation_investigation_lease_token' => $column_fingerprint('char(64)', true, null),
+                        'automation_investigation_provider' => $column_fingerprint('varchar(200)', true, null),
+                        'automation_investigation_model' => $column_fingerprint('varchar(200)', true, null),
+                        'automation_investigation_prompt_version' => $column_fingerprint('varchar(40)', false, 'n45-readonly-v1'),
+                        'automation_investigation_input_hash' => $column_fingerprint('char(64)', true, null),
+                        'automation_investigation_result' => $column_fingerprint('longtext', true, null),
+                        'automation_investigation_last_error' => $column_fingerprint('varchar(1000)', true, null),
+                        'automation_investigation_completed_at' => $column_fingerprint('datetime', true, null),
+                        'automation_investigation_created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                        'automation_investigation_updated_at' => $column_fingerprint('datetime', true, null, 'on update current_timestamp'),
+                    ],
+                ],
+                'indexes' => [
+                    'automation_investigations' => [
+                        'PRIMARY' => $index_fingerprint(true, ['automation_investigation_id']),
+                        'automation_investigation_event' => $index_fingerprint(true, ['automation_investigation_event_id']),
+                        'automation_investigation_queue' => $index_fingerprint(false, [
+                            'automation_investigation_status', 'automation_investigation_available_at',
+                        ]),
+                        'automation_investigation_incident' => $index_fingerprint(false, [
+                            'automation_investigation_incident_id', 'automation_investigation_completed_at',
+                        ]),
+                        'automation_investigation_ticket' => $index_fingerprint(false, [
+                            'automation_investigation_ticket_id', 'automation_investigation_created_at',
+                        ]),
+                    ],
+                ],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM automation_investigations WHERE automation_investigation_status NOT IN ('Pending','Failed','Processing','Completed','Dead','Skipped')",
+                    "SELECT COUNT(*) FROM automation_investigations WHERE (automation_investigation_status = 'Processing' AND (automation_investigation_processing_at IS NULL OR automation_investigation_lease_token IS NULL OR automation_investigation_lease_token = '')) OR (automation_investigation_status <> 'Processing' AND (automation_investigation_processing_at IS NOT NULL OR automation_investigation_lease_token IS NOT NULL))",
+                    "SELECT COUNT(*) FROM automation_investigations WHERE (automation_investigation_status IN ('Completed','Dead','Skipped')) <> (automation_investigation_completed_at IS NOT NULL)",
+                    "SELECT COUNT(*) FROM automation_investigations WHERE automation_investigation_status = 'Completed' AND (automation_investigation_provider IS NULL OR automation_investigation_model IS NULL OR automation_investigation_input_hash IS NULL OR automation_investigation_result IS NULL OR JSON_VALID(automation_investigation_result) = 0)",
                 ],
             ],
         ],
