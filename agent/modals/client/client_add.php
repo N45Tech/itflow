@@ -50,7 +50,7 @@ ob_start();
     </li>
 </ul>
 
-<form action="post.php" method="post" autocomplete="off">
+<form action="post.php" method="post" autocomplete="off" data-itflow-submit>
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
     <div class="modal-body">
 
@@ -359,7 +359,7 @@ ob_start();
         </div>
     </div>
     <div class="modal-footer">
-        <button type="submit" name="add_client" class="btn btn-primary text-bold" onclick="promptPrimaryContact()"><i class="fa fa-check me-2"></i>Create Client</button>
+        <button type="submit" name="add_client" class="btn btn-primary text-bold" data-busy-label="Creating client…" onclick="promptPrimaryContact()"><i class="fa fa-check me-2"></i>Create Client</button>
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Close</button>
     </div>
 </form>
