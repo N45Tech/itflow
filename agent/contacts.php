@@ -87,36 +87,57 @@ $sql = mysqli_query($mysqli, "SELECT SQL_CALC_FOUND_ROWS contacts.*, clients.*, 
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$contact_action_items = array();
+if ($client_url) {
+    $contact_action_items[] = array(
+        'label' => 'Import',
+        'icon' => 'fa-upload',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/contact/contact_import.php?' . $client_url),
+    );
+    $contact_action_items[] = array('type' => 'separator');
+}
+$contact_action_items[] = array(
+    'label' => 'Export',
+    'icon' => 'fa-download',
+    'class' => 'ajax-modal',
+    'attributes' => array(
+        'data-modal-url' => buildExportModalUrl('modals/contact/contact_export.php', array('client_id', 'client', 'location', 'tags', 'archived', 'q')),
+    ),
+);
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fa fa-fw fa-address-book me-2"></i>Contacts</h3>
-        <div class="card-tools">
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/contact/contact_add.php?client_id=<?= $client_id ?>">
-                    <i class="fas fa-plus me-2"></i>New Contact
-                </button>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-label="More contact actions"></button>
-                <div class="dropdown-menu">
-                    <?php if ($client_url) { ?>
-<!--                    <a class="dropdown-item text-dark" href="#" data-bs-toggle="modal" data-bs-target="#contactInviteModal"><i class="fas fa-fw fa-paper-plane me-2"></i>Invite</a>-->
-<!--                    <div class="dropdown-divider"></div>-->
-                    <a class="dropdown-item text-dark ajax-modal" href="#"
-                        data-modal-url="modals/contact/contact_import.php?<?= $client_url ?>">
-                        <i class="fa fa-fw fa-upload me-2"></i>Import
-                    </a>
-                    <div class="dropdown-divider"></div>
-                    <?php } ?>
-                    <a class="dropdown-item text-dark ajax-modal" href="#"
-                        data-modal-url="<?= buildExportModalUrl('modals/contact/contact_export.php', ['client_id', 'client', 'location', 'tags', 'archived', 'q']) ?>">
-                        <i class="fa fa-fw fa-download me-2"></i>Export
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="card-header py-3">
+<section class="card n45-workspace" aria-labelledby="contacts-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Contacts',
+        'title_id' => 'contacts-page-title',
+        'icon' => 'fa-address-book',
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+        'actions' => array(
+            array(
+                'type' => 'split-menu',
+                'button' => array(
+                    'type' => 'button',
+                    'label' => 'New Contact',
+                    'icon' => 'fa-plus',
+                    'variant' => 'primary',
+                    'class' => 'ajax-modal',
+                    'attributes' => array('data-modal-url' => 'modals/contact/contact_add.php?client_id=' . intval($client_id ?? 0)),
+                ),
+                'items' => $contact_action_items,
+                'menu_label' => 'More contact actions',
+                'align_end' => true,
+            ),
+        ),
+    ));
+    ?>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
             <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -291,7 +312,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
         <div class="table-responsive">
-            <table class="table border mb-0">
+            <table class="table border mb-0 n45-data-table">
                 <thead class="table-light <?php if (!$num_rows[0]) { echo "d-none"; } ?>">
                 <tr>
                     <td class="checkbox-column border-end">
@@ -564,7 +585,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         </div>
     </form>
     <?php require_once "../includes/filter_footer.php"; ?>
-</div>
+</section>
 
 <script src="../js/bulk_actions.js"></script>
 

@@ -22,6 +22,7 @@ n45RequireModule('endpoint');
 n45RequireModule('level');
 n45RequireModule('automation');
 require_once __DIR__ . '/functions/sanitize.php';
+require_once __DIR__ . '/functions/ui.php';
 require_once __DIR__ . '/functions/format.php';
 require_once __DIR__ . '/functions/request.php';
 require_once __DIR__ . '/functions/files.php';

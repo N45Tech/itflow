@@ -191,27 +191,43 @@ if ($search_requested && $query_error === '') {
 
     $q = escapeHtml($raw_query);
 
+    $search_result_sets = array(
+        $sql_clients, $sql_contacts, $sql_vendors, $sql_domains, $sql_products,
+        $sql_documents, $sql_files, $sql_tickets, $sql_recurring_tickets,
+        $sql_credentials, $sql_quotes, $sql_invoices, $sql_assets, $sql_ticket_replies,
+    );
+    $search_result_count = 0;
+    foreach ($search_result_sets as $search_result_set) {
+        if ($search_result_set) {
+            $search_result_count += mysqli_num_rows($search_result_set);
+        }
+    }
+
     ?>
 
-<div class="card card-dark">
-    <div class="card-header mb-3">
-        <h4 class="card-title text-center"><i class="fas fa-fw fa-search me-2"></i>Global Search</h4>
-    </div>
+<?php
+n45RenderPageHeader(array(
+    'title' => 'Global Search',
+    'title_id' => 'global-search-heading',
+    'icon' => 'fa-search',
+    'description' => $search_result_count . ' matching ' . ($search_result_count === 1 ? 'record' : 'records') . ' for “' . $raw_query . '”.',
+));
+?>
 
-    <div class="card-body">
-
+<?php if ($search_result_count > 0) { ?>
+<div class="n45-search-results">
     <div class="row">
         <?php if ($sql_clients && mysqli_num_rows($sql_clients) > 0) { ?>
 
             <!-- Clients-->
 
             <div class="col-sm-6">
-                <div class="card card-dark mb-3">
+                <div class="card n45-search-group mb-3">
                     <div class="card-header">
                         <h6 class="card-title"><i class="fas fa-fw fa-users me-2"></i>Clients</h6>
                     </div>
                     <div class="card-body">
-                        <table class="table table-striped table-borderless">
+                        <table class="table table-striped table-borderless n45-data-table">
                             <thead>
                             <tr>
                                 <th>Name</th>
@@ -937,32 +953,60 @@ if ($search_requested && $query_error === '') {
                     </div>
 
                 </div>
-
             </div>
-        </div>
-
         <?php } ?>
-
     </div>
-
 </div>
-
-</div>
+<?php } else { ?>
+    <section class="n45-panel" aria-label="Search results">
+        <?php
+        n45RenderEmptyState(array(
+            'icon' => 'fa-search',
+            'title' => 'No matching records',
+            'description' => 'Try a broader term or check the spelling.',
+        ));
+        ?>
+    </section>
+<?php } ?>
 
 <?php
 
 } elseif ($search_requested) {
     ?>
-    <section class="n45-panel" aria-labelledby="global-search-heading">
-        <div class="n45-panel-heading">
-            <div>
-                <h1 id="global-search-heading" class="h5 mb-1"><i class="fas fa-fw fa-search me-2" aria-hidden="true"></i>Global Search</h1>
-                <p class="mb-0">Search across records you are permitted to view.</p>
-            </div>
-        </div>
-        <div class="p-3" role="alert">
-            <strong>Search not run.</strong> <?= escapeHtml($query_error) ?>
-        </div>
+    <?php
+    n45RenderPageHeader(array(
+        'title' => 'Global Search',
+        'title_id' => 'global-search-heading',
+        'icon' => 'fa-search',
+        'description' => 'Search across records you are permitted to view.',
+    ));
+    ?>
+    <section class="n45-panel" aria-label="Search guidance">
+        <?php
+        n45RenderEmptyState(array(
+            'icon' => 'fa-search',
+            'title' => 'Search not run',
+            'description' => $query_error,
+        ));
+        ?>
+    </section>
+    <?php
+} else {
+    n45RenderPageHeader(array(
+        'title' => 'Global Search',
+        'title_id' => 'global-search-heading',
+        'icon' => 'fa-search',
+        'description' => 'Search across records you are permitted to view.',
+    ));
+    ?>
+    <section class="n45-panel" aria-label="Search guidance">
+        <?php
+        n45RenderEmptyState(array(
+            'icon' => 'fa-search',
+            'title' => 'Find a record',
+            'description' => 'Use the global search field to find clients, tickets, assets, documents, credentials, and financial records.',
+        ));
+        ?>
     </section>
     <?php
 }

@@ -53,24 +53,28 @@ foreach ($_GET as $empty_state_key => $empty_state_value) {
 
 $empty_state_thing = strtolower($page_title ?? 'records');
 
-?>
+if ($empty_state_filtered) {
+    /* Keep the client scope, drop everything else. */
+    $empty_state_clear_url = strtok($_SERVER['REQUEST_URI'], '?')
+        . (isset($_GET['client_id']) ? '?client_id=' . intval($_GET['client_id']) : '');
 
-<div class="text-center text-secondary py-5 px-3">
-    <?php if ($empty_state_filtered) { ?>
-
-        <i class="fa fa-4x fa-filter mb-3 d-block" aria-hidden="true"></i>
-        <h6>No <?= escapeHtml($empty_state_thing) ?> match the current filters.</h6>
-        <p class="small mb-3">Try widening the date range or clearing the search.</p>
-        <?php /* keep the client scope, drop everything else */ ?>
-        <a href="<?= escapeHtml(strtok($_SERVER['REQUEST_URI'], '?') . (isset($_GET['client_id']) ? '?client_id=' . intval($_GET['client_id']) : '')) ?>" class="btn btn-sm btn-outline-secondary">
-            <i class="fa fa-fw fa-times me-2" aria-hidden="true"></i>Clear filters
-        </a>
-
-    <?php } else { ?>
-
-        <i class="fa fa-4x fa-inbox mb-3 d-block" aria-hidden="true"></i>
-        <h4>No <?= escapeHtml($empty_state_thing) ?> yet.</h4>
-        <h6>Anything you add will show up here.</h6>
-
-    <?php } ?>
-</div>
+    n45RenderEmptyState(array(
+        'icon' => 'fa-filter',
+        'title' => 'No ' . $empty_state_thing . ' match the current filters.',
+        'description' => 'Try widening the date range or clearing the search.',
+        'action' => array(
+            'type' => 'link',
+            'label' => 'Clear filters',
+            'icon' => 'fa-times',
+            'href' => $empty_state_clear_url,
+            'variant' => 'outline-secondary',
+            'size' => 'sm',
+        ),
+    ));
+} else {
+    n45RenderEmptyState(array(
+        'icon' => 'fa-inbox',
+        'title' => 'No ' . $empty_state_thing . ' yet.',
+        'description' => 'Anything you add will show up here.',
+    ));
+}
