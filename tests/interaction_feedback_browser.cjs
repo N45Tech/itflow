@@ -23,6 +23,7 @@ function assert(condition, message) {
     const fixtureHtml = `
         <!doctype html>
         <html>
+        <head><meta charset="utf-8"></head>
         <body>
             <main class="app-main">
                 <button id="open-modal" class="ajax-modal" data-modal-url="/modal">Open details</button>
@@ -61,7 +62,7 @@ function assert(condition, message) {
         const url = new URL(request.url());
 
         if (url.pathname === '/' && request.method() === 'GET') {
-            await route.fulfill({ status: 200, contentType: 'text/html', body: fixtureHtml });
+            await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixtureHtml });
             return;
         }
 
@@ -132,7 +133,8 @@ function assert(condition, message) {
     }));
     assert(busyForm.formBusy === 'true', 'Submitting form did not expose aria-busy');
     assert(busyForm.buttonBusy === 'true' && busyForm.disabled, 'Submitter was not made busy and disabled');
-    assert(busyForm.label === 'Saving record…', 'Submitter did not show its specific progress copy');
+    assert(busyForm.label === 'Saving record…',
+        `Submitter did not show its specific progress copy; received ${JSON.stringify(busyForm.label)}`);
     assert(busyForm.mirror === 'save', 'Submitter value was not preserved before disabling');
     assert(busyForm.duplicatePrevented, 'A repeated form submission was not cancelled');
     assert(submissions.some(body => body.includes('action=save')), 'The submitted request lost its action field');
