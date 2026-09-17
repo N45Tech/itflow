@@ -78,6 +78,61 @@ $assertNotContains(
     $css,
     'The removed Operations service-tab styles remain'
 );
+$assertContains(
+    '$show_diagnostics = isset($_GET[\'view\']) && $_GET[\'view\'] === \'diagnostics\';',
+    $operations,
+    'Operations has no explicit overview-versus-diagnostics boundary'
+);
+$assertContains(
+    '<?php if ($show_diagnostics) { ?>' . PHP_EOL . '    <section class="n45-panel" id="endpoint-coverage"',
+    $operations,
+    'Endpoint coverage still renders on the default Operations overview'
+);
+$assertContains(
+    '<?php if ($show_diagnostics) { ?>' . PHP_EOL . '    <section class="n45-panel" id="identity-review"',
+    $operations,
+    'Identity review and mapping history still render on the default Operations overview'
+);
+$assertContains(
+    "'Not configured'",
+    $operations,
+    'Integration health cannot represent a source that is not configured'
+);
+$assertContains(
+    "'Awaiting signal'",
+    $operations,
+    'Integration health cannot represent a configured source awaiting its first signal'
+);
+$assertContains(
+    "'Stale'",
+    $operations,
+    'Integration health cannot represent an overdue source signal'
+);
+$assertContains(
+    "'Failed'",
+    $operations,
+    'Integration health cannot represent a failed source'
+);
+$assertContains(
+    "'Healthy'",
+    $operations,
+    'Integration health cannot represent a healthy source'
+);
+$assertContains(
+    "'Updated ' . escapeHtml(timeAgo(\$latest_operational_update))",
+    $operations,
+    'The Operations header does not disclose the age of its latest evidence'
+);
+$assertNotContains(
+    'ready for first signal',
+    $operations,
+    'An unobserved integration is still optimistically described as ready'
+);
+$assertNotContains(
+    "(\$last_seen ? 'Connected' : 'Ready')",
+    $operations,
+    'Integration health still treats historical evidence or no evidence as a connection check'
+);
 
 if ($failures) {
     fwrite(STDERR, implode("\n", $failures) . "\n");
