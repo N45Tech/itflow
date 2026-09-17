@@ -16,6 +16,7 @@ const output = join(root, 'workflows');
 
 const credentials = {
   webhook: { httpHeaderAuth: { id: 'replace-n45-webhook-auth', name: 'N45 Integration Webhook' } },
+  hetrixWebhook: { httpHeaderAuth: { id: 'replace-n45-hetrix-webhook-auth', name: 'N45 Hetrix Webhook' } },
   cippWebhook: { httpHeaderAuth: { id: 'replace-n45-cipp-webhook-auth', name: 'N45 CIPP Webhook' } },
   itflow: { httpHeaderAuth: { id: 'replace-n45-itflow-api', name: 'N45 ITFlow API' } },
   cloudflare: { httpHeaderAuth: { id: 'replace-n45-cloudflare-api', name: 'N45 Cloudflare API' } },
@@ -107,6 +108,12 @@ const severityName = (value, fallback) => {
 const timestamp = (value, offset = '') => {
   let raw = text(value);
   if (!raw) return new Date().toISOString();
+  if (/^\d{10}(?:\.\d+)?$/.test(raw)) raw = String(Number(raw) * 1000);
+  if (/^\d{13}$/.test(raw)) {
+    const unixDate = new Date(Number(raw));
+    if (Number.isNaN(unixDate.getTime())) throw new Error('The event timestamp is invalid.');
+    return unixDate.toISOString();
+  }
   raw = raw.replace(' ', 'T');
   if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)) {
     raw += /^[+-]\d{2}:\d{2}$/.test(text(offset)) ? text(offset) : 'Z';
@@ -168,9 +175,10 @@ if (routingJson) {
   }
 }
 let source = sourceName(body.source || header('x-n45-source'));
-if (!source && (body.monitor || body.heartbeat)) source = 'uptime_kuma';
+if (!source && body.monitor_id && body.monitor_status) source = 'hetrix';
 if (!source && (body.job || body.backup_job)) source = 'backup';
 if (!source) throw new Error('The event source is missing. Send x-n45-source or a canonical source field.');
+if (['netbox', 'uptime_kuma'].includes(source)) throw new Error('The event source has been retired.');
 const sourceRoute = record(routing[source]);
 const routeValue = (key, fallback) => body[key] !== undefined && body[key] !== null && body[key] !== ''
   ? body[key] : (sourceRoute[key] !== undefined ? sourceRoute[key] : fallback);
@@ -188,7 +196,7 @@ if (body.identity && body.event_id && body.incident_key) {
   const canonicalIncidentKey = limitedText(body.incident_key, 255);
   if (!canonicalEventId || !canonicalIncidentKey) throw new Error('Canonical event_id and incident_key are required.');
   const fallbackRequestType = source === 'n8n' ? 'automation-failure'
-    : (source === 'backup' ? 'backup-alert' : (source === 'uptime_kuma' ? 'monitoring-alert' : 'integration-alert'));
+    : (source === 'backup' ? 'backup-alert' : (source === 'hetrix' ? 'monitoring-alert' : 'integration-alert'));
   return [{ json: {
     source,
     event_id: canonicalEventId,
@@ -212,7 +220,13 @@ if (body.identity && body.event_id && body.incident_key) {
   } }];
 }
 
-const monitor = body.monitor || {};
+const monitor = body.monitor || (source === 'hetrix' ? {
+  id: body.monitor_id,
+  name: body.monitor_name,
+  url: body.monitor_target,
+  type: body.monitor_type,
+  category: body.monitor_category,
+} : {});
 const heartbeat = body.heartbeat || {};
 const monitorName = text(monitor.name || body.monitor_name || body.service_name || body.name || body.job || body.backup_job, 'Unnamed service');
 const parts = monitorName.split(/\s+::\s+/).map((part) => part.trim()).filter(Boolean);
@@ -223,12 +237,12 @@ const clientName = canonicalClientName(originalClientName);
 const locationName = explicitLocation || (parts.length >= 3 ? parts[1] : '');
 const serviceName = parts.length >= 3 ? parts.slice(2).join(' :: ') : monitorName;
 
-const rawStatus = body.state ?? body.status ?? heartbeat.status ?? body.result;
+const rawStatus = body.state ?? body.status ?? body.monitor_status ?? heartbeat.status ?? body.result;
 const normalizedStatus = typeof rawStatus === 'number'
   ? ({ 0: 'open', 1: 'resolved', 2: 'update', 3: 'resolved' }[rawStatus] || '')
   : text(rawStatus).toLowerCase();
-const healthy = ['up', 'ok', 'healthy', 'success', 'successful', 'resolved', 'recovered', 'operational', 'passed'].includes(normalizedStatus);
-const unhealthy = ['down', 'failed', 'failure', 'error', 'critical', 'unhealthy', 'open', 'alerting'].includes(normalizedStatus);
+const healthy = ['up', 'online', 'ok', 'healthy', 'success', 'successful', 'resolved', 'recovered', 'operational', 'passed'].includes(normalizedStatus);
+const unhealthy = ['down', 'offline', 'failed', 'failure', 'error', 'critical', 'unhealthy', 'open', 'alerting'].includes(normalizedStatus);
 if (!healthy && !unhealthy && normalizedStatus !== 'update') {
   throw new Error('The event status could not be mapped to open, update, or resolved.');
 }
@@ -243,31 +257,36 @@ const occurredAt = body.occurred_at
     ? timestamp(heartbeat.localDateTime, sourceOffset)
     : timestamp(heartbeat.time || body.time || body.timestamp, sourceOffset));
 const eventId = text(body.event_id || heartbeat.id, incidentKey + ':' + state + ':' + occurredAt);
-const sourceUrl = text(body.url || monitor.url || body.source_url);
+const sourceUrl = text(body.url || monitor.url || body.monitor_target || body.source_url);
 const host = text(monitor.hostname || body.hostname || body.host);
 const target = host || sourceUrl.replace(/^https?:\/\//i, '').split('/')[0];
-const rawDetails = text(body.description || body.message || body.msg || heartbeat.msg);
+const hetrixErrors = record(body.monitor_errors);
+const hetrixErrorDetails = Object.entries(hetrixErrors).slice(0, 30)
+  .map(([location, error]) => limitedText(location, 100) + ': ' + limitedText(error, 500))
+  .join('\n');
+const rawDetails = text(body.description || body.message || body.msg || heartbeat.msg || hetrixErrorDetails);
 const cleanDetails = rawDetails.replace(/^(?:\[[^\]]*\]\s*)+/, '')
   .replace(/^(?:down|up|resolved|recovered)\s*[:\-–—]?\s*/i, '').trim();
 const availability = serviceName + (target ? ' (' + target + ')' : '');
-const details = source === 'uptime_kuma'
+const details = source === 'hetrix'
   ? availability + (state === 'resolved' ? ' has recovered.' : ' is unavailable.')
-    + (cleanDetails ? '\n\nSource detail: ' + cleanDetails : '')
+    + (cleanDetails ? '\n\nHetrixTools checks:\n' + cleanDetails : '')
   : (rawDetails || serviceName + (state === 'resolved' ? ' recovered.' : ' reported ' + normalizedStatus + '.'));
-const monitorTags = JSON.stringify(monitor.tags || body.tags || []).toLowerCase();
+const monitorTags = JSON.stringify([monitor.category || body.monitor_category || '', monitor.tags || body.tags || []]).toLowerCase();
 const defaultSeverity = state === 'resolved' ? 'low'
-  : (/critical|emergency/.test(monitorTags) ? 'critical'
+  : (source === 'hetrix' ? 'high'
+    : /critical|emergency/.test(monitorTags) ? 'critical'
     : (/high/.test(monitorTags) || /\b(psa|firewall|internet|core)\b/i.test(serviceName) ? 'high' : 'medium'));
-const defaultTitle = source === 'uptime_kuma' ? 'Monitoring alert: ' + serviceName
+const defaultTitle = source === 'hetrix' ? 'Monitoring alert: ' + serviceName
   : (source === 'backup' ? 'Backup alert: ' + serviceName : 'Integration alert: ' + serviceName);
-const defaultRequestType = source === 'uptime_kuma' ? 'monitoring-alert'
+const defaultRequestType = source === 'hetrix' ? 'monitoring-alert'
   : (source === 'backup' ? 'backup-alert' : 'integration-alert');
 
 const event = {
   source,
   event_id: eventId,
   incident_key: incidentKey,
-  entity_type: source === 'uptime_kuma' ? 'monitor' : (source === 'backup' ? 'backup_job' : 'service'),
+  entity_type: source === 'hetrix' ? 'monitor' : (source === 'backup' ? 'backup_job' : 'service'),
   state,
   severity: severityName(body.severity, defaultSeverity),
   title: limitedText(body.title, 500, defaultTitle),
@@ -293,7 +312,9 @@ const event = {
     },
     metadata: {
       monitor_type: monitor.type || '',
+      monitor_category: monitor.category || '',
       raw_status: rawStatus ?? '',
+      monitor_errors: sanitize(hetrixErrors),
       original_client_name: originalClientName,
       client_alias_applied: originalClientName !== clientName,
     },
@@ -535,6 +556,7 @@ return { json: { id: row.id, event_id: row.event_id, disposition: 'terminal', at
 
 const operationsBroker = workflow('N45 - ITFlow Operations Event Broker', [
   node({ id: '5de48c0c-a723-49ad-9b39-f276bc055e5e', name: 'Operations Webhook', type: 'n8n-nodes-base.webhook', typeVersion: 2.1, position: [-900, -240], nodeCredentials: credentials.webhook, parameters: { httpMethod: 'POST', path: 'n45-itflow-events', authentication: 'headerAuth', responseMode: 'responseNode', options: {} } }),
+  node({ id: '7195df85-bf20-45f4-a9cc-51dde8d77b85', name: 'Hetrix Webhook', type: 'n8n-nodes-base.webhook', typeVersion: 2.1, position: [-900, -380], nodeCredentials: credentials.hetrixWebhook, parameters: { httpMethod: 'POST', path: 'n45-hetrix-events', authentication: 'headerAuth', responseMode: 'responseNode', options: {} } }),
   node({ id: '1ce06b1c-76f2-43d4-a0ab-546a3ca85a7d', name: 'Normalize Event', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-650, -240], parameters: { jsCode: normalizeOperations } }),
   node({ id: 'b5b28290-c8f5-4f50-8dcc-d5369f0c5122', name: 'Queue Event', type: 'n8n-nodes-base.dataTable', typeVersion: 1.1, position: [-380, -240], parameters: {
     resource: 'row', operation: 'upsert', dataTableId: operationsOutboxTable, matchType: 'allConditions',
@@ -567,6 +589,7 @@ const operationsBroker = workflow('N45 - ITFlow Operations Event Broker', [
   node({ id: '01a9801e-da74-4880-a415-28b5f47ce09a', name: 'Hold Terminal Event', type: 'n8n-nodes-base.dataTable', typeVersion: 1.1, position: [650, 280], parameters: { resource: 'row', operation: 'update', dataTableId: operationsOutboxTable, matchType: 'allConditions', filters: { conditions: [{ keyName: 'id', condition: 'eq', keyValue: '={{ $json.id }}' }] }, columns: { mappingMode: 'defineBelow', matchingColumns: [], value: { status: '={{ $json.status }}', attempts: '={{ $json.attempts }}', next_attempt_at: '={{ $json.next_attempt_at }}', last_error: '={{ $json.last_error }}' } }, options: {} } }),
 ], {
   'Operations Webhook': { main: [[{ node: 'Normalize Event', type: 'main', index: 0 }]] },
+  'Hetrix Webhook': { main: [[{ node: 'Normalize Event', type: 'main', index: 0 }]] },
   'Normalize Event': { main: [[{ node: 'Queue Event', type: 'main', index: 0 }]] },
   'Queue Event': { main: [[{ node: 'Acknowledge Event', type: 'main', index: 0 }]] },
   'Delivery Schedule': { main: [[{ node: 'Read Event Queue', type: 'main', index: 0 }]] },

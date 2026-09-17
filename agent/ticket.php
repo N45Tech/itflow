@@ -1881,7 +1881,7 @@ if (isset($_GET['ticket_id'])) {
                 <?php if ($automation_incident && !automationSourceIsRetired($automation_incident['automation_incident_source'])) {
                     $automation_source_raw = strtolower($automation_incident['automation_incident_source']);
                     $automation_source_name = match ($automation_source_raw) {
-                        'uptime_kuma' => 'Uptime Kuma',
+                        'hetrix' => 'HetrixTools',
                         'n8n' => 'n8n',
                         'backup' => 'Backups',
                         'checkmk' => 'Checkmk',
@@ -1894,7 +1894,7 @@ if (isset($_GET['ticket_id'])) {
                         default => ucwords(str_replace(['_', '-'], ' ', $automation_source_raw)),
                     };
                     $automation_source_icon = match ($automation_source_raw) {
-                        'uptime_kuma' => 'fa-heartbeat',
+                        'hetrix' => 'fa-heartbeat',
                         'n8n' => 'fa-random',
                         'backup' => 'fa-database',
                         'checkmk' => 'fa-heartbeat',

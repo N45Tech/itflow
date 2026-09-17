@@ -3,10 +3,17 @@
 require_once "includes/inc_all_admin.php";
 
 $webhook_url = 'https://' . rtrim((string) $config_base_url, '/') . '/api/v1/integrations/automation/event.php';
+$source_label = static function ($source): string {
+    return match (automationSource($source)) {
+        'hetrix' => 'HetrixTools',
+        'n8n' => 'n8n',
+        default => ucwords(str_replace(['_', '-'], ' ', (string) $source)),
+    };
+};
 
 $policies = [];
 $sql_policies = mysqli_query($mysqli, "SELECT * FROM automation_event_policies
-    WHERE automation_policy_source <> 'netbox'
+    WHERE automation_policy_source NOT IN ('netbox', 'uptime_kuma')
     ORDER BY automation_policy_source ASC");
 while ($policy = mysqli_fetch_assoc($sql_policies)) {
     $policies[] = $policy;
@@ -43,7 +50,7 @@ $sql_maintenance = mysqli_query($mysqli, "SELECT automation_maintenance_windows.
     LEFT JOIN assets ON automation_maintenance_asset_id = assets.asset_id
     LEFT JOIN services ON automation_maintenance_service_id = services.service_id
     WHERE automation_maintenance_deleted_at IS NULL
-    AND automation_maintenance_source <> 'netbox'
+    AND automation_maintenance_source NOT IN ('netbox', 'uptime_kuma')
     ORDER BY automation_maintenance_ends_at >= NOW() DESC,
         automation_maintenance_starts_at DESC LIMIT 50");
 while ($window = mysqli_fetch_assoc($sql_maintenance)) {
@@ -60,7 +67,7 @@ $queue_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
     SUM(automation_event_suppressed_reason IS NOT NULL
         AND automation_event_received_at >= NOW() - INTERVAL 24 HOUR) AS suppressed_24h
     FROM automation_events
-    WHERE automation_event_source <> 'netbox'"));
+    WHERE automation_event_source NOT IN ('netbox', 'uptime_kuma')"));
 
 $failed_events = mysqli_query($mysqli, "SELECT automation_event_id, automation_event_source,
     automation_event_external_id, automation_event_incident_key, automation_event_status,
@@ -69,7 +76,7 @@ $failed_events = mysqli_query($mysqli, "SELECT automation_event_id, automation_e
     automation_event_payload IS NOT NULL AS payload_available
     FROM automation_events
     WHERE automation_event_status IN ('Failed', 'Dead')
-    AND automation_event_source <> 'netbox'
+    AND automation_event_source NOT IN ('netbox', 'uptime_kuma')
     ORDER BY automation_event_last_received_at DESC LIMIT 50");
 
 ?>
@@ -79,7 +86,7 @@ $failed_events = mysqli_query($mysqli, "SELECT automation_event_id, automation_e
         <h3 class="card-title"><i class="fas fa-fw fa-stream mr-2"></i>Operational Event Ingestion</h3>
     </div>
     <div class="card-body">
-        <p class="text-muted">Source-neutral alert correlation for Level.io, SentinelOne, Checkmk, CIPP, backups, infrastructure, and n8n workflows.</p>
+        <p class="text-muted">Source-neutral alert correlation for HetrixTools, Level.io, SentinelOne, Checkmk, CIPP, backups, infrastructure, and n8n workflows.</p>
 
         <label>Authenticated event endpoint</label>
         <div class="input-group mb-2">
@@ -118,7 +125,7 @@ $failed_events = mysqli_query($mysqli, "SELECT automation_event_id, automation_e
                     $policy_form_id = 'automation-policy-' . preg_replace('/[^a-z0-9_-]/', '-', strtolower($policy['automation_policy_source']));
                     ?>
                     <tr>
-                        <td><strong><?= escapeHtml(ucwords(str_replace(['_', '-'], ' ', $policy['automation_policy_source']))) ?></strong></td>
+                        <td><strong><?= escapeHtml($source_label($policy['automation_policy_source'])) ?></strong></td>
                         <td style="min-width:190px">
                             <div class="custom-control custom-checkbox"><input class="custom-control-input" type="checkbox" id="enabled-<?= escapeHtml($policy['automation_policy_source']) ?>" name="automation_policy_enabled" value="1" form="<?= escapeHtml($policy_form_id) ?>" <?= $policy['automation_policy_enabled'] ? 'checked' : '' ?>><label class="custom-control-label" for="enabled-<?= escapeHtml($policy['automation_policy_source']) ?>">Ingest</label></div>
                             <div class="custom-control custom-checkbox"><input class="custom-control-input" type="checkbox" id="ticket-<?= escapeHtml($policy['automation_policy_source']) ?>" name="automation_policy_ticket_enabled" value="1" form="<?= escapeHtml($policy_form_id) ?>" <?= $policy['automation_policy_ticket_enabled'] ? 'checked' : '' ?>><label class="custom-control-label" for="ticket-<?= escapeHtml($policy['automation_policy_source']) ?>">Create tickets</label></div>
@@ -137,7 +144,7 @@ $failed_events = mysqli_query($mysqli, "SELECT automation_event_id, automation_e
                             <form id="<?= escapeHtml($policy_form_id) ?>" action="post.php" method="post">
                                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                 <input type="hidden" name="automation_policy_source" value="<?= escapeHtml($policy['automation_policy_source']) ?>">
-                                <button class="btn btn-sm btn-primary" type="submit" name="save_automation_policy" title="Save <?= escapeHtml($policy['automation_policy_source']) ?> policy"><i class="fas fa-save"></i></button>
+                                <button class="btn btn-sm btn-primary" type="submit" name="save_automation_policy" title="Save <?= escapeHtml($source_label($policy['automation_policy_source'])) ?> policy"><i class="fas fa-save"></i></button>
                             </form>
                         </td>
                     </tr>
@@ -156,7 +163,7 @@ $failed_events = mysqli_query($mysqli, "SELECT automation_event_id, automation_e
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <div class="card-body">
                     <div class="form-group"><label>Name</label><input class="form-control" name="automation_maintenance_name" maxlength="255" required placeholder="Client patching window"></div>
-                    <div class="form-group"><label>Source</label><select class="form-control select2" name="automation_maintenance_source"><option value="">All sources</option><?php foreach ($policies as $policy) { ?><option value="<?= escapeHtml($policy['automation_policy_source']) ?>"><?= escapeHtml(ucwords(str_replace(['_', '-'], ' ', $policy['automation_policy_source']))) ?></option><?php } ?></select></div>
+                    <div class="form-group"><label>Source</label><select class="form-control select2" name="automation_maintenance_source"><option value="">All sources</option><?php foreach ($policies as $policy) { ?><option value="<?= escapeHtml($policy['automation_policy_source']) ?>"><?= escapeHtml($source_label($policy['automation_policy_source'])) ?></option><?php } ?></select></div>
                     <div class="form-group"><label>Client</label><select class="form-control select2" name="automation_maintenance_client_id"><option value="0">All clients</option><?php foreach ($clients as $client_id => $client_name) { ?><option value="<?= $client_id ?>"><?= escapeHtml($client_name) ?></option><?php } ?></select></div>
                     <div class="form-group"><label>Asset</label><select class="form-control select2" name="automation_maintenance_asset_id"><option value="0">All assets in scope</option><?php foreach ($assets as $asset_id => $asset) { ?><option value="<?= $asset_id ?>"><?= escapeHtml(($asset['client_name'] ? $asset['client_name'] . ' · ' : '') . $asset['asset_name']) ?></option><?php } ?></select></div>
                     <div class="form-group"><label>Service</label><select class="form-control select2" name="automation_maintenance_service_id"><option value="0">All services in scope</option><?php foreach ($services as $service_id => $service) { ?><option value="<?= $service_id ?>"><?= escapeHtml(($service['client_name'] ? $service['client_name'] . ' · ' : '') . $service['service_name']) ?></option><?php } ?></select></div>

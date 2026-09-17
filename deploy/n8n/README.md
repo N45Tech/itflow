@@ -4,7 +4,7 @@ This pack keeps ITFlow authoritative for clients, locations, assets, domains, in
 
 ## Included workflows
 
-- **ITFlow Operations Event Broker** — one authenticated webhook for Uptime Kuma, backup jobs, generic service checks, and canonical events. It sanitizes and durably queues each event before returning `202`, then retries transient ITFlow failures with bounded backoff. Repeated failures update one ticket; recovery adds an internal reply and can resolve it.
+- **ITFlow Operations Event Broker** — authenticated webhooks for HetrixTools, backup jobs, generic service checks, and canonical events. It sanitizes and durably queues each event before returning `202`, then retries transient ITFlow failures with bounded backoff. Repeated failures update one ticket; recovery adds an internal reply and can resolve it.
 - **Cloudflare Domain Reconciliation** — nightly zone-to-domain reconciliation for explicitly mapped zones.
 - **CIPP Alerts to ITFlow** — validates CIPP's standardized alert schema, requires an explicit tenant-to-client ID map, redacts and summarizes the payload, and queues the alert through the Operations broker. It remains inactive until its tenant map is configured and canaried.
 - **Automation Failure to ITFlow** — shared n8n error workflow that opens one incident per failing workflow.
@@ -25,12 +25,13 @@ node deploy/n8n/test-workflows.mjs
 
 Create these credentials in n8n, then assign them to the matching nodes after import:
 
-1. `N45 Integration Webhook` — Header Auth. Use a random header name such as `X-N45-Integration-Key` and a 32-byte random value. Configure the same header on Uptime Kuma webhooks.
-2. `N45 CIPP Webhook` — Header Auth dedicated to the inbound CIPP alert webhook. Do not reuse the broker key.
-3. `N45 ITFlow API` — Header Auth with name `Authorization` and value `Bearer <ITFlow API key>`.
-4. `N45 Cloudflare API` — Header Auth with name `Authorization` and value `Bearer <zone-read API token>`.
-5. `N45 CIPP API` — generic OAuth2 client-credentials credential for the CIPP API application's `.default` scope and a read-only CIPP role that permits `ListGraphRequest`.
-6. `N45 SentinelOne API` — Header Auth with name `Authorization` and value `ApiToken <read-only site/agent token>`.
+1. `N45 Integration Webhook` — Header Auth. Use a random header name such as `X-N45-Integration-Key` and a 32-byte random value for canonical events posted by trusted internal systems.
+2. `N45 Hetrix Webhook` — Header Auth with name `Authorization` and value `Bearer <random token>`. Configure the same token on the HetrixTools contact list assigned to monitored services.
+3. `N45 CIPP Webhook` — Header Auth dedicated to the inbound CIPP alert webhook. Do not reuse the broker key.
+4. `N45 ITFlow API` — Header Auth with name `Authorization` and value `Bearer <ITFlow API key>`.
+5. `N45 Cloudflare API` — Header Auth with name `Authorization` and value `Bearer <zone-read API token>`.
+6. `N45 CIPP API` — generic OAuth2 client-credentials credential for the CIPP API application's `.default` scope and a read-only CIPP role that permits `ListGraphRequest`.
+7. `N45 SentinelOne API` — Header Auth with name `Authorization` and value `ApiToken <read-only site/agent token>`.
 
 The ITFlow key must be tied to a dedicated active automation technician with Support and Client write permissions. Automatic creation of previously unknown clients is a global action in ITFlow and therefore requires an administrator role. Give this account no interactive Entra access and set an API-key expiry/rotation reminder.
 
@@ -38,25 +39,25 @@ The ITFlow key must be tied to a dedicated active automation technician with Sup
 
 1. Deploy the ITFlow application and all pending migrations required by the unified endpoint record. The device adapters add no migration.
 2. Import all JSON files from `workflows/` into n8n.
-3. Assign the six credentials above.
+3. Assign the seven credentials above.
 4. Create a project Data Table named `N45 Operations Event Outbox` with these columns: `event_id` (string), `incident_key` (string), `source` (string), `occurred_at` (date), `payload` (string), `status` (string), `attempts` (number), `next_attempt_at` (date), and `last_error` (string).
 5. In `Cloudflare Domain Reconciliation`, edit `CLIENT_BY_ZONE` in **Map Zones to Clients**. Zones absent from this explicit map are skipped.
 6. Create the three device-source n8n Variables and exact source map described in `docs/device-source-adapters.md`.
 7. Create `N45_CIPP_ALERT_TENANT_MAP_JSON` before testing the CIPP alert workflow. Keys are lowercase tenant domains; each value must include `client_id` and may include `client_name`, `location_id`, `assigned_to`, `category_id`, and `contact_id`. Tenant domains are never guessed into client names.
-8. Optionally create `N45_EVENT_ROUTING_JSON` to route source tickets by immutable ITFlow IDs. Example: `{"uptime_kuma":{"assigned_to":7,"category_id":12,"request_type_key":"monitoring-alert","contact_mode":"none"}}`. Invalid user, category, or contact IDs fail closed instead of silently misrouting a ticket.
+8. Optionally create `N45_EVENT_ROUTING_JSON` to route source tickets by immutable ITFlow IDs. Example: `{"hetrix":{"assigned_to":7,"category_id":12,"request_type_key":"monitoring-alert","contact_mode":"none"}}`. Invalid user, category, or contact IDs fail closed instead of silently misrouting a ticket.
 9. Run reconciliation workflows manually and review the output before activation. Empty Cloudflare source responses fail explicitly and must not be accepted as successful reconciliations.
 10. Select `N45 - Automation Failure to ITFlow` as the Error Workflow on production workflows, except the Operations Event Broker and the error workflow itself.
 11. Activate the broker and reconciliation workflows only after their canaries pass. Keep CIPP alerts inactive until every emitting tenant has an exact map entry.
 
 ## Naming convention
 
-Uptime Kuma monitor names can carry identity without maintaining a separate map:
+HetrixTools monitor names carry identity without maintaining a separate map:
 
 ```text
 Client Name :: Location Name :: Service Name
 ```
 
-Explicit webhook headers win over the name convention:
+The standard HetrixTools uptime webhook does not provide custom identity headers, so use the complete three-part name. The monitor's stable 32-character ID remains the durable incident identity even when its label changes. Internal canonical senders may override names with these headers:
 
 - `X-ITFlow-Client`
 - `X-ITFlow-Location`
@@ -65,6 +66,14 @@ Explicit webhook headers win over the name convention:
 - `X-ITFlow-Create-Asset`
 
 The first successful match is saved by source and external ID. Ambiguous normalized names return HTTP 409 and create nothing.
+
+Configure the HetrixTools contact-list webhook as:
+
+```text
+https://automate.n45tech.com/webhook/n45-hetrix-events
+```
+
+Set its authentication token to the token stored by the `N45 Hetrix Webhook` credential. HetrixTools sends it as `Authorization: Bearer <token>`. Offline events open or update one high-severity monitoring incident per monitor; the corresponding online event uses the same incident key and resolves it. The adapter retains the target, monitor type/category, and bounded per-location error details. See the [HetrixTools uptime webhook contract](https://docs.hetrixtools.com/uptime-monitoring-webhook-notifications/) and [authentication-token contract](https://docs.hetrixtools.com/webhook-authentication-token/).
 
 ## Canonical event contract
 
@@ -103,7 +112,7 @@ Example:
 
 Send a later event with the same `incident_key`, a new `event_id`, and `state: resolved` to add the recovery note and resolve the linked ticket.
 
-The same contract is used for Level.io, SentinelOne, Checkmk, CIPP, backup, infrastructure, Uptime Kuma, and n8n signals. Source adapters should translate vendor-specific payloads before posting them. Use a stable source identifier in `source`, a unique delivery identifier in `event_id`, and one stable lifecycle key in `incident_key`.
+The same contract is used for Level.io, SentinelOne, Checkmk, CIPP, backup, infrastructure, HetrixTools, and n8n signals. Source adapters should translate vendor-specific payloads before posting them. Use a stable source identifier in `source`, a unique delivery identifier in `event_id`, and one stable lifecycle key in `incident_key`.
 
 Optional `service_id` links the incident to an existing ITFlow service. `assigned_to`, `category_id`, `contact_id`, `contact_mode`, and `request_type_key` provide explicit ticket routing; referenced IDs are validated against the resolved client and active ITFlow records. The identity resolver links client, location, and device records from `identity`; it rejects attempts to remap an established incident to a different object.
 

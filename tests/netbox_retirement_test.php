@@ -22,15 +22,15 @@ $assertTrue(!str_contains($readme, 'NetBox'),
     'The active n8n deployment guide still documents NetBox');
 $assertTrue(!str_contains($operations, 'https://netbox.n45tech.com'),
     'Operations still links to NetBox');
-$assertTrue(str_contains($operations, "automation_incident_source <> 'netbox'"),
+$assertTrue(str_contains($operations, "automation_incident_source NOT IN ('netbox', 'uptime_kuma')"),
     'Operations does not suppress retired NetBox incidents');
-$assertTrue(str_contains($operations, "automation_mapping_source <> 'netbox'"),
+$assertTrue(str_contains($operations, "automation_mapping_source NOT IN ('netbox', 'uptime_kuma')"),
     'Operations does not suppress retired NetBox identity mappings');
-$assertTrue(str_contains($operations, "automation_maintenance_source <> 'netbox'"),
+$assertTrue(str_contains($operations, "automation_maintenance_source NOT IN ('netbox', 'uptime_kuma')"),
     'Operations still counts retired NetBox maintenance windows');
 $assertTrue(str_contains($ticket, '!automationSourceIsRetired'),
     'Ticket detail still exposes retired integration cards');
-$assertTrue(str_contains($admin, "automation_policy_source <> 'netbox'"),
+$assertTrue(str_contains($admin, "automation_policy_source NOT IN ('netbox', 'uptime_kuma')"),
     'Admin integration policies still expose NetBox');
 
 if ($failures) {

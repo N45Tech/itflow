@@ -24,13 +24,13 @@ $mapping_scope = clientScopeSql('automation_mapping_client_id');
 $bound_identity_scope = $session_is_admin ? '' : 'AND automation_mapping_client_id > 0';
 $ticket_scope = clientScopeSql('ticket_client_id');
 $level_asset_scope = clientScopeSql('assets.asset_client_id');
-$active_incident_sources = "AND automation_incident_source <> 'netbox'";
-$active_event_sources = "AND automation_event_source <> 'netbox'";
-$active_mapping_sources = "AND automation_mapping_source <> 'netbox'";
+$active_incident_sources = "AND automation_incident_source NOT IN ('netbox', 'uptime_kuma')";
+$active_event_sources = "AND automation_event_source NOT IN ('netbox', 'uptime_kuma')";
+$active_mapping_sources = "AND automation_mapping_source NOT IN ('netbox', 'uptime_kuma')";
 
 $source_label = static function ($source) {
     $labels = [
-        'uptime_kuma' => 'Uptime Kuma',
+        'hetrix' => 'HetrixTools',
         'n8n' => 'n8n',
         'backup' => 'Backups',
         'checkmk' => 'Checkmk',
@@ -48,7 +48,7 @@ $source_label = static function ($source) {
 
 $source_icon = static function ($source) {
     return match (strtolower((string) $source)) {
-        'uptime_kuma' => 'fa-heartbeat',
+        'hetrix' => 'fa-heartbeat',
         'n8n' => 'fa-random',
         'backup' => 'fa-database',
         'checkmk' => 'fa-heartbeat',
@@ -126,7 +126,7 @@ $event_queue_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
 $active_maintenance_count = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*)
     FROM automation_maintenance_windows
     WHERE automation_maintenance_deleted_at IS NULL
-    AND automation_maintenance_source <> 'netbox'
+    AND automation_maintenance_source NOT IN ('netbox', 'uptime_kuma')
     AND automation_maintenance_starts_at <= NOW()
     AND automation_maintenance_ends_at >= NOW()"))[0] ?? 0);
 
@@ -245,7 +245,7 @@ while ($row = mysqli_fetch_assoc($sql_source_mappings)) {
     $source_health[$row['source']]['last_mapping_at'] = $row['last_mapping_at'];
 }
 
-foreach (['level', 'sentinelone', 'checkmk', 'cipp', 'entra', 'intune', 'backup', 'infrastructure', 'uptime_kuma', 'n8n'] as $known_source) {
+foreach (['level', 'sentinelone', 'checkmk', 'cipp', 'entra', 'intune', 'backup', 'infrastructure', 'hetrix', 'n8n'] as $known_source) {
     if (!isset($source_health[$known_source])) {
         $source_health[$known_source] = [
             'source' => $known_source,
@@ -263,7 +263,7 @@ foreach (['level', 'sentinelone', 'checkmk', 'cipp', 'entra', 'intune', 'backup'
 $source_order = [
     'level' => 10, 'sentinelone' => 20, 'checkmk' => 30, 'cipp' => 40,
     'entra' => 50, 'intune' => 60, 'backup' => 70, 'infrastructure' => 80,
-    'uptime_kuma' => 90, 'n8n' => 100,
+    'hetrix' => 90, 'n8n' => 100,
 ];
 uksort($source_health, static function ($a, $b) use ($source_order) {
     return ($source_order[$a] ?? 100) <=> ($source_order[$b] ?? 100) ?: strcmp($a, $b);
