@@ -77,34 +77,70 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$software_action_items = array(
+    array(
+        'label' => 'Create from Template',
+        'icon' => 'fa-puzzle-piece',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/software/software_add_from_template.php?' . $client_url),
+    ),
+);
+if ($num_rows[0] > 0) {
+    $software_action_items[] = array('type' => 'separator');
+    $software_action_items[] = array(
+        'label' => 'Export',
+        'icon' => 'fa-download',
+        'class' => 'ajax-modal',
+        'attributes' => array(
+            'data-modal-url' => buildExportModalUrl('modals/software/software_export.php', array('client_id', 'client', 'expire_days', 'archived', 'q')),
+        ),
+    );
+}
+
+$software_has_filters = $q !== '' || $expire_days !== '' || $archived == 1 || (!$client_url && $client !== '');
+$software_empty_action = $software_has_filters
+    ? array('label' => 'Clear filters', 'icon' => 'fa-times', 'variant' => 'secondary', 'href' => 'software.php?' . $client_url)
+    : array(
+        'type' => 'button',
+        'label' => 'New License',
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/software/software_add.php?' . $client_url),
+    );
+
 ?>
 
-    <div class="card">
-        <div class="card-header bg-dark py-2">
-            <h3 class="card-title mt-2"><i class="fas fa-fw fa-cube me-2"></i>Software & Licenses</h3>
-            <div class="card-tools">
-                <div class="btn-group">
-                    <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/software/software_add.php?<?= $client_url ?>">
-                        <i class="fas fa-plus me-2"></i>New License
-                    </button>
-                    <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                    <div class="dropdown-menu">
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="modals/software/software_add_from_template.php?<?= $client_url ?>">
-                            <i class="fas fa-fw fa-puzzle-piece me-2"></i>Create from Template
-                        </a>
-                        <?php if ($num_rows[0] > 0) { ?>
-                            <div class="dropdown-divider"></div>
-                            <a class="dropdown-item text-dark ajax-modal" href="#"
-                                data-modal-url="<?= buildExportModalUrl('modals/software/software_export.php', ['client_id', 'client', 'expire_days', 'archived', 'q']) ?>">
-                                <i class="fa fa-fw fa-download me-2"></i>Export
-                            </a>
-                        <?php } ?>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="card-header py-3">
+    <section class="card n45-workspace" aria-labelledby="software-page-title">
+        <?php
+        n45RenderPageHeader(array(
+            'variant' => 'workspace',
+            'title' => 'Software & Licenses',
+            'title_id' => 'software-page-title',
+            'icon' => 'fa-cube',
+            'context' => $client_url ? array(
+                'label' => $tab_title,
+                'href' => 'client_overview.php?client_id=' . $client_id,
+            ) : array(),
+            'actions' => array(
+                array(
+                    'type' => 'split-menu',
+                    'button' => array(
+                        'type' => 'button',
+                        'label' => 'New License',
+                        'icon' => 'fa-plus',
+                        'variant' => 'primary',
+                        'class' => 'ajax-modal',
+                        'attributes' => array('data-modal-url' => 'modals/software/software_add.php?' . $client_url),
+                    ),
+                    'items' => $software_action_items,
+                    'menu_label' => 'More software actions',
+                    'align_end' => true,
+                ),
+            ),
+        ));
+        ?>
+        <div class="card-header n45-filter-bar">
             <form autocomplete="off">
                 <?php if($client_url) { ?>
                 <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -114,8 +150,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
                     <div class="col-md-4">
                         <div class="input-group">
-                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Licenses">
-                                <button class="btn btn-dark"><i class="fa fa-search"></i></button>
+                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search software and licenses">
+                                <button class="btn btn-dark" aria-label="Search software and licenses"><i class="fa fa-search" aria-hidden="true"></i></button>
                         </div>
                     </div>
 
@@ -178,8 +214,18 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </div>
             </form>
         </div>
+        <?php if ($num_rows[0] == 0) { ?>
+            <?php
+            n45RenderEmptyState(array(
+                'title' => $software_has_filters ? 'No licenses match these filters' : 'No software licenses yet',
+                'description' => $software_has_filters ? 'Clear the current filters to return to the license list.' : 'Track software ownership, seats, renewals, and assignments.',
+                'icon' => 'fa-cube',
+                'action' => $software_empty_action,
+            ));
+            ?>
+        <?php } else { ?>
         <div class="table-responsive">
-            <table class="table table-borderless table-hover mb-0">
+            <table class="table table-borderless table-hover mb-0 n45-data-table">
                 <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?> text-nowrap">
                 <tr>
                     <th class="ps-3">
@@ -349,9 +395,10 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </tbody>
             </table>
         </div>
+        <?php } ?>
         <?php require_once "../includes/filter_footer.php";
  ?>
-    </div>
+    </section>
 
 <?php
 require_once "../includes/footer.php";

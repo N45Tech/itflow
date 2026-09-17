@@ -63,6 +63,12 @@ $workspace_pages = array(
     'agent/projects.php' => 'projects-page-title',
     'agent/networks.php' => 'networks-page-title',
     'agent/racks.php' => 'racks-page-title',
+    'agent/vendors.php' => 'vendors-page-title',
+    'agent/products.php' => 'products-page-title',
+    'agent/services.php' => 'services-page-title',
+    'agent/software.php' => 'software-page-title',
+    'agent/domains.php' => 'domains-page-title',
+    'agent/certificates.php' => 'certificates-page-title',
 );
 foreach ($workspace_pages as $path => $heading_id) {
     $page = file_get_contents($root . '/' . $path);
@@ -72,11 +78,40 @@ foreach ($workspace_pages as $path => $heading_id) {
     $assertNotContains('class="card-header bg-dark py-2"', $page, "$path still carries its legacy one-off header");
 }
 
-foreach (array('agent/assets.php', 'agent/contacts.php', 'agent/credentials.php', 'agent/projects.php', 'agent/networks.php') as $path) {
+foreach (array(
+    'agent/assets.php',
+    'agent/contacts.php',
+    'agent/credentials.php',
+    'agent/projects.php',
+    'agent/networks.php',
+    'agent/vendors.php',
+    'agent/products.php',
+    'agent/services.php',
+    'agent/software.php',
+    'agent/domains.php',
+    'agent/certificates.php',
+) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('class="card-header n45-filter-bar"', $page, "$path does not use the shared filter band");
     $assertContains('n45-data-table', $page, "$path does not identify its primary data table");
 }
+
+foreach (array(
+    'agent/vendors.php',
+    'agent/products.php',
+    'agent/services.php',
+    'agent/software.php',
+    'agent/domains.php',
+    'agent/certificates.php',
+) as $path) {
+    $page = file_get_contents($root . '/' . $path);
+    $assertContains('n45RenderEmptyState(array(', $page, "$path does not distinguish its zero-result state");
+    $assertContains("'label' => 'Clear filters'", $page, "$path does not provide zero-result filter recovery");
+}
+
+$products = file_get_contents($root . '/agent/products.php');
+$assertContains("'tabs_label' => 'Catalog type'", $products, 'Products and services do not expose their catalog switcher in the shared header');
+$assertNotContains('<div class="btn-group me-2">', $products, 'Products retained the duplicate catalog switcher in the filter band');
 
 $invoices = file_get_contents($root . '/agent/invoices.php');
 $assertContains("'title_id' => 'invoices-page-title'", $invoices, 'Invoices do not use the page-lead structure');
