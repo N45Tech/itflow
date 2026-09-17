@@ -71,7 +71,7 @@
         </li>
 
         <li class="nav-item dropdown user-menu">
-            <a href="#" class="nav-link" data-bs-toggle="dropdown" aria-label="Open account menu" title="Account">
+            <a href="#" class="nav-link" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="Open account menu" title="Account">
                 <?php if (empty($session_avatar)) { ?>
                 <i class="fas fa-user-circle me-1"></i>
                 <?php }else{ ?>
@@ -93,6 +93,13 @@
                         <?= stripslashes(escapeHtml($session_name)) ?>
                         <small><?= escapeHtml($session_user_role_display) ?></small>
                     </p>
+                </li>
+                <li class="n45-profile-density">
+                    <span class="n45-profile-density-label" id="n45-sidebar-density-label">Sidebar spacing</span>
+                    <div class="n45-density-options" role="group" aria-labelledby="n45-sidebar-density-label">
+                        <button class="n45-density-option" type="button" data-n45-sidebar-density-option="compact" aria-pressed="true">Compact</button>
+                        <button class="n45-density-option" type="button" data-n45-sidebar-density-option="comfortable" aria-pressed="false">Comfortable</button>
+                    </div>
                 </li>
                 <!-- Menu Footer-->
                 <li class="user-footer bg-light">
