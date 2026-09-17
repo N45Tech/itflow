@@ -174,7 +174,7 @@ function assert(condition, message) {
     await page.waitForSelector('.n45-modal-state-error[role="alert"]');
     assert(await page.getByRole('button', { name: 'Retry' }).isVisible(),
         'AJAX modal failure did not offer Retry');
-    assert(await page.getByRole('button', { name: 'Close' }).isVisible(),
+    assert(await page.getByRole('button', { name: 'Close', exact: true }).isVisible(),
         'AJAX modal failure did not offer Close');
 
     await page.getByRole('button', { name: 'Retry' }).click();
