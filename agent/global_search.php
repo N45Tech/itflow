@@ -9,9 +9,19 @@ $purifier_config = HTMLPurifier_Config::createDefault();
 $purifier_config->set('URI.AllowedSchemes', ['data' => true, 'src' => true, 'http' => true, 'https' => true]);
 $purifier = new HTMLPurifier($purifier_config);
 
-if (isset($_GET['query'])) {
+$search_requested = array_key_exists('query', $_GET);
+$raw_query = $search_requested && is_scalar($_GET['query']) ? trim((string)$_GET['query']) : '';
+$query_length = mb_strlen($raw_query, 'UTF-8');
+$query_error = '';
+if ($search_requested && $query_length < 2) {
+    $query_error = 'Enter at least two characters to search.';
+} elseif ($search_requested && $query_length > 200) {
+    $query_error = 'Keep the search to 200 characters or fewer.';
+}
 
-    $query = escapeSql($_GET['query']);
+if ($search_requested && $query_error === '') {
+
+    $query = escapeSql($raw_query);
 
     $phone_query = preg_replace("/[^0-9]/", '', $query);
     if (empty($phone_query)) {
@@ -20,9 +30,9 @@ if (isset($_GET['query'])) {
 
     $ticket_num_query = str_replace("$config_ticket_prefix", "", "$query");
 
-    // Every dedicated page gates on its module, so search must too - otherwise this
-    // page hands a role results it has no access to read anywhere else (see the
-    // credentials panel, which renders plaintext usernames and passwords)
+    // Every dedicated page gates on its module, so search must too. Credential
+    // results deliberately expose metadata only; secret reveal remains an explicit,
+    // audited action on the credential workspace.
     $can_client     = lookupUserPermission('module_client')     >= 1;
     $can_support    = lookupUserPermission('module_support')    >= 1;
     $can_sales      = lookupUserPermission('module_sales')      >= 1;
@@ -122,8 +132,7 @@ if (isset($_GET['query'])) {
         ORDER BY recurring_ticket_id DESC LIMIT 5"
     );
 
-    $sql_credentials = !$can_credential ? false : mysqli_query($mysqli, "SELECT client_id, client_name, credential_client_id, credential_description, credential_name,
-        credential_password, credential_username
+    $sql_credentials = !$can_credential ? false : mysqli_query($mysqli, "SELECT client_id, client_name, credential_client_id, credential_description, credential_id, credential_name
         FROM credentials
         LEFT JOIN contacts ON credential_contact_id = contact_id
         LEFT JOIN clients ON credential_client_id = client_id
@@ -180,29 +189,45 @@ if (isset($_GET['query'])) {
         ORDER BY ticket_id DESC, ticket_reply_id ASC LIMIT 20"
     );
 
-    $q = escapeHtml($_GET['query']);
+    $q = escapeHtml($raw_query);
+
+    $search_result_sets = array(
+        $sql_clients, $sql_contacts, $sql_vendors, $sql_domains, $sql_products,
+        $sql_documents, $sql_files, $sql_tickets, $sql_recurring_tickets,
+        $sql_credentials, $sql_quotes, $sql_invoices, $sql_assets, $sql_ticket_replies,
+    );
+    $search_result_count = 0;
+    foreach ($search_result_sets as $search_result_set) {
+        if ($search_result_set) {
+            $search_result_count += mysqli_num_rows($search_result_set);
+        }
+    }
 
     ?>
 
-<div class="card card-dark">
-    <div class="card-header mb-3">
-        <h4 class="card-title text-center"><i class="fas fa-fw fa-search me-2"></i>Global Search</h4>
-    </div>
+<?php
+n45RenderPageHeader(array(
+    'title' => 'Global Search',
+    'title_id' => 'global-search-heading',
+    'icon' => 'fa-search',
+    'description' => $search_result_count . ' matching ' . ($search_result_count === 1 ? 'record' : 'records') . ' for “' . $raw_query . '”.',
+));
+?>
 
-    <div class="card-body">
-
+<?php if ($search_result_count > 0) { ?>
+<div class="n45-search-results">
     <div class="row">
         <?php if ($sql_clients && mysqli_num_rows($sql_clients) > 0) { ?>
 
             <!-- Clients-->
 
             <div class="col-sm-6">
-                <div class="card card-dark mb-3">
+                <div class="card n45-search-group mb-3">
                     <div class="card-header">
                         <h6 class="card-title"><i class="fas fa-fw fa-users me-2"></i>Clients</h6>
                     </div>
                     <div class="card-body">
-                        <table class="table table-striped table-borderless">
+                        <table class="table table-striped table-borderless n45-data-table">
                             <thead>
                             <tr>
                                 <th>Name</th>
@@ -635,8 +660,6 @@ if (isset($_GET['query'])) {
                             <tr>
                                 <th>Name</th>
                                 <th>Description</th>
-                                <th>Username</th>
-                                <th>Password</th>
                                 <th>Client</th>
                             </tr>
                             </thead>
@@ -647,8 +670,6 @@ if (isset($_GET['query'])) {
                                 $credential_name = escapeHtml($row['credential_name']);
                                 $credential_description = escapeHtml($row['credential_description']);
                                 $credential_client_id = intval($row['credential_client_id']);
-                                $credential_username = escapeHtml(decryptCredentialEntry($row['credential_username']));
-                                $credential_password = escapeHtml(decryptCredentialEntry($row['credential_password']));
                                 $client_id = intval($row['client_id']);
                                 $client_name = escapeHtml($row['client_name']);
 
@@ -656,9 +677,6 @@ if (isset($_GET['query'])) {
                                 <tr>
                                     <td><a href="credentials.php?client_id=<?= $credential_client_id ?>&q=<?= $q ?>"><?= $credential_name ?></a></td>
                                     <td><?= $credential_description ?></td>
-                                    <td><?= $credential_username ?></td>
-                                    <td><a tabindex="0" class="btn btn-sm" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="left" data-bs-content="<?= $credential_password ?>"><i class="far fa-eye text-secondary"></i></a><button class="btn btn-sm btn-link clipboardjs" data-clipboard-text="<?= $credential_password ?>"><i class="far fa-copy text-secondary"></i></button>
-                                    </td>
                                     <td><a href="credentials.php?client_id=<?= $client_id ?>"><?= $client_name ?></a></td>
                                 </tr>
 
@@ -935,20 +953,62 @@ if (isset($_GET['query'])) {
                     </div>
 
                 </div>
-
             </div>
-        </div>
-
         <?php } ?>
-
     </div>
-
 </div>
-
-</div>
+<?php } else { ?>
+    <section class="n45-panel" aria-label="Search results">
+        <?php
+        n45RenderEmptyState(array(
+            'icon' => 'fa-search',
+            'title' => 'No matching records',
+            'description' => 'Try a broader term or check the spelling.',
+        ));
+        ?>
+    </section>
+<?php } ?>
 
 <?php
 
+} elseif ($search_requested) {
+    ?>
+    <?php
+    n45RenderPageHeader(array(
+        'title' => 'Global Search',
+        'title_id' => 'global-search-heading',
+        'icon' => 'fa-search',
+        'description' => 'Search across records you are permitted to view.',
+    ));
+    ?>
+    <section class="n45-panel" aria-label="Search guidance">
+        <?php
+        n45RenderEmptyState(array(
+            'icon' => 'fa-search',
+            'title' => 'Search not run',
+            'description' => $query_error,
+        ));
+        ?>
+    </section>
+    <?php
+} else {
+    n45RenderPageHeader(array(
+        'title' => 'Global Search',
+        'title_id' => 'global-search-heading',
+        'icon' => 'fa-search',
+        'description' => 'Search across records you are permitted to view.',
+    ));
+    ?>
+    <section class="n45-panel" aria-label="Search guidance">
+        <?php
+        n45RenderEmptyState(array(
+            'icon' => 'fa-search',
+            'title' => 'Find a record',
+            'description' => 'Use the global search field to find clients, tickets, assets, documents, credentials, and financial records.',
+        ));
+        ?>
+    </section>
+    <?php
 }
 
 require_once "../includes/footer.php";

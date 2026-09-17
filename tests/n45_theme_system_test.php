@@ -5,6 +5,9 @@ $theme = file_get_contents($root . '/css/n45_theme.css');
 $tickets = file_get_contents($root . '/agent/tickets.php');
 $clients = file_get_contents($root . '/agent/clients.php');
 $dashboard = file_get_contents($root . '/agent/dashboard.php');
+$header = file_get_contents($root . '/includes/header.php');
+$top_nav = file_get_contents($root . '/includes/top_nav.php');
+$density_script = file_get_contents($root . '/js/n45_sidebar_density.js');
 
 $failures = [];
 $assertContains = static function (string $needle, string $haystack, string $message) use (&$failures): void {
@@ -81,6 +84,17 @@ $assertContains('color: var(--n45-on-action) !important;', $theme, 'Active sideb
 $assertContains('body.dark-mode .nav-pills .nav-link.active,', $theme, 'Legacy dark-mode active states do not use the contrasting action foreground');
 $assertContains('min-height: 2.75rem;', $theme, 'Mobile ticket-state controls do not meet the 44px touch-target baseline');
 $assertContains('.n45-workspace .btn,', $theme, 'Button alignment is not scoped to N45-owned surfaces');
+$assertContains('--n45-sidebar-link-min-height: 2.1rem;', $theme, 'Compact sidebar density is not the default');
+$assertContains('html[data-n45-sidebar-density="comfortable"] {', $theme, 'Comfortable sidebar density is not available');
+$assertContains('@media (hover: none), (pointer: coarse)', $theme, 'Sidebar density does not preserve coarse-pointer touch targets');
+$assertContains('n45_sidebar_density.js', $header, 'Sidebar density is not applied before the theme loads');
+$assertOrder('n45_sidebar_density.js', 'n45_theme.css', $header, 'Sidebar density must be applied before the N45 stylesheet parses');
+$assertContains('data-n45-sidebar-density-option="compact"', $top_nav, 'The account menu is missing the compact density option');
+$assertContains('data-n45-sidebar-density-option="comfortable"', $top_nav, 'The account menu is missing the comfortable density option');
+$assertContains('data-bs-auto-close="outside"', $top_nav, 'The account menu closes before density feedback can be reviewed');
+$assertContains("var STORAGE_KEY = 'n45-sidebar-density';", $density_script, 'Sidebar density does not use a stable browser preference key');
+$assertContains("var DEFAULT_DENSITY = 'compact';", $density_script, 'Compact sidebar density is not the scripted default');
+$assertContains("document.documentElement.setAttribute('data-n45-sidebar-density', density);", $density_script, 'Sidebar density is not applied to the document root');
 if ($contrastRatio('#49c8b1', '#0a2423') < 4.5) {
     $failures[] = 'The dark-mode active navigation color pair does not meet WCAG AA contrast';
 }

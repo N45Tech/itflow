@@ -184,6 +184,14 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 - **Shadow Strategy:** None at rest; overlays only.
 - **Internal Padding:** Compact for agent records, more generous for the client portal.
 
+### Shared Page Structure
+
+- **Workspace lists:** One compact workspace header holds the page title, state or type tabs, client context, and primary action. Filters live in the quiet band immediately below it; records and pagination follow without a second title bar.
+- **Detail and summary pages:** Breadcrumbs precede one page lead containing the title, restrained status, supporting text, client context, and actions. Summary metrics or record panels follow in reading order.
+- **Action hierarchy:** Expose one primary action per page region. Import, export, linking, archival, and destructive operations belong in a labeled secondary or split menu.
+- **Reusable PHP:** New or migrated pages use the renderers in `functions/ui.php` for page headers, tabs, actions, context, badges, empty states, and modal headers. Business rules and permission checks stay in the calling page.
+- **Results:** Primary tables use `.n45-data-table`; shared listing footers announce the visible range and provide pagination. Empty states distinguish an unused workspace from filters that happen to return zero rows.
+
 ### Inputs / Fields
 
 - **Style:** White surface, strong neutral border, compact height, and small radius.

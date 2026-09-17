@@ -47,19 +47,55 @@ $sql_projects = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$project_page_tabs = array(
+    array(
+        'label' => 'Open',
+        'icon' => 'fa-door-open',
+        'href' => '?' . $client_url . 'status=0',
+        'active' => $status === 0,
+    ),
+    array(
+        'label' => 'Closed',
+        'icon' => 'fa-door-closed',
+        'href' => '?' . $client_url . 'status=1',
+        'active' => $status === 1,
+    ),
+);
+
+$project_page_actions = array();
+if (lookupUserPermission("module_support") >= 2) {
+    $project_page_actions[] = array(
+        'type' => 'button',
+        'label' => 'New Project',
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array(
+            'data-modal-url' => 'modals/project/project_add.php?' . $client_url,
+        ),
+    );
+}
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-fw fa-project-diagram me-2"></i>Projects</h3>
-        <?php if (lookupUserPermission("module_support") >= 2) { ?>
-            <div class="card-tools">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/project/project_add.php?<?= $client_url ?>"><i class="fas fa-plus"></i><span class="d-none d-lg-inline ms-2">New Project</span></button>
-            </div>
-        <?php } ?>
-    </div>
+<section class="card n45-workspace" aria-labelledby="projects-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Projects',
+        'title_id' => 'projects-page-title',
+        'icon' => 'fa-project-diagram',
+        'tabs' => $project_page_tabs,
+        'tabs_label' => 'Project state',
+        'actions' => $project_page_actions,
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+    ));
+    ?>
 
-    <div class="card-header py-3">
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
                 <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -76,11 +112,6 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </div>
                 <div class="col-sm-8">
                     <div class="btn-toolbar justify-content-md-end">
-                        <div class="btn-group me-2">
-                            <a href="?<?= $client_url ?>status=0" class="btn btn-<?php if ($status == 0){ echo"primary"; } else { echo "default"; } ?>"><i class="fa fa-fw fa-door-open me-2"></i>Open</a>
-                            <a href="?<?= $client_url ?>status=1" class="btn btn-<?php if ($status == 1){ echo"primary"; } else { echo "default"; } ?>"><i class="fa fa-fw fa-door-closed me-2"></i>Closed</a>
-                        </div>
-
                         <div class="btn-group">
                             <a href="?<?= $url_query_strings_sort ?>&archived=<?php if($archived == 1){ echo 0; } else { echo 1; } ?>"
                                class="btn btn-<?php if ($archived == 1) { echo"primary"; } else { echo "default"; } ?>">
@@ -107,7 +138,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         </form>
     </div>
     <div class="table-responsive">
-        <table class="table table-striped table-hover table-borderless mb-0">
+        <table class="table table-striped table-hover table-borderless mb-0 n45-data-table">
             <thead class="<?php if ($num_rows[0] == 0) { echo "d-none"; } ?> text-nowrap">
             <tr>
                 <th class="ps-3">
@@ -299,7 +330,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         </table>
     </div>
     <?php require_once "../includes/filter_footer.php"; ?>
-</div>
+</section>
 
 <?php
 require_once "../includes/footer.php";

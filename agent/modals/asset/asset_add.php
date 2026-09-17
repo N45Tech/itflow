@@ -32,10 +32,7 @@ $sql_tags_select = mysqli_query($mysqli, "SELECT tag_id, tag_name FROM tags WHER
 ob_start();
 
 ?>
-<div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fa fa-fw fa-desktop me-2"></i>New <?php if ($type) { echo $type; } ?> Asset</h5>
-    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-</div>
+<?php n45RenderModalHeader('New ' . ($type ? $type . ' ' : '') . 'Asset', 'fa-desktop'); ?>
 
 <form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">

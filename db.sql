@@ -1,4 +1,4 @@
-/*M!999999\- enable the sandbox mode */ 
+/*M!999999\- enable the sandbox mode */
 -- MariaDB dump 10.19  Distrib 10.11.18-MariaDB, for debian-linux-gnu (x86_64)
 --
 -- Host: localhost    Database: itflow_dev
@@ -710,6 +710,7 @@ CREATE TABLE `automation_event_policies` (
   `automation_policy_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   PRIMARY KEY (`automation_policy_source`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+INSERT INTO `automation_event_policies` (`automation_policy_source`) VALUES ('hetrix');
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

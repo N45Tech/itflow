@@ -120,6 +120,67 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$invoice_action_items = array(
+    array(
+        'label' => 'Export',
+        'icon' => 'fa-download',
+        'class' => 'ajax-modal',
+        'attributes' => array(
+            'data-modal-url' => buildExportModalUrl('modals/invoice/invoice_export.php', array('client_id', 'status', 'category', 'q'), array('dtf' => $dtf, 'dtt' => $dtt)),
+        ),
+    ),
+);
+if ($client_url && lookupUserPermission("module_sales") >= 2 && !empty($config_smtp_provider)) {
+    $invoice_action_items[] = array('type' => 'separator');
+    $invoice_action_items[] = array(
+        'label' => 'Send Account Statement',
+        'icon' => 'fa-file-alt',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/client/client_statement.php?client_id=' . $client_id),
+    );
+}
+
+$invoice_page_actions = array();
+if (lookupUserPermission("module_sales") >= 2) {
+    $invoice_page_actions[] = array(
+        'type' => 'split-menu',
+        'button' => array(
+            'type' => 'button',
+            'label' => 'New Invoice',
+            'icon' => 'fa-plus',
+            'variant' => 'primary',
+            'class' => 'ajax-modal',
+            'attributes' => array('data-modal-url' => 'modals/invoice/invoice_add.php?' . $client_url),
+        ),
+        'items' => $invoice_action_items,
+        'menu_label' => 'More invoice actions',
+        'align_end' => true,
+    );
+} else {
+    $invoice_page_actions[] = array(
+        'type' => 'menu',
+        'label' => 'Actions',
+        'icon' => 'fa-ellipsis-h',
+        'variant' => 'secondary',
+        'items' => $invoice_action_items,
+        'align_end' => true,
+    );
+}
+
+?>
+
+<?php
+n45RenderPageHeader(array(
+    'title' => 'Invoices',
+    'title_id' => 'invoices-page-title',
+    'icon' => 'fa-file-invoice',
+    'description' => 'Review draft, unpaid, and overdue balances.',
+    'context' => $client_url ? array(
+        'label' => $tab_title,
+        'href' => 'client_overview.php?client_id=' . $client_id,
+    ) : array(),
+    'actions' => $invoice_page_actions,
+));
 ?>
 
 <div class="row">
@@ -167,36 +228,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
 </div>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fa fa-fw fa-file-invoice me-2"></i>Invoices</h3>
-        <div class="card-tools">
-            <div class="btn-group">
-                <?php if (lookupUserPermission("module_sales") >= 2) { ?>
-                <button type="button" class="btn btn-primary ajax-modal"
-                    data-modal-url="modals/invoice/invoice_add.php?<?= $client_url ?>">
-                    <i class="fas fa-plus me-2"></i>New Invoice
-                </button>
-                <?php } ?>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                <div class="dropdown-menu">
-                    <a class="dropdown-item text-dark ajax-modal" href="#"
-                         data-modal-url="<?= buildExportModalUrl('modals/invoice/invoice_export.php', ['client_id', 'status', 'category', 'q'], ['dtf' => $dtf, 'dtt' => $dtt]) ?>">
-                        <i class="fa fa-fw fa-download me-2"></i>Export
-                    </a>
-                    <?php if ($client_url && lookupUserPermission("module_sales") >= 2 && !empty($config_smtp_provider)) { ?>
-                        <div class="dropdown-divider"></div>
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="modals/client/client_statement.php?client_id=<?= $client_id ?>">
-                            <i class="fa fa-fw fa-file-alt me-2"></i>Send Account Statement
-                        </a>
-                    <?php } ?>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card-header py-3">
+<section class="card n45-workspace" aria-label="Invoice results">
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <input type="hidden" name="status" value="<?php if (isset($_GET['status'])) { echo escapeHtml($_GET['status']); } ?>">
             <?php if ($client_url) { ?>
@@ -273,7 +306,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
     <form id="bulkActions" action="post.php" method="post">
         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
         <div class="table-responsive">
-            <table class="table table-striped table-borderless table-hover mb-0">
+            <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
                 <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?> text-nowrap">
                     <tr>
                         <td class="checkbox-column border-end">
@@ -493,7 +526,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         </div>
     </form>
     <?php require_once "../includes/filter_footer.php"; ?>
-</div>
+</section>
 
 <?php if (lookupUserPermission("module_sales") >= 2 && !empty($config_smtp_provider)) { ?>
     <?php

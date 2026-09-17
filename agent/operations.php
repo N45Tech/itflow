@@ -4,19 +4,21 @@ require_once "includes/inc_all.php";
 
 enforceUserPermission('module_support');
 $can_review_identities = lookupUserPermission('module_support') >= 2;
+$show_diagnostics = isset($_GET['view']) && $_GET['view'] === 'diagnostics';
+$diagnostics_url = '/agent/operations.php?view=diagnostics';
 
 $incident_scope = clientScopeSql('automation_incident_client_id');
 $mapping_scope = clientScopeSql('automation_mapping_client_id');
 $bound_identity_scope = $session_is_admin ? '' : 'AND automation_mapping_client_id > 0';
 $ticket_scope = clientScopeSql('ticket_client_id');
 $level_asset_scope = clientScopeSql('assets.asset_client_id');
-$active_incident_sources = "AND automation_incident_source NOT IN ('netbox', 'checkmk')";
-$active_event_sources = "AND automation_event_source NOT IN ('netbox', 'checkmk')";
-$active_mapping_sources = "AND automation_mapping_source NOT IN ('netbox', 'checkmk')";
+$active_incident_sources = "AND automation_incident_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')";
+$active_event_sources = "AND automation_event_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')";
+$active_mapping_sources = "AND automation_mapping_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')";
 
 $source_label = static function ($source) {
     $labels = [
-        'uptime_kuma' => 'Uptime Kuma',
+        'hetrix' => 'HetrixTools',
         'n8n' => 'n8n',
         'backup' => 'Backups',
         'cipp' => 'CIPP',
@@ -33,7 +35,7 @@ $source_label = static function ($source) {
 
 $source_icon = static function ($source) {
     return match (strtolower((string) $source)) {
-        'uptime_kuma' => 'fa-heartbeat',
+        'hetrix' => 'fa-heartbeat',
         'n8n' => 'fa-random',
         'backup' => 'fa-database',
         'cipp', 'entra', 'intune' => 'fa-cloud',
@@ -110,7 +112,7 @@ $event_queue_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
 $active_maintenance_count = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*)
     FROM automation_maintenance_windows
     WHERE automation_maintenance_deleted_at IS NULL
-    AND automation_maintenance_source NOT IN ('netbox', 'checkmk')
+    AND automation_maintenance_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')
     AND automation_maintenance_starts_at <= NOW()
     AND automation_maintenance_ends_at >= NOW()"))[0] ?? 0);
 
@@ -170,13 +172,22 @@ foreach ($level_cron_rows as $level_cron_row) {
         $level_job_last_run = $level_cron_row['cron_job_last_run_at'];
     }
 }
-$identity_cron = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT cron_job_last_error,
+$identity_cron = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT cron_job_enabled, cron_job_last_error,
     cron_job_last_run_at, cron_job_last_status, cron_job_run_now
     FROM cron_jobs WHERE cron_job_name = 'identity_reconciliation' LIMIT 1")) ?: [];
 $identity_job_attention = ($identity_cron['cron_job_last_status'] ?? '') === 'Failed'
     || intval($identity_cron['cron_job_run_now'] ?? 0) === 1;
 
 $source_health = [];
+$source_policies = [];
+$sql_source_policies = mysqli_query($mysqli, "SELECT automation_policy_source AS source,
+    automation_policy_enabled AS enabled, automation_policy_updated_at AS updated_at
+    FROM automation_event_policies
+    WHERE automation_policy_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')");
+while ($row = mysqli_fetch_assoc($sql_source_policies)) {
+    $source_policies[$row['source']] = $row;
+}
+
 $sql_source_incidents = mysqli_query($mysqli, "SELECT automation_incident_source AS source,
     COUNT(*) AS incident_count,
     SUM(automation_incident_status = 'Open') AS open_count,
@@ -201,6 +212,22 @@ while ($row = mysqli_fetch_assoc($sql_source_events)) {
     }
     $source_health[$row['source']]['events_24h'] = $row['events_24h'];
     $source_health[$row['source']]['last_received_at'] = $row['last_received_at'];
+}
+
+$sql_source_failures = mysqli_query($mysqli, "SELECT automation_event_source AS source,
+    SUM(automation_event_status = 'Failed') AS failed_count,
+    SUM(automation_event_status = 'Dead') AS dead_count
+    FROM automation_events
+    LEFT JOIN automation_incidents ON automation_incident_source = automation_event_source
+        AND automation_incident_key = automation_event_incident_key
+    WHERE 1 = 1 $incident_scope $active_event_sources
+    GROUP BY automation_event_source");
+while ($row = mysqli_fetch_assoc($sql_source_failures)) {
+    if (!isset($source_health[$row['source']])) {
+        $source_health[$row['source']] = ['source' => $row['source'], 'incident_count' => 0, 'open_count' => 0, 'last_event_at' => null];
+    }
+    $source_health[$row['source']]['failed_count'] = $row['failed_count'];
+    $source_health[$row['source']]['dead_count'] = $row['dead_count'];
 }
 
 $sql_source_mappings = mysqli_query($mysqli, "SELECT automation_mapping_source AS source,
@@ -229,7 +256,7 @@ while ($row = mysqli_fetch_assoc($sql_source_mappings)) {
     $source_health[$row['source']]['last_mapping_at'] = $row['last_mapping_at'];
 }
 
-foreach (['level', 'sentinelone', 'cipp', 'entra', 'intune', 'backup', 'infrastructure', 'uptime_kuma', 'n8n'] as $known_source) {
+foreach (['level', 'sentinelone', 'cipp', 'entra', 'intune', 'backup', 'infrastructure', 'hetrix', 'n8n'] as $known_source) {
     if (!isset($source_health[$known_source])) {
         $source_health[$known_source] = [
             'source' => $known_source,
@@ -247,11 +274,73 @@ foreach (['level', 'sentinelone', 'cipp', 'entra', 'intune', 'backup', 'infrastr
 $source_order = [
     'level' => 10, 'sentinelone' => 20, 'cipp' => 40,
     'entra' => 50, 'intune' => 60, 'backup' => 70, 'infrastructure' => 80,
-    'uptime_kuma' => 90, 'n8n' => 100,
+    'hetrix' => 90, 'n8n' => 100,
 ];
 uksort($source_health, static function ($a, $b) use ($source_order) {
     return ($source_order[$a] ?? 100) <=> ($source_order[$b] ?? 100) ?: strcmp($a, $b);
 });
+// Level.io has a richer first-party health contract below; do not count its
+// generic event/mapping projection as a second integration.
+unset($source_health['level'], $source_health['level_io']);
+
+$source_stale_hours = [
+    'sentinelone' => 26,
+    'cipp' => 26,
+    'entra' => 26,
+    'intune' => 26,
+    'backup' => 30,
+    'infrastructure' => 2,
+    // Alert-only webhooks do not emit a continuous heartbeat. A generous
+    // evidence window avoids permanent green status without treating a quiet
+    // week as an outage.
+    'hetrix' => 720,
+    'n8n' => 720,
+];
+$source_status_counts = [
+    'Failed' => 0,
+    'Stale' => 0,
+    'Awaiting signal' => 0,
+    'Not configured' => 0,
+    'Healthy' => 0,
+];
+$latest_operational_update = '';
+foreach ($source_health as $source => &$health) {
+    $last_seen_candidates = array_filter([
+        $health['last_received_at'] ?? '',
+        $health['last_event_at'] ?? '',
+        $health['last_mapping_at'] ?? '',
+    ]);
+    $last_seen = $last_seen_candidates ? max($last_seen_candidates) : '';
+    $policy = $source_policies[$source] ?? [];
+    $explicitly_configured = $last_seen !== ''
+        || (!empty($policy['enabled']) && !empty($policy['updated_at']));
+    $failed_count = intval($health['failed_count'] ?? 0);
+    $dead_count = intval($health['dead_count'] ?? 0);
+    $conflict_count = intval($health['conflict_mapping_count'] ?? 0);
+    $stale_after_hours = $source_stale_hours[$source] ?? null;
+    $is_stale = $last_seen !== '' && $stale_after_hours !== null
+        && strtotime($last_seen) < time() - ($stale_after_hours * 3600);
+
+    if (!$explicitly_configured) {
+        $status = 'Not configured';
+    } elseif ($failed_count || $dead_count || $conflict_count) {
+        $status = 'Failed';
+    } elseif ($last_seen === '') {
+        $status = 'Awaiting signal';
+    } elseif ($is_stale) {
+        $status = 'Stale';
+    } else {
+        $status = 'Healthy';
+    }
+
+    $health['status'] = $status;
+    $health['last_seen'] = $last_seen;
+    $source_status_counts[$status]++;
+    if ($last_seen > $latest_operational_update) {
+        $latest_operational_update = $last_seen;
+    }
+}
+unset($health);
 
 $attention_items = [];
 $open_incidents = intval($automation_stats['open_incidents'] ?? 0);
@@ -264,10 +353,88 @@ $identity_unresolved_devices = intval($mapping_stats['unresolved_devices'] ?? 0)
 $identity_conflicting_devices = intval($mapping_stats['conflicting_devices'] ?? 0);
 $identity_stale_devices = intval($mapping_stats['stale_mappings'] ?? 0);
 $identity_review_devices = $identity_unresolved_devices + $identity_conflicting_devices;
-$identity_health_attention = $identity_stale_devices > 0 || $identity_review_devices > 0;
 $device_identity_conflicts = max($level_conflicts, $identity_conflicting_devices);
 $failed_events = intval($event_queue_stats['failed_events'] ?? 0);
 $dead_events = intval($event_queue_stats['dead_events'] ?? 0);
+$queued_events = intval($event_queue_stats['pending_events'] ?? 0) + intval($event_queue_stats['processing_events'] ?? 0);
+
+$pipeline_status = !$config_enable_cron
+    ? 'Failed'
+    : (($dead_events || $failed_events) ? 'Failed' : 'Healthy');
+$pipeline_status_tone = $pipeline_status === 'Healthy' ? 'success' : 'danger';
+
+$level_last_update_candidates = array_filter([
+    $level_stats['last_sync_at'] ?? '',
+    $level_job_last_run,
+]);
+$level_last_update = $level_last_update_candidates ? max($level_last_update_candidates) : '';
+if (!$config_level_enable) {
+    $level_status = 'Not configured';
+} elseif ($level_job_attention || $level_failed_events || $level_conflicts) {
+    $level_status = 'Failed';
+} elseif ($level_last_update === '') {
+    $level_status = 'Awaiting signal';
+} elseif (strtotime($level_last_update) < time() - (2 * 3600)) {
+    $level_status = 'Stale';
+} else {
+    $level_status = 'Healthy';
+}
+$level_status_tone = match ($level_status) {
+    'Healthy' => 'success',
+    'Failed' => 'danger',
+    'Stale' => 'warning',
+    'Awaiting signal' => 'info',
+    default => 'secondary',
+};
+if ($level_last_update > $latest_operational_update) {
+    $latest_operational_update = $level_last_update;
+}
+
+$identity_last_update = $identity_cron['cron_job_last_run_at'] ?? '';
+if (!$config_enable_cron || empty($identity_cron) || empty($identity_cron['cron_job_enabled'])) {
+    $identity_status = 'Not configured';
+} elseif ($identity_job_attention || $identity_conflicting_devices) {
+    $identity_status = 'Failed';
+} elseif ($identity_last_update === '') {
+    $identity_status = 'Awaiting signal';
+} elseif (strtotime($identity_last_update) < time() - (2 * 3600) || $identity_stale_devices) {
+    $identity_status = 'Stale';
+} else {
+    $identity_status = 'Healthy';
+}
+$identity_status_tone = match ($identity_status) {
+    'Healthy' => 'success',
+    'Failed' => 'danger',
+    'Stale' => 'warning',
+    'Awaiting signal' => 'info',
+    default => 'secondary',
+};
+if ($identity_last_update > $latest_operational_update) {
+    $latest_operational_update = $identity_last_update;
+}
+
+$integration_statuses = array_merge(
+    [$level_status, $identity_status],
+    array_column($source_health, 'status')
+);
+if ($pipeline_status === 'Failed' || in_array('Failed', $integration_statuses, true)) {
+    $overall_health_status = 'Failed';
+} elseif (in_array('Stale', $integration_statuses, true)) {
+    $overall_health_status = 'Stale';
+} elseif (in_array('Awaiting signal', $integration_statuses, true)) {
+    $overall_health_status = 'Awaiting signal';
+} elseif (in_array('Healthy', $integration_statuses, true)) {
+    $overall_health_status = 'Healthy';
+} else {
+    $overall_health_status = 'Not configured';
+}
+$overall_health_tone = match ($overall_health_status) {
+    'Healthy' => 'success',
+    'Failed' => 'danger',
+    'Stale' => 'warning',
+    'Awaiting signal' => 'info',
+    default => 'muted',
+};
 
 $documentation_scope = clientScopeSql('o.documentation_obligation_client_id');
 $documentation_validity = documentationObligationValiditySql('o');
@@ -325,10 +492,10 @@ if ($unassigned_tickets) {
     $attention_items[] = ['warning', 'fa-user-slash', "$unassigned_tickets unassigned ticket" . ($unassigned_tickets === 1 ? '' : 's'), '/agent/tickets.php?assigned=unassigned'];
 }
 if ($device_identity_conflicts) {
-    $attention_items[] = ['danger', 'fa-random', "$device_identity_conflicts conflicting device identit" . ($device_identity_conflicts === 1 ? 'y' : 'ies'), '#entity-mappings'];
+    $attention_items[] = ['danger', 'fa-random', "$device_identity_conflicts conflicting device identit" . ($device_identity_conflicts === 1 ? 'y' : 'ies'), $diagnostics_url . '#identity-review'];
 }
 if ($identity_unresolved_devices) {
-    $attention_items[] = ['warning', 'fa-unlink', "$identity_unresolved_devices unresolved device identit" . ($identity_unresolved_devices === 1 ? 'y' : 'ies'), '#entity-mappings'];
+    $attention_items[] = ['warning', 'fa-unlink', "$identity_unresolved_devices unresolved device identit" . ($identity_unresolved_devices === 1 ? 'y' : 'ies'), $diagnostics_url . '#identity-review'];
 }
 if ($level_failed_events) {
     $attention_items[] = ['warning', 'fa-inbox', "$level_failed_events queued or failed Level.io event" . ($level_failed_events === 1 ? '' : 's'), $session_is_admin ? '/admin/integration_level.php' : '#integration-health'];
@@ -340,9 +507,27 @@ if ($identity_job_attention) {
     $attention_items[] = ['danger', 'fa-project-diagram', 'Endpoint identity reconciliation job failed', $session_is_admin ? '/admin/cron.php' : '#integration-health'];
 }
 if ($dead_events) {
-    $attention_items[] = ['danger', 'fa-exclamation-circle', "$dead_events dead-letter event" . ($dead_events === 1 ? '' : 's'), $session_is_admin ? '/admin/integration_automation.php' : '#recent-activity'];
+    $attention_items[] = ['danger', 'fa-exclamation-circle', "$dead_events dead-letter event" . ($dead_events === 1 ? '' : 's'), $session_is_admin ? '/admin/integration_automation.php' : $diagnostics_url . '#recent-activity'];
 } elseif ($failed_events) {
-    $attention_items[] = ['warning', 'fa-redo', "$failed_events operational event" . ($failed_events === 1 ? '' : 's') . ' waiting to retry', $session_is_admin ? '/admin/integration_automation.php' : '#recent-activity'];
+    $attention_items[] = ['warning', 'fa-redo', "$failed_events operational event" . ($failed_events === 1 ? '' : 's') . ' waiting to retry', $session_is_admin ? '/admin/integration_automation.php' : $diagnostics_url . '#recent-activity'];
+}
+
+$failed_health_components = $source_status_counts['Failed']
+    + ($pipeline_status === 'Failed' ? 1 : 0)
+    + ($level_status === 'Failed' ? 1 : 0)
+    + ($identity_status === 'Failed' ? 1 : 0);
+$stale_health_components = $source_status_counts['Stale']
+    + ($level_status === 'Stale' ? 1 : 0)
+    + ($identity_status === 'Stale' ? 1 : 0);
+$awaiting_health_components = $source_status_counts['Awaiting signal']
+    + ($level_status === 'Awaiting signal' ? 1 : 0)
+    + ($identity_status === 'Awaiting signal' ? 1 : 0);
+if ($failed_health_components) {
+    $attention_items[] = ['danger', 'fa-plug', "$failed_health_components integration health check" . ($failed_health_components === 1 ? '' : 's') . ' failed', '#integration-health'];
+} elseif ($stale_health_components) {
+    $attention_items[] = ['warning', 'fa-clock', "$stale_health_components integration signal" . ($stale_health_components === 1 ? ' is' : 's are') . ' stale', '#integration-health'];
+} elseif ($awaiting_health_components) {
+    $attention_items[] = ['warning', 'fa-hourglass-start', "$awaiting_health_components configured integration" . ($awaiting_health_components === 1 ? ' is' : 's are') . ' awaiting a first signal', '#integration-health'];
 }
 $sql_open_incidents = mysqli_query($mysqli, "SELECT automation_incidents.*,
     client_name, location_name, asset_name, service_name, ticket_prefix, ticket_number
@@ -358,52 +543,11 @@ $sql_open_incidents = mysqli_query($mysqli, "SELECT automation_incidents.*,
         WHEN 'medium' THEN 4 WHEN 'low' THEN 5 ELSE 6 END,
         automation_incident_last_event_at DESC LIMIT 25");
 
-$sql_recent_events = mysqli_query($mysqli, "SELECT automation_events.*,
-    automation_incident_client_id, client_name
-    FROM automation_events
-    INNER JOIN automation_incidents ON automation_incident_source = automation_event_source
-        AND automation_incident_key = automation_event_incident_key
-    LEFT JOIN clients ON automation_incident_client_id = client_id
-    WHERE 1 = 1 $incident_scope $active_event_sources
-    ORDER BY automation_event_last_received_at DESC LIMIT 20");
-
-$sql_recent_mappings = mysqli_query($mysqli, "SELECT automation_entity_mappings.*,
-    client_name, location_name, asset_name, domain_name
-    FROM automation_entity_mappings
-    LEFT JOIN clients ON automation_mapping_client_id = client_id
-    LEFT JOIN locations ON automation_mapping_location_id = location_id
-    LEFT JOIN assets ON automation_mapping_asset_id = asset_id
-    LEFT JOIN domains ON automation_mapping_domain_id = domain_id
-    WHERE automation_mapping_deleted_at IS NULL $mapping_scope $active_mapping_sources
-    ORDER BY automation_mapping_last_seen_at DESC, automation_mapping_id DESC LIMIT 20");
-
-$sql_identity_review = mysqli_query($mysqli, "SELECT automation_entity_mappings.*,
-    client_name, asset_name
-    FROM automation_entity_mappings
-    LEFT JOIN clients ON automation_mapping_client_id = client_id
-    LEFT JOIN assets ON automation_mapping_asset_id = asset_id
-    WHERE automation_mapping_entity_type = 'device'
-    AND automation_mapping_deleted_at IS NULL
-    AND automation_mapping_state IN ('unresolved', 'suggested', 'conflicting', 'stale')
-    $mapping_scope $bound_identity_scope $active_mapping_sources
-    ORDER BY FIELD(automation_mapping_state, 'conflicting', 'unresolved', 'suggested', 'stale'),
-        automation_mapping_last_seen_at DESC, automation_mapping_id DESC LIMIT 100");
-
-$sql_mapping_decisions = mysqli_query($mysqli, "SELECT automation_mapping_decisions.*,
-    automation_mapping_client_id, automation_mapping_external_name, client_name, user_name
-    FROM automation_mapping_decisions
-    INNER JOIN automation_entity_mappings
-        ON automation_mapping_id = automation_mapping_decision_mapping_id
-    LEFT JOIN clients ON automation_mapping_client_id = client_id
-    LEFT JOIN users ON automation_mapping_decision_actor_user_id = user_id
-    WHERE 1 = 1 $mapping_scope $bound_identity_scope $active_mapping_sources
-    ORDER BY automation_mapping_decision_occurred_at DESC,
-        automation_mapping_decision_id DESC LIMIT 20");
-
-$coverage_rows = endpointIntegrationCoverageRows(
-    $session_is_admin ? [] : ($client_access_array ?? []),
-    $session_is_admin ? [] : ($client_deny_array ?? [])
-);
+$sql_recent_events = false;
+$sql_recent_mappings = false;
+$sql_identity_review = false;
+$sql_mapping_decisions = false;
+$coverage_rows = [];
 $coverage_totals = [
     'active_devices' => 0,
     'level_devices' => 0,
@@ -414,9 +558,57 @@ $coverage_totals = [
     'missing_intune_devices' => 0,
     'managed_windows_missing_sentinelone' => 0,
 ];
-foreach ($coverage_rows as $coverage_row) {
-    foreach ($coverage_totals as $coverage_key => $_) {
-        $coverage_totals[$coverage_key] += intval($coverage_row[$coverage_key] ?? 0);
+if ($show_diagnostics) {
+    $sql_recent_events = mysqli_query($mysqli, "SELECT automation_events.*,
+        automation_incident_client_id, client_name
+        FROM automation_events
+        INNER JOIN automation_incidents ON automation_incident_source = automation_event_source
+            AND automation_incident_key = automation_event_incident_key
+        LEFT JOIN clients ON automation_incident_client_id = client_id
+        WHERE 1 = 1 $incident_scope $active_event_sources
+        ORDER BY automation_event_last_received_at DESC LIMIT 20");
+
+    $sql_recent_mappings = mysqli_query($mysqli, "SELECT automation_entity_mappings.*,
+        client_name, location_name, asset_name, domain_name
+        FROM automation_entity_mappings
+        LEFT JOIN clients ON automation_mapping_client_id = client_id
+        LEFT JOIN locations ON automation_mapping_location_id = location_id
+        LEFT JOIN assets ON automation_mapping_asset_id = asset_id
+        LEFT JOIN domains ON automation_mapping_domain_id = domain_id
+        WHERE automation_mapping_deleted_at IS NULL $mapping_scope $active_mapping_sources
+        ORDER BY automation_mapping_last_seen_at DESC, automation_mapping_id DESC LIMIT 20");
+
+    $sql_identity_review = mysqli_query($mysqli, "SELECT automation_entity_mappings.*,
+        client_name, asset_name
+        FROM automation_entity_mappings
+        LEFT JOIN clients ON automation_mapping_client_id = client_id
+        LEFT JOIN assets ON automation_mapping_asset_id = asset_id
+        WHERE automation_mapping_entity_type = 'device'
+        AND automation_mapping_deleted_at IS NULL
+        AND automation_mapping_state IN ('unresolved', 'suggested', 'conflicting', 'stale')
+        $mapping_scope $bound_identity_scope $active_mapping_sources
+        ORDER BY FIELD(automation_mapping_state, 'conflicting', 'unresolved', 'suggested', 'stale'),
+            automation_mapping_last_seen_at DESC, automation_mapping_id DESC LIMIT 100");
+
+    $sql_mapping_decisions = mysqli_query($mysqli, "SELECT automation_mapping_decisions.*,
+        automation_mapping_client_id, automation_mapping_external_name, client_name, user_name
+        FROM automation_mapping_decisions
+        INNER JOIN automation_entity_mappings
+            ON automation_mapping_id = automation_mapping_decision_mapping_id
+        LEFT JOIN clients ON automation_mapping_client_id = client_id
+        LEFT JOIN users ON automation_mapping_decision_actor_user_id = user_id
+        WHERE 1 = 1 $mapping_scope $bound_identity_scope $active_mapping_sources
+        ORDER BY automation_mapping_decision_occurred_at DESC,
+            automation_mapping_decision_id DESC LIMIT 20");
+
+    $coverage_rows = endpointIntegrationCoverageRows(
+        $session_is_admin ? [] : ($client_access_array ?? []),
+        $session_is_admin ? [] : ($client_deny_array ?? [])
+    );
+    foreach ($coverage_rows as $coverage_row) {
+        foreach ($coverage_totals as $coverage_key => $_) {
+            $coverage_totals[$coverage_key] += intval($coverage_row[$coverage_key] ?? 0);
+        }
     }
 }
 
@@ -426,15 +618,21 @@ foreach ($coverage_rows as $coverage_row) {
     <header class="n45-ops-header">
         <div>
             <div class="n45-ops-title-row">
-                <span class="n45-live-dot" aria-hidden="true"></span>
-                <h1>Operations</h1>
+                <span class="n45-live-dot n45-live-dot-<?= escapeHtml($overall_health_tone) ?>" aria-hidden="true"></span>
+                <h1><?= $show_diagnostics ? 'Operations diagnostics' : 'Operations' ?></h1>
+                <span class="n45-ops-status"><?= escapeHtml($overall_health_status) ?> · <?= $latest_operational_update ? 'Updated ' . escapeHtml(timeAgo($latest_operational_update)) : 'No signals received' ?></span>
             </div>
-            <p>One place to triage technician work, integration health, and automatically discovered infrastructure.</p>
+            <p><?= $show_diagnostics ? 'Detailed source coverage, identity review, and event history for investigation.' : 'One place to triage technician work, integration health, and automatically discovered infrastructure.' ?></p>
         </div>
         <div class="n45-ops-actions" aria-label="Operations shortcuts">
-            <button type="button" class="btn btn-primary ajax-modal" data-modal-url="/agent/modals/ticket/ticket_add.php" data-modal-size="lg"><i class="fas fa-plus mr-2"></i>New ticket</button>
-            <a class="btn btn-outline-secondary" href="https://app.level.io/devices" target="_blank" rel="noopener noreferrer">Level.io <i class="fas fa-external-link-alt ml-2"></i></a>
-            <a class="btn btn-outline-secondary" href="https://automate.n45tech.com" target="_blank" rel="noopener noreferrer">n8n <i class="fas fa-external-link-alt ml-2"></i></a>
+            <?php if ($show_diagnostics) { ?>
+                <a class="btn btn-outline-secondary" href="/agent/operations.php"><i class="fas fa-arrow-left mr-2"></i>Back to overview</a>
+                <?php if ($session_is_admin) { ?><a class="btn btn-outline-secondary" href="/admin/integration_automation.php">Manage events <i class="fas fa-cog ml-2"></i></a><?php } ?>
+            <?php } else { ?>
+                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="/agent/modals/ticket/ticket_add.php" data-modal-size="lg"><i class="fas fa-plus mr-2"></i>New ticket</button>
+                <a class="btn btn-outline-secondary" href="https://app.level.io/devices" target="_blank" rel="noopener noreferrer">Level.io <i class="fas fa-external-link-alt ml-2"></i></a>
+                <a class="btn btn-outline-secondary" href="https://automate.n45tech.com" target="_blank" rel="noopener noreferrer">n8n <i class="fas fa-external-link-alt ml-2"></i></a>
+            <?php } ?>
         </div>
     </header>
 
@@ -454,12 +652,12 @@ foreach ($coverage_rows as $coverage_row) {
             <strong><?= $sla_breached + $sla_at_risk ?></strong>
             <small><?= $sla_breached ?> breached · <?= $sla_at_risk ?> at risk</small>
         </a>
-        <a href="#recent-activity">
+        <a href="<?= escapeHtml($diagnostics_url) ?>#recent-activity">
             <span>Signal volume</span>
             <strong><?= intval($event_stats['events_24h'] ?? 0) ?></strong>
             <small><?= intval($event_stats['duplicate_deliveries'] ?? 0) ?> known duplicate deliveries · <?= intval($event_stats['suppressed_24h'] ?? 0) ?> suppressed today</small>
         </a>
-        <a href="#entity-mappings">
+        <a href="<?= escapeHtml($diagnostics_url) ?>#entity-mappings">
             <span>Known identities</span>
             <strong><?= intval($mapping_stats['mapping_count'] ?? 0) ?></strong>
             <small><?= $identity_unresolved_devices + $identity_conflicting_devices ?> need review</small>
@@ -489,7 +687,7 @@ foreach ($coverage_rows as $coverage_row) {
                 <?php } else { ?>
                     <div class="n45-calm-state">
                         <i class="fas fa-check-circle"></i>
-                        <div><strong>No operational exceptions</strong><span>Queues, automations, mappings, and SLAs are clear.</span></div>
+                        <div><strong>No active operational exceptions</strong><span>Configured sources report no exceptions; setup state remains visible in Integration health.</span></div>
                     </div>
                 <?php } ?>
             </section>
@@ -502,52 +700,58 @@ foreach ($coverage_rows as $coverage_row) {
                         <h2 id="integration-heading">Integration health</h2>
                         <p>Live signals from systems that feed ITFlow.</p>
                     </div>
-                    <?php if ($session_is_admin) { ?><a href="/admin/integration_automation.php">Manage events <i class="fas fa-cog ml-1"></i></a><?php } ?>
+                    <a href="<?= escapeHtml($diagnostics_url) ?>">View diagnostics <i class="fas fa-arrow-right ml-1"></i></a>
                 </div>
                 <div class="n45-health-list" tabindex="0" aria-label="Integration health details; scroll for additional sources">
                     <div class="n45-health-row">
                         <span class="n45-system-icon"><i class="fas fa-stream"></i></span>
                         <div>
                             <strong>Operational event pipeline</strong>
-                            <span><?= intval($event_queue_stats['pending_events'] ?? 0) + intval($event_queue_stats['processing_events'] ?? 0) ?> queued · <?= $failed_events ?> retrying · <?= $active_maintenance_count ?> maintenance window<?= $active_maintenance_count === 1 ? '' : 's' ?></span>
+                            <span><?= $queued_events ?> queued · <?= $failed_events ?> retrying · <?= $active_maintenance_count ?> maintenance window<?= $active_maintenance_count === 1 ? '' : 's' ?><?= !$config_enable_cron ? ' · processor disabled' : '' ?></span>
                         </div>
-                        <span class="badge badge-<?= $dead_events ? 'danger' : ($failed_events ? 'warning' : 'success') ?>"><?= $dead_events ? "$dead_events dead" : ($failed_events ? 'Retrying' : 'Healthy') ?></span>
+                        <span class="badge badge-<?= $pipeline_status_tone ?>"><?= escapeHtml($pipeline_status) ?></span>
                     </div>
                     <div class="n45-health-row">
                         <span class="n45-system-icon"><i class="fas fa-satellite"></i></span>
                         <div>
                             <strong>Level.io</strong>
-                            <span><?= intval($level_stats['online_assets'] ?? 0) ?>/<?= intval($level_stats['managed_assets'] ?? 0) ?> devices online · <?= $level_open_alerts ?> active alerts<?= $level_job_last_run ? ' · synced ' . escapeHtml(timeAgo($level_job_last_run)) : '' ?></span>
+                            <span><?= intval($level_stats['online_assets'] ?? 0) ?>/<?= intval($level_stats['managed_assets'] ?? 0) ?> devices online · <?= $level_open_alerts ?> active alerts<?= $level_last_update ? ' · updated ' . escapeHtml(timeAgo($level_last_update)) : ' · no signal received' ?></span>
                         </div>
-                        <span class="badge badge-<?= !$config_level_enable ? 'secondary' : ($level_conflicts || $level_failed_events || $level_job_attention ? 'warning' : 'success') ?>"><?= !$config_level_enable ? 'Disabled' : ($level_conflicts || $level_failed_events || $level_job_attention ? 'Attention' : 'Healthy') ?></span>
+                        <span class="badge badge-<?= $level_status_tone ?>"><?= escapeHtml($level_status) ?></span>
                     </div>
                     <div class="n45-health-row">
                         <span class="n45-system-icon"><i class="fas fa-project-diagram"></i></span>
                         <div>
                             <strong>Endpoint identity reconciliation</strong>
-                            <span><?= $identity_stale_devices ?> stale · <?= $identity_review_devices ?> awaiting review<?= !empty($identity_cron['cron_job_last_run_at']) ? ' · ran ' . escapeHtml(timeAgo($identity_cron['cron_job_last_run_at'])) : ' · awaiting first scheduled run' ?></span>
+                            <span><?= $identity_stale_devices ?> stale · <?= $identity_review_devices ?> awaiting review<?= $identity_last_update ? ' · updated ' . escapeHtml(timeAgo($identity_last_update)) : ' · no run recorded' ?></span>
                         </div>
-                        <span class="badge badge-<?= $identity_job_attention ? 'danger' : ($identity_health_attention ? 'warning' : 'success') ?>"><?= $identity_job_attention ? 'Failed' : ($identity_health_attention ? 'Attention' : 'Healthy') ?></span>
+                        <span class="badge badge-<?= $identity_status_tone ?>"><?= escapeHtml($identity_status) ?></span>
                     </div>
                     <?php foreach ($source_health as $source => $health) {
                         if (in_array($source, ['level', 'level_io'], true)) {
                             continue;
                         }
-                        $open_count = intval($health['open_count'] ?? 0);
-                        $last_seen = $health['last_received_at'] ?? $health['last_event_at'] ?? $health['last_mapping_at'] ?? '';
+                        $last_seen = $health['last_seen'] ?? '';
                         $mapping_count = intval($health['mapping_count'] ?? 0);
                         $review_mapping_count = intval($health['review_mapping_count'] ?? 0);
-                        $conflict_mapping_count = intval($health['conflict_mapping_count'] ?? 0);
                         $stale_mapping_count = intval($health['stale_mapping_count'] ?? 0);
                         $events_24h = intval($health['events_24h'] ?? 0);
+                        $source_status = $health['status'] ?? 'Not configured';
+                        $source_status_tone = match ($source_status) {
+                            'Healthy' => 'success',
+                            'Failed' => 'danger',
+                            'Stale' => 'warning',
+                            'Awaiting signal' => 'info',
+                            default => 'secondary',
+                        };
                         ?>
                         <div class="n45-health-row">
                             <span class="n45-system-icon"><i class="fas <?= $source_icon($source) ?>"></i></span>
                             <div>
                                 <strong><?= escapeHtml($source_label($source)) ?></strong>
-                                <span><?= $events_24h ?> events today · <?= $mapping_count ?> mappings<?= $review_mapping_count ? ' · ' . $review_mapping_count . ' review' : '' ?><?= $stale_mapping_count ? ' · ' . $stale_mapping_count . ' stale' : '' ?><?= $last_seen ? ' · seen ' . escapeHtml(timeAgo($last_seen)) : ' · ready for first signal' ?></span>
+                                <span><?= $events_24h ?> events today · <?= $mapping_count ?> mappings<?= $review_mapping_count ? ' · ' . $review_mapping_count . ' review' : '' ?><?= $stale_mapping_count ? ' · ' . $stale_mapping_count . ' stale' : '' ?><?= $last_seen ? ' · updated ' . escapeHtml(timeAgo($last_seen)) : ' · no signal received' ?></span>
                             </div>
-                            <span class="badge badge-<?= $conflict_mapping_count ? 'danger' : ($open_count || $review_mapping_count || $stale_mapping_count ? 'warning' : ($last_seen ? 'success' : 'info')) ?>"><?= $conflict_mapping_count ? "$conflict_mapping_count conflicts" : ($open_count ? "$open_count open" : ($review_mapping_count || $stale_mapping_count ? 'Attention' : ($last_seen ? 'Connected' : 'Ready'))) ?></span>
+                            <span class="badge badge-<?= $source_status_tone ?>"><?= escapeHtml($source_status) ?></span>
                         </div>
                     <?php } ?>
                 </div>
@@ -555,6 +759,7 @@ foreach ($coverage_rows as $coverage_row) {
         </div>
     </div>
 
+    <?php if ($show_diagnostics) { ?>
     <section class="n45-panel" id="endpoint-coverage" aria-labelledby="coverage-heading">
         <div class="n45-panel-heading">
             <div>
@@ -596,6 +801,7 @@ foreach ($coverage_rows as $coverage_row) {
             <div class="n45-empty-state"><i class="fas fa-laptop"></i><strong>No active endpoint-class assets</strong><span>Coverage begins when an active workstation, server, mobile device, or virtual machine is recorded.</span></div>
         <?php } ?>
     </section>
+    <?php } ?>
 
     <section class="n45-panel" id="automation-incidents" aria-labelledby="incidents-heading">
         <div class="n45-panel-heading">
@@ -637,10 +843,11 @@ foreach ($coverage_rows as $coverage_row) {
                 </table>
             </div>
         <?php } else { ?>
-            <div class="n45-empty-state"><i class="fas fa-shield-alt"></i><strong>No open incidents</strong><span>New alerts from Level.io, SentinelOne, CIPP, backup, infrastructure, and other sources will appear here.</span></div>
+            <div class="n45-empty-state"><i class="fas fa-shield-alt"></i><strong>No open incidents</strong><span>New alerts from HetrixTools, Level.io, SentinelOne, CIPP, backup, infrastructure, and other configured sources will appear here.</span></div>
         <?php } ?>
     </section>
 
+    <?php if ($show_diagnostics) { ?>
     <section class="n45-panel" id="identity-review" aria-labelledby="identity-review-heading">
         <div class="n45-panel-heading">
             <div>
@@ -760,7 +967,7 @@ foreach ($coverage_rows as $coverage_row) {
                         <?php } ?>
                     </div>
                 <?php } else { ?>
-                    <div class="n45-empty-state"><i class="fas fa-stream"></i><strong>No activity for this source yet</strong><span>The integration is ready; processed events will build an audit trail here.</span></div>
+                    <div class="n45-empty-state"><i class="fas fa-stream"></i><strong>No recent automation activity</strong><span>Processed events from configured sources will build an audit trail here.</span></div>
                 <?php } ?>
             </section>
         </div>
@@ -794,11 +1001,12 @@ foreach ($coverage_rows as $coverage_row) {
                         <?php } ?>
                     </div>
                 <?php } else { ?>
-                    <div class="n45-empty-state"><i class="fas fa-link"></i><strong>No mappings for this source</strong><span>Mappings appear automatically after the first successful reconciliation.</span></div>
+                    <div class="n45-empty-state"><i class="fas fa-link"></i><strong>No recent mappings</strong><span>Mappings appear automatically after a configured source reconciles successfully.</span></div>
                 <?php } ?>
             </section>
         </div>
     </div>
+    <?php } ?>
 </div>
 
 <?php require_once "../includes/footer.php"; ?>

@@ -434,6 +434,16 @@ return [
                     "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_archived_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
                 ],
             ],
+            'n45-0029-hetrix-monitoring-source' => [
+                'module' => 'automation', 'legacy_version' => null, 'data_change' => true,
+                'rollback' => 'Preserve monitoring incident history and restore the matching database snapshot before reactivating the retired Uptime Kuma source.',
+                'created_tables' => [], 'altered_columns' => [], 'altered_indexes' => [],
+                'legacy_bridge_index_overrides' => [],
+                'failure_queries' => [
+                    "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix') THEN 0 ELSE 1 END",
+                    "SELECT COUNT(*) FROM automation_event_policies WHERE automation_policy_source = 'uptime_kuma' AND (automation_policy_enabled <> 0 OR automation_policy_ticket_enabled <> 0 OR automation_policy_auto_resolve <> 0)",
+                ],
+            ],
         ],
     ],
     'features' => [
@@ -496,6 +506,7 @@ return [
                 'n45-0009-automation-event-lifecycle',
                 'n45-0017-automation-action-outbox',
                 'n45-0028-ticket-delete-operations-alignment',
+                'n45-0029-hetrix-monitoring-source',
             ],
             'feature' => 'automation',
             'toggleable' => true,
@@ -2875,6 +2886,19 @@ return [
             'fingerprint' => [
                 'failure_queries' => [
                     "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_archived_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
+                ],
+            ],
+        ],
+        'n45-0029-hetrix-monitoring-source' => [
+            'module' => 'automation', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0029-hetrix-monitoring-source.php',
+            'summary' => 'Make HetrixTools the outside-in monitoring source and retire Uptime Kuma ingestion without deleting historical events.',
+            'data_change' => true,
+            'rollback' => 'Preserve monitoring incident history and restore the matching database snapshot before reactivating the retired Uptime Kuma source.',
+            'fingerprint' => [
+                'failure_queries' => [
+                    "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix') THEN 0 ELSE 1 END",
+                    "SELECT COUNT(*) FROM automation_event_policies WHERE automation_policy_source = 'uptime_kuma' AND (automation_policy_enabled <> 0 OR automation_policy_ticket_enabled <> 0 OR automation_policy_auto_resolve <> 0)",
                 ],
             ],
         ],
