@@ -5,6 +5,8 @@ $theme = file_get_contents($root . '/css/n45_theme.css');
 $tickets = file_get_contents($root . '/agent/tickets.php');
 $clients = file_get_contents($root . '/agent/clients.php');
 $dashboard = file_get_contents($root . '/agent/dashboard.php');
+$operations = file_get_contents($root . '/agent/operations.php');
+$portal_tickets = file_get_contents($root . '/client/tickets.php');
 $header = file_get_contents($root . '/includes/header.php');
 $top_nav = file_get_contents($root . '/includes/top_nav.php');
 $density_script = file_get_contents($root . '/js/n45_sidebar_density.js');
@@ -84,6 +86,8 @@ $assertContains('color: var(--n45-on-action) !important;', $theme, 'Active sideb
 $assertContains('body.dark-mode .nav-pills .nav-link.active,', $theme, 'Legacy dark-mode active states do not use the contrasting action foreground');
 $assertContains('min-height: 2.75rem;', $theme, 'Mobile ticket-state controls do not meet the 44px touch-target baseline');
 $assertContains('.n45-workspace .btn,', $theme, 'Button alignment is not scoped to N45-owned surfaces');
+$assertContains('.mr-1 { margin-right: .25rem !important; }', $theme, 'Legacy right-side icon spacing is not bridged for Bootstrap 5');
+$assertContains('.ml-1 { margin-left: .25rem !important; }', $theme, 'Legacy left-side icon spacing is not bridged for Bootstrap 5');
 $assertContains('--n45-sidebar-link-min-height: 2.1rem;', $theme, 'Compact sidebar density is not the default');
 $assertContains('html[data-n45-sidebar-density="comfortable"] {', $theme, 'Comfortable sidebar density is not available');
 $assertContains('@media (hover: none), (pointer: coarse)', $theme, 'Sidebar density does not preserve coarse-pointer touch targets');
@@ -109,6 +113,9 @@ $assertContains('id="tickets-page-title"', $tickets, 'Tickets do not expose a pa
 $assertContains('class="card n45-workspace"', $clients, 'Clients do not use the shared dense workspace pattern');
 $assertContains('id="clients-page-title"', $clients, 'Clients do not expose a page-level heading');
 $assertContains('class="n45-page-lead"', $dashboard, 'The dashboard does not use the shared page lead pattern');
+$assertContains('fa-wave-square me-2', $dashboard, 'The Operations pulse heading icon touches its label');
+$assertContains('fa-plus me-2', $operations, 'The Operations create action icon touches its label');
+$assertContains('fa-plus me-2', $portal_tickets, 'The portal create action icon touches its label');
 
 if ($failures) {
     fwrite(STDERR, "N45 theme system test failed:\n- " . implode("\n- ", $failures) . "\n");

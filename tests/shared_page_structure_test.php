@@ -110,6 +110,23 @@ foreach (array(
     $assertContains($selector, $theme, "The shared theme is missing $selector");
 }
 
+$workspace_header_start = strpos($theme, '.n45-workspace-header {');
+$workspace_header_end = $workspace_header_start === false ? false : strpos($theme, '}', $workspace_header_start);
+$workspace_header = ($workspace_header_start === false || $workspace_header_end === false)
+    ? ''
+    : substr($theme, $workspace_header_start, $workspace_header_end - $workspace_header_start + 1);
+$assertContains('background: var(--n45-surface);', $workspace_header, 'The shared workspace header does not use the Vendors-style light surface');
+$assertContains('border-bottom: 1px solid var(--n45-border);', $workspace_header, 'The shared workspace header does not retain its quiet structural divider');
+$assertContains('color: var(--n45-ink);', $workspace_header, 'The shared workspace header does not use light-surface text');
+$assertNotContains('background: var(--n45-mountain);', $workspace_header, 'The shared workspace header still uses the retired dark treatment');
+
+$page_actions_start = strpos($theme, '.n45-page-actions {');
+$page_actions_end = $page_actions_start === false ? false : strpos($theme, '}', $page_actions_start);
+$page_actions = ($page_actions_start === false || $page_actions_end === false)
+    ? ''
+    : substr($theme, $page_actions_start, $page_actions_end - $page_actions_start + 1);
+$assertContains('margin-left: auto;', $page_actions, 'Shared workspace actions are not pinned to the right edge');
+
 require_once $root . '/functions/sanitize.php';
 require_once $root . '/functions/ui.php';
 ob_start();

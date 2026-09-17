@@ -21,10 +21,10 @@ $documents_sql = mysqli_query($mysqli, "SELECT document_id, document_name, docum
     <div class="n45-page-header-actions">
         <div class="btn-group">
             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDocumentModal">
-                <i class="fas fa-plus" aria-hidden="true"></i>New document
+                <i class="fas fa-plus me-2" aria-hidden="true"></i>New document
             </button>
             <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#uploadFileDocumentModal">
-                <i class="fas fa-upload" aria-hidden="true"></i>Upload file
+                <i class="fas fa-upload me-2" aria-hidden="true"></i>Upload file
             </button>
         </div>
     </div>

@@ -655,8 +655,8 @@ if ($user_config_dashboard_technical_enable == 1) {
 <div>
     <section class="n45-tech-pulse" aria-labelledby="operations-pulse-heading">
         <div class="n45-tech-pulse-header">
-            <h2 id="operations-pulse-heading"><i class="fas fa-wave-square mr-2 text-primary"></i>Operations pulse</h2>
-            <a href="operations.php">Open workspace <i class="fas fa-arrow-right ml-1"></i></a>
+            <h2 id="operations-pulse-heading"><i class="fas fa-wave-square me-2 text-primary"></i>Operations pulse</h2>
+            <a href="operations.php">Open workspace <i class="fas fa-arrow-right ms-1"></i></a>
         </div>
         <div class="n45-tech-pulse-grid">
             <a href="tickets.php?assigned=<?= $session_user_id ?>">
@@ -681,9 +681,9 @@ if ($user_config_dashboard_technical_enable == 1) {
             </a>
         </div>
         <div class="n45-tech-pulse-footer">
-            <span><i class="fas fa-satellite mr-1"></i>Level.io <?= intval($level_pulse['online_assets'] ?? 0) ?>/<?= intval($level_pulse['managed_assets'] ?? 0) ?> online</span>
-            <span><i class="fas fa-random mr-1"></i><?= intval($level_pulse['sync_conflicts'] ?? 0) ?> mapping conflicts</span>
-            <span><i class="fas fa-bolt mr-1"></i><?= intval($automation_pulse['events_today'] ?? 0) ?> incidents updated today</span>
+            <span><i class="fas fa-satellite me-1"></i>Level.io <?= intval($level_pulse['online_assets'] ?? 0) ?>/<?= intval($level_pulse['managed_assets'] ?? 0) ?> online</span>
+            <span><i class="fas fa-random me-1"></i><?= intval($level_pulse['sync_conflicts'] ?? 0) ?> mapping conflicts</span>
+            <span><i class="fas fa-bolt me-1"></i><?= intval($automation_pulse['events_today'] ?? 0) ?> incidents updated today</span>
         </div>
     </section>
 

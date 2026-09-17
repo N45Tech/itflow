@@ -21,7 +21,7 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
             <p>Manage who can work with N45 and which client responsibilities they hold.</p>
         </div>
         <div class="n45-page-header-actions">
-            <a href="contact_add.php" class="btn btn-primary" role="button"><i class="fas fa-plus" aria-hidden="true"></i>New contact</a>
+            <a href="contact_add.php" class="btn btn-primary" role="button"><i class="fas fa-plus me-2" aria-hidden="true"></i>New contact</a>
         </div>
     </header>
 

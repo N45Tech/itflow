@@ -125,7 +125,7 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
             </div>
 
             <div class="n45-form-actions">
-                <button class="btn btn-primary" name="add_ticket"><i class="far fa-paper-plane" aria-hidden="true"></i>Send request</button>
+                <button class="btn btn-primary" name="add_ticket"><i class="far fa-paper-plane me-2" aria-hidden="true"></i>Send request</button>
                 <a class="btn btn-secondary" href="tickets.php">Cancel</a>
             </div>
 
