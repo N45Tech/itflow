@@ -136,7 +136,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                 <div class="card-tools">
                     <?php
                     if (!$ticket_is_resolved && $task_count == $completed_task_count && $ticket_can_resolve) { ?>
-                        <a href="post.php?resolve_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-sm btn-outline-success float-end text-white confirm-link"><i class="fas fa-fw fa-check text-success"></i> Resolve ticket</a>
+                        <a href="post.php?resolve_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-sm btn-outline-success float-end text-white confirm-link"><i class="fas fa-fw fa-check text-success me-2"></i>Resolve ticket</a>
                     <?php } ?>
                 </div>
             </div>
@@ -296,7 +296,7 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
                     <input type="file" class="form-control" name="file[]" multiple id="fileInput" accept=".jpg, .jpeg, .gif, .png, .webp, .pdf, .txt, .md, .doc, .docx, .odt, .csv, .xls, .xlsx, .ods, .pptx, .odp, .zip, .tar, .gz, .xml, .msg, .json, .wav, .mp3, .ogg, .mov, .mp4, .av1, .ovpn">
                 </div>
                 <div class="n45-form-actions">
-                    <button type="submit" class="btn btn-primary" name="add_ticket_comment"><i class="far fa-paper-plane" aria-hidden="true"></i>Send reply</button>
+                    <button type="submit" class="btn btn-primary" name="add_ticket_comment"><i class="far fa-paper-plane me-2" aria-hidden="true"></i>Send reply</button>
                 </div>
                 </form>
             </section>
@@ -309,11 +309,11 @@ if (isset($_GET['id']) && intval($_GET['id'])) {
             <div class="col-6">
                 <div class="row">
                     <div class="col">
-                        <a href="post.php?reopen_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-secondary btn-lg"><i class="fas fa-fw fa-redo text-white"></i> Reopen ticket</a>
+                        <a href="post.php?reopen_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-secondary btn-lg"><i class="fas fa-fw fa-redo text-white me-2"></i>Reopen ticket</a>
                     </div>
 
                     <div class="col">
-                        <a href="post.php?close_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-success btn-lg confirm-link"><i class="fas fa-fw fa-gavel text-white"></i> Close ticket</a>
+                        <a href="post.php?close_ticket=<?= $ticket_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-success btn-lg confirm-link"><i class="fas fa-fw fa-gavel text-white me-2"></i>Close ticket</a>
                     </div>
                 </div>
             </div>

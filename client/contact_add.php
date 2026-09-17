@@ -99,7 +99,7 @@ enforceContactCan('contacts');
             </div>
 
             <div class="n45-form-actions">
-                <button class="btn btn-primary" name="add_contact"><i class="fas fa-user-plus" aria-hidden="true"></i>Add contact</button>
+                <button class="btn btn-primary" name="add_contact"><i class="fas fa-user-plus me-2" aria-hidden="true"></i>Add contact</button>
                 <a class="btn btn-secondary" href="contacts.php">Cancel</a>
             </div>
         </form>
