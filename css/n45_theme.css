@@ -315,6 +315,23 @@ body.dark-mode .app-header .nav-link:focus {
     transition: background-color var(--n45-transition), border-color var(--n45-transition), color var(--n45-transition), box-shadow var(--n45-transition);
 }
 
+.itflow-action-pending {
+    cursor: progress !important;
+    opacity: .82;
+    pointer-events: none;
+}
+
+button.itflow-action-pending {
+    align-items: center;
+    display: inline-flex;
+    gap: .45rem;
+    justify-content: center;
+}
+
+.itflow-action-pending .spinner-border {
+    flex: 0 0 auto;
+}
+
 /* Bootstrap 4 spacing bridge for older fork modules still using directional utilities. */
 .mr-1 { margin-right: .25rem !important; }
 .mr-2 { margin-right: .5rem !important; }
@@ -562,6 +579,25 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
 .modal-footer {
     background: var(--n45-surface-subtle);
     border-color: var(--n45-border);
+}
+
+.n45-modal-state {
+    align-items: center;
+    color: var(--n45-muted-strong);
+    display: flex;
+    justify-content: center;
+    min-height: 9rem;
+    padding: 2rem;
+    text-align: center;
+}
+
+.n45-modal-state-error {
+    color: var(--n45-ink);
+}
+
+.n45-modal-state p {
+    max-width: 32rem;
+    overflow-wrap: anywhere;
 }
 
 .alert {

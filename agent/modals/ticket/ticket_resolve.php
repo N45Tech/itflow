@@ -33,7 +33,7 @@ ob_start();
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
 </div>
 
-<form action="post.php" method="post" autocomplete="off">
+<form action="post.php" method="post" autocomplete="off" data-itflow-submit>
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
     <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
     <div class="modal-body">
@@ -75,6 +75,7 @@ ob_start();
     <div class="modal-footer">
         <button type="button" class="btn btn-light" data-bs-dismiss="modal">Keep open</button>
         <button type="submit" name="resolve_ticket" value="1" class="btn btn-primary text-bold"
+                data-busy-label="Resolving ticket…"
                 <?= $can_submit ? '' : 'disabled' ?>>
             <i class="fas fa-check me-2"></i>Resolve ticket
         </button>

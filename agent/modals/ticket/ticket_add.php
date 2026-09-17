@@ -20,7 +20,7 @@ ob_start();
     <h5 class="modal-title"><i class="fas fa-fw fa-life-ring me-2"></i>New Ticket</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
-<form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off">
+<form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off" data-itflow-submit>
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
     <!-- Hidden/System fields -->
     <?php if ($client_id) { ?>
@@ -331,7 +331,7 @@ ob_start();
     </div>
 
     <div class="modal-footer">
-        <button type="submit" name="add_ticket" class="btn btn-primary text-bold"><i class="fas fa-check me-2"></i>Create Ticket</button>
+        <button type="submit" name="add_ticket" class="btn btn-primary text-bold" data-busy-label="Creating ticket…"><i class="fas fa-check me-2"></i>Create Ticket</button>
         <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fas fa-times me-2"></i>Cancel</button>
     </div>
 

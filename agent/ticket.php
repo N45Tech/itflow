@@ -1450,7 +1450,7 @@ if (isset($_GET['ticket_id'])) {
                 <!-- Reply composer - only while the ticket is still being worked -->
                 <?php if ($can_edit_ticket && $ticket_is_open) { ?>
 
-                    <form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off" id="ticket-update">
+                    <form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off" id="ticket-update" data-itflow-submit>
                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                         <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
 
@@ -1625,7 +1625,7 @@ if (isset($_GET['ticket_id'])) {
 
                                             <div class="col-md-3">
                                                 <div class="d-flex gap-2 mt-3 mt-md-4">
-                                                    <button type="submit" id="ticket_add_reply" name="add_ticket_reply" class="btn btn-success flex-grow-1">
+                                                    <button type="submit" id="ticket_add_reply" name="add_ticket_reply" class="btn btn-success flex-grow-1" data-busy-label="Posting update…">
                                                         <i class="fas fa-fw fa-paper-plane me-2"></i>Send
                                                     </button>
                                                     <button type="button" id="cancelReply" class="btn btn-light" title="Close without replying">
