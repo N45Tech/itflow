@@ -396,18 +396,19 @@ if ($date_filter_active) {
 
 ?>
 
-<div class="card mb-3">
-    <div class="card-header bg-dark text-light py-2">
-        <h3 class="card-title mt-2 text-light"><i class="fa fa-fw fa-life-ring me-2"></i>Tickets
-            <small class="ms-3">
-                <a href="<?= ticketsFilterUrl(['state' => 'open', 'status' => null, 'queue' => null]) ?>" class="badge rounded-pill p-1 <?= (!$status_filter && $state == 'open' && !$queue) ? 'bg-light text-dark' : 'text-light' ?>"><strong><?= $total_tickets_open ?></strong> Open</a> |
-                <a href="<?= ticketsFilterUrl(['state' => 'closed', 'status' => null, 'queue' => null]) ?>" class="badge rounded-pill p-1 <?= (!$status_filter && $state == 'closed' && !$queue) ? 'bg-light text-dark' : 'text-light' ?>"><strong><?= $total_tickets_closed ?></strong> Closed</a> |
-                <a href="<?= ticketsFilterUrl(['state' => 'all', 'status' => null, 'queue' => null]) ?>" class="badge rounded-pill p-1 <?= (!$status_filter && $state == 'all' && !$queue) ? 'bg-light text-dark' : 'text-light' ?>">All</a>
-                <?php if (lookupUserPermission('module_support') >= 3) { ?> |
-                    <a href="<?= ticketsFilterUrl(['state' => 'deleted', 'status' => null, 'queue' => null]) ?>" class="badge rounded-pill p-1 <?= $state === 'deleted' ? 'bg-light text-dark' : 'text-light' ?>"><strong><?= $total_tickets_deleted ?></strong> Deleted</a>
+<section class="card n45-workspace mb-3" aria-labelledby="tickets-page-title">
+    <header class="card-header n45-workspace-header">
+        <div class="n45-workspace-heading">
+            <h1 class="n45-workspace-title" id="tickets-page-title"><i class="fa fa-fw fa-life-ring me-2" aria-hidden="true"></i>Tickets</h1>
+            <nav class="n45-status-tabs" aria-label="Ticket state">
+                <a href="<?= ticketsFilterUrl(['state' => 'open', 'status' => null, 'queue' => null]) ?>" <?= (!$status_filter && $state == 'open' && !$queue) ? 'aria-current="page"' : '' ?>><strong><?= $total_tickets_open ?></strong> Open</a>
+                <a href="<?= ticketsFilterUrl(['state' => 'closed', 'status' => null, 'queue' => null]) ?>" <?= (!$status_filter && $state == 'closed' && !$queue) ? 'aria-current="page"' : '' ?>><strong><?= $total_tickets_closed ?></strong> Closed</a>
+                <a href="<?= ticketsFilterUrl(['state' => 'all', 'status' => null, 'queue' => null]) ?>" <?= (!$status_filter && $state == 'all' && !$queue) ? 'aria-current="page"' : '' ?>>All</a>
+                <?php if (lookupUserPermission('module_support') >= 3) { ?>
+                    <a href="<?= ticketsFilterUrl(['state' => 'deleted', 'status' => null, 'queue' => null]) ?>" <?= $state === 'deleted' ? 'aria-current="page"' : '' ?>><strong><?= $total_tickets_deleted ?></strong> Deleted</a>
                 <?php } ?>
-            </small>
-        </h3>
+            </nav>
+        </div>
         <?php if (lookupUserPermission("module_support") >= 2) { ?>
             <div class="card-tools">
                 <div class="btn-group">
@@ -424,9 +425,9 @@ if ($date_filter_active) {
                 </div>
             </div>
         <?php } ?>
-    </div>
+    </header>
 
-    <div class="card-header py-3">
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
                 <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -652,7 +653,7 @@ if ($date_filter_active) {
         <?php } ?>
 
     </div>
-</div>
+</section>
 
 <?php
 
