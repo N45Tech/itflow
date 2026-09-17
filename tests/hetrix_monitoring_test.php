@@ -9,6 +9,7 @@ $builder = file_get_contents($root . '/deploy/n8n/build-workflows.mjs');
 $readme = file_get_contents($root . '/deploy/n8n/README.md');
 $migration = file_get_contents($root . '/n45/migrations/n45-0029-hetrix-monitoring-source.php');
 $schema = file_get_contents($root . '/db.sql');
+$manifest = require $root . '/n45/manifest.php';
 
 $failures = [];
 $assertTrue = static function (bool $condition, string $message) use (&$failures): void {
@@ -51,6 +52,13 @@ $assertTrue(str_contains($schema, "VALUES ('hetrix')"),
     'Fresh installs do not seed the HetrixTools source policy');
 $assertTrue(!str_contains($schema, "VALUES ('uptime_kuma'"),
     'Fresh installs still seed a retired Uptime Kuma source policy');
+$hetrixFailureQuery = "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix') THEN 0 ELSE 1 END";
+$hetrixDefinitionQueries = $manifest['migrations']['n45-0029-hetrix-monitoring-source']['fingerprint']['failure_queries'] ?? [];
+$hetrixReservationQueries = $manifest['maintenance']['post_integration_migration_reservations']['n45-0029-hetrix-monitoring-source']['failure_queries'] ?? [];
+$assertTrue(in_array($hetrixFailureQuery, $hetrixDefinitionQueries, true),
+    'The HetrixTools migration fingerprint does not return a scalar success result');
+$assertTrue(in_array($hetrixFailureQuery, $hetrixReservationQueries, true),
+    'The HetrixTools migration reservation does not preserve its scalar fingerprint contract');
 
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);
