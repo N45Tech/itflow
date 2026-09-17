@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
@@ -18,7 +18,6 @@ const credentials = {
   webhook: { httpHeaderAuth: { id: 'replace-n45-webhook-auth', name: 'N45 Integration Webhook' } },
   cippWebhook: { httpHeaderAuth: { id: 'replace-n45-cipp-webhook-auth', name: 'N45 CIPP Webhook' } },
   itflow: { httpHeaderAuth: { id: 'replace-n45-itflow-api', name: 'N45 ITFlow API' } },
-  netbox: { httpHeaderAuth: { id: 'replace-n45-netbox-api', name: 'N45 NetBox API' } },
   cloudflare: { httpHeaderAuth: { id: 'replace-n45-cloudflare-api', name: 'N45 Cloudflare API' } },
   cipp: { oAuth2Api: { id: 'replace-n45-cipp-api', name: 'N45 CIPP API' } },
   sentinelone: { httpHeaderAuth: { id: 'replace-n45-sentinelone-api', name: 'N45 SentinelOne API' } },
@@ -302,82 +301,6 @@ const event = {
   metadata: sanitize(record(body.metadata)),
 };
 return [{ json: event }];
-`.trim();
-
-const normalizeNetBoxDevices = String.raw`
-const response = $input.first().json;
-const devices = response.results || response.data?.results || [];
-const DEFAULT_CLIENT = 'N45 Technology Solutions';
-const CREATE_CLIENTS_FROM_TENANTS = false;
-if (!Array.isArray(devices)) throw new Error('NetBox did not return a device results array.');
-if (devices.length === 0) throw new Error('NetBox returned zero devices; refusing to report a successful reconciliation.');
-return devices.map((device) => {
-  const site = device.site || {};
-  const tenant = device.tenant || site.tenant || {};
-  const clientName = device.custom_fields?.itflow_client || tenant.name || DEFAULT_CLIENT;
-  const primaryIp = String(device.primary_ip?.address || '').split('/')[0];
-  return { json: {
-    source: 'netbox',
-    entity_type: 'device',
-    external_id: String(device.id),
-    external_name: device.name || device.display || ('NetBox device ' + device.id),
-    client: { name: clientName, entity_type: 'tenant', external_id: tenant.id ? String(tenant.id) : '' },
-    location: {
-      name: site.name || '',
-      entity_type: 'site',
-      external_id: site.id ? String(site.id) : '',
-      description: site.description || '',
-      address: site.physical_address || site.shipping_address || '',
-    },
-    asset: {
-      name: device.name || device.display,
-      description: device.description || '',
-      type: device.role?.name || device.device_role?.name || 'Network',
-      make: device.device_type?.manufacturer?.name || 'Unknown',
-      model: device.device_type?.model || '',
-      serial: device.serial || '',
-      os: device.platform?.name || '',
-      ip: primaryIp,
-      status: device.status?.label || device.status?.value || 'Active',
-      uri: 'https://netbox.n45tech.com/dcim/devices/' + device.id + '/',
-      notes: 'Managed in NetBox. ITFlow retains client ownership and service context.',
-    },
-    options: {
-      create_client: CREATE_CLIENTS_FROM_TENANTS && clientName !== '',
-      create_location: site.name !== '',
-      create_asset: true,
-    },
-    metadata: { netbox_last_updated: device.last_updated || '', tenant_id: tenant.id || 0, site_id: site.id || 0 },
-  } };
-});
-`.trim();
-
-const normalizeNetBoxEvent = String.raw`
-const input = $input.first().json;
-const body = input.body || input;
-const device = body.data || {};
-const model = String(body.model || body.object_type || '').toLowerCase();
-if (!model.includes('device') && !device.device_type) return [];
-const site = device.site || {};
-const tenant = device.tenant || site.tenant || {};
-const clientName = device.custom_fields?.itflow_client || tenant.name || 'N45 Technology Solutions';
-const primaryIp = String(device.primary_ip?.address || '').split('/')[0];
-return [{ json: {
-  source: 'netbox', entity_type: 'device', external_id: String(device.id),
-  external_name: device.name || device.display || ('NetBox device ' + device.id),
-  client: { name: clientName, entity_type: 'tenant', external_id: tenant.id ? String(tenant.id) : '' },
-  location: { name: site.name || '', entity_type: 'site', external_id: site.id ? String(site.id) : '', description: site.description || '', address: site.physical_address || '' },
-  asset: {
-    name: device.name || device.display, description: device.description || '',
-    type: device.role?.name || device.device_role?.name || 'Network',
-    make: device.device_type?.manufacturer?.name || 'Unknown', model: device.device_type?.model || '',
-    serial: device.serial || '', os: device.platform?.name || '', ip: primaryIp,
-    status: device.status?.label || device.status?.value || 'Active',
-    uri: 'https://netbox.n45tech.com/dcim/devices/' + device.id + '/',
-  },
-  options: { create_client: false, create_location: site.name !== '', create_asset: true },
-  metadata: { netbox_event: body.event || '', netbox_request_id: body.request_id || '' },
-} }];
 `.trim();
 
 const normalizeCloudflareZones = String.raw`
@@ -664,23 +587,6 @@ const cippAlerts = workflow('N45 - CIPP Alerts to ITFlow', [
   node({ id: 'd91ab17c-46ef-44d1-b8e4-94a0418c8863', name: 'Queue Through Operations Broker', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [80, 0], nodeCredentials: credentials.webhook, parameters: { method: 'POST', url: 'https://automate.n45tech.com/webhook/n45-itflow-events', authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify($json) }}', options: { timeout: 10000 } }, ...sourceRetry }),
 ], connect('CIPP Alerts Webhook', 'Normalize CIPP Alert', 'Queue Through Operations Broker'), { timezone: 'UTC' });
 
-const netboxReconciliation = workflow('N45 - NetBox Entity Reconciliation', [
-  node({ id: '6c97a446-33e3-4f0b-95ae-e3aa88bf65db', name: 'Daily Reconciliation', type: 'n8n-nodes-base.scheduleTrigger', typeVersion: 1.2, position: [-860, -160], parameters: { rule: { interval: [{ field: 'cronExpression', expression: '15 3 * * *' }] } } }),
-  node({ id: 'de063a68-7a3b-4fbd-a7fc-4b44b2657afd', name: 'Manual Reconciliation', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [-860, 0], parameters: {} }),
-  node({ id: '46c6aeca-d9ea-4435-a91f-a8b53c571fc9', name: 'Fetch NetBox Devices', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [-600, -80], nodeCredentials: credentials.netbox, parameters: { url: 'https://netbox.n45tech.com/api/dcim/devices/?limit=1000', authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', options: {} }, ...sourceRetry }),
-  node({ id: '39e78e42-fe42-40d6-a313-2738e6d2a2b1', name: 'Normalize NetBox Devices', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-340, -80], parameters: { jsCode: normalizeNetBoxDevices } }),
-  node({ id: '3847ee06-6643-4710-94b9-70c121192887', name: 'NetBox Event Webhook', type: 'n8n-nodes-base.webhook', typeVersion: 2.1, position: [-600, 160], nodeCredentials: credentials.webhook, parameters: { httpMethod: 'POST', path: 'n45-netbox-events', authentication: 'headerAuth', responseMode: 'lastNode', options: {} } }),
-  node({ id: '9a272fb6-8a85-42d4-b371-bbbc6ed3a230', name: 'Normalize NetBox Event', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-340, 160], parameters: { jsCode: normalizeNetBoxEvent } }),
-  node({ id: '0d4e728c-e61f-43a9-acb9-44b334337686', name: 'Resolve in ITFlow', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [-60, 40], nodeCredentials: credentials.itflow, parameters: { method: 'POST', url: 'https://psa.n45tech.com/api/v1/integrations/automation/resolve.php', authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify($json) }}', options: { batching: { batch: { batchSize: 20, batchInterval: 250 } } } }, ...sourceRetry }),
-], {
-  'Daily Reconciliation': { main: [[{ node: 'Fetch NetBox Devices', type: 'main', index: 0 }]] },
-  'Manual Reconciliation': { main: [[{ node: 'Fetch NetBox Devices', type: 'main', index: 0 }]] },
-  'Fetch NetBox Devices': { main: [[{ node: 'Normalize NetBox Devices', type: 'main', index: 0 }]] },
-  'Normalize NetBox Devices': { main: [[{ node: 'Resolve in ITFlow', type: 'main', index: 0 }]] },
-  'NetBox Event Webhook': { main: [[{ node: 'Normalize NetBox Event', type: 'main', index: 0 }]] },
-  'Normalize NetBox Event': { main: [[{ node: 'Resolve in ITFlow', type: 'main', index: 0 }]] },
-});
-
 const cloudflareReconciliation = workflow('N45 - Cloudflare Domain Reconciliation', [
   node({ id: 'f48f4f06-c1b1-493b-ad04-28155af91e1d', name: 'Daily Domain Reconciliation', type: 'n8n-nodes-base.scheduleTrigger', typeVersion: 1.2, position: [-660, -100], parameters: { rule: { interval: [{ field: 'cronExpression', expression: '45 3 * * *' }] } } }),
   node({ id: '3f005428-b835-41b8-8a5b-105a8d111ca4', name: 'Manual Domain Reconciliation', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [-660, 80], parameters: {} }),
@@ -794,7 +700,6 @@ const n8nErrorWorkflow = workflow('N45 - Automation Failure to ITFlow', [
 const workflows = [
   ['operations-event-broker.json', operationsBroker],
   ['cipp-alerts-to-itflow.json', cippAlerts],
-  ['netbox-reconciliation.json', netboxReconciliation],
   ['cloudflare-domain-reconciliation.json', cloudflareReconciliation],
   ['n8n-error-to-itflow.json', n8nErrorWorkflow],
   ['intune-device-reconciliation.json', intuneReconciliation],
@@ -802,6 +707,7 @@ const workflows = [
   ['sentinelone-agent-reconciliation.json', sentinelOneReconciliation],
 ];
 
+await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 for (const [file, value] of workflows) {
   await writeFile(join(output, file), JSON.stringify(value, null, 2) + '\n', 'utf8');

@@ -37,11 +37,18 @@ FIRST VIEWPORT: Open commitment and fulfillment totals lead into the order queue
 FORM: Native product stock remains authoritative; custom records only add vendor and fulfillment provenance; seed key established-n45-commercial-operations.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 -->
-<?php require 'includes/commercial_tabs.php'; ?>
+<?php require 'includes/commercial_styles.php'; ?>
 
-<header class="n45-commercial-heading">
-    <div><h1>Purchasing &amp; fulfillment</h1><p>Track only what N45 needs between an approved quote, a vendor order, receiving stock, and customer billing.</p></div>
-    <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#purchase-add"><i class="fas fa-plus me-2"></i>New purchase order</button>
+<header class="card n45-commercial-page-header">
+    <div class="card-header bg-dark py-2">
+        <h3 class="card-title mt-2"><i class="fas fa-fw fa-truck-loading me-2" aria-hidden="true"></i>Purchasing</h3>
+        <div class="card-tools">
+            <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#purchase-add" aria-expanded="false" aria-controls="purchase-add"><i class="fas fa-plus me-2" aria-hidden="true"></i>New Purchase Order</button>
+        </div>
+    </div>
+    <div class="card-body py-3">
+        <p class="text-muted mb-0">Track only what N45 needs between an approved quote, a vendor order, receiving stock, and customer billing.</p>
+    </div>
 </header>
 
 <section class="n45-commercial-summary" aria-label="Purchasing summary">
