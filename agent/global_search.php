@@ -9,9 +9,19 @@ $purifier_config = HTMLPurifier_Config::createDefault();
 $purifier_config->set('URI.AllowedSchemes', ['data' => true, 'src' => true, 'http' => true, 'https' => true]);
 $purifier = new HTMLPurifier($purifier_config);
 
-if (isset($_GET['query'])) {
+$search_requested = array_key_exists('query', $_GET);
+$raw_query = $search_requested && is_scalar($_GET['query']) ? trim((string)$_GET['query']) : '';
+$query_length = mb_strlen($raw_query, 'UTF-8');
+$query_error = '';
+if ($search_requested && $query_length < 2) {
+    $query_error = 'Enter at least two characters to search.';
+} elseif ($search_requested && $query_length > 200) {
+    $query_error = 'Keep the search to 200 characters or fewer.';
+}
 
-    $query = escapeSql($_GET['query']);
+if ($search_requested && $query_error === '') {
+
+    $query = escapeSql($raw_query);
 
     $phone_query = preg_replace("/[^0-9]/", '', $query);
     if (empty($phone_query)) {
@@ -20,9 +30,9 @@ if (isset($_GET['query'])) {
 
     $ticket_num_query = str_replace("$config_ticket_prefix", "", "$query");
 
-    // Every dedicated page gates on its module, so search must too - otherwise this
-    // page hands a role results it has no access to read anywhere else (see the
-    // credentials panel, which renders plaintext usernames and passwords)
+    // Every dedicated page gates on its module, so search must too. Credential
+    // results deliberately expose metadata only; secret reveal remains an explicit,
+    // audited action on the credential workspace.
     $can_client     = lookupUserPermission('module_client')     >= 1;
     $can_support    = lookupUserPermission('module_support')    >= 1;
     $can_sales      = lookupUserPermission('module_sales')      >= 1;
@@ -122,8 +132,7 @@ if (isset($_GET['query'])) {
         ORDER BY recurring_ticket_id DESC LIMIT 5"
     );
 
-    $sql_credentials = !$can_credential ? false : mysqli_query($mysqli, "SELECT client_id, client_name, credential_client_id, credential_description, credential_name,
-        credential_password, credential_username
+    $sql_credentials = !$can_credential ? false : mysqli_query($mysqli, "SELECT client_id, client_name, credential_client_id, credential_description, credential_id, credential_name
         FROM credentials
         LEFT JOIN contacts ON credential_contact_id = contact_id
         LEFT JOIN clients ON credential_client_id = client_id
@@ -180,7 +189,7 @@ if (isset($_GET['query'])) {
         ORDER BY ticket_id DESC, ticket_reply_id ASC LIMIT 20"
     );
 
-    $q = escapeHtml($_GET['query']);
+    $q = escapeHtml($raw_query);
 
     ?>
 
@@ -635,8 +644,6 @@ if (isset($_GET['query'])) {
                             <tr>
                                 <th>Name</th>
                                 <th>Description</th>
-                                <th>Username</th>
-                                <th>Password</th>
                                 <th>Client</th>
                             </tr>
                             </thead>
@@ -647,8 +654,6 @@ if (isset($_GET['query'])) {
                                 $credential_name = escapeHtml($row['credential_name']);
                                 $credential_description = escapeHtml($row['credential_description']);
                                 $credential_client_id = intval($row['credential_client_id']);
-                                $credential_username = escapeHtml(decryptCredentialEntry($row['credential_username']));
-                                $credential_password = escapeHtml(decryptCredentialEntry($row['credential_password']));
                                 $client_id = intval($row['client_id']);
                                 $client_name = escapeHtml($row['client_name']);
 
@@ -656,9 +661,6 @@ if (isset($_GET['query'])) {
                                 <tr>
                                     <td><a href="credentials.php?client_id=<?= $credential_client_id ?>&q=<?= $q ?>"><?= $credential_name ?></a></td>
                                     <td><?= $credential_description ?></td>
-                                    <td><?= $credential_username ?></td>
-                                    <td><a tabindex="0" class="btn btn-sm" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="left" data-bs-content="<?= $credential_password ?>"><i class="far fa-eye text-secondary"></i></a><button class="btn btn-sm btn-link clipboardjs" data-clipboard-text="<?= $credential_password ?>"><i class="far fa-copy text-secondary"></i></button>
-                                    </td>
                                     <td><a href="credentials.php?client_id=<?= $client_id ?>"><?= $client_name ?></a></td>
                                 </tr>
 
@@ -949,6 +951,20 @@ if (isset($_GET['query'])) {
 
 <?php
 
+} elseif ($search_requested) {
+    ?>
+    <section class="n45-panel" aria-labelledby="global-search-heading">
+        <div class="n45-panel-heading">
+            <div>
+                <h1 id="global-search-heading" class="h5 mb-1"><i class="fas fa-fw fa-search me-2" aria-hidden="true"></i>Global Search</h1>
+                <p class="mb-0">Search across records you are permitted to view.</p>
+            </div>
+        </div>
+        <div class="p-3" role="alert">
+            <strong>Search not run.</strong> <?= escapeHtml($query_error) ?>
+        </div>
+    </section>
+    <?php
 }
 
 require_once "../includes/footer.php";
