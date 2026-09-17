@@ -430,6 +430,9 @@ return [
                 'rollback' => 'Preserve reconciled incident history and restore the pre-upgrade database snapshot if the prior Operations projection must be reinstated.',
                 'created_tables' => [], 'altered_columns' => [], 'altered_indexes' => [],
                 'legacy_bridge_index_overrides' => [],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_archived_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
+                ],
             ],
         ],
     ],
