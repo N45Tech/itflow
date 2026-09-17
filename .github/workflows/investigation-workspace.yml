@@ -1,0 +1,19 @@
+name: Investigation rollout workspace
+on:
+  push:
+    branches: [codex/read-only-ticket-investigation]
+    paths: [.github/workflows/investigation-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export tracked source for isolated regression validation
+        run: git archive --format=tar.gz HEAD -o /tmp/itflow-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investigation-validation-source
+          path: /tmp/itflow-source.tar.gz
+          retention-days: 1
