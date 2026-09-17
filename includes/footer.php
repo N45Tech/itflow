@@ -79,8 +79,9 @@
 <script src="/libs/sweetalert2/js/sweetalert2.min.js"></script>
 <script src="/js/autocomplete.js"></script>
 <script src="/js/app.js?v=<?= filemtime(__DIR__ . '/../js/app.js') ?>"></script>
+<script src="/js/interaction_feedback.js?v=<?= filemtime(__DIR__ . '/../js/interaction_feedback.js') ?>"></script>
 <script src="/js/ajax_modal.js?v=<?= filemtime(__DIR__ . '/../js/ajax_modal.js') ?>"></script>
-<script src="/js/confirm_modal.js"></script>
+<script src="/js/confirm_modal.js?v=<?= filemtime(__DIR__ . '/../js/confirm_modal.js') ?>"></script>
 <script src="/js/date_filter.js"></script>
 
 </body>

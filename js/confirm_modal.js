@@ -26,6 +26,12 @@ document.addEventListener('click', function (e) {
     }
     e.preventDefault();
 
+    // Ignore repeated activation while the same decision is already open.
+    if (link.dataset.itflowConfirmPending === 'true') {
+        return;
+    }
+    link.dataset.itflowConfirmPending = 'true';
+
     // A submit button contributes its own name/value to the submission, and
     // requestSubmit() preserves that where form.submit() would drop it - which
     // is exactly how the Quick Send buttons carry their invoice or quote id.
@@ -54,6 +60,8 @@ document.addEventListener('click', function (e) {
         }
     }).then(function (result) {
         if (!result.isConfirmed) {
+            delete link.dataset.itflowConfirmPending;
+            link.focus({ preventScroll: true });
             return;
         }
         if (form) {
@@ -72,8 +80,31 @@ document.addEventListener('click', function (e) {
                 }
                 form.submit();
             }
+            // Validation or another submit listener may keep the page in
+            // place. The form's opt-in busy state owns duplicate prevention
+            // once a valid submission starts; otherwise allow another try.
+            delete link.dataset.itflowConfirmPending;
             return;
         }
-        window.location.href = link.getAttribute('href');
+
+        const href = link.getAttribute('href');
+        if (!href || href === '#') {
+            delete link.dataset.itflowConfirmPending;
+            link.focus({ preventScroll: true });
+            return;
+        }
+        if (window.itflowActionFeedback) {
+            window.itflowActionFeedback.setPending(link, link.dataset.busyLabel || 'Working…');
+        }
+        window.location.href = href;
+    });
+});
+
+window.addEventListener('pageshow', function () {
+    document.querySelectorAll('[data-itflow-confirm-pending]').forEach(function (control) {
+        delete control.dataset.itflowConfirmPending;
+        if (window.itflowActionFeedback) {
+            window.itflowActionFeedback.clearPending(control);
+        }
     });
 });

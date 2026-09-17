@@ -15,7 +15,7 @@ ob_start();
     <h5 class="modal-title"><i class="fas fa-fw fa-building me-2"></i>New Vendor</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
-<form action="post.php" method="post" autocomplete="off">
+<form action="post.php" method="post" autocomplete="off" data-itflow-submit>
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
     <input type="hidden" name="client_id" value="<?= $client_id ?>">
 
@@ -139,7 +139,7 @@ ob_start();
 
     </div>
     <div class="modal-footer">
-        <button type="submit" name="add_vendor" class="btn btn-primary text-bold"><i class="fas fa-check me-2"></i>Create</button>
+        <button type="submit" name="add_vendor" class="btn btn-primary text-bold" data-busy-label="Creating vendor…"><i class="fas fa-check me-2"></i>Create</button>
         <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
     </div>
 </form>
