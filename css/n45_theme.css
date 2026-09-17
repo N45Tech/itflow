@@ -619,6 +619,51 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
     margin: 0;
 }
 
+.n45-page-actions {
+    align-items: center;
+    display: flex;
+    gap: .5rem;
+}
+
+.n45-page-actions > .btn-group,
+.n45-page-actions > .dropdown {
+    flex: 0 0 auto;
+}
+
+.n45-page-title-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    min-width: 0;
+}
+
+.n45-client-context {
+    align-items: center;
+    border: 1px solid currentColor;
+    border-radius: var(--n45-radius-lg);
+    color: inherit;
+    display: inline-flex;
+    font-size: .76rem;
+    font-weight: 600;
+    gap: .25rem;
+    max-width: 18rem;
+    opacity: .8;
+    padding: .2rem .5rem;
+}
+
+a.n45-client-context:hover,
+a.n45-client-context:focus {
+    color: inherit;
+    opacity: 1;
+}
+
+.n45-client-context span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .n45-status-tabs {
     align-items: center;
     display: flex;
@@ -684,6 +729,64 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
     display: flex;
     flex: 0 0 auto;
     gap: .5rem;
+}
+
+.n45-breadcrumb {
+    font-size: .76rem;
+    margin-bottom: .45rem;
+}
+
+.n45-status-badge {
+    align-items: center;
+    display: inline-flex;
+    font-weight: 650;
+    gap: .1rem;
+}
+
+.n45-result-footer {
+    background: var(--n45-surface-subtle);
+    border-top: 1px solid var(--n45-border);
+}
+
+.n45-result-summary {
+    color: var(--n45-muted);
+    font-size: .76rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.n45-modal-header {
+    border-bottom-color: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.n45-modal-header .modal-title {
+    font-weight: 675;
+    letter-spacing: -.015em;
+}
+
+.n45-search-results .card {
+    border-color: var(--n45-border);
+    border-radius: var(--n45-radius);
+    box-shadow: none;
+}
+
+.n45-search-results .card > .card-header {
+    background: var(--n45-surface-subtle);
+    border-bottom: 1px solid var(--n45-border);
+    color: var(--n45-ink);
+    min-height: 2.75rem;
+}
+
+.n45-search-results .card-title {
+    font-size: 1rem;
+    font-weight: 675;
+}
+
+.n45-search-results .card-body {
+    padding: .75rem;
+}
+
+.n45-search-results .table {
+    margin-bottom: 0;
 }
 
 /* Dashboard and Operations use the same visual hierarchy as list workspaces. */
@@ -897,9 +1000,14 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
     }
 
     .n45-workspace-header .card-tools,
+    .n45-page-actions,
     .n45-workspace-header .btn-group,
     .n45-workspace-header .btn-group > .btn:first-child {
         width: 100%;
+    }
+
+    .n45-page-actions {
+        flex-wrap: wrap;
     }
 
     .n45-status-tabs {

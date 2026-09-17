@@ -178,70 +178,81 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$asset_page_tabs = array(
+    array('label' => 'All', 'count' => $all_count, 'href' => '?' . $url_query_strings_sort . '&type=', 'active' => $type_filter === ''),
+    array('label' => 'Workstations', 'icon' => 'fa-desktop', 'count' => $workstation_count, 'href' => '?' . $url_query_strings_sort . '&type=workstation', 'active' => $type_filter === 'workstation', 'visible' => $workstation_count > 0),
+    array('label' => 'Servers', 'icon' => 'fa-server', 'count' => $server_count, 'href' => '?' . $url_query_strings_sort . '&type=server', 'active' => $type_filter === 'server', 'visible' => $server_count > 0),
+    array('label' => 'Virtual', 'icon' => 'fa-cloud', 'count' => $virtual_count, 'href' => '?' . $url_query_strings_sort . '&type=virtual', 'active' => $type_filter === 'virtual', 'visible' => $virtual_count > 0),
+    array('label' => 'Network', 'icon' => 'fa-network-wired', 'count' => $network_count, 'href' => '?' . $url_query_strings_sort . '&type=network', 'active' => $type_filter === 'network', 'visible' => $network_count > 0),
+    array('label' => 'Other', 'icon' => 'fa-tag', 'count' => $other_count, 'href' => '?' . $url_query_strings_sort . '&type=other', 'active' => $type_filter === 'other', 'visible' => $other_count > 0),
+);
+
+$asset_page_actions = array();
+if (lookupUserPermission("module_support") >= 2) {
+    $asset_action_items = array();
+    if ($client_url) {
+        $asset_action_items[] = array(
+            'label' => 'Import',
+            'icon' => 'fa-upload',
+            'class' => 'ajax-modal',
+            'attributes' => array('data-modal-url' => 'modals/asset/asset_import.php?' . $client_url),
+        );
+    }
+    if ($client_url && $num_rows[0] > 0) {
+        $asset_action_items[] = array('type' => 'separator');
+    }
+    if ($num_rows[0] > 0) {
+        $asset_action_items[] = array(
+            'label' => 'Export',
+            'icon' => 'fa-download',
+            'class' => 'ajax-modal',
+            'attributes' => array(
+                'data-modal-url' => buildExportModalUrl('modals/asset/asset_export.php', array('client_id', 'type', 'client', 'location', 'tags', 'expire_days', 'archived', 'q')),
+            ),
+        );
+    }
+
+    $asset_primary_action = array(
+        'type' => 'button',
+        'label' => 'New ' . ($type_filter ? ucwords($type_filter) : 'Asset'),
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array(
+            'data-modal-url' => 'modals/asset/asset_add.php?' . $client_url . 'type=' . $type_filter,
+        ),
+    );
+
+    $asset_page_actions[] = $asset_action_items
+        ? array(
+            'type' => 'split-menu',
+            'button' => $asset_primary_action,
+            'items' => $asset_action_items,
+            'menu_label' => 'More asset actions',
+            'align_end' => true,
+        )
+        : $asset_primary_action;
+}
+
 ?>
 
-<div class="col-sm-12 mb-3">
-    <div class="btn-toolbar">
-        <div class="btn-group w-100">
-            <?php if($all_count) { ?>
-            <a href="?<?= $url_query_strings_sort ?>&type=" class="btn <?php if ($_GET['type'] == 'all' || empty($_GET['type'])) { echo 'btn-primary'; } else { echo 'btn-default'; } ?>">All Assets<span class="right badge bg-light text-dark ms-2"><?= $all_count ?></span></a>
-            <?php } ?>
-            <?php
-            if ($workstation_count > 0) { ?>
-                <a href="?<?= $url_query_strings_sort ?>&type=workstation" class="btn <?php if ($_GET['type'] == 'workstation') { echo 'btn-primary'; } else { echo 'btn-default'; } ?>"><i class="fa fa-fw fa-desktop me-2"></i>Workstations<span class="right badge bg-light text-dark ms-2"><?= $workstation_count ?></span></a>
-                <?php
-            }
-            if ($server_count > 0) { ?>
-                <a href="?<?= $url_query_strings_sort ?>&type=server" class="btn <?php if ($_GET['type'] == 'server') { echo 'btn-primary'; } else { echo 'btn-default'; } ?>"><i class="fa fa-fw fa-server me-2"></i>Servers<span class="right badge bg-light text-dark ms-2"><?= $server_count ?></span></a>
-                <?php
-            }
-            if ($virtual_count > 0) { ?>
-                <a href="?<?= $url_query_strings_sort ?>&type=virtual" class="btn <?php if ($_GET['type'] == 'virtual') { echo 'btn-primary'; } else { echo 'btn-default'; } ?>"><i class="fa fa-fw fa-cloud me-2"></i>Virtual<span class="right badge bg-light text-dark ms-2"><?= $virtual_count ?></span></a>
-                <?php
-            }
-            if ($network_count > 0) { ?>
-                <a href="?<?= $url_query_strings_sort ?>&type=network" class="btn <?php if ($_GET['type'] == 'network') { echo 'btn-primary'; } else { echo 'btn-default'; } ?>"><i class="fa fa-fw fa-network-wired me-2"></i>Network<span class="right badge bg-light text-dark ms-2"><?= $network_count ?></span></a>
-                <?php
-            }
-            if ($other_count > 0) { ?>
-                <a href="?<?= $url_query_strings_sort ?>&type=other" class="btn <?php if ($_GET['type'] == 'other') { echo 'btn-primary'; } else { echo 'btn-default'; } ?>"><i class="fa fa-fw fa-tag me-2"></i>Other<span class="right badge bg-light text-dark ms-2"><?= $other_count ?></span></a>
-                <?php
-            } ?>
-        </div>
-    </div>
-</div>
-
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-fw fa-desktop me-2"></i>Assets</h3>
-        <div class="card-tools">
-            <?php if (lookupUserPermission("module_support") >= 2) { ?>
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/asset/asset_add.php?<?= $client_url ?>&type=<?= $type_filter ?>">
-                    <i class="fas fa-plus me-2"></i>New <?php if ($type_filter) { echo ucwords($type_filter); } else { echo "Asset"; } ?>
-                </button>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-label="More asset actions"></button>
-                <div class="dropdown-menu">
-                    <?php if ($client_url) { ?>
-                    <a class="dropdown-item text-dark ajax-modal" href="#"
-                        data-modal-url="modals/asset/asset_import.php?<?= $client_url ?>">
-                        <i class="fa fa-fw fa-upload me-2"></i>Import
-                    </a>
-                    <div class="dropdown-divider"></div>
-                    <?php } ?>
-                    <?php if ($num_rows[0] > 0) { ?>
-
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="<?= buildExportModalUrl('modals/asset/asset_export.php', ['client_id', 'type', 'client', 'location', 'tags', 'expire_days', 'archived', 'q']) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                    <?php } ?>
-                </div>
-            </div>
-            <?php } ?>
-        </div>
-    </div>
-    <div class="card-header py-3">
+<section class="card n45-workspace" aria-labelledby="assets-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Assets',
+        'title_id' => 'assets-page-title',
+        'icon' => 'fa-desktop',
+        'tabs' => $asset_page_tabs,
+        'tabs_label' => 'Asset type',
+        'actions' => $asset_page_actions,
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+    ));
+    ?>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
             <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -460,7 +471,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
         <div class="table-responsive">
-            <table class="table border table-hover mb-0">
+            <table class="table border table-hover mb-0 n45-data-table">
                 <thead class="table-light <?php if (!$num_rows[0]) { echo "d-none"; } ?> text-nowrap">
                 <tr>
                     <td class="checkbox-column border-end">
@@ -791,7 +802,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         </div>
     </form>
     <?php require_once "../includes/filter_footer.php"; ?>
-</div>
+</section>
 
 <script src="../js/bulk_actions.js"></script>
 

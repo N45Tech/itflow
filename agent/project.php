@@ -46,6 +46,8 @@ if (isset($_GET['project_id'])) {
     $row = mysqli_fetch_assoc($sql_project);
 
     $project_id = intval($row['project_id']);
+    $project_prefix_raw = $row['project_prefix'];
+    $project_name_raw = $row['project_name'];
     $project_prefix = escapeHtml($row['project_prefix']);
     $project_number = intval($row['project_number']);
     $project_name = escapeHtml($row['project_name']);
@@ -56,6 +58,7 @@ if (isset($_GET['project_id'])) {
     $project_completed_at = escapeHtml($row['project_completed_at']);
     $project_archived_at = escapeHtml($row['project_archived_at']);
     $client_id = intval($row['client_id']);
+    $client_name_raw = $row['client_name'];
     $client_name = escapeHtml($row['client_name']);
     if ($client_name) {
         $client_name_display = "<div class='text-secondary'><i class='fas fa-fw fa-users me-2'></i>$client_name</div>";
@@ -72,10 +75,8 @@ if (isset($_GET['project_id'])) {
     }
 
     if ($project_completed_at) {
-        $project_status_display = "<span class='badge rounded-pill bg-dark ms-2'>Closed</span>";
         $project_completed_date_display = "<div class='text-primary text-bold'><small><i class='fa fa-fw fa-door-closed me-2'></i>" . date('Y-m-d', strtotime($project_completed_at)) . "</small></div>";
     } else {
-        $project_status_display = "<span class='badge rounded-pill bg-primary ms-2'>Open</span>";
         $project_completed_date_display = "";
     }
 
@@ -160,84 +161,133 @@ if (isset($_GET['project_id'])) {
     // The user names in a comma-separated string
     $ticket_collaborators = escapeHtml($row['user_names']);
 
+    $project_page_actions = array();
+    if (empty($project_completed_at)) {
+        $project_page_actions[] = array(
+            'type' => 'menu',
+            'label' => 'New',
+            'icon' => 'fa-plus',
+            'variant' => 'primary',
+            'size' => 'sm',
+            'items' => array(
+                array(
+                    'label' => 'Ticket',
+                    'icon' => 'fa-life-ring',
+                    'class' => 'ajax-modal',
+                    'attributes' => array(
+                        'data-modal-url' => 'modals/ticket/ticket_add.php?' . $client_url . 'project_id=' . $project_id,
+                        'data-modal-size' => 'lg',
+                    ),
+                ),
+            ),
+        );
+        $project_page_actions[] = array(
+            'type' => 'menu',
+            'label' => 'Link',
+            'icon' => 'fa-link',
+            'variant' => 'outline-primary',
+            'size' => 'sm',
+            'items' => array(
+                array(
+                    'label' => 'Open Ticket',
+                    'icon' => 'fa-life-ring',
+                    'class' => 'ajax-modal',
+                    'attributes' => array(
+                        'data-modal-url' => 'modals/project/project_link_ticket.php?' . $client_url . 'project_id=' . $project_id,
+                    ),
+                ),
+                array('type' => 'separator'),
+                array(
+                    'label' => 'Closed Ticket',
+                    'icon' => 'fa-life-ring',
+                    'class' => 'ajax-modal',
+                    'attributes' => array(
+                        'data-modal-url' => 'modals/project/project_link_closed_ticket.php?' . $client_url . 'project_id=' . $project_id,
+                    ),
+                ),
+            ),
+        );
+    }
+
+    if (($tickets_closed_percent == 100 || $tickets_resolved_percent == 100) && empty($project_completed_at)) {
+        $project_page_actions[] = array(
+            'type' => 'link',
+            'label' => 'Close',
+            'icon' => 'fa-check',
+            'variant' => 'dark',
+            'size' => 'sm',
+            'class' => 'confirm-link',
+            'href' => 'post.php?close_project=' . $project_id . '&csrf_token=' . $_SESSION['csrf_token'],
+        );
+    }
+
+    $project_more_actions = array();
+    if (empty($project_completed_at)) {
+        $project_more_actions[] = array(
+            'label' => 'Edit',
+            'icon' => 'fa-edit',
+            'class' => 'ajax-modal',
+            'attributes' => array('data-modal-url' => 'modals/project/project_edit.php?id=' . $project_id),
+        );
+    }
+    if (!empty($project_completed_at) && empty($project_archived_at) && lookupUserPermission("module_support") >= 2) {
+        $project_more_actions[] = array(
+            'label' => 'Archive',
+            'icon' => 'fa-archive',
+            'class' => 'text-danger text-bold confirm-link',
+            'href' => 'post.php?archive_project=' . $project_id . '&csrf_token=' . $_SESSION['csrf_token'],
+        );
+    }
+    if (!empty($project_archived_at) && lookupUserPermission("module_support") >= 3) {
+        if ($project_more_actions) {
+            $project_more_actions[] = array('type' => 'separator');
+        }
+        $project_more_actions[] = array(
+            'label' => 'Delete',
+            'icon' => 'fa-trash',
+            'class' => 'text-danger confirm-link',
+            'href' => 'post.php?delete_project=' . $project_id . '&csrf_token=' . $_SESSION['csrf_token'],
+        );
+    }
+    if ($project_more_actions) {
+        $project_page_actions[] = array(
+            'type' => 'menu',
+            'label' => '',
+            'icon' => 'fa-ellipsis-v',
+            'variant' => 'secondary',
+            'size' => 'sm',
+            'menu_label' => 'More project actions',
+            'align_end' => true,
+            'items' => $project_more_actions,
+            'attributes' => array('aria-label' => 'More project actions'),
+        );
+    }
+
     ?>
 
-<!-- Breadcrumbs-->
-<ol class="breadcrumb d-print-none">
-    <li class="breadcrumb-item">
-        <a href="projects.php">Projects</a>
-    </li>
-    <li class="breadcrumb-item active">Project Details</li>
-</ol>
-
-<!-- Project Header -->
-<div class="card mb-3">
-    <div class="card-header">
-        <h5 class="card-title">
-            <i class="fas fa-project-diagram text-secondary me-2"></i>
-            <span class="h4"><?= "$project_prefix$project_number$project_status_display" ?></span>
-        </h5>
-        <div class="card-tools d-print-none">
-            <div class="btn-group">
-                <?php if (empty($project_completed_at)) { ?>
-                    <div class="dropdown me-2">
-                        <button class="btn btn-primary btn-sm" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown">
-                            <i class="fas fa-fw fa-plus me-2"></i>New
-                        </button>
-                        <div class="dropdown-menu">
-                            <a class="dropdown-item text-dark ajax-modal" href="#" data-modal-url="modals/ticket/ticket_add.php?<?= $client_url ?>&project_id=<?= $project_id ?>" data-modal-size="lg">
-                            <i class="fa fa-fw fa-life-ring me-2"></i>Ticket
-                        </a>
-                        </div>
-                    </div>
-                    <div class="dropdown">
-                        <button class="btn btn-outline-primary btn-sm me-3" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown">
-                            <i class="fas fa-fw fa-link me-2"></i>Link
-                        </button>
-                        <div class="dropdown-menu">
-                            <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/project/project_link_ticket.php?<?= $client_url ?>project_id=<?= $project_id ?>">
-                                <i class="fas fa-fw fa-life-ring me-2"></i>Open Ticket
-                            </a>
-                            <div class="dropdown-divider"></div>
-                            <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/project/project_link_closed_ticket.php?<?= $client_url ?>project_id=<?= $project_id ?>.php">
-                                <i class="fas fa-fw fa-life-ring me-2"></i>Closed Ticket
-                            </a>
-                        </div>
-                    </div>
-                <?php } ?>
-                <?php if (($tickets_closed_percent == 100 || $tickets_resolved_percent == 100) && empty($project_completed_at)) { ?>
-                    <a class="btn btn-dark btn-sm confirm-link" href="post.php?close_project=<?= $project_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                        <i class="fas fa-fw fa-check me-2"></i>Close
-                    </a>
-                <?php } ?>
-                <div class="dropdown dropstart text-center ms-3">
-                    <button class="btn btn-secondary btn-sm" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown">
-                        <i class="fas fa-fw fa-ellipsis-v"></i>
-                    </button>
-                    <div class="dropdown-menu">
-                        <?php if (empty($project_completed_at)) { ?>
-                            <a class="dropdown-item ajax-modal" href="#"
-                                data-modal-url = "modals/project/project_edit.php?id=<?= $project_id ?>">
-                                <i class="fas fa-fw fa-edit me-2"></i>Edit
-                            </a>
-                        <?php } ?>
-                        <?php if (!empty($project_completed_at) && empty($project_archived_at) && lookupUserPermission("module_support" >= 2)) { ?>
-                            <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?archive_project=<?= $project_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                <i class="fas fa-fw fa-archive me-2"></i>Archive
-                            </a>
-                        <?php } ?>
-                        <?php if (!empty($project_archived_at) && lookupUserPermission("module_support" >= 3)) { ?>
-                            <div class="dropdown-divider"></div>
-                            <a class="dropdown-item text-danger confirm-link" href="post.php?delete_project=<?= $project_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                <i class="fas fa-fw fa-trash me-2"></i>Delete
-                            </a>
-                        <?php } ?>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+<?php
+n45RenderPageHeader(array(
+    'title' => $project_prefix_raw . $project_number,
+    'title_id' => 'project-page-title',
+    'icon' => 'fa-project-diagram',
+    'description' => $project_name_raw,
+    'badges' => array(
+        array(
+            'label' => $project_completed_at ? 'Closed' : 'Open',
+            'tone' => $project_completed_at ? 'dark' : 'primary',
+        ),
+    ),
+    'breadcrumbs' => array(
+        array('label' => 'Projects', 'href' => 'projects.php'),
+        array('label' => 'Project details'),
+    ),
+    'context' => $client_id ? array(
+        'label' => $client_name_raw,
+        'href' => 'client_overview.php?client_id=' . $client_id,
+    ) : array(),
+    'actions' => $project_page_actions,
+));
+?>
 
 <div class="card-group mb-3">
     <div class="card card-body">
