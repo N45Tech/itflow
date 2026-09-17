@@ -1,19 +1,36 @@
-name: Investigation rollout workspace
+name: Apply investigation rollout
 on:
   push:
     branches: [codex/read-only-ticket-investigation]
     paths: [.github/workflows/investigation-workspace.yml]
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: investigation-rollout-apply
+  cancel-in-progress: false
 jobs:
-  source:
+  apply:
+    if: github.ref == 'refs/heads/codex/read-only-ticket-investigation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Export tracked source for isolated regression validation
-        run: git archive --format=tar.gz HEAD -o /tmp/itflow-source.tar.gz
-      - uses: actions/upload-artifact@v4
+      - uses: shivammathur/setup-php@v2
         with:
-          name: investigation-validation-source
-          path: /tmp/itflow-source.tar.gz
-          retention-days: 1
+          php-version: '8.3'
+          extensions: mysqli, mbstring, intl, curl
+          coverage: none
+      - name: Apply checksum-bound source patch on the isolated feature branch
+        run: |
+          set -euo pipefail
+          cat .github/investigation-rollout/part-*.b64 | base64 --decode | xz --decompress > "$RUNNER_TEMP/investigation.patch"
+          echo "b007117a371c8471898a1653c99cca4e6b5980fee2aff22353f27fd4f4675be9  $RUNNER_TEMP/investigation.patch" | sha256sum --check
+          git apply --check "$RUNNER_TEMP/investigation.patch"
+          git apply "$RUNNER_TEMP/investigation.patch"
+          git diff --check
+          for file in tests/*_test.php; do php "$file"; done
+          rm -r .github/investigation-rollout
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: add opt-in read-only automated ticket investigation'
+          git push origin HEAD:refs/heads/codex/read-only-ticket-investigation
