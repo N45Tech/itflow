@@ -110,6 +110,8 @@ $assertSame('checkmk', $defaults['source'], 'Policy source was not normalized');
 $assertSame(1, $defaults['threshold_count'], 'Default policy should ticket on the first occurrence');
 $assertSame(5, $defaults['max_attempts'], 'Default retry limit changed');
 $assertSame(30, $defaults['payload_retention_days'], 'Default payload retention changed');
+$assertSame(true, automationSourceIsRetired('NetBox'), 'NetBox is not marked as a retired integration source');
+$assertSame(false, automationSourceIsRetired('sentinelone'), 'An active integration source was marked retired');
 
 date_default_timezone_set('America/New_York');
 $assertSame('2026-08-31 08:00:00', automationEventDateTime('2026-08-31T12:00:00Z'), 'Event timestamp was not converted to the application timezone');

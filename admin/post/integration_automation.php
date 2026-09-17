@@ -7,6 +7,9 @@ if (isset($_POST['save_automation_policy'])) {
 
     try {
         $source = automationSource($_POST['automation_policy_source'] ?? '');
+        if (automationSourceIsRetired($source)) {
+            throw new InvalidArgumentException('The integration source is retired');
+        }
     } catch (Throwable $e) {
         flashAlert('The event source is invalid.', 'error');
         redirect('integration_automation.php');
@@ -59,6 +62,9 @@ if (isset($_POST['add_automation_maintenance'])) {
     $source_raw = trim((string) ($_POST['automation_maintenance_source'] ?? ''));
     try {
         $source = $source_raw === '' ? '' : automationSource($source_raw);
+        if ($source !== '' && automationSourceIsRetired($source)) {
+            throw new InvalidArgumentException('The integration source is retired');
+        }
         $starts_at = automationEventDateTime($_POST['automation_maintenance_starts_at'] ?? '', false);
         $ends_at = automationEventDateTime($_POST['automation_maintenance_ends_at'] ?? '', false);
     } catch (Throwable $e) {

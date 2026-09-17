@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(fileURLToPath(import.meta.url));
 const workflowDirectory = join(root, 'workflows');
 const files = (await readdir(workflowDirectory)).filter((file) => file.endsWith('.json')).sort();
-assert.equal(files.length, 8, 'Expected eight generated workflows');
+assert.equal(files.length, 7, 'Expected seven generated workflows');
+assert(!files.includes('netbox-reconciliation.json'), 'Retired NetBox workflow is still shipped');
 
 const workflows = new Map();
 for (const file of files) {
@@ -136,35 +137,6 @@ const dueEvents = code(broker, 'Select Due Events', [
   { id: 4, event_id: 'b-resolved', incident_key: 'incident:b', occurred_at: '2026-01-01T00:05:00Z', status: 'pending', next_attempt_at: '2026-01-01T00:00:00Z', payload: JSON.stringify(canonical) },
 ]);
 assert.deepEqual(dueEvents.map((item) => item.json.event_id), ['b-open']);
-
-const netbox = code('N45 - NetBox Entity Reconciliation', 'Normalize NetBox Devices', {
-  results: [{
-    id: 8, name: 'switch-01', serial: 'ABC123',
-    tenant: { id: 2, name: 'Acme Dental' }, site: { id: 3, name: 'Main Office' },
-    device_type: { model: 'C9300', manufacturer: { name: 'Cisco' } },
-    primary_ip: { address: '192.0.2.10/24' }, status: { label: 'Active' },
-  }],
-});
-assert.equal(netbox[0].json.external_id, '8');
-assert.equal(netbox[0].json.client.name, 'Acme Dental');
-assert.equal(netbox[0].json.client.external_id, '2');
-assert.equal(netbox[0].json.location.name, 'Main Office');
-assert.equal(netbox[0].json.location.external_id, '3');
-assert.equal(netbox[0].json.asset.serial, 'ABC123');
-assert.equal(netbox[0].json.asset.ip, '192.0.2.10');
-assert.equal(netbox[0].json.options.create_client, false);
-assert.throws(() => code('N45 - NetBox Entity Reconciliation', 'Normalize NetBox Devices', { results: [] }),
-  /zero devices/);
-const netboxEvent = code('N45 - NetBox Entity Reconciliation', 'Normalize NetBox Event', {
-  body: {
-    model: 'dcim.device',
-    data: {
-      id: 9, name: 'switch-02', tenant: { id: 4, name: 'Unknown Tenant' },
-      site: { id: 5, name: 'Branch' }, device_type: { model: 'C9200' },
-    },
-  },
-});
-assert.equal(netboxEvent[0].json.options.create_client, false);
 
 const zones = code('N45 - Cloudflare Domain Reconciliation', 'Map Zones to Clients', {
   result: [{ id: 'zone-1', name: 'n45tech.com', status: 'active' }, { id: 'zone-2', name: 'unmapped.example' }],

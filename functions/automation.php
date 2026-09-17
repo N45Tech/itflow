@@ -68,6 +68,11 @@ function automationSource($value): string
     return $source;
 }
 
+function automationSourceIsRetired($value): bool
+{
+    return in_array(automationSource($value), ['netbox'], true);
+}
+
 function automationEntityType($value): string
 {
     $type = strtolower(automationLimitText($value, 40));
@@ -868,6 +873,9 @@ function automationResolveIdentity(array $input): array
 
     if (!n45FeatureEnabled('automation')) {
         throw new RuntimeException('Automation identity resolution is disabled by deployment feature flag');
+    }
+    if (automationSourceIsRetired($input['source'] ?? '')) {
+        throw new InvalidArgumentException('The integration source is retired');
     }
 
     $acquired_locks = automationAcquireNamedLocks(automationIdentityLockNames($input));
