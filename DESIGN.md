@@ -75,8 +75,8 @@ components:
     rounded: "{rounded.md}"
     padding: "{spacing.md}"
   status-tab:
-    backgroundColor: "{colors.mountain-ink}"
-    textColor: "{colors.surface}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.muted}"
     rounded: "{rounded.lg}"
     padding: "0.28rem 0.55rem"
 ---
@@ -109,7 +109,7 @@ The palette pairs forest neutrals with one dependable action teal; Trail Teal an
 
 ### Secondary
 
-- **Mountain Ink:** Workspace headers, high-emphasis headings, and brand anchoring.
+- **Mountain Ink:** Navigation, high-emphasis headings, and brand anchoring.
 - **Deep Spruce:** Application and portal navigation surfaces.
 
 ### Tertiary
@@ -174,7 +174,7 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 
 ### Status Tabs and Badges
 
-- **Style:** Compact pills within a dark workspace header; selection uses a quiet translucent fill and Trail Teal underline.
+- **Style:** Compact pills within the light workspace header; selection uses a quiet teal-tinted fill and Action Teal underline.
 - **State:** `aria-current="page"` is required for active navigation. Badges communicate state and counts, never decoration.
 
 ### Cards / Containers
@@ -186,7 +186,7 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 
 ### Shared Page Structure
 
-- **Workspace lists:** One compact workspace header holds the page title, state or type tabs, client context, and primary action. Filters live in the quiet band immediately below it; records and pagination follow without a second title bar.
+- **Workspace lists:** One compact light workspace header holds the page title, state or type tabs, client context, and a right-aligned primary action, matching the established Vendors composition. Filters live in the quiet band immediately below it; records and pagination follow without a second title bar.
 - **Detail and summary pages:** Breadcrumbs precede one page lead containing the title, restrained status, supporting text, client context, and actions. Summary metrics or record panels follow in reading order.
 - **Action hierarchy:** Expose one primary action per page region. Import, export, linking, archival, and destructive operations belong in a labeled secondary or split menu.
 - **Reusable PHP:** New or migrated pages use the renderers in `functions/ui.php` for page headers, tabs, actions, context, badges, empty states, and modal headers. Business rules and permission checks stay in the calling page.

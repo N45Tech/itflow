@@ -315,6 +315,14 @@ body.dark-mode .app-header .nav-link:focus {
     transition: background-color var(--n45-transition), border-color var(--n45-transition), color var(--n45-transition), box-shadow var(--n45-transition);
 }
 
+/* Bootstrap 4 spacing bridge for older fork modules still using directional utilities. */
+.mr-1 { margin-right: .25rem !important; }
+.mr-2 { margin-right: .5rem !important; }
+.mr-3 { margin-right: 1rem !important; }
+.ml-1 { margin-left: .25rem !important; }
+.ml-2 { margin-left: .5rem !important; }
+.ml-3 { margin-left: 1rem !important; }
+
 .n45-workspace .btn,
 .n45-page-lead .btn,
 .n45-ops-shell .btn,
@@ -580,10 +588,10 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
 
 .n45-workspace-header {
     align-items: center;
-    background: var(--n45-mountain);
-    border: 0;
+    background: var(--n45-surface);
+    border-bottom: 1px solid var(--n45-border);
     border-radius: calc(var(--n45-radius) - 1px) calc(var(--n45-radius) - 1px) 0 0;
-    color: #ffffff;
+    color: var(--n45-ink);
     display: flex;
     gap: 1rem;
     justify-content: space-between;
@@ -601,7 +609,7 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
 
 .n45-workspace-title {
     align-items: center;
-    color: #ffffff;
+    color: var(--n45-ink);
     display: flex;
     font-size: 1.08rem;
     font-weight: 675;
@@ -611,7 +619,7 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
 }
 
 .n45-workspace-title i {
-    color: var(--n45-trail);
+    color: var(--n45-mountain);
 }
 
 .n45-workspace-header .card-tools {
@@ -623,6 +631,7 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
     align-items: center;
     display: flex;
     gap: .5rem;
+    margin-left: auto;
 }
 
 .n45-page-actions > .btn-group,
@@ -642,13 +651,13 @@ body.dark-mode .dropdown-item:not(.text-danger):not(.text-warning):not(.text-suc
     align-items: center;
     border: 1px solid currentColor;
     border-radius: var(--n45-radius-lg);
-    color: inherit;
+    color: var(--n45-muted-strong);
     display: inline-flex;
     font-size: .76rem;
     font-weight: 600;
     gap: .25rem;
     max-width: 18rem;
-    opacity: .8;
+    opacity: 1;
     padding: .2rem .5rem;
 }
 
@@ -673,21 +682,22 @@ a.n45-client-context:focus {
 
 .n45-status-tabs a {
     border-radius: 999px;
-    color: #c9d8d4;
+    color: var(--n45-muted-strong);
     display: inline-flex;
     gap: .3rem;
     padding: .28rem .55rem;
 }
 
 .n45-status-tabs a:hover,
-.n45-status-tabs a:focus,
-.n45-status-tabs a[aria-current="page"] {
-    background: rgba(255, 255, 255, .12);
-    color: #ffffff;
+.n45-status-tabs a:focus {
+    background: var(--n45-surface-strong);
+    color: var(--n45-ink);
 }
 
 .n45-status-tabs a[aria-current="page"] {
-    box-shadow: inset 0 -2px 0 var(--n45-trail);
+    background: var(--n45-accent-soft);
+    box-shadow: inset 0 -2px 0 var(--n45-action);
+    color: var(--n45-action-hover);
 }
 
 .n45-filter-bar {

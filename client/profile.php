@@ -187,7 +187,7 @@ $sql_actions = mysqli_query(
                     </div>
                 </div>
                 <div class="n45-form-actions">
-                    <button type="submit" name="edit_profile" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i>Update password</button>
+                    <button type="submit" name="edit_profile" class="btn btn-primary"><i class="fas fa-check me-2" aria-hidden="true"></i>Update password</button>
                 </div>
             </form>
         </div>
