@@ -126,6 +126,7 @@ $event_queue_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
 $active_maintenance_count = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*)
     FROM automation_maintenance_windows
     WHERE automation_maintenance_deleted_at IS NULL
+    AND automation_maintenance_source <> 'netbox'
     AND automation_maintenance_starts_at <= NOW()
     AND automation_maintenance_ends_at >= NOW()"))[0] ?? 0);
 

@@ -26,6 +26,8 @@ $assertTrue(str_contains($operations, "automation_incident_source <> 'netbox'"),
     'Operations does not suppress retired NetBox incidents');
 $assertTrue(str_contains($operations, "automation_mapping_source <> 'netbox'"),
     'Operations does not suppress retired NetBox identity mappings');
+$assertTrue(str_contains($operations, "automation_maintenance_source <> 'netbox'"),
+    'Operations still counts retired NetBox maintenance windows');
 $assertTrue(str_contains($ticket, '!automationSourceIsRetired'),
     'Ticket detail still exposes retired integration cards');
 $assertTrue(str_contains($admin, "automation_policy_source <> 'netbox'"),
