@@ -1950,6 +1950,11 @@ if (isset($_GET['ticket_id'])) {
                                 </div>
                             <?php } ?>
 
+                            <?php
+                            defined('N45_TICKET_INVESTIGATION_VIEW') || define('N45_TICKET_INVESTIGATION_VIEW', true);
+                            require __DIR__ . '/includes/ticket_investigation.php';
+                            ?>
+
                             <div class="mt-3 pt-2 border-top">
                                 <a href="operations.php<?= $automation_incident_open ? '#incident-' . intval($automation_incident['automation_incident_id']) : '#recent-activity' ?>">Open in Operations <i class="fas fa-arrow-right ml-1"></i></a>
                             </div>

@@ -13,7 +13,7 @@ if (isset($_POST['add_ai_model'])) {
     $provider_id = intval($_POST['provider']);
     $model = escapeSql($_POST['model']);
     $prompt = escapeSql($_POST['prompt']);
-    $use_case = escapeSql($_POST['use_case']);
+    $use_case = escapeSql(aiModelUseCase($_POST['use_case'] ?? ''));
 
     // Blank means "send no temperature at all" - the only setting that works on every
     // provider. Anything else rides as a numeric literal, so no quoting.
@@ -42,7 +42,7 @@ if (isset($_POST['edit_ai_model'])) {
     $model_id = intval($_POST['model_id']);
     $model = escapeSql($_POST['model']);
     $prompt = escapeSql($_POST['prompt']);
-    $use_case = escapeSql($_POST['use_case']);
+    $use_case = escapeSql(aiModelUseCase($_POST['use_case'] ?? ''));
 
     // Blank means "send no temperature at all" - the only setting that works on every
     // provider. Anything else rides as a numeric literal, so no quoting.

@@ -21,6 +21,7 @@ n45RequireModule('external_identity');
 n45RequireModule('endpoint');
 n45RequireModule('level');
 n45RequireModule('automation');
+n45RequireModule('automation_investigation');
 require_once __DIR__ . '/functions/sanitize.php';
 require_once __DIR__ . '/functions/ui.php';
 require_once __DIR__ . '/functions/format.php';

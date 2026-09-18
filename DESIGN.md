@@ -180,6 +180,13 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 - **Focus:** Move focus into loaded dialog content, return it to the originating control on close or cancellation, and use the parent menu trigger when the original control becomes hidden.
 - **Recovery:** Abort stale requests, suppress duplicate modal loads and form submissions, and clear stale busy states when a page returns from the back-forward cache.
 
+### Automated Investigations
+
+- **Placement:** Keep analysis inside the existing automation incident card so source state remains the primary record.
+- **Disclosure:** Label model output as read-only and AI-generated, and state explicitly when no remediation was attempted.
+- **Structure:** Present the concise summary first, then a hypothetical cause, uncalibrated model confidence, suggested non-destructive technician checks, and expandable unknowns.
+- **Trust:** Render only escaped structured fields; never present model HTML, credentials, or unverified conclusions as confirmed facts.
+
 ### Status Tabs and Badges
 
 - **Style:** Compact pills within the light workspace header; selection uses a quiet teal-tinted fill and Action Teal underline.

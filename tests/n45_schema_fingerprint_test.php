@@ -97,6 +97,7 @@ $assertTrue(
         'n45-0027-commercial-operations',
         'n45-0028-ticket-delete-operations-alignment',
         'n45-0029-hetrix-monitoring-source',
+        'n45-0030-automation-investigation',
     ],
     'The post-integration migration reservations are missing'
 );
