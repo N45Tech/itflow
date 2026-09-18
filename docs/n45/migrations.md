@@ -53,7 +53,6 @@ The manifest reserves the next four feature IDs and all post-integration migrati
 | — | `n45-0027-commercial-operations` | Commercial operations |
 | — | `n45-0028-ticket-delete-operations-alignment` | Automation |
 | — | `n45-0029-hetrix-monitoring-source` | Automation |
-| — | `n45-0030-automation-investigations` | Automation |
 
 `n45-0025-inbound-mail-receipts` adds durable mailbox/message receipts and a custom-action outbox without rewriting existing records. Preserve receipts and retained source mail when recovering. Rollback requires the matching pre-upgrade database and application snapshot; do not delete receipts while a mailbox can replay committed messages.
 
@@ -133,7 +132,6 @@ The legacy bridge remains deliberately read-only. A database whose upstream mark
 | `n45-0027-commercial-operations` | — | Commercial operations | No | Preserve billing decisions, accepted-scope snapshots, subscription observations and fulfillment history; restore matching database and application snapshots before removing commercial tables. |
 | `n45-0028-ticket-delete-operations-alignment` | — | Automation | Yes | Preserve reconciled incident history and restore the pre-upgrade database snapshot if the prior Operations projection must be reinstated. |
 | `n45-0029-hetrix-monitoring-source` | — | Automation | Yes | Preserve monitoring incident history and restore the matching database snapshot before reactivating the retired Uptime Kuma source. |
-| `n45-0030-automation-investigations` | — | Automation | No | Disable the Automation Investigator cron job, preserve investigation results for audit, and restore the matching database snapshot before removing its queue. |
 
 Any environment that experimentally ran an earlier local `2.8.0.php` must be restored from its pre-upgrade snapshot or explicitly reconciled to the final portal request schema before release deployment. An advanced numeric marker alone is not proof of the final schema: the legacy bridge fails closed on an older or partial shape. Once namespace state is reconciled, an unrecorded `n45-0013` remains pending and the normal runner executes its retry-safe repair before recording the ledger row.
 
@@ -149,3 +147,7 @@ Any environment that experimentally ran an earlier local `2.8.0.php` must be res
 6. Never edit a migration after it has been applied to any environment; add a new migration instead, because the ledger checksum deliberately detects drift.
 
 Feature flags stop optional ingress or processing. They do not undo schema, erase history, bypass deletion cleanup, or make older code compatible with a newer database.
+
+## n45-0030-automation-investigation
+
+Adds isolated investigation jobs, non-payload audit receipts and durable provider rate accounting. No existing data is changed. New installations and upgrades remain disabled until explicit client/provider/model and cron opt-ins. Disable `N45_FEATURE_AUTOMATION_INVESTIGATION` to stop processing; retain the schema for authorized historical reads, retention and permanent-ticket deletion. Reverting schema requires restoring the matching pre-upgrade application/database snapshot. See `automation-investigation.md`.

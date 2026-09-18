@@ -41,7 +41,7 @@ ob_start();
                             $ai_provider_name = escapeHtml($row['ai_provider_name']);
 
                         ?>
-                        <option <?php if ($ai_provider_id === $ai_model_ai_provider_id) { echo "selected"; } ?> value="<?= $ai_provider_id ?>"><?= $ai_provider_name ?></option>
+                        <option <?php if ($ai_provider_id = $ai_model_ai_provider_id) { echo "selected"; } ?> value="<?= $ai_provider_id ?>"><?= $ai_provider_name ?></option>
                     <?php } ?>
                 </select>
             </div>
@@ -60,10 +60,12 @@ ob_start();
             <div class="input-group">
                     <span class="input-group-text"><i class="fa fa-fw fa-th-list"></i></span>
                 <select class="form-select select2" name="use_case">
-                    <?php foreach (aiModelUseCases() as $available_use_case) { ?>
-                        <option <?php if ($use_case === $available_use_case) { echo "selected"; } ?>><?= escapeHtml($available_use_case) ?></option>
-                    <?php } ?>
+                    <option <?php if ($use_case == 'General') { echo "selected"; } ?>>General</option>
+                    <option <?php if ($use_case == 'Tickets') { echo "selected"; } ?>>Tickets</option>
+                    <option <?php if ($use_case == 'Documentation') { echo "selected"; } ?>>Documentation</option>
+                    <option <?php if ($use_case == 'Automation Investigation') { echo "selected"; } ?>>Automation Investigation</option>
                 </select>
+                <small id="investigation-use-case-note" class="form-text text-muted">Automation Investigation requires a separate deployment opt-in, approved client IDs and provider host. It uses a fixed read-only prompt, not the custom prompt below.</small>
             </div>
         </div>
 
@@ -74,10 +76,6 @@ ob_start();
                 <input type="number" class="form-control" name="temperature" step="0.1" min="0" max="2" value="<?= $temperature ?>" placeholder="Provider default">
             </div>
             <small class="form-text text-muted">Optional. Leave blank to let the provider use its default - some newer models reject every other value.</small>
-        </div>
-        <div class="alert alert-light border small" role="note">
-            <strong>Automation Investigation</strong> is a read-only background workflow. It receives redacted
-            Operations evidence and never falls back to the General model.
         </div>
         <div class="mb-3">
             <textarea class="form-control" rows="8" name="prompt" placeholder="Enter a model prompt:"><?= $prompt ?></textarea>

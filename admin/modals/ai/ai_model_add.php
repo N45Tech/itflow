@@ -46,11 +46,13 @@ ob_start();
             <label>Use Case <strong class="text-danger">*</strong></label>
             <div class="input-group">
                     <span class="input-group-text"><i class="fa fa-fw fa-th-list"></i></span>
-                <select class="form-select select2" name="use_case">
-                    <?php foreach (aiModelUseCases() as $available_use_case) { ?>
-                        <option><?= escapeHtml($available_use_case) ?></option>
-                    <?php } ?>
+                <select class="form-select select2" name="use_case" aria-describedby="investigation-use-case-note">
+                    <option>General</option>
+                    <option>Tickets</option>
+                    <option>Documentation</option>
+                    <option>Automation Investigation</option>
                 </select>
+                <small id="investigation-use-case-note" class="form-text text-muted">Automation Investigation requires a separate deployment opt-in, approved client IDs and provider host. It uses a fixed read-only prompt, not the custom prompt below.</small>
             </div>
         </div>
 
@@ -61,11 +63,6 @@ ob_start();
                 <input type="number" class="form-control" name="temperature" step="0.1" min="0" max="2" value="" placeholder="Provider default">
             </div>
             <small class="form-text text-muted">Optional. Leave blank to let the provider use its default - some newer models reject every other value.</small>
-        </div>
-
-        <div class="alert alert-light border small" role="note">
-            <strong>Automation Investigation</strong> is a read-only background workflow. It receives redacted
-            Operations evidence and never falls back to the General model.
         </div>
 
         <div class="mb-3">

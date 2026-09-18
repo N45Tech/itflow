@@ -94,12 +94,11 @@ function cronJobRegistry(): array
             'interval_minutes' => 1,
         ],
         [
-            'name' => 'automation_investigator',
-            'label' => 'Automation Investigator',
-            'script' => 'automation_investigator.php',
-            'description' => 'Builds read-only AI investigations from redacted Operations evidence and attaches structured findings to automation tickets.',
-            'schedule' => 'Interval',
-            'interval_minutes' => 1,
+            'name' => 'automation_investigation',
+            'label' => 'Read-only Incident Investigation',
+            'script' => 'automation_investigation.php',
+            'description' => 'Analyze retained alerts for explicitly approved clients; no tools, ticket replies or remediation.',
+            'schedule' => 'Interval', 'interval_minutes' => 1, 'enabled' => 0,
         ],
         [
             'name' => 'file_staging_recovery',
