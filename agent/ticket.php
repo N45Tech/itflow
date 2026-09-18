@@ -1957,6 +1957,11 @@ if (isset($_GET['ticket_id'])) {
                     </div>
                 <?php } ?>
 
+                <?php
+                defined('N45_TICKET_INVESTIGATION_VIEW') || define('N45_TICKET_INVESTIGATION_VIEW', true);
+                require __DIR__ . '/includes/ticket_investigation.php';
+                ?>
+
                 <?php if ($ticket_next_action_detail || $ticket_promises || ($can_edit_ticket && !$ticket_is_closed)) { ?>
                     <div class="card mb-3">
                         <div class="card-header px-3 py-2">
