@@ -184,7 +184,7 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 
 - **Placement:** Keep analysis inside the existing automation incident card so source state remains the primary record.
 - **Disclosure:** Label model output as read-only and AI-generated, and state explicitly when no remediation was attempted.
-- **Structure:** Present the concise summary first, then likely cause, impact, confidence, evidence, recommended actions, and expandable unknowns.
+- **Structure:** Present the concise summary first, then a hypothetical cause, uncalibrated model confidence, suggested non-destructive technician checks, and expandable unknowns.
 - **Trust:** Render only escaped structured fields; never present model HTML, credentials, or unverified conclusions as confirmed facts.
 
 ### Status Tabs and Badges
