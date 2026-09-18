@@ -92,7 +92,7 @@ $assertContains('existing_investigation.automation_investigation_id IS NULL', $q
     'Previously queued incidents can starve later automation investigations');
 $assertContains('source_event.automation_event_id = (', $evidence,
     'A superseded queued event can still produce a stale investigation');
-$assertContains("automation_event_status = 'Processing'", $investigator,
+$assertContains("automation_investigation_status = 'Processing'", $investigator,
     'Investigation work is not protected by a processing lease');
 $assertContains('automation_investigation_lease_token = \'$lease_sql\'', $investigator,
     'Investigation completion is not compare-and-set by lease');
