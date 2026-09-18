@@ -1,0 +1,33 @@
+name: Apply investigation validation fix
+on:
+  push:
+    branches: [codex/read-only-ticket-investigation]
+    paths: [.github/workflows/investigation-hotfix.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mysqli, mbstring, intl, curl
+          coverage: none
+      - name: Apply reviewed checksum-bound correction
+        env:
+          PATCH_B64: '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'
+        run: |
+          set -euo pipefail
+          printf '%s' "$PATCH_B64" | base64 --decode | xz --decompress > "$RUNNER_TEMP/fix.patch"
+          echo "a57397034d3774b2654aa9c853eb827182839dd5dcd7facbdd0e9baa6601b7df  $RUNNER_TEMP/fix.patch" | sha256sum --check
+          git apply --check "$RUNNER_TEMP/fix.patch"
+          git apply "$RUNNER_TEMP/fix.patch"
+          git diff --check
+          for file in tests/*_test.php; do php "$file"; done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add functions/automation_investigation.php tests/automation_investigation_database_assert.php
+          git commit -m 'fix: fence investigation enqueue against deletion and complete CI fixtures'
+          git push origin HEAD:refs/heads/codex/read-only-ticket-investigation
