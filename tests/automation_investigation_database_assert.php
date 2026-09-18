@@ -15,7 +15,7 @@ $assert=static function ($ok, string $message) use (&$count): void {
 $q=static fn (string $sql) => investigationQuery($sql);
 $scalar=static fn (string $sql) => mysqli_fetch_row(investigationQuery($sql))[0] ?? null;
 $id=static fn () => intval(mysqli_insert_id($GLOBALS['mysqli']));
-$q("INSERT INTO settings (company_id, config_enable_cron) VALUES (1,1) ON DUPLICATE KEY UPDATE config_enable_cron=1");
+$q("INSERT INTO settings (company_id, config_current_database_version, config_enable_cron) VALUES (1,'2.7.8',1) ON DUPLICATE KEY UPDATE config_enable_cron=1");
 $q("INSERT INTO user_roles SET role_name='Investigation CI', role_is_admin=1"); $role=$id();
 $q("INSERT INTO users SET user_name='Automation CI', user_email='ci@example.invalid', user_password='fixture', user_role_id=$role"); $user=$id();
 $q("INSERT INTO api_keys SET api_key_name='Investigation CI', api_key_secret='investigation-ci-only', api_key_decrypt_hash='fixture', api_key_expire=DATE_ADD(CURRENT_DATE(), INTERVAL 1 YEAR), api_key_user_id=$user"); $api=$id();
@@ -48,7 +48,7 @@ foreach (['http://fixture.invalid/chat','https://other.invalid/chat','https://fi
 $q("UPDATE ai_providers SET ai_provider_api_url='https://fixture.invalid/chat/completions' WHERE ai_provider_id=$provider");
 $make=static function (int $tenant,string $tag,string $source='Automation', string $state='Open') use ($q,$id,$api,$user) {
     $tag=investigationSql($tag); $source=investigationSql($source); $state=investigationSql($state);
-    $q("INSERT INTO tickets SET ticket_prefix='AI-', ticket_number=1, ticket_subject='$tag', ticket_details='Fixture', ticket_status=1, ticket_source='$source', ticket_client_id=$tenant"); $ticket=$id();
+    $q("INSERT INTO tickets SET ticket_prefix='AI-', ticket_number=1, ticket_subject='$tag', ticket_details='Fixture', ticket_status=1, ticket_created_by=0, ticket_source='$source', ticket_client_id=$tenant"); $ticket=$id();
     $hash=hash('sha256',$tag);
     $q("INSERT INTO automation_incidents SET automation_incident_source='hetrix', automation_incident_key='$tag', automation_incident_title='$tag', automation_incident_status='$state', automation_incident_severity='high', automation_incident_ticket_id=$ticket, automation_incident_client_id=$tenant, automation_incident_last_event_hash='$hash', automation_incident_opened_at=NOW()"); $incident=$id();
     $payload=json_encode(['title'=>$tag,'description'=>'Monitor unavailable; password=private-fixture-secret', 'metadata'=>['raw'=>'private-fixture-metadata']]);
@@ -122,6 +122,14 @@ investigationRun($transport); $q("UPDATE tickets SET ticket_client_id=$foreign W
 $ready(); $saved=$calls;
 $assert(investigationRun($transport)['status']==='idle' && $calls===$saved,'Reassigned ticket emitted evidence');
 $assert($scalar("SELECT status FROM automation_investigations WHERE incident_id=$inc6")==='Superseded','Cross-tenant reassignment was not fenced');
+// A discovery result captured before deletion must not resurrect retained evidence.
+[$deleted_inc,$deleted_ticket,$deleted_event]=$make($client,'deleted-before-enqueue');
+$discovered=mysqli_fetch_assoc($q("SELECT i.*, e.automation_event_id, e.automation_event_payload, e.automation_event_occurred_at
+    FROM automation_incidents i INNER JOIN automation_events e ON e.automation_event_id=$deleted_event
+    WHERE i.automation_incident_id=$deleted_inc"));
+$q("DELETE FROM tickets WHERE ticket_id=$deleted_ticket");
+$assert(investigationEnqueue($discovered,investigationConfig())===false,'Stale discovery recreated evidence after deletion');
+$assert(intval($scalar("SELECT COUNT(*) FROM automation_investigations WHERE ticket_id=$deleted_ticket"))===0,'Deleted ticket gained an orphan investigation');
 // Authorized technician-only UI projection, no cross-tenant result.
 $session_is_admin=true; $session_user_id=$user; $session_user_role=$role;
 $assert(investigationTicketAdvisory($ticket,$client)!==null,'Authorized agent cannot read advisory');

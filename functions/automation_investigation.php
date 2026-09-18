@@ -233,6 +233,58 @@ function investigationCurrent(int $incident_id, array $config): ?array
         WHERE i.automation_incident_id = $incident_id AND $where LIMIT 1")) ?: null;
 }
 
+/** Revalidate a discovered generation transactionally before retaining evidence. */
+function investigationEnqueue(array $row, array $config): bool
+{
+    global $mysqli;
+    $id = intval($row['automation_incident_id']);
+    $client = intval($row['automation_incident_client_id']);
+    $ticket = intval($row['automation_incident_ticket_id']);
+    $event = intval($row['automation_event_id']);
+    $key = investigationKey($row);
+    $signal = investigationSql((string) $row['automation_incident_last_event_hash']);
+    $opened = $row['automation_incident_opened_at'] === null ? 'NULL'
+        : "'" . investigationSql($row['automation_incident_opened_at']) . "'";
+    try {
+        if (strlen((string) $row['automation_event_payload']) > 16384) {
+            throw new RuntimeException('evidence_unavailable');
+        }
+        $evidence = investigationEvidence($row);
+        $json = json_encode($evidence, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $status = 'Pending'; $error_code = 'NULL';
+    } catch (Throwable $error) {
+        $json = '{}'; $status = 'Failed'; $error_code = "'evidence_unavailable'";
+    }
+    $hash = hash('sha256', $json);
+    $json = investigationSql($json);
+    if (!mysqli_begin_transaction($mysqli)) { throw new RuntimeException('investigation_storage_failed'); }
+    try {
+        // A discovery result can outlive an authorized deletion/reassignment. Lock and
+        // recheck its tenant/incident/ticket before retaining any evidence.
+        investigationQuery("SELECT client_id FROM clients WHERE client_id = $client FOR UPDATE");
+        investigationQuery("SELECT automation_incident_id FROM automation_incidents WHERE automation_incident_id = $id FOR UPDATE");
+        investigationQuery("SELECT ticket_id FROM tickets WHERE ticket_id = $ticket FOR UPDATE");
+        $current = investigationCurrent($id, $config);
+        if (!$current || !hash_equals($key, investigationKey($current))) {
+            mysqli_rollback($mysqli);
+            return false;
+        }
+        investigationQuery("INSERT IGNORE INTO automation_investigations
+            (generation_key, incident_id, client_id, ticket_id, event_id, opened_at, signal_hash,
+            evidence_hash, evidence_json, status, error_code, created_at)
+            VALUES ('$key', $id, $client, $ticket, $event, $opened, '$signal', '$hash', '$json', '$status', $error_code, UTC_TIMESTAMP())");
+        $inserted = mysqli_affected_rows($mysqli) === 1;
+        if ($inserted) {
+            investigationAudit(intval(mysqli_insert_id($mysqli)), $status === 'Pending' ? 'queued' : 'evidence_unavailable');
+        }
+        if (!mysqli_commit($mysqli)) { throw new RuntimeException('investigation_storage_failed'); }
+        return $inserted;
+    } catch (Throwable $error) {
+        mysqli_rollback($mysqli);
+        throw $error;
+    }
+}
+
 /** Only this worker writes investigation-owned tables; no other application records are mutated. */
 /** The optional in-process transport is a test seam, never selected by request data. */
 function investigationRun(?callable $provider_call = null): array
@@ -294,40 +346,7 @@ function investigationRun(?callable $provider_call = null): array
                     AND j.signal_hash = i.automation_incident_last_event_hash)
             ORDER BY e.automation_event_id ASC LIMIT 20");
         while ($row = mysqli_fetch_assoc($rows)) {
-            $id = intval($row['automation_incident_id']);
-            $client = intval($row['automation_incident_client_id']);
-            $ticket = intval($row['automation_incident_ticket_id']);
-            $event = intval($row['automation_event_id']);
-            $key = investigationKey($row);
-            $signal = investigationSql((string) $row['automation_incident_last_event_hash']);
-            $opened = $row['automation_incident_opened_at'] === null ? 'NULL'
-                : "'" . investigationSql($row['automation_incident_opened_at']) . "'";
-            try {
-                if (strlen((string) $row['automation_event_payload']) > 16384) {
-                    throw new RuntimeException('evidence_unavailable');
-                }
-                $evidence = investigationEvidence($row);
-                $json = json_encode($evidence, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
-                $status = 'Pending'; $error_code = 'NULL';
-            } catch (Throwable $error) {
-                $json = '{}'; $status = 'Failed'; $error_code = "'evidence_unavailable'";
-            }
-            $hash = hash('sha256', $json);
-            $json = investigationSql($json);
-            if (!mysqli_begin_transaction($mysqli)) { throw new RuntimeException('investigation_storage_failed'); }
-            try {
-                investigationQuery("INSERT IGNORE INTO automation_investigations
-                    (generation_key, incident_id, client_id, ticket_id, event_id, opened_at, signal_hash,
-                    evidence_hash, evidence_json, status, error_code, created_at)
-                    VALUES ('$key', $id, $client, $ticket, $event, $opened, '$signal', '$hash', '$json', '$status', $error_code, UTC_TIMESTAMP())");
-                if (mysqli_affected_rows($mysqli) === 1) {
-                    investigationAudit(intval(mysqli_insert_id($mysqli)), $status === 'Pending' ? 'queued' : 'evidence_unavailable');
-                }
-                if (!mysqli_commit($mysqli)) { throw new RuntimeException('investigation_storage_failed'); }
-            } catch (Throwable $error) {
-                mysqli_rollback($mysqli);
-                throw $error;
-            }
+            investigationEnqueue($row, $config);
         }
         // A processing lease and a rate reservation commit BEFORE any provider request.
         $jobs = investigationQuery("SELECT * FROM automation_investigations WHERE status = 'Pending'
