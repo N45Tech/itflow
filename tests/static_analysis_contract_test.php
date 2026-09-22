@@ -21,6 +21,11 @@ $assertContains('pull_request:', $workflow, 'Static analysis is not enforced on 
 $assertContains('branches:', $workflow, 'Static analysis does not declare its integration branch');
 $assertContains('- next', $workflow, 'Static analysis is not enforced before integration into next');
 $assertContains('tools: phpstan:2.2.14', $workflow, 'The PHPStan toolchain is not version-pinned');
+$assertContains('runs-on: ubuntu-24.04', $workflow, 'Static analysis uses a moving runner image');
+$assertContains('actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09', $workflow,
+    'Static-analysis checkout is not pinned to the reviewed Node 24 action');
+$assertContains('shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240', $workflow,
+    'Static-analysis PHP setup is not pinned to the reviewed Node 24 action');
 $assertContains('fail-fast: true', $workflow, 'A failed PHPStan installation can pass silently');
 $assertContains('phpstan analyse --configuration=phpstan.neon.dist', $workflow,
     'CI bypasses the committed PHPStan configuration');
