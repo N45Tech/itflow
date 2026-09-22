@@ -70,6 +70,7 @@ $workspace_pages = array(
     'agent/domains.php' => 'domains-page-title',
     'agent/certificates.php' => 'certificates-page-title',
     'agent/notifications.php' => 'notifications-page-title',
+    'agent/locations.php' => 'locations-page-title',
 );
 foreach ($workspace_pages as $path => $heading_id) {
     $page = file_get_contents($root . '/' . $path);
@@ -92,6 +93,7 @@ foreach (array(
     'agent/domains.php',
     'agent/certificates.php',
     'agent/notifications.php',
+    'agent/locations.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('class="card-header n45-filter-bar"', $page, "$path does not use the shared filter band");
@@ -105,6 +107,7 @@ foreach (array(
     'agent/software.php',
     'agent/domains.php',
     'agent/certificates.php',
+    'agent/locations.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('n45RenderEmptyState(array(', $page, "$path does not distinguish its zero-result state");
@@ -138,6 +141,14 @@ $assertContains('aria-label="Show notification date filters"', $notifications, '
 $assertContains('for="notification-date-from"', $notifications, 'Notification start date is not explicitly labelled');
 $assertContains('for="notification-date-to"', $notifications, 'Notification end date is not explicitly labelled');
 $assertContains('aria-label="Dismiss notification"', $notifications, 'Notification row actions are missing an accessible name');
+
+$locations = file_get_contents($root . '/agent/locations.php');
+$assertContains('aria-label="Search locations"', $locations, 'Location search is missing an accessible name');
+$assertContains('aria-label="Filter locations by tags"', $locations, 'Location tag filtering is missing an accessible name');
+$assertContains('aria-label="Filter locations by client"', $locations, 'Location client filtering is missing an accessible name');
+$assertContains('aria-label="Select all displayed locations"', $locations, 'Location bulk selection is missing an accessible name');
+$assertContains('aria-label="Actions for <?= $location_name ?>"', $locations, 'Location row actions are missing a contextual accessible name');
+$assertNotContains('$client_url tags[]=', $locations, 'Location tag links retain the malformed query-string separator');
 
 $asset_modal = file_get_contents($root . '/agent/modals/asset/asset_add.php');
 $assertContains('n45RenderModalHeader(', $asset_modal, 'The representative create form does not use the shared modal header');
