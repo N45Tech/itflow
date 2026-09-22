@@ -69,6 +69,7 @@ $workspace_pages = array(
     'agent/software.php' => 'software-page-title',
     'agent/domains.php' => 'domains-page-title',
     'agent/certificates.php' => 'certificates-page-title',
+    'agent/notifications.php' => 'notifications-page-title',
 );
 foreach ($workspace_pages as $path => $heading_id) {
     $page = file_get_contents($root . '/' . $path);
@@ -90,6 +91,7 @@ foreach (array(
     'agent/software.php',
     'agent/domains.php',
     'agent/certificates.php',
+    'agent/notifications.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('class="card-header n45-filter-bar"', $page, "$path does not use the shared filter band");
@@ -128,6 +130,14 @@ $search = file_get_contents($root . '/agent/global_search.php');
 $assertContains("'title_id' => 'global-search-heading'", $search, 'Global search does not use the shared page lead');
 $assertContains("'title' => 'No matching records'", $search, 'Global search has no explicit zero-result state');
 $assertContains("'title' => 'Find a record'", $search, 'Global search has no initial state');
+
+$notifications = file_get_contents($root . '/agent/notifications.php');
+$assertContains('n45RenderEmptyState(array(', $notifications, 'Notifications do not expose an explicit zero-result state');
+$assertContains('aria-label="Search notifications"', $notifications, 'Notification search is missing an accessible name');
+$assertContains('aria-label="Show notification date filters"', $notifications, 'Notification filters are missing an accessible name');
+$assertContains('for="notification-date-from"', $notifications, 'Notification start date is not explicitly labelled');
+$assertContains('for="notification-date-to"', $notifications, 'Notification end date is not explicitly labelled');
+$assertContains('aria-label="Dismiss notification"', $notifications, 'Notification row actions are missing an accessible name');
 
 $asset_modal = file_get_contents($root . '/agent/modals/asset/asset_add.php');
 $assertContains('n45RenderModalHeader(', $asset_modal, 'The representative create form does not use the shared modal header');
