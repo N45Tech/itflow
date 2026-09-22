@@ -40,11 +40,11 @@ services:
     ports:
       - 127.0.0.1:8088:80
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/"]
+      test: ["CMD", "curl", "-fsS", "--max-time", "5", "http://127.0.0.1/healthz.php"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 90s
     networks:
       - backend
 
@@ -59,10 +59,13 @@ services:
       N45_FEATURE_AUTOMATION: ${N45_FEATURE_AUTOMATION:-1}
     volumes:
       - app_data:/var/lib/itflow
-    command:
-      - sh
-      - -c
-      - while true; do php /var/www/html/cron/cron.php; sleep 60; done
+    command: ["/usr/local/bin/itflow-cron"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--max-time", "5", "http://web/healthz.php"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
     networks:
       - backend
 
