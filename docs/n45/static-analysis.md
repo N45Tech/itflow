@@ -9,16 +9,20 @@ ignore baseline:
 - `functions/mail_templates.php`
 - `functions/ui.php`
 
+`functions/sanitize.php` is scanned for legacy global helper symbols used by
+the governed UI module; it is not yet part of the analysed level-5 scope.
+
 The CI tool version is pinned. Every pull request into `next` runs the same
 configuration, and `workflow_dispatch` provides exact-branch validation.
 
 ## Expansion rule
 
-Add a file or cohesive module only after its current findings are corrected or
-reviewed. Prefer types and code fixes over ignores. If a future expansion needs
-a baseline, commit only the reviewed findings for that expansion; do not
-regenerate an existing baseline to make an unrelated change pass. The baseline
-must shrink or remain stable.
+Add a file or cohesive module to `paths` only after its current findings are
+corrected or reviewed. `scanFiles` may supply runtime symbols, but must not be
+described as analysed coverage. Prefer types and code fixes over ignores. If a
+future expansion needs a baseline, commit only the reviewed findings for that
+expansion; do not regenerate an existing baseline to make an unrelated change
+pass. The baseline must shrink or remain stable.
 
 P2-04 remains in progress until the gate covers the fork-owned service/write
 paths broadly enough to reject new findings in changed N45 code. JavaScript and
