@@ -5,6 +5,7 @@ This pack keeps ITFlow authoritative for clients, locations, assets, domains, in
 ## Included workflows
 
 - **ITFlow Operations Event Broker** — authenticated webhooks for HetrixTools, backup jobs, generic service checks, and canonical events. It sanitizes and durably queues each event before returning `202`, then retries transient ITFlow failures with bounded backoff. Repeated failures update one ticket; recovery adds an internal reply and can resolve it.
+- **Read-only Incident Investigation** — an optional, default-off ITFlow cron worker analyzes bounded retained alert fields and displays a technician-only advisory inside the incident card. It requires explicit client and provider-host opt-in in addition to the dedicated AI model; no n8n credential or remediation capability is added. See `docs/n45/automation-investigation.md`.
 - **Cloudflare Domain Reconciliation** — nightly zone-to-domain reconciliation for explicitly mapped zones.
 - **CIPP Alerts to ITFlow** — validates CIPP's standardized alert schema, requires an explicit tenant-to-client ID map, redacts and summarizes the payload, and queues the alert through the Operations broker. It remains inactive until its tenant map is configured and canaried.
 - **Automation Failure to ITFlow** — shared n8n error workflow that opens one incident per failing workflow.

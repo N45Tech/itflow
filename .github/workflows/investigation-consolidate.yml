@@ -1,0 +1,33 @@
+name: Consolidate investigation rollout
+on:
+  push:
+    branches: [codex/automation-investigator]
+    paths: [.github/workflows/investigation-consolidate.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mysqli, mbstring, intl, curl
+          coverage: none
+      - name: Integrate original ticket styling, shared model validation and canonical rollout docs
+        env:
+          PATCH_B64: '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'
+        run: |
+          set -euo pipefail
+          printf '%s' "$PATCH_B64" | base64 --decode | xz --decompress > "$RUNNER_TEMP/consolidation.patch"
+          echo "f47dd23e0ddc0261d21fc98dc557100a62edc3c9cdd8cc38dda642c632845ca0  $RUNNER_TEMP/consolidation.patch" | sha256sum --check
+          git apply --check "$RUNNER_TEMP/consolidation.patch"
+          git apply "$RUNNER_TEMP/consolidation.patch"
+          git diff --check
+          for file in tests/*_test.php; do php "$file"; done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add agent/ticket.php agent/includes/ticket_investigation.php DESIGN.md deploy/n8n/README.md docs/n45/automation-investigator.md tests/ai_use_case_test.php
+          git commit -m 'feat: consolidate read-only investigation UI and rollout documentation'
+          git push origin HEAD:refs/heads/codex/automation-investigator

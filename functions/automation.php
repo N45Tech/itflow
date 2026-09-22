@@ -464,6 +464,8 @@ function automationDeleteTicketOperations(int $ticket_id): int
         return 0;
     }
 
+    investigationDeleteTicket($ticket_id);
+
     $incident_keys = [];
     $sql_incidents = automationDbQuery("SELECT automation_incident_source,
         automation_incident_key FROM automation_incidents

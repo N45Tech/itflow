@@ -125,6 +125,7 @@ $assertTrue(
         'n45-0027-commercial-operations',
         'n45-0028-ticket-delete-operations-alignment',
         'n45-0029-hetrix-monitoring-source',
+        'n45-0030-automation-investigation',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -143,8 +144,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0029-hetrix-monitoring-source',
-    'The Hetrix monitoring-source migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0030-automation-investigation',
+    'The read-only investigation migration is not the final stable N45 migration'
 );
 $commercial_migration = $manifest['migrations']['n45-0027-commercial-operations'] ?? [];
 $assertTrue(

@@ -1,0 +1,59 @@
+name: Read-only Investigation
+on:
+  pull_request:
+    branches: [next, main]
+    paths:
+      - '**/*investigation*'
+      - 'functions.php'
+      - 'functions/automation.php'
+      - 'n45/manifest.php'
+      - 'db.sql'
+      - 'includes/cron_jobs.php'
+      - 'cron/nightly_tasks.php'
+      - 'agent/ticket.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      N45_CI_DB_HOST: 127.0.0.1
+      N45_CI_DB_PORT: '3306'
+      N45_CI_DB_USER: root
+      N45_CI_DB_PASSWORD: n45-ci-root-password
+      MYSQL_PWD: n45-ci-root-password
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_ROOT_PASSWORD: n45-ci-root-password
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mysqli, mbstring, intl, curl
+          coverage: none
+      - name: Install MariaDB client
+        run: sudo apt-get update && sudo apt-get install --yes mariadb-client
+      - name: PHP regression contracts
+        run: |
+          set -euo pipefail
+          for file in tests/*_test.php; do php "$file"; done
+      - name: Read-only worker database scenarios (no provider calls)
+        env:
+          N45_CI_DB_NAME: n45_ci_investigation
+        run: |
+          set -euo pipefail
+          mariadb --protocol=TCP -h127.0.0.1 -uroot -e 'CREATE DATABASE n45_ci_investigation CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;'
+          mariadb --protocol=TCP -h127.0.0.1 -uroot n45_ci_investigation < db.sql
+          php tests/automation_investigation_database_assert.php
+      - name: Fresh install and historical upgrade contracts
+        run: bash tests/n45_release_database_test.sh

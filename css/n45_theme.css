@@ -887,6 +887,112 @@ a.n45-client-context:focus {
     margin-bottom: 0;
 }
 
+/* Ticket-side automation analysis stays subordinate to the incident record. */
+.n45-investigation {
+    border-top: 1px solid var(--n45-border);
+    margin-top: .85rem;
+    padding-top: .8rem;
+}
+
+.n45-investigation-header {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    justify-content: space-between;
+}
+
+.n45-investigation-header h6 {
+    color: var(--n45-ink);
+    font-size: .88rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.n45-investigation-summary,
+.n45-investigation-state {
+    color: var(--n45-muted-strong);
+    line-height: 1.45;
+    margin: .7rem 0;
+}
+
+.n45-investigation-findings {
+    border-bottom: 1px solid var(--n45-border);
+    border-top: 1px solid var(--n45-border);
+    margin: .75rem 0;
+}
+
+.n45-investigation-findings > div {
+    display: grid;
+    gap: .25rem;
+    grid-template-columns: minmax(6rem, .34fr) minmax(0, 1fr);
+    padding: .55rem 0;
+}
+
+.n45-investigation-findings > div + div {
+    border-top: 1px solid var(--n45-border);
+}
+
+.n45-investigation-findings dt {
+    color: var(--n45-muted);
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .025em;
+}
+
+.n45-investigation-findings dd {
+    color: var(--n45-ink);
+    margin: 0;
+}
+
+.n45-investigation-list {
+    margin-top: .75rem;
+}
+
+.n45-investigation-list > strong {
+    color: var(--n45-muted-strong);
+    font-size: .76rem;
+}
+
+.n45-investigation-list ol,
+.n45-investigation-list ul,
+.n45-investigation-unknowns ul {
+    margin: .35rem 0 0;
+    padding-left: 1.2rem;
+}
+
+.n45-investigation-list li + li,
+.n45-investigation-unknowns li + li {
+    margin-top: .3rem;
+}
+
+.n45-investigation-unknowns {
+    border-top: 1px solid var(--n45-border);
+    margin-top: .75rem;
+    padding-top: .65rem;
+}
+
+.n45-investigation-unknowns summary {
+    color: var(--n45-action);
+    cursor: pointer;
+    font-weight: 650;
+}
+
+.n45-investigation-footnote {
+    border-top: 1px solid var(--n45-border);
+    color: var(--n45-muted);
+    font-size: .72rem;
+    line-height: 1.45;
+    margin-top: .8rem;
+    padding-top: .65rem;
+}
+
+@media (max-width: 575.98px) {
+    .n45-investigation-findings > div {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Dashboard and Operations use the same visual hierarchy as list workspaces. */
 .n45-dashboard-controls {
     background: transparent;
