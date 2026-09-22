@@ -57,6 +57,7 @@ jobs:
 
       - name: Check release harness syntax
         run: |
+          bash -n deploy/psa/cron-entrypoint.sh
           bash -n tests/n45_release_database_test.sh
           bash -n tests/n45_lock_order_database_test.sh
 
