@@ -12,7 +12,7 @@ ignore baseline:
 `functions/sanitize.php` is scanned for legacy global helper symbols used by
 the governed UI module; it is not yet part of the analysed level-5 scope.
 
-The CI tool version is pinned. Every pull request into `next` runs the same
+The CI tool version, runner image, and external action commits are pinned. Every pull request into `next` runs the same
 configuration, and `workflow_dispatch` provides exact-branch validation.
 
 ## Expansion rule
