@@ -65,6 +65,10 @@ $sql = mysqli_query(
     $mysqli,
     "SELECT SQL_CALC_FOUND_ROWS client_id, client_name, software_created_at, software_description, software_expire,
         software_id, software_license_type, software_name, software_seats, software_type,
+        (SELECT COUNT(*) FROM software_assets
+            WHERE software_assets.software_id = software.software_id)
+        + (SELECT COUNT(*) FROM software_contacts
+            WHERE software_contacts.software_id = software.software_id) AS software_assigned_seats,
         software_version, vendor_id, vendor_name FROM software
     LEFT JOIN clients ON client_id = software_client_id
     LEFT JOIN vendors ON vendor_id = software_vendor_id
@@ -318,27 +322,7 @@ $software_empty_action = $software_has_filters
 
                     $software_created_at = escapeHtml($row['software_created_at']);
 
-                    $seat_count = 0;
-
-                    // Asset Licenses
-                    $asset_licenses_sql = mysqli_query($mysqli, "SELECT asset_id FROM software_assets WHERE software_id = $software_id");
-                    $asset_licenses_array = array();
-                    while ($row = mysqli_fetch_assoc($asset_licenses_sql)) {
-                        $asset_licenses_array[] = intval($row['asset_id']);
-                        $seat_count = $seat_count + 1;
-                    }
-                    $asset_licenses = implode(',', $asset_licenses_array);
-
-                    // Contact Licenses
-                    $contact_licenses_sql = mysqli_query($mysqli, "SELECT contact_id FROM software_contacts WHERE software_id = $software_id");
-                    $contact_licenses_array = array();
-                    while ($row = mysqli_fetch_assoc($contact_licenses_sql)) {
-                        $contact_licenses_array[] = intval($row['contact_id']);
-                        $seat_count = $seat_count + 1;
-                    }
-                    $contact_licenses = implode(',', $contact_licenses_array);
-
-
+                    $seat_count = intval($row['software_assigned_seats']);
 
                     ?>
                     <tr class="<?= $tr_class ?>">

@@ -19,7 +19,7 @@ if (isset($_GET['client_id'])) {
 enforceUserPermission('module_support');
 
 // Category Filter
-if (isset($_GET['category']) & !empty($_GET['category'])) {
+if (isset($_GET['category']) && !empty($_GET['category'])) {
     $category_query = 'AND (category_id = ' . intval($_GET['category']) . ')';
     $category_filter = intval($_GET['category']);
 } else {
@@ -29,7 +29,7 @@ if (isset($_GET['category']) & !empty($_GET['category'])) {
 }
 
 // Assigned Agent Filter
-if (isset($_GET['assigned_agent']) & !empty($_GET['assigned_agent'])) {
+if (isset($_GET['assigned_agent']) && !empty($_GET['assigned_agent'])) {
     $assigned_agent_query = 'AND (user_id = ' . intval($_GET['assigned_agent']) . ')';
     $assigned_agent_filter = intval($_GET['assigned_agent']);
 } else {
@@ -85,21 +85,60 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$recurring_ticket_page_actions = array();
+$new_recurring_ticket_action = null;
+if (lookupUserPermission("module_support") >= 2) {
+    $new_recurring_ticket_action = array(
+        'type' => 'button',
+        'label' => 'New Recurring Ticket',
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array(
+            'data-modal-url' => 'modals/recurring_ticket/recurring_ticket_add.php?' . $client_url,
+            'data-modal-size' => 'lg',
+        ),
+    );
+    $recurring_ticket_page_actions[] = $new_recurring_ticket_action;
+}
+
+$recurring_ticket_has_filters = $q !== ''
+    || $category_filter !== ''
+    || $assigned_agent_filter !== ''
+    || $billable_filter !== '';
+$recurring_ticket_clear_href = $client_url
+    ? 'recurring_tickets.php?client_id=' . $client_id
+    : 'recurring_tickets.php';
+$recurring_ticket_empty_action = null;
+if ($recurring_ticket_has_filters) {
+    $recurring_ticket_empty_action = array(
+        'label' => 'Clear filters',
+        'icon' => 'fa-times',
+        'variant' => 'secondary',
+        'href' => $recurring_ticket_clear_href,
+    );
+} elseif ($new_recurring_ticket_action) {
+    $recurring_ticket_empty_action = $new_recurring_ticket_action;
+}
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-fw fa-redo-alt me-2"></i>Recurring Tickets</h3>
-        <?php if (lookupUserPermission("module_support") >= 2) { ?>
-        <div class='card-tools'>
-            <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/recurring_ticket/recurring_ticket_add.php?<?= $client_url ?>" data-modal-size="lg">
-                <i class="fas fa-plus"></i><span class="d-none d-lg-inline ms-2">New Recurring Ticket</span>
-            </button>
-        </div>
-        <?php } ?>
-    </div>
+<section class="card n45-workspace" aria-labelledby="recurring-tickets-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Recurring Tickets',
+        'title_id' => 'recurring-tickets-page-title',
+        'icon' => 'fa-redo-alt',
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+        'actions' => $recurring_ticket_page_actions,
+    ));
+    ?>
 
-    <div class="card-header py-3">
+    <div class="card-header n45-filter-bar">
 
         <form autocomplete="off">
             <?php if ($client_url) { ?>
@@ -109,13 +148,13 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
                 <div class="col-md-4">
                     <div class="input-group">
-                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Recurring Tickets">
-                            <button class="btn btn-dark"><i class="fa fa-search"></i></button>
+                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search recurring tickets">
+                        <button class="btn btn-dark" aria-label="Search recurring tickets"><i class="fa fa-search" aria-hidden="true"></i></button>
                     </div>
                 </div>
                 <div class="col-sm-2">
                     <div>
-                        <select class="form-select select2" name="category" onchange="this.form.submit()">
+                        <select class="form-select select2" name="category" onchange="this.form.submit()" aria-label="Filter recurring tickets by category">
                             <option value="">- All Categories -</option>
 
                             <?php
@@ -134,7 +173,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </div>
                 <div class="col-sm-2">
                     <div>
-                        <select class="form-select select2" name="assigned_agent" onchange="this.form.submit()">
+                        <select class="form-select select2" name="assigned_agent" onchange="this.form.submit()" aria-label="Filter recurring tickets by assigned agent">
                             <option value="">- All Agents -</option>
 
                             <?php
@@ -153,7 +192,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </div>
                 <div class="col-sm-2">
                     <div>
-                        <select class="form-select select2" name="billable" onchange="this.form.submit()">
+                        <select class="form-select select2" name="billable" onchange="this.form.submit()" aria-label="Filter recurring tickets by billable status">
                             <option value="">- Billable Status -</option>
                             <option <?php if ($billable_filter == 1) { echo "selected"; } ?> value="1">Billable</option>
                             <option <?php if ($billable_filter == 0) { echo "selected"; } ?> value="0">Non-Billable</option>
@@ -202,7 +241,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                                     <i class="fas fa-fw fa-calendar-day me-2"></i>Set Next Run Date
                                 </a>
                                 <div class="dropdown-divider"></div>
-                                <button class="dropdown-item text-danger text-bold" type="submit" form="bulkActions" name="bulk_delete_recurring_tickets">
+                                <button class="dropdown-item text-danger text-bold confirm-link" type="submit" form="bulkActions" name="bulk_delete_recurring_tickets">
                                     <i class="fas fa-fw fa-trash me-2"></i>Delete
                                 </button>
                             </div>
@@ -214,17 +253,26 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         </form>
     </div>
 
-    <div class="table-responsive">
+    <form id="bulkActions" action="post.php" method="post">
+        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-        <form id="bulkActions" action="post.php" method="post">
-            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-
-            <table class="table table-striped table-borderless table-hover mb-0">
-                <thead class="<?php if (!$num_rows[0]) { echo "d-none"; } ?> text-nowrap">
+        <?php if ($num_rows[0] == 0) { ?>
+            <?php
+            n45RenderEmptyState(array(
+                'title' => $recurring_ticket_has_filters ? 'No recurring tickets match these filters' : 'No recurring tickets yet',
+                'description' => $recurring_ticket_has_filters ? 'Clear the current filters to return to the recurring ticket list.' : 'Create a schedule for support work that should generate automatically.',
+                'icon' => 'fa-redo-alt',
+                'action' => $recurring_ticket_empty_action,
+            ));
+            ?>
+        <?php } else { ?>
+        <div class="table-responsive">
+            <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
+                <thead class="text-nowrap">
                     <tr>
                         <td class="checkbox-column border-end">
                             <div class="form-check">
-                                <input class="form-check-input" id="selectAllCheckbox" type="checkbox" onclick="checkAll(this)">
+                                <input class="form-check-input" id="selectAllCheckbox" type="checkbox" onclick="checkAll(this)" aria-label="Select all displayed recurring tickets">
                             </div>
                         </td>
                         <th>
@@ -289,9 +337,9 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                         $recurring_ticket_next_run = escapeHtml($row['recurring_ticket_next_run']);
                         $recurring_ticket_billable = intval($row['recurring_ticket_billable']);
                         if ($recurring_ticket_billable) {
-                            $recurring_ticket_billable_display = "<i class='fas fa-fw fa-check text-success'></i>";
+                            $recurring_ticket_billable_display = "<span class='text-success'><i class='fas fa-fw fa-check' aria-hidden='true'></i><span class='visually-hidden'>Yes</span></span>";
                         } else {
-                            $recurring_ticket_billable_display = "-";
+                            $recurring_ticket_billable_display = "<span class='text-secondary'>No</span>";
                         }
                         $recurring_ticket_category = escapeHtml($row['category_name']) ?: '-';
                         $recurring_ticket_client_name = escapeHtml($row['client_name']);
@@ -303,7 +351,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                         <tr>
                             <td class="checkbox-column bg-light border-end">
                                 <div class="form-check">
-                                    <input class="form-check-input bulk-select" type="checkbox" name="recurring_ticket_ids[]" value="<?= $recurring_ticket_id ?>">
+                                    <input class="form-check-input bulk-select" type="checkbox" name="recurring_ticket_ids[]" value="<?= $recurring_ticket_id ?>" aria-label="Select recurring ticket <?= $recurring_ticket_subject ?>">
                                 </div>
                             </td>
                             <td class="text-bold"><?= $recurring_ticket_next_run ?></td>
@@ -314,13 +362,13 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                                     <?= $recurring_ticket_subject ?>
                                 </a>
                                 <?php if ($recurring_ticket_template_name) { ?>
-                                    <span title="Template: <?= $recurring_ticket_template_name ?>"
-                                        <i class='fas fa-puzzle-piece text-secondary ms-1'></i>
+                                    <span title="Template: <?= $recurring_ticket_template_name ?>" aria-label="Template: <?= $recurring_ticket_template_name ?>">
+                                        <i class="fas fa-puzzle-piece text-secondary ms-1" aria-hidden="true"></i>
                                     </span>
                                 <?php } ?>
                                 <?php if ($recurring_ticket_task_count) { ?>
                                     <span title="Adds <?= $recurring_ticket_task_count ?> Tasks">
-                                        <i class="fas fa-fw fa-tasks me-1"></i><?= $recurring_ticket_task_count ?>
+                                        <i class="fas fa-fw fa-tasks me-1" aria-hidden="true"></i><?= $recurring_ticket_task_count ?>
                                     </span>
                                 <?php } ?>
                             </td>
@@ -330,15 +378,14 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                             <td class="text-center"><?= $recurring_ticket_billable_display ?></td>
                             <td><?= $assigned_to ?></td>
                             <?php if (!$client_url) { ?>
-                            <th><a href="recurring_tickets.php?client_id=<?= $recurring_ticket_client_id ?>"><?= $recurring_ticket_client_name ?></a>
-                            </th>
+                            <td><a href="recurring_tickets.php?client_id=<?= $recurring_ticket_client_id ?>"><?= $recurring_ticket_client_name ?></a></td>
                             <?php } ?>
 
                             <?php if (lookupUserPermission("module_support") >= 2) { ?>
                                 <td>
                                     <div class="dropdown dropstart text-center">
-                                        <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown">
-                                            <i class="fas fa-ellipsis-h"></i>
+                                        <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-label="Actions for recurring ticket <?= $recurring_ticket_subject ?>">
+                                            <i class="fas fa-ellipsis-h" aria-hidden="true"></i>
                                         </button>
                                         <div class="dropdown-menu">
                                             <a class="dropdown-item ajax-modal" href="#"
@@ -368,15 +415,14 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </tbody>
 
             </table>
-
-        </form>
-
-    </div>
+        </div>
+        <?php } ?>
+    </form>
 
     <?php require_once '../includes/filter_footer.php';
         ?>
 
-</div>
+</section>
 
 <script src="../js/bulk_actions.js"></script>
 
