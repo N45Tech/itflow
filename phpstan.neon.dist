@@ -1,0 +1,10 @@
+parameters:
+    level: 5
+    paths:
+        - n45/bootstrap.php
+        - functions/login_surface.php
+        - functions/mail_templates.php
+        - functions/ui.php
+    tmpDir: /tmp/n45-phpstan
+    treatPhpDocTypesAsCertain: false
+    reportUnmatchedIgnoredErrors: true
