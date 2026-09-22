@@ -36,8 +36,13 @@ foreach ([
 }
 $assertNotContains('ignoreErrors:', $configuration, 'The initial PHPStan gate hides findings inline');
 $assertNotContains('phpstan-baseline', $configuration, 'The clean initial PHPStan scope uses a baseline');
+$assertContains('scanFiles:', $configuration, 'PHPStan cannot discover legacy shared helper symbols');
+$assertContains('- functions/sanitize.php', $configuration,
+    'PHPStan cannot resolve the UI escaping boundary');
 $assertContains('P2-04 remains in progress', $documentation,
     'Static-analysis documentation overstates the initial governed scope');
+$assertContains('it is not yet part of the analysed level-5 scope', $documentation,
+    'Static-analysis documentation overstates symbol-discovery coverage');
 $assertContains('do not regenerate an existing baseline', $documentation,
     'Static-analysis expansion lacks an anti-baseline-growth rule');
 
