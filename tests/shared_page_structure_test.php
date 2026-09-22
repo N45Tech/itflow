@@ -72,6 +72,7 @@ $workspace_pages = array(
     'agent/notifications.php' => 'notifications-page-title',
     'agent/locations.php' => 'locations-page-title',
     'agent/quotes.php' => 'quotes-page-title',
+    'agent/recurring_tickets.php' => 'recurring-tickets-page-title',
 );
 foreach ($workspace_pages as $path => $heading_id) {
     $page = file_get_contents($root . '/' . $path);
@@ -96,6 +97,7 @@ foreach (array(
     'agent/notifications.php',
     'agent/locations.php',
     'agent/quotes.php',
+    'agent/recurring_tickets.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('class="card-header n45-filter-bar"', $page, "$path does not use the shared filter band");
@@ -111,6 +113,7 @@ foreach (array(
     'agent/certificates.php',
     'agent/locations.php',
     'agent/quotes.php',
+    'agent/recurring_tickets.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('n45RenderEmptyState(array(', $page, "$path does not distinguish its zero-result state");
@@ -162,6 +165,17 @@ $assertContains("if (\$sort == 'quote_date')", $quotes, 'Quote date sorting does
 $assertContains("if (\$sort == 'quote_expire')", $quotes, 'Quote expiry sorting does not render its active indicator');
 $assertNotContains("Date <?php if (\$sort == 'quote_number')", $quotes, 'Quote date sorting still depends on the quote-number state');
 $assertNotContains("Expire <?php if (\$sort == 'quote_number')", $quotes, 'Quote expiry sorting still depends on the quote-number state');
+
+$recurring_tickets = file_get_contents($root . '/agent/recurring_tickets.php');
+$assertContains('aria-label="Search recurring tickets"', $recurring_tickets, 'Recurring ticket search is missing an accessible name');
+$assertContains('aria-label="Filter recurring tickets by category"', $recurring_tickets, 'Recurring ticket category filtering is missing an accessible name');
+$assertContains('aria-label="Filter recurring tickets by assigned agent"', $recurring_tickets, 'Recurring ticket agent filtering is missing an accessible name');
+$assertContains('aria-label="Filter recurring tickets by billable status"', $recurring_tickets, 'Recurring ticket billing filtering is missing an accessible name');
+$assertContains('aria-label="Select all displayed recurring tickets"', $recurring_tickets, 'Recurring ticket bulk selection is missing an accessible name');
+$assertContains('aria-label="Actions for recurring ticket <?= $recurring_ticket_subject ?>"', $recurring_tickets, 'Recurring ticket row actions are missing a contextual accessible name');
+$assertContains('aria-label="Template: <?= $recurring_ticket_template_name ?>"', $recurring_tickets, 'Recurring ticket template metadata remains malformed or unnamed');
+$assertContains('class="dropdown-item text-danger text-bold confirm-link"', $recurring_tickets, 'Recurring ticket bulk deletion is missing confirmation handling');
+$assertNotContains('<th><a href="recurring_tickets.php?client_id=', $recurring_tickets, 'Recurring ticket rows use a header cell for client data');
 
 $asset_modal = file_get_contents($root . '/agent/modals/asset/asset_add.php');
 $assertContains('n45RenderModalHeader(', $asset_modal, 'The representative create form does not use the shared modal header');
