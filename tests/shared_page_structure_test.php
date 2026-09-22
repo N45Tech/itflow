@@ -73,6 +73,7 @@ $workspace_pages = array(
     'agent/locations.php' => 'locations-page-title',
     'agent/quotes.php' => 'quotes-page-title',
     'agent/recurring_tickets.php' => 'recurring-tickets-page-title',
+    'agent/recurring_invoices.php' => 'recurring-invoices-page-title',
 );
 foreach ($workspace_pages as $path => $heading_id) {
     $page = file_get_contents($root . '/' . $path);
@@ -98,6 +99,7 @@ foreach (array(
     'agent/locations.php',
     'agent/quotes.php',
     'agent/recurring_tickets.php',
+    'agent/recurring_invoices.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('class="card-header n45-filter-bar"', $page, "$path does not use the shared filter band");
@@ -114,6 +116,7 @@ foreach (array(
     'agent/locations.php',
     'agent/quotes.php',
     'agent/recurring_tickets.php',
+    'agent/recurring_invoices.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('n45RenderEmptyState(array(', $page, "$path does not distinguish its zero-result state");
@@ -176,6 +179,16 @@ $assertContains('aria-label="Actions for recurring ticket <?= $recurring_ticket_
 $assertContains('aria-label="Template: <?= $recurring_ticket_template_name ?>"', $recurring_tickets, 'Recurring ticket template metadata remains malformed or unnamed');
 $assertContains('class="dropdown-item text-danger text-bold confirm-link"', $recurring_tickets, 'Recurring ticket bulk deletion is missing confirmation handling');
 $assertNotContains('<th><a href="recurring_tickets.php?client_id=', $recurring_tickets, 'Recurring ticket rows use a header cell for client data');
+
+$recurring_invoices = file_get_contents($root . '/agent/recurring_invoices.php');
+$assertContains("'tabs_label' => 'Recurring invoice status'", $recurring_invoices, 'Recurring invoice status navigation is not in the shared workspace header');
+$assertContains('aria-label="Search recurring invoices"', $recurring_invoices, 'Recurring invoice search is missing an accessible name');
+$assertContains('aria-label="Show recurring invoice date filters"', $recurring_invoices, 'Recurring invoice date filtering is missing an accessible name');
+$assertContains('for="dateFilter"', $recurring_invoices, 'Recurring invoice date range is not explicitly labelled');
+$assertContains('aria-label="Automatic payment method for recurring invoice <?= "$recurring_invoice_prefix$recurring_invoice_number" ?>"', $recurring_invoices, 'Recurring invoice automatic-payment controls are missing contextual accessible names');
+$assertContains('aria-label="Actions for recurring invoice <?= "$recurring_invoice_prefix$recurring_invoice_number" ?>"', $recurring_invoices, 'Recurring invoice row actions are missing contextual accessible names');
+$assertContains('saved_payment_client_id IN ($saved_payment_client_id_list)', $recurring_invoices, 'Recurring invoice payment methods are not loaded in a bounded page query');
+$assertNotContains('WHERE saved_payment_client_id = $client_id', $recurring_invoices, 'Recurring invoices still query saved payment methods once per displayed row');
 
 $asset_modal = file_get_contents($root . '/agent/modals/asset/asset_add.php');
 $assertContains('n45RenderModalHeader(', $asset_modal, 'The representative create form does not use the shared modal header');
