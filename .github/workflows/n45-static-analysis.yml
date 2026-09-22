@@ -1,0 +1,32 @@
+name: N45 PHP Static Analysis
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - next
+
+permissions:
+  contents: read
+
+jobs:
+  phpstan:
+    name: PHPStan governed core
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHPStan
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mysqli, intl, mbstring, dom
+          coverage: none
+          tools: phpstan:2.2.14
+        env:
+          fail-fast: true
+
+      - name: Analyse governed N45 PHP core
+        run: phpstan analyse --configuration=phpstan.neon.dist --no-progress --error-format=github
