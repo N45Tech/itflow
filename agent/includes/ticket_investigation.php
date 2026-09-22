@@ -14,11 +14,11 @@ if ($investigation_advisory['status'] === 'Complete' && !empty($investigation_ad
     }
 }
 ?>
-<div class="card mb-3" aria-labelledby="investigation-heading">
-    <div class="card-header px-3 py-2">
-        <h5 id="investigation-heading" class="card-title mt-1"><i class="fas fa-fw fa-search mr-2"></i>AI investigation <span class="badge badge-secondary">Read only</span></h5>
+<section class="n45-investigation" aria-labelledby="investigation-heading">
+    <div class="n45-investigation-header">
+        <h6 id="investigation-heading"><i class="fas fa-fw fa-search mr-2"></i>AI investigation <span class="badge badge-secondary">Read only</span></h6>
     </div>
-    <div class="card-body p-3">
+    <div class="n45-investigation-summary small">
         <p class="text-muted small">AI-generated advisory from retained alert telemetry. No live checks or remediation were performed. Verify before acting.</p>
         <?php if (empty($investigation_advisory['current_signal'])) { ?>
             <p class="text-warning small"><strong>Historical advisory:</strong> the incident changed or recovered after this investigation.</p>
@@ -27,11 +27,17 @@ if ($investigation_advisory['status'] === 'Complete' && !empty($investigation_ad
             <p><?= nl2br(escapeHtml($investigation_result['summary'])) ?></p>
             <div class="small mb-2"><strong>Possible cause, not confirmed</strong><br><?= nl2br(escapeHtml($investigation_result['likely_cause'])) ?></div>
             <p class="small text-muted">Model-reported confidence: <?= escapeHtml($investigation_result['confidence']) ?>. This is not an independently calibrated probability.</p>
-            <?php foreach (['uncertainties' => 'Missing evidence', 'recommended_checks' => 'Suggested technician checks'] as $field => $label) { ?>
-                <?php if ($investigation_result[$field]) { ?>
-                    <strong class="small"><?= escapeHtml($label) ?></strong>
-                    <ul class="small pl-3"><?php foreach ($investigation_result[$field] as $item) { ?><li><?= escapeHtml($item) ?></li><?php } ?></ul>
-                <?php } ?>
+            <?php if ($investigation_result['recommended_checks']) { ?>
+                <div class="n45-investigation-list">
+                    <strong>Suggested technician checks</strong>
+                    <ul><?php foreach ($investigation_result['recommended_checks'] as $item) { ?><li><?= escapeHtml($item) ?></li><?php } ?></ul>
+                </div>
+            <?php } ?>
+            <?php if ($investigation_result['uncertainties']) { ?>
+                <details class="n45-investigation-unknowns">
+                    <summary>Missing evidence and unknowns</summary>
+                    <ul><?php foreach ($investigation_result['uncertainties'] as $item) { ?><li><?= escapeHtml($item) ?></li><?php } ?></ul>
+                </details>
             <?php } ?>
         <?php } else { ?>
             <p class="small mb-2"><?php
@@ -44,7 +50,7 @@ if ($investigation_advisory['status'] === 'Complete' && !empty($investigation_ad
                 });
             ?></p>
         <?php } ?>
-        <div class="text-muted small border-top pt-2">Run <?= intval($investigation_advisory['investigation_id']) ?> · <?= escapeHtml($investigation_advisory['status']) ?> · <?= escapeHtml($investigation_advisory['created_at']) ?> UTC<?php if ($investigation_advisory['model_name']) { ?> · <?= escapeHtml($investigation_advisory['model_name']) ?><?php } ?></div>
+        <div class="n45-investigation-footnote">Run <?= intval($investigation_advisory['investigation_id']) ?> · <?= escapeHtml($investigation_advisory['status']) ?> · <?= escapeHtml($investigation_advisory['created_at']) ?> UTC<?php if ($investigation_advisory['model_name']) { ?> · <?= escapeHtml($investigation_advisory['model_name']) ?><?php } ?></div>
     </div>
-</div>
+</section>
 <?php unset($investigation_advisory, $investigation_result); ?>
