@@ -6,7 +6,7 @@ This register tracks the findings from the 22 September 2026 go-live audit. A fi
 | --- | --- | --- |
 | P1-01 — Live n8n alignment and canaries | **Blocked** | Current definitions are identified, but no accessible `N45 Hetrix Webhook` credential exists and the n8n service would not guarantee a draft-only edit. Explicit approval is required before changing active workflow state. |
 | P1-02 — Operational acceptance | **Pending** | Requires witnessed service, source-health, client configuration, mail, restore, and physical Field Mode checks. |
-| P1-03 — Cross-page UI consistency | **In progress** | Notification workspace migration is implemented with shared header, filter band, data table, empty states, and accessible controls. Remaining legacy workspace batches and exception matrix are open. |
+| P1-03 — Cross-page UI consistency | **In progress** | Notification workspace migration is implemented and verified by full validation run [35737072218](https://github.com/N45Tech/itflow/actions/runs/35737072218). Remaining legacy workspace batches and exception matrix are open. |
 | P1-04 — Authenticated route/visual coverage | **Pending** | Production-like route matrix and browser baselines have not started. |
 | P2-01 — Software-list N+1 | **Complete** | Page query returns the assigned-seat aggregate without per-row SQL. GitHub database workflow run `35735609402` passed PHP lint, all regression contracts, browser checks, migration scenarios, and lock-order acceptance. |
 | P2-02 — Pagination counting | **Pending** | Profile and replace the hottest `SQL_CALC_FOUND_ROWS` paths first. |
@@ -19,5 +19,5 @@ This register tracks the findings from the 22 September 2026 go-live audit. A fi
 
 - **2026-09-22 — P2-01 In progress:** replaced two per-record relationship reads in `agent/software.php` with assigned-seat counts returned by the existing paginated query; added a regression contract that rejects reintroduction of either per-row query.
 - **2026-09-22 — P2-01 Complete:** GitHub database workflow run `35735609402` completed successfully across PHP lint, regression, browser, database, and lock-order stages.
-- **2026-09-22 — P1-03 In progress:** migrated the notification list to the shared workspace structure and corrected accessible names and date-label associations; repository validation remains open.
+- **2026-09-22 — P1-03 In progress:** migrated the notification list to the shared workspace structure and corrected accessible names and date-label associations. Full validation run [35737072218](https://github.com/N45Tech/itflow/actions/runs/35737072218) passed PHP syntax, PHP regressions, browser recovery paths, final-schema/upgrade checks, generated n8n validation, and canonical database lock-order checks.
 - **2026-09-22 — P1-01 Blocked:** live n8n mutation was not attempted after the service could not guarantee draft-only behavior. No workflow was changed or published.
