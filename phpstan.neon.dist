@@ -5,6 +5,8 @@ parameters:
         - functions/login_surface.php
         - functions/mail_templates.php
         - functions/ui.php
+    scanFiles:
+        - functions/sanitize.php
     tmpDir: /tmp/n45-phpstan
     treatPhpDocTypesAsCertain: false
     reportUnmatchedIgnoredErrors: true
