@@ -71,6 +71,7 @@ $workspace_pages = array(
     'agent/certificates.php' => 'certificates-page-title',
     'agent/notifications.php' => 'notifications-page-title',
     'agent/locations.php' => 'locations-page-title',
+    'agent/quotes.php' => 'quotes-page-title',
 );
 foreach ($workspace_pages as $path => $heading_id) {
     $page = file_get_contents($root . '/' . $path);
@@ -94,6 +95,7 @@ foreach (array(
     'agent/certificates.php',
     'agent/notifications.php',
     'agent/locations.php',
+    'agent/quotes.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('class="card-header n45-filter-bar"', $page, "$path does not use the shared filter band");
@@ -108,6 +110,7 @@ foreach (array(
     'agent/domains.php',
     'agent/certificates.php',
     'agent/locations.php',
+    'agent/quotes.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('n45RenderEmptyState(array(', $page, "$path does not distinguish its zero-result state");
@@ -149,6 +152,16 @@ $assertContains('aria-label="Filter locations by client"', $locations, 'Location
 $assertContains('aria-label="Select all displayed locations"', $locations, 'Location bulk selection is missing an accessible name');
 $assertContains('aria-label="Actions for <?= $location_name ?>"', $locations, 'Location row actions are missing a contextual accessible name');
 $assertNotContains('$client_url tags[]=', $locations, 'Location tag links retain the malformed query-string separator');
+
+$quotes = file_get_contents($root . '/agent/quotes.php');
+$assertContains('aria-label="Search quotes"', $quotes, 'Quote search is missing an accessible name');
+$assertContains('aria-label="Show quote date filters"', $quotes, 'Quote date filtering is missing an accessible name');
+$assertContains('for="dateFilter"', $quotes, 'Quote date-range input is not explicitly labelled');
+$assertContains('aria-label="Actions for quote <?= "$quote_prefix$quote_number" ?>"', $quotes, 'Quote row actions are missing a contextual accessible name');
+$assertContains("if (\$sort == 'quote_date')", $quotes, 'Quote date sorting does not render its active indicator');
+$assertContains("if (\$sort == 'quote_expire')", $quotes, 'Quote expiry sorting does not render its active indicator');
+$assertNotContains("Date <?php if (\$sort == 'quote_number')", $quotes, 'Quote date sorting still depends on the quote-number state');
+$assertNotContains("Expire <?php if (\$sort == 'quote_number')", $quotes, 'Quote expiry sorting still depends on the quote-number state');
 
 $asset_modal = file_get_contents($root . '/agent/modals/asset/asset_add.php');
 $assertContains('n45RenderModalHeader(', $asset_modal, 'The representative create form does not use the shared modal header');
