@@ -22,6 +22,11 @@ foreach (['Morgan Chen','Alex Rivera'] as $name) {
     fieldDb("INSERT INTO user_settings SET user_id = $user, user_config_theme_dark = " . (count($users) === 2 ? 1 : 0));
     session_id('assistance-'.bin2hex(random_bytes(16)));session_start();$_SESSION=['logged'=>true,'user_id'=>$user,'csrf_token'=>'assistance-fixture-csrf'];$sessions[]=session_id();session_write_close();
 }
+fieldDb("INSERT INTO logs SET log_type = 'Login', log_action = 'Login', log_description = 'Fixture login',
+    log_user_id = {$users[1]}, log_ip = '127.0.0.1', log_user_agent = 'N45 fixture browser',
+    log_created_at = '2026-09-25 11:00:00'");
+fieldDb("INSERT INTO remember_tokens SET remember_token_user_id = {$users[1]},
+    remember_token_token = 'fixture-remember-token'");
 fieldDb("INSERT INTO clients SET client_name = 'Example Branch Services', client_currency_code = 'USD', client_net_terms = 30");$client=$id();
 fieldDb("INSERT INTO tickets SET ticket_prefix = 'N45-', ticket_number = 1042, ticket_subject = 'Restore branch DNS resolution',
     ticket_details = 'DNS queries time out at the branch. Check the resolver settings and validate the service from a workstation.',
@@ -58,6 +63,13 @@ try {
     $assert($request('/agent/followups.php')['status']===302,'Legacy follow-up link did not redirect');
     $assert($request('/agent/tickets.php?queue=followups&client_id='.$client)['status']===200,'Tickets follow-up filter failed');
     $assert($request('/agent/ticket.php?ticket_id='.$ticket)['status']===200,'Ticket page failed');
+    $directory=$request('/admin/users.php');
+    $assert($directory['status']===200,'Authenticated admin Users page failed');
+    $assert(str_contains($directory['body'],'id="users-page-title"')&&str_contains($directory['body'],'Alex Rivera'),'Users workspace or page-bounded query failed');
+    $assert(str_contains($directory['body'],'2026-09-25 11:00:00')&&str_contains($directory['body'],'Revoke 1 Remember Tokens'),'Batched login or remember-token details were missing');
+    $assert(str_contains($directory['body'],'MFA not enrolled'),'Users MFA status has no accessible text');
+    $empty_users=$request('/admin/users.php?q=n45-fixture-no-match');
+    $assert($empty_users['status']===200&&substr_count($empty_users['body'],'class="n45-empty-state')===1,'Filtered Users page emitted duplicate or missing empty state');
     $q=$request('/agent/field/api.php?action=followups&scope=all&client_id='.$client);
     $assert(count($q['data']['data']['items'])===2,'HTTP queue lost canonical sources');
     $assert(str_contains(implode(' ',$q['headers']),'no-store'),'Queue data was cacheable');
