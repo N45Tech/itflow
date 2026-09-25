@@ -275,6 +275,8 @@ function n45RenderStatusBadge($label, $tone = 'secondary', $icon = '')
 
 function n45RenderEmptyState(array $config)
 {
+    // Pages with a specific empty state should not also get the filter footer's generic one.
+    $GLOBALS['n45_explicit_empty_state'] = true;
     $title = $config['title'] ?? 'Nothing here yet';
     $description = $config['description'] ?? '';
     $icon = $config['icon'] ?? 'fa-inbox';

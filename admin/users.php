@@ -6,72 +6,123 @@ $order = "ASC";
 
 require_once "includes/inc_all_admin.php";
 
+$user_where = "(user_name LIKE '%$q%' OR user_email LIKE '%$q%')
+    AND user_type = 1
+    AND user_$archive_query";
 $sql = mysqli_query(
     $mysqli,
-    "SELECT SQL_CALC_FOUND_ROWS role_name, user_archived_at, user_auth_method, user_avatar, user_azure_oid, user_config_force_mfa, user_email,
-        user_settings.user_id, user_name, user_role_id, user_status, user_token FROM users
+    "SELECT role_name, user_archived_at, user_auth_method, user_avatar, user_azure_oid, user_config_force_mfa, user_email,
+        users.user_id, user_name, user_role_id, user_status, user_token FROM users
     LEFT JOIN user_roles ON user_role_id = role_id
     LEFT JOIN user_settings ON users.user_id = user_settings.user_id
-    WHERE (user_name LIKE '%$q%' OR user_email LIKE '%$q%')
-    AND user_type = 1
-    AND user_$archive_query
+    WHERE $user_where
     ORDER BY $sort $order LIMIT $record_from, $record_to"
 );
 
-$num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
+$num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*) FROM users WHERE $user_where"));
+$users = mysqli_fetch_all($sql, MYSQLI_ASSOC);
+$last_logins = array();
+$remember_token_counts = array();
+if ($users) {
+    $user_ids = implode(',', array_map(static function (array $user): int {
+        return (int) $user['user_id'];
+    }, $users));
+
+    $last_login_sql = mysqli_query($mysqli, "SELECT logs.log_user_id, logs.log_created_at, logs.log_ip, logs.log_user_agent
+        FROM logs
+        INNER JOIN (
+            SELECT log_user_id, MAX(log_id) AS last_log_id
+            FROM logs
+            WHERE log_user_id IN ($user_ids) AND log_type = 'Login'
+            GROUP BY log_user_id
+        ) AS latest ON logs.log_id = latest.last_log_id");
+    while ($login = mysqli_fetch_assoc($last_login_sql)) {
+        $last_logins[(int) $login['log_user_id']] = $login;
+    }
+
+    $remember_tokens_sql = mysqli_query($mysqli, "SELECT remember_token_user_id, COUNT(*) AS token_count
+        FROM remember_tokens
+        WHERE remember_token_user_id IN ($user_ids)
+        GROUP BY remember_token_user_id");
+    while ($tokens = mysqli_fetch_assoc($remember_tokens_sql)) {
+        $remember_token_counts[(int) $tokens['remember_token_user_id']] = (int) $tokens['token_count'];
+    }
+}
+
+$user_actions = array(
+    array(
+        'label' => 'Export',
+        'icon' => 'fa-download',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => buildExportModalUrl('modals/user/user_export.php', array('archived', 'q'))),
+    ),
+    array('type' => 'separator'),
+    array(
+        'label' => 'Incident response: reset passwords',
+        'icon' => 'fa-user-shield',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/user/user_all_reset_password.php', 'data-modal-size' => 'lg'),
+    ),
+);
+$user_empty_action = $q !== '' || $archived || $page > 1
+    ? array('label' => 'Clear filters', 'icon' => 'fa-times', 'href' => 'users.php', 'variant' => 'secondary')
+    : array('type' => 'button', 'label' => 'New User', 'icon' => 'fa-user-plus', 'variant' => 'primary',
+        'class' => 'ajax-modal', 'attributes' => array('data-modal-url' => 'modals/user/user_add.php'));
+$user_new_action = array('type' => 'button', 'label' => 'New User', 'icon' => 'fa-user-plus',
+    'variant' => 'primary', 'class' => 'ajax-modal',
+    'attributes' => array('data-modal-url' => 'modals/user/user_add.php'));
+$user_page_actions = $num_rows[0] > 1
+    ? array(array('type' => 'split-menu', 'button' => $user_new_action,
+        'items' => $user_actions, 'menu_label' => 'More user actions', 'align_end' => true))
+    : array($user_new_action);
 
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-fw fa-users me-2"></i>Users</h3>
-        <div class="card-tools">
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/user/user_add.php">
-                    <i class="fas fa-fw fa-user-plus me-2"></i>New User
-                </button>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                <div class="dropdown-menu">
-                    <!--<a class="dropdown-item text-dark ajax-modal" href="#" data-modal-url="modals/user/user_invite.php"><i class="fas fa-paper-plane me-2"></i>Invite User</a>-->
-                    <?php if ($num_rows[0] > 1) { ?>
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="<?= buildExportModalUrl('modals/user/user_export.php', ['archived', 'q']) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                        <div class="dropdown-divider"></div>
-                        <a class="dropdown-item text-danger ajax-modal" href="#"
-                            data-modal-url="modals/user/user_all_reset_password.php"
-                            data-modal-size="lg">
-                            <i class="fas fa-skull-crossbones me-2"></i>IR
-                        </a>
-                    <?php } ?>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="card-header py-3">
+<section class="card n45-workspace" aria-labelledby="users-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Users',
+        'title_id' => 'users-page-title',
+        'icon' => 'fa-users',
+        'actions' => $user_page_actions,
+    ));
+    ?>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
+            <input type="hidden" name="archived" value="<?= (int) $archived ?>">
             <div class="row g-2 align-items-center">
                 <div class="col-md-4">
                     <div class="input-group">
-                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) {echo stripslashes(escapeHtml($q));} ?>" placeholder="Search Users">
-                            <button class="btn btn-primary"><i class="fa fa-search"></i></button>
+                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) {echo stripslashes(escapeHtml($q));} ?>" placeholder="Search users" aria-label="Search users">
+                        <button class="btn btn-primary" aria-label="Search users"><i class="fa fa-search" aria-hidden="true"></i></button>
                     </div>
                 </div>
                 <div class="col-md-8">
                     <div class="btn-group float-end">
                         <a href="?archived=<?php if($archived == 1){ echo 0; } else { echo 1; } ?>"
-                            class="btn btn-<?php if($archived == 1){ echo"primary"; } else { echo "default"; } ?>">
-                            <i class="fa fa-fw fa-archive me-2"></i>Archived
+                            class="btn btn-<?php if($archived == 1){ echo"primary"; } else { echo "default"; } ?>" <?= $archived ? 'aria-current="page"' : '' ?>>
+                            <i class="fa fa-fw fa-archive me-2" aria-hidden="true"></i>Archived
                         </a>
                     </div>
                 </div>
             </div>
         </form>
     </div>
-    <div class="table-responsive-sm">
-        <table class="table table-striped table-borderless table-hover mb-0">
-            <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?>">
+    <?php if (!$users) { ?>
+        <?php n45RenderEmptyState(array(
+            'title' => $q !== '' ? 'No users match this search'
+                : ($page > 1 ? 'No users on this page' : ($archived ? 'No archived users' : 'No users yet')),
+            'description' => $q !== '' ? 'Clear the search to return to the user list.'
+                : ($page > 1 ? 'Return to the first page of users.'
+                    : ($archived ? 'Archived users will appear here.' : 'Add a user to grant access to the workspace.')),
+            'icon' => 'fa-users',
+            'action' => $user_empty_action,
+        )); ?>
+    <?php } else { ?>
+    <div class="table-responsive">
+        <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
+            <thead class="text-dark text-nowrap">
             <tr>
                 <th class="text-center">
                     <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=user_name&order=<?= $disp ?>">
@@ -98,13 +149,13 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <th>
                     Last Login
                 </th>
-                <th class="text-center">Action</th>
+                <th class="text-center">Actions</th>
             </tr>
             </thead>
             <tbody>
             <?php
 
-            while ($row = mysqli_fetch_assoc($sql)) {
+            foreach ($users as $row) {
                 $user_id = intval($row['user_id']);
                 $user_name = escapeHtml($row['user_name']);
                 $user_email = escapeHtml($row['user_email']);
@@ -128,58 +179,39 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     $sign_in_display = "<span class='text-muted'><i class='fas fa-key me-1'></i>Local</span>";
                 }
                 if(empty($user_token)) {
-                    $mfa_status_display = "<i class='fas fa-fw fa-unlock text-danger'></i>";
+                    $mfa_status_display = "<i class='fas fa-fw fa-unlock text-danger' aria-hidden='true'></i>";
                 } else {
-                    $mfa_status_display = "<i class='fas fa-fw fa-lock text-success'></i>";
+                    $mfa_status_display = "<i class='fas fa-fw fa-lock text-success' aria-hidden='true'></i>";
                 }
-                $user_config_force_mfa = intval($row['user_config_force_mfa']);
-                $user_role = intval($row['user_role_id']);
                 $user_role_display = escapeHtml($row['role_name']);
                 $user_archived_at = escapeHtml($row['user_archived_at']);
                 $user_initials = escapeHtml(initials($user_name));
 
 
-                $sql_last_login = mysqli_query(
-                    $mysqli,
-                    "SELECT log_created_at, log_ip, log_user_agent FROM logs
-                    WHERE log_user_id = $user_id AND log_type = 'Login'
-                    ORDER BY log_id DESC LIMIT 1"
-                );
-                if (mysqli_num_rows($sql_last_login) == 0) {
+                if (!isset($last_logins[$user_id])) {
                     $last_login = "<span class='text-bold'>Never logged in</span>";
                 } else {
-                    $row = mysqli_fetch_assoc($sql_last_login);
-                    $log_created_at = escapeHtml($row['log_created_at']);
-                    $log_ip = escapeHtml($row['log_ip']);
-                    $log_user_agent = escapeHtml($row['log_user_agent']);
-                    $log_user_os = getOS($log_user_agent);
-                    $log_user_browser = getWebBrowser($log_user_agent);
-                    $last_login = "$log_created_at<small class='text-secondary'><div class='mt-1'>$log_user_os</div><div class='mt-1'>$log_user_browser</div><div class='mt-1'><i class='fa fa-fw fa-globe'></i> $log_ip</div></small>";
+                    $login = $last_logins[$user_id];
+                    $log_created_at = escapeHtml($login['log_created_at']);
+                    $log_ip = escapeHtml($login['log_ip']);
+                    $log_user_agent = (string) $login['log_user_agent'];
+                    $log_user_os = escapeHtml(getOS($log_user_agent));
+                    $log_user_browser = escapeHtml(getWebBrowser($log_user_agent));
+                    $last_login = "$log_created_at<small class='text-secondary d-block mt-1'><span class='d-block'>$log_user_os</span><span class='d-block'>$log_user_browser</span><span class='d-block'><i class='fa fa-fw fa-globe' aria-hidden='true'></i> $log_ip</span></small>";
                 }
 
-                // Get User Client Access Permissions
-                $user_client_access_sql = mysqli_query($mysqli,"SELECT client_id FROM user_client_permissions WHERE user_id = $user_id");
-                $client_access_array = [];
-                while ($row = mysqli_fetch_assoc($user_client_access_sql)) {
-                    $client_access_array[] = intval($row['client_id']);
-                }
-
-                $sql_remember_tokens = mysqli_query($mysqli, "SELECT 1 FROM remember_tokens WHERE remember_token_user_id = $user_id");
-                $remember_token_count = mysqli_num_rows($sql_remember_tokens);
+                $remember_token_count = $remember_token_counts[$user_id] ?? 0;
 
 
 
                 ?>
                 <tr>
                     <td class="text-center">
-                        <a href="#" title="UserID: <?= $user_id ?>"
-                            <?php if ($user_id !== $session_user_id) { // Prevent modifying self ?>
-                            class="ajax-modal"
-                            data-modal-url="modals/user/user_edit.php?id=<?= $user_id ?>"
-                            <?php } ?>
-                            >
+                        <?php if ($user_id !== $session_user_id) { ?>
+                        <a href="#" class="ajax-modal" title="User ID: <?= $user_id ?>" data-modal-url="modals/user/user_edit.php?id=<?= $user_id ?>">
+                        <?php } else { ?><div title="Your account"><?php } ?>
                             <?php if (!empty($user_avatar)) { ?>
-                                <img class="img-size-50 rounded-circle" src="<?= "../uploads/users/$user_id/$user_avatar" ?>">
+                                <img class="img-size-50 rounded-circle" src="<?= "../uploads/users/$user_id/$user_avatar" ?>" alt="">
                             <?php } else { ?>
                                 <span class="fa-stack fa-2x">
                                     <i class="fa fa-circle fa-stack-2x text-secondary"></i>
@@ -189,19 +221,19 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                             <?php } ?>
 
                             <div class="text-secondary"><?= $user_name ?></div>
-                        </a>
+                        <?php if ($user_id !== $session_user_id) { ?></a><?php } else { ?></div><?php } ?>
                     </td>
                     <td><a href="mailto:<?= $user_email ?>"><?= $user_email ?></a></td>
                     <td><?= $user_role_display ?></td>
                     <td><?= $user_status_display ?></td>
                     <td class="text-center"><?= $sign_in_display ?></td>
-                    <td class="text-center"><?= $mfa_status_display ?></td>
+                    <td class="text-center"><span class="visually-hidden"><?= empty($user_token) ? 'MFA not enrolled' : 'MFA enrolled' ?></span><?= $mfa_status_display ?></td>
                     <td><?= $last_login ?></td>
                     <td>
                         <?php if ($user_id !== $session_user_id) {   // Prevent modifying self ?>
                         <div class="dropdown dropstart text-center">
-                            <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown">
-                                <i class="fas fa-ellipsis-h"></i>
+                            <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-label="Actions for <?= $user_name ?>" aria-expanded="false">
+                                <i class="fas fa-ellipsis-h" aria-hidden="true"></i>
                             </button>
                             <div class="dropdown-menu">
                                 <a class="dropdown-item ajax-modal" href="#"
@@ -246,9 +278,10 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
             </tbody>
         </table>
     </div>
+    <?php } ?>
     <?php require_once "../includes/filter_footer.php";
  ?>
-</div>
+</section>
 
 <?php
 require_once "../includes/footer.php";
