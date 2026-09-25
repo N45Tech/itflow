@@ -23,7 +23,7 @@
  * with nothing to maintain.
  */
 
-if (!isset($num_rows) || intval($num_rows[0]) > 0) {
+if (!isset($num_rows) || intval($num_rows[0]) > 0 || !empty($GLOBALS['n45_explicit_empty_state'])) {
     return;
 }
 

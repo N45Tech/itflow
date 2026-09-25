@@ -75,6 +75,7 @@ $workspace_pages = array(
     'agent/recurring_tickets.php' => 'recurring-tickets-page-title',
     'agent/recurring_invoices.php' => 'recurring-invoices-page-title',
     'agent/recurring_expenses.php' => 'recurring-expenses-page-title',
+    'admin/users.php' => 'users-page-title',
 );
 foreach ($workspace_pages as $path => $heading_id) {
     $page = file_get_contents($root . '/' . $path);
@@ -102,6 +103,7 @@ foreach (array(
     'agent/recurring_tickets.php',
     'agent/recurring_invoices.php',
     'agent/recurring_expenses.php',
+    'admin/users.php',
 ) as $path) {
     $page = file_get_contents($root . '/' . $path);
     $assertContains('class="card-header n45-filter-bar"', $page, "$path does not use the shared filter band");
