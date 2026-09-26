@@ -50,7 +50,10 @@ const cases = [
             tag: element.tagName.toLowerCase(),
             className: typeof element.className === 'string' ? element.className.slice(0, 100) : '',
             right: Math.round(element.getBoundingClientRect().right),
-          })).filter(element => element.right > window.innerWidth + 1).slice(0, 12),
+          })).filter(element => element.right > window.innerWidth + 1 && element.right <= document.documentElement.scrollWidth + 2).slice(-30),
+          widths: [...document.querySelectorAll('body, .app-wrapper, .app-main, .app-content, .container-fluid, .n45-workspace, .table-responsive')]
+            .map(element => ({className: element.className, client: element.clientWidth, scroll: element.scrollWidth,
+              right: Math.round(element.getBoundingClientRect().right)})).slice(0, 18),
         }));
         assert.ok(result.title, `${label}: missing document title`);
         assert.ok(result.heading, `${label}: no visible page heading`);
@@ -58,7 +61,7 @@ const cases = [
         if (result.overflow > 1) {
           await page.screenshot({path: path.join(shots, `${sample.name}-${path.basename(route, '.php')}-overflow.png`), fullPage: true});
         }
-        assert.ok(result.overflow <= 1, `${label}: document overflows ${result.overflow}px; elements: ${JSON.stringify(result.overflowing)}`);
+        assert.ok(result.overflow <= 1, `${label}: document overflows ${result.overflow}px; widths: ${JSON.stringify(result.widths)}; elements: ${JSON.stringify(result.overflowing)}`);
         assert.deepEqual(errors, [], `${label}: browser runtime error`);
         if (sample.capture) {
           await page.evaluate(() => document.fonts.ready);
