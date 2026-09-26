@@ -92,3 +92,12 @@ jobs:
         run: |
           bash tests/n45_release_database_test.sh
           bash tests/n45_lock_order_database_test.sh
+
+      - name: Save synthetic route screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n45-authenticated-route-smoke
+          path: .impeccable/review/route-smoke/*.png
+          if-no-files-found: ignore
+          retention-days: 7

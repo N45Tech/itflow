@@ -16,10 +16,10 @@ foreach (['module_support','module_client'] as $module) {
 }
 $sessions=[];$users=[];$session_dir=sys_get_temp_dir().'/assistance-sessions-'.bin2hex(random_bytes(8));mkdir($session_dir,0700);
 ini_set('session.save_path',$session_dir);
-foreach (['Morgan Chen','Alex Rivera'] as $name) {
+foreach (['Morgan Chen','Alex Rivera','Jordan Lee'] as $name) {
     fieldDb('INSERT INTO users SET user_name = '.fieldSql($name).", user_email = 'fixture@example.invalid', user_password = 'fixture', user_role_id = $role");$user=$id();$users[]=$user;
     if(count($users)===2){fieldDb("UPDATE users SET user_role_id = $technician_role WHERE user_id = $user");}
-    fieldDb("INSERT INTO user_settings SET user_id = $user, user_config_theme_dark = " . (count($users) === 2 ? 1 : 0));
+    fieldDb("INSERT INTO user_settings SET user_id = $user, user_config_theme_dark = " . (count($users) !== 1 ? 1 : 0));
     session_id('assistance-'.bin2hex(random_bytes(16)));session_start();$_SESSION=['logged'=>true,'user_id'=>$user,'csrf_token'=>'assistance-fixture-csrf'];$sessions[]=session_id();session_write_close();
 }
 fieldDb("INSERT INTO logs SET log_type = 'Login', log_action = 'Login', log_description = 'Fixture login',
@@ -28,6 +28,13 @@ fieldDb("INSERT INTO logs SET log_type = 'Login', log_action = 'Login', log_desc
 fieldDb("INSERT INTO remember_tokens SET remember_token_user_id = {$users[1]},
     remember_token_token = 'fixture-remember-token'");
 fieldDb("INSERT INTO clients SET client_name = 'Example Branch Services', client_currency_code = 'USD', client_net_terms = 30");$client=$id();
+fieldDb("INSERT INTO users SET user_name = 'Sam Patel', user_email = 'portal-fixture@example.invalid', user_password = 'fixture', user_type = 2, user_status = 1");$portal_user=$id();
+fieldDb("INSERT INTO contacts SET contact_name = 'Sam Patel', contact_email = 'portal-fixture@example.invalid', contact_client_id = $client,
+    contact_user_id = $portal_user, contact_primary = 1, contact_technical = 1, contact_billing = 1,
+    contact_portal_ticket_scope = 'client', contact_portal_asset_scope = 'client'");$portal_contact=$id();
+session_id('assistance-'.bin2hex(random_bytes(16)));session_start();
+$_SESSION=['client_logged_in'=>true,'client_id'=>$client,'contact_id'=>$portal_contact,'user_id'=>$portal_user];
+$portal_session=session_id();session_write_close();
 fieldDb("INSERT INTO tickets SET ticket_prefix = 'N45-', ticket_number = 1042, ticket_subject = 'Restore branch DNS resolution',
     ticket_details = 'DNS queries time out at the branch. Check the resolver settings and validate the service from a workstation.',
     ticket_priority = 'High', ticket_status = 2, ticket_client_id = $client, ticket_created_by = {$users[0]}, ticket_assigned_to = {$users[0]},
@@ -98,9 +105,14 @@ try {
     fieldDb("UPDATE clients SET client_archived_at = NULL WHERE client_id = $client");fieldDb("DELETE FROM api_keys WHERE api_key_id = $api_key");
     if (getenv('N45_ASSISTANCE_BROWSER') === '1') {
         $fixture=tempnam(sys_get_temp_dir(),'assistance-browser-');
-        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'ticket'=>$ticket,'solved'=>$solved,'response'=>$response_id,'client'=>$client,'doc'=>$doc]));
-        $command=['node',__DIR__.'/field/assistance.cjs',$fixture];$browser=proc_open($command,[0=>['pipe','r'],1=>STDOUT,2=>STDERR],$browser_pipes,dirname(__DIR__));fclose($browser_pipes[0]);
-        $assert(proc_close($browser)===0,'Service assistance browser checks failed');unlink($fixture);
+        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'portal_session'=>$portal_session,'ticket'=>$ticket,'solved'=>$solved,'response'=>$response_id,'client'=>$client,'doc'=>$doc]));
+        try {
+            foreach (['assistance.cjs','route-smoke.cjs'] as $script) {
+                $command=['node',__DIR__.'/field/'.$script,$fixture];
+                $browser=proc_open($command,[0=>['pipe','r'],1=>STDOUT,2=>STDERR],$browser_pipes,dirname(__DIR__));fclose($browser_pipes[0]);
+                $assert(proc_close($browser)===0,'Browser checks failed: '.$script);
+            }
+        } finally { unlink($fixture); }
     }
     $logtext=file_get_contents($log);$assert(!preg_match('/PHP (Warning|Fatal error):/',$logtext),'HTTP emitted a PHP warning: '.$logtext);
     echo "Ticket workflow HTTP: admin-only response creation, technician insertion, retired knowledge gates, follow-up filter, CSRF, no-store and legacy retention passed.\n";
