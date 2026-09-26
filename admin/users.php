@@ -227,7 +227,7 @@ $user_page_actions = $num_rows[0] > 1
                     <td><?= $user_role_display ?></td>
                     <td><?= $user_status_display ?></td>
                     <td class="text-center"><?= $sign_in_display ?></td>
-                    <td class="text-center"><span class="visually-hidden"><?= empty($user_token) ? 'MFA not enrolled' : 'MFA enrolled' ?></span><?= $mfa_status_display ?></td>
+                    <td class="text-center" aria-label="<?= empty($user_token) ? 'MFA not enrolled' : 'MFA enrolled' ?>"><?= $mfa_status_display ?></td>
                     <td><?= $last_login ?></td>
                     <td>
                         <?php if ($user_id !== $session_user_id) {   // Prevent modifying self ?>
