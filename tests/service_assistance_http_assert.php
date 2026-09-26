@@ -33,7 +33,8 @@ fieldDb("INSERT INTO contacts SET contact_name = 'Sam Patel', contact_email = 'p
     contact_user_id = $portal_user, contact_primary = 1, contact_technical = 1, contact_billing = 1,
     contact_portal_ticket_scope = 'client', contact_portal_asset_scope = 'client'");$portal_contact=$id();
 session_id('assistance-'.bin2hex(random_bytes(16)));session_start();
-$_SESSION=['client_logged_in'=>true,'client_id'=>$client,'contact_id'=>$portal_contact,'user_id'=>$portal_user];
+$_SESSION=['client_logged_in'=>true,'logged'=>true,'client_id'=>$client,'contact_id'=>$portal_contact,
+    'user_id'=>$portal_user,'user_type'=>2,'login_method'=>'local','csrf_token'=>'assistance-fixture-csrf'];
 $portal_session=session_id();session_write_close();
 fieldDb("INSERT INTO tickets SET ticket_prefix = 'N45-', ticket_number = 1042, ticket_subject = 'Restore branch DNS resolution',
     ticket_details = 'DNS queries time out at the branch. Check the resolver settings and validate the service from a workstation.',
