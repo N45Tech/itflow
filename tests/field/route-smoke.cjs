@@ -46,11 +46,19 @@ const cases = [
           heading: [...document.querySelectorAll('main h1, main h2, main h3, .content-wrapper h1, .content-wrapper h2, .content-wrapper h3')]
             .some(element => element.getClientRects().length > 0 && element.textContent.trim()),
           overflow: document.documentElement.scrollWidth - window.innerWidth,
+          overflowing: [...document.querySelectorAll('body *')].map(element => ({
+            tag: element.tagName.toLowerCase(),
+            className: typeof element.className === 'string' ? element.className.slice(0, 100) : '',
+            right: Math.round(element.getBoundingClientRect().right),
+          })).filter(element => element.right > window.innerWidth + 1).slice(0, 12),
         }));
         assert.ok(result.title, `${label}: missing document title`);
         assert.ok(result.heading, `${label}: no visible page heading`);
         if (sample.theme) assert.equal(result.theme, sample.theme, `${label}: theme did not match account`);
-        assert.ok(result.overflow <= 1, `${label}: document overflows ${result.overflow}px`);
+        if (result.overflow > 1) {
+          await page.screenshot({path: path.join(shots, `${sample.name}-${path.basename(route, '.php')}-overflow.png`), fullPage: true});
+        }
+        assert.ok(result.overflow <= 1, `${label}: document overflows ${result.overflow}px; elements: ${JSON.stringify(result.overflowing)}`);
         assert.deepEqual(errors, [], `${label}: browser runtime error`);
         if (sample.capture) {
           await page.evaluate(() => document.fonts.ready);
