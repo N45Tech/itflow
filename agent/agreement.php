@@ -108,6 +108,12 @@ $default_period_start = agreementShiftCalendarMonths(
     </div>
 </div>
 
+<div class="alert alert-info" role="note">
+    This page records ITFlow's operational service rules, not client acceptance of a commercial agreement.
+    Published rules affect ticket coverage, billable flags, and SLAs during their effective dates.
+    Verify the approved customer agreement and its scope in the separate source of record.
+</div>
+
 <div class="card card-dark">
     <div class="card-header py-2">
         <h3 class="card-title mt-2">Agreement terms v<?= intval($version['agreement_version_number']) ?>
@@ -331,11 +337,12 @@ $default_period_start = agreementShiftCalendarMonths(
 <?php if ($can_edit) { ?>
     <div class="card border-success">
         <div class="card-body d-flex justify-content-between align-items-center">
-            <div><strong>Ready to activate?</strong><div class="text-muted">Publishing locks this definition and supersedes the previous published version.</div></div>
+            <div class="mr-3"><strong>Publish operational rules</strong><div class="text-muted">Compare coverage and SLA terms with the approved customer agreement first. Publication changes ticket decisions, locks this version, and supersedes the previous version of this agreement. ITFlow does not verify a signature or client acceptance.</div></div>
             <form action="post.php" method="post" class="form-inline">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="version_id" value="<?= $version_id ?>">
-                <input class="form-control mr-2" name="reason" required maxlength="255" placeholder="Publication reason">
+                <label for="agreement-publication-reason" class="mr-2">Reason / source reference</label>
+                <input id="agreement-publication-reason" class="form-control mr-2" name="reason" required maxlength="255" placeholder="Approved scope reference">
                 <button class="btn btn-success confirm-link" name="publish_agreement_version"><i class="fas fa-lock mr-2"></i>Publish v<?= intval($version['agreement_version_number']) ?></button>
             </form>
         </div>

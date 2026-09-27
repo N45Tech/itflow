@@ -39,9 +39,24 @@ Rollback across this migration requires the matching application/database snapsh
 | --- | --- |
 | 2 — Complete service workflows | Witness actual onboarding/offboarding runs through pinned published runbooks, documentation, evidence, independent approvals and exported closeout. Confirm the production catalog bindings and eligible approvers. |
 | 3 — Integration coverage | Read fresh Level, Intune, Entra and SentinelOne source health; reconcile unique assets, unmapped/duplicate identities, stale and retired candidates per intended client. Historical retained executions are not current coverage proof. |
-| 4 — Client configuration | Review each intended client's catalog, approvers, agreement/entitlements, SLA/calendar, documentation ownership and retention; review and publish the first real N45 Internal service review through the authorized reviewer workflow. |
+| 4 — Client configuration | Complete the [agreement sign-off](#agreement-sign-off) for each intended client. Review the catalog, approvers, SLA calendar, documentation ownership and retention; review and publish the first real N45 Internal service review through the authorized reviewer workflow. |
 | 5 — Mail delivery | Exercise real intake and attachments, authorized/resolved/closed replies, and a controlled outbound failure followed by recovery using an explicitly authorized test recipient. Local queue assertions do not establish SMTP/IMAP delivery or OAuth refresh. |
 | 6 — Recovery | Restore a selected off-host backup into a clean isolated environment: matching app release, SQL, uploads and configuration; disable outbound jobs/ingress; boot PSA and verify login, representative records/files, documentation and approvals. Record backup age, hashes, actual recovery point/time and cleanup. |
 | Physical Field Mode | Complete the signed-in Android Chrome/PWA and customer-portal canary in [field-mode.md](field-mode.md). Browser simulation does not establish GPS or background behavior on a physical phone. |
 
 Live source health and client configuration require approved read-only operational access. No current production configuration inventory, real business review, real email delivery or off-host restore is claimed by this change.
+
+### Agreement sign-off
+
+ITFlow's agreement definition is an operational rule set. Publishing it changes applicable ticket coverage, billable flags, SLA targets, and review scheduling; it does not capture a customer signature, establish acceptance, or create an invoice charge. `Active` is an internal contract status. A published version only applies within its effective dates, and existing tickets retain their saved terms unless explicitly re-stamped.
+
+For each client intended for go-live, record the following in the release evidence before publishing its ITFlow definition:
+
+| Evidence | Acceptance check |
+| --- | --- |
+| Customer terms | Identify the approved customer agreement, amendment, or SOW in its source of record, with approval evidence, effective dates, renewal/notice terms, and the responsible reviewer. Do not infer acceptance from ITFlow status. |
+| Operational match | Compare coverage and exclusions, quantity caps, billable classifications, service hours, escalation process, SLA targets, and review cadence against those approved terms. Resolve discrepancies with the responsible owner. |
+| ITFlow binding | Record the client ID, agreement record ID, published version/hash, operator, and publication date. If multiple published agreements overlap, ticket resolution chooses the latest effective start, then highest version number, then highest record ID; confirm that the chosen definition is intended. |
+| Ticket proof | Create a controlled representative ticket for included, billable, and excluded scope where applicable, and verify the selected agreement version and ticket outcome. Save the ticket IDs and results without changing customer production work. |
+
+The product does not currently store or validate the signed source during publication. Keep the human approval and source reference in the release evidence; the required publication reason can carry a short reference, but is not a substitute for that evidence.
