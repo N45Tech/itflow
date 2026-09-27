@@ -273,6 +273,33 @@ function n45RenderStatusBadge($label, $tone = 'secondary', $icon = '')
     echo n45UiStatusBadgeHtml($label, $tone, $icon);
 }
 
+/** Keep saved ticket status colors readable, including older non-hex values. */
+function n45TicketStatusBadgeAttributes($color)
+{
+    $color = trim((string) $color);
+    $tones = array('primary', 'secondary', 'success', 'warning', 'danger', 'info', 'dark', 'light');
+    if (in_array($color, $tones, true)) {
+        return 'class="badge rounded-pill p-2 n45-status-badge text-bg-' . $color . '"';
+    }
+
+    if (preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/D', $color)) {
+        $hex = substr($color, 1);
+        if (strlen($hex) === 3) {
+            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        }
+        $channels = array();
+        foreach (str_split($hex, 2) as $channel) {
+            $value = hexdec($channel) / 255;
+            $channels[] = $value <= 0.04045 ? $value / 12.92 : (($value + 0.055) / 1.055) ** 2.4;
+        }
+        $luminance = 0.2126 * $channels[0] + 0.7152 * $channels[1] + 0.0722 * $channels[2];
+        $foreground = $luminance > 0.179 ? '#000000' : '#ffffff';
+        return 'class="badge rounded-pill p-2 n45-status-badge" style="background-color: ' . $color . '; color: ' . $foreground . '"';
+    }
+
+    return 'class="badge rounded-pill p-2 n45-status-badge text-bg-secondary"';
+}
+
 function n45RenderEmptyState(array $config)
 {
     // Pages with a specific empty state should not also get the filter footer's generic one.
