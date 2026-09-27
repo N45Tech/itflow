@@ -15,14 +15,18 @@ while ($review_year_row = mysqli_fetch_assoc($years)) {
     if ($review_year_value > 0) $review_years[$review_year_value] = $review_year_value;
 }
 krsort($review_years);
-$scheduled_agreement = mysqli_fetch_assoc(agreementDbQuery("SELECT contract_id, contract_name, contract_next_review_at
+$scheduled_agreements = [];
+$scheduled_agreements_sql = agreementDbQuery("SELECT contract_id, contract_name, contract_next_review_at
     FROM contracts JOIN agreement_versions ON agreement_version_id = contract_published_version_id
         AND agreement_version_contract_id = contract_id
     WHERE contract_client_id = $client_id AND contract_status = 'Active' AND contract_archived_at IS NULL
         AND agreement_version_status = 'Published'
         AND (contract_start_date IS NULL OR contract_start_date <= CURDATE())
         AND (contract_end_date IS NULL OR contract_end_date >= CURDATE())
-    ORDER BY agreement_version_published_at DESC, contract_id DESC LIMIT 1", 'Could not load the review schedule'));
+    ORDER BY contract_next_review_at IS NULL, contract_next_review_at, contract_id", 'Could not load the review schedules');
+while ($row = mysqli_fetch_assoc($scheduled_agreements_sql)) {
+    $scheduled_agreements[] = $row;
+}
 $reviews_sql = mysqli_query($mysqli, "SELECT service_review_id, service_review_period_start,
     service_review_period_end, service_review_status, service_review_summary,
     service_review_snapshot_hash, agreement_version_name
@@ -61,9 +65,14 @@ while ($review = mysqli_fetch_assoc($reviews_sql)) {
 <div class="card border-left border-success mb-3">
     <div class="card-body py-3 d-flex flex-wrap justify-content-between align-items-center">
         <div>
-            <?php if ($scheduled_agreement) { ?>
-                <strong>Reviews follow the active agreement schedule.</strong>
-                <div class="small text-muted">Next review: <?= escapeHtml($scheduled_agreement['contract_next_review_at'] ?: 'Not scheduled') ?>. Use the review as the meeting agenda and create tickets only for work that needs an owner.</div>
+            <?php if ($scheduled_agreements) { ?>
+                <strong>Review schedules for published agreements</strong>
+                <ul class="list-unstyled small text-muted mb-1">
+                    <?php foreach ($scheduled_agreements as $scheduled_agreement) { ?>
+                        <li><?= escapeHtml($scheduled_agreement['contract_name']) ?>: <?= escapeHtml($scheduled_agreement['contract_next_review_at'] ?: 'Not scheduled') ?></li>
+                    <?php } ?>
+                </ul>
+                <div class="small text-muted">Each agreement has its own review schedule. Use a review as the meeting agenda and create tickets only for work that needs an owner.</div>
             <?php } else { ?>
                 <strong>No active agreement is scheduling reviews.</strong>
                 <div class="small text-muted">Set the review cadence during agreement setup. Existing completed reviews remain available below.</div>
@@ -95,7 +104,7 @@ while ($review = mysqli_fetch_assoc($reviews_sql)) {
             <div class="text-center text-muted py-5 px-3">
                 <i class="far fa-calendar-check fa-2x d-block mb-2"></i>
                 <strong class="d-block text-body">No reviews for <?= $year ?></strong>
-                <span><?= $scheduled_agreement ? 'Scheduled review drafts appear here when due. Use the year selector to browse earlier reviews.' : 'Activate an agreement to schedule the first review, or choose another year to browse existing reviews.' ?></span>
+                <span><?= $scheduled_agreements ? 'Scheduled review drafts appear here when due. Use the year selector to browse earlier reviews.' : 'Publish an eligible agreement to schedule a review, or choose another year to browse existing reviews.' ?></span>
             </div>
         <?php } else { ?>
             <div class="list-group list-group-flush">

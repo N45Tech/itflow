@@ -48,7 +48,7 @@ Live source health and client configuration require approved read-only operation
 
 ### Agreement sign-off
 
-ITFlow's agreement definition is an operational rule set. Publishing it changes applicable ticket coverage, billable flags, SLA targets, and review scheduling; it does not capture a customer signature, establish acceptance, or create an invoice charge. `Active` is an internal contract status. A published version only applies within its effective dates, and existing tickets retain their saved terms unless explicitly re-stamped.
+ITFlow's agreement definition is an operational rule set. Publishing it changes applicable ticket coverage, billable flags, SLA targets, and review scheduling; it does not capture a customer signature, establish acceptance, or create an invoice charge. `Active` is an internal contract status. A published version only applies within its effective dates, and existing tickets retain their saved terms unless explicitly re-stamped. Each published agreement maintains its own business-review schedule, even when a different agreement wins ticket-rule selection; the Business Reviews page lists those schedules separately.
 
 For each client intended for go-live, record the following in the release evidence before publishing its ITFlow definition:
 
