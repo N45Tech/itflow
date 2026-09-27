@@ -11,6 +11,14 @@ const agentRoutes = [
   '/agent/dashboard.php', '/agent/clients.php', '/agent/operations.php',
   '/agent/tickets.php', '/agent/agreements.php', '/agent/invoices.php',
   '/agent/assets.php', '/agent/software.php', '/agent/documentation.php',
+  {url: `/agent/agreement_create.php?client_id=${fixture.client}`, shot: 'agreement-create',
+    check: {selector: '.n45-agreement-setup', text: ['does not record a client signature or acceptance']}},
+  {url: `/agent/agreement.php?agreement_id=${fixture.agreements.baseline}`, shot: 'agreement-baseline',
+    check: {selector: '[data-current-ticket-rules]', text: ['Project Overlay v1', 'This agreement is not selected']}},
+  {url: `/agent/agreement.php?agreement_id=${fixture.agreements.overlay}`, shot: 'agreement-overlay',
+    check: {selector: '[data-current-ticket-rules]', text: ['Project Overlay v1', 'This is the selected published version']}},
+  {url: `/agent/business_reviews.php?client_id=${fixture.client}`, shot: 'business-reviews',
+    check: {selector: '[data-agreement-review-schedules]', text: ['Baseline Support', 'Project Overlay']}},
 ];
 const adminRoutes = ['/admin/users.php', '/admin/audit_logs.php', '/admin/api_keys.php'];
 const portalRoutes = ['/client/index.php', '/client/tickets.php',
@@ -34,12 +42,14 @@ const cases = [
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      for (const route of sample.routes) {
+      for (const target of sample.routes) {
+        const route = typeof target === 'string' ? target : target.url;
+        const shotName = typeof target === 'string' ? path.basename(new URL(route, fixture.base).pathname, '.php') : target.shot;
         const label = `${sample.name} ${route}`;
         errors.length = 0;
         const response = await page.goto(fixture.base + route, {waitUntil: 'domcontentloaded'});
         assert.equal(response?.status(), 200, `${label}: HTTP ${response?.status()}`);
-        assert.equal(new URL(page.url()).pathname, route, `${label}: unexpected redirect`);
+        assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, route, `${label}: unexpected redirect`);
         const result = await page.evaluate(() => ({
           theme: document.documentElement.getAttribute('data-bs-theme'),
           title: document.title,
@@ -51,13 +61,19 @@ const cases = [
         assert.ok(result.heading, `${label}: no visible page heading`);
         if (sample.theme) assert.equal(result.theme, sample.theme, `${label}: theme did not match account`);
         if (result.overflow > 1) {
-          await page.screenshot({path: path.join(shots, `${sample.name}-${path.basename(route, '.php')}-overflow.png`), fullPage: true});
+          await page.screenshot({path: path.join(shots, `${sample.name}-${shotName}-overflow.png`), fullPage: true});
         }
         assert.ok(result.overflow <= 1, `${label}: document overflows ${result.overflow}px`);
         assert.deepEqual(errors, [], `${label}: browser runtime error`);
+        if (target.check) {
+          const content = await page.locator(target.check.selector).innerText();
+          for (const excerpt of target.check.text) {
+            assert.ok(content.includes(excerpt), `${label}: missing ${excerpt}`);
+          }
+        }
         if (sample.capture) {
           await page.evaluate(() => document.fonts.ready);
-          await page.screenshot({path: path.join(shots, `${sample.name}-${path.basename(route, '.php')}.png`), fullPage: true});
+          await page.screenshot({path: path.join(shots, `${sample.name}-${shotName}.png`), fullPage: true});
         }
         checked++;
       }

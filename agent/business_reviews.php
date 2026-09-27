@@ -67,7 +67,7 @@ while ($review = mysqli_fetch_assoc($reviews_sql)) {
         <div>
             <?php if ($scheduled_agreements) { ?>
                 <strong>Review schedules for published agreements</strong>
-                <ul class="list-unstyled small text-muted mb-1">
+                <ul class="list-unstyled small text-muted mb-1" data-agreement-review-schedules>
                     <?php foreach ($scheduled_agreements as $scheduled_agreement) { ?>
                         <li><?= escapeHtml($scheduled_agreement['contract_name']) ?>: <?= escapeHtml($scheduled_agreement['contract_next_review_at'] ?: 'Not scheduled') ?></li>
                     <?php } ?>
