@@ -102,6 +102,29 @@ const cases = [
           assert.ok(badge.text && badge.color !== badge.background,
             `${label}: ticket status is not readable`);
         }
+        if (route === '/client/requests.php' && sample.width <= 393) {
+          const empty = await page.locator('.n45-table-scroll > .n45-table-empty').first().evaluate(element => ({
+            message: element.textContent.trim(),
+            clipped: element.parentElement.scrollWidth > element.parentElement.clientWidth + 1,
+          }));
+          assert.ok(empty.message.includes('Nothing to show here yet') && !empty.clipped,
+            `${label}: empty requests are clipped on a phone`);
+        }
+        if (route === '/client/saved_payment_methods.php') {
+          assert.ok(await page.getByRole('heading', {name: 'Automatic payments are not available right now'}).isVisible(),
+            `${label}: payment configuration has no usable portal state`);
+          assert.ok(await page.locator('[aria-labelledby="payment-unavailable-heading"]').getByRole('link', {name: 'Contact service desk'}).isVisible(),
+            `${label}: payment fallback has no next action`);
+        }
+        if (route === '/client/index.php' && sample.width <= 393) {
+          const menu = page.locator('.n45-portal-menu-button');
+          await menu.click();
+          assert.equal(await menu.getAttribute('aria-expanded'), 'true', `${label}: mobile navigation did not open`);
+          assert.ok(await page.getByRole('navigation', {name: 'Primary'}).getByRole('link', {name: 'Request help'}).isVisible(),
+            `${label}: mobile navigation is missing portal destinations`);
+          await page.keyboard.press('Escape');
+          assert.equal(await menu.getAttribute('aria-expanded'), 'false', `${label}: mobile navigation did not close`);
+        }
           if (sample.theme) assert.equal(result.theme, sample.theme, `${label}: theme did not match account`);
           if (result.overflow > 1) {
             await page.screenshot({path: path.join(shots, `${sample.name}-${slug}-overflow.png`), fullPage: true});
