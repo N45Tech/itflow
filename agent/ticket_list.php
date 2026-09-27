@@ -440,7 +440,7 @@ if ($tickets) {
                                            data-modal-url="modals/ticket/ticket_purge.php?ticket_id=<?= $ticket_id ?>">Review retention</a>
                                     <?php } ?>
                                 <?php } else { ?>
-                                    <span class="badge rounded-pill text-light p-2" style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                                    <span <?= n45TicketStatusBadgeAttributes($ticket_status_color) ?>><?= $ticket_status_name ?></span>
                                 <?php } ?>
                                 <?php if (!empty($ticket_scheduled_for)) { ?>
                                     <div class="mt-1"><small class="text-secondary"><i class="fas fa-fw fa-calendar-check me-1"></i><?= $ticket_scheduled_for ?></small></div>
