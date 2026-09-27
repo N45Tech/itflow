@@ -16,7 +16,7 @@ jobs:
     if: >-
       github.repository == 'N45Tech/itflow' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       actions: read
@@ -27,7 +27,7 @@ jobs:
     steps:
       - name: Require green next-to-main PR gates for the current main tree
         id: release
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -152,7 +152,7 @@ jobs:
       - name: Load the private dispatch destination
         if: steps.release.outputs.ready == 'true'
         id: destination
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           DISPATCH_REPOSITORY: ${{ secrets.PRODUCTION_DISPATCH_REPOSITORY }}
           DISPATCH_APP_ID: ${{ secrets.PRODUCTION_DISPATCH_APP_ID }}
@@ -184,7 +184,7 @@ jobs:
       - name: Create a short-lived notification token
         if: steps.release.outputs.ready == 'true'
         id: dispatch_token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.PRODUCTION_DISPATCH_APP_ID }}
           private-key: ${{ secrets.PRODUCTION_DISPATCH_APP_PRIVATE_KEY }}
@@ -195,7 +195,7 @@ jobs:
 
       - name: Notify the private deployment workflow
         if: steps.release.outputs.ready == 'true'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           DISPATCH_TOKEN: ${{ steps.dispatch_token.outputs.token }}
           DISPATCH_OWNER: ${{ steps.destination.outputs.owner }}
