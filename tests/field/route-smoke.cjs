@@ -37,6 +37,7 @@ const cases = [
   fs.mkdirSync(shots, {recursive: true});
   const browser = await chromium.launch({headless: true, args: ['--no-sandbox']});
   let checked = 0;
+  const failures = [];
   try {
     for (const sample of cases) {
       const context = await browser.newContext({viewport: {width: sample.width, height: 900}});
@@ -59,31 +60,41 @@ const cases = [
         const slug = path.basename(new URL(route, fixture.base).pathname, '.php') +
           (new URL(route, fixture.base).search ? '-' + new URL(route, fixture.base).searchParams.keys().next().value : '');
         errors.length = 0;
-        const response = await page.goto(fixture.base + route, {waitUntil: 'load'});
-        assert.equal(response?.status(), 200, `${label}: HTTP ${response?.status()}`);
-        assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, route, `${label}: unexpected redirect`);
-        const result = await page.evaluate(() => ({
-          theme: document.documentElement.getAttribute('data-bs-theme'),
-          title: document.title,
-          heading: [...document.querySelectorAll('main h1, main h2, main h3, .content-wrapper h1, .content-wrapper h2, .content-wrapper h3')]
-            .some(element => element.getClientRects().length > 0 && element.textContent.trim()),
-          overflow: document.documentElement.scrollWidth - window.innerWidth,
-        }));
-        assert.ok(result.title, `${label}: missing document title`);
-        assert.ok(result.heading, `${label}: no visible page heading`);
-        if (sample.theme) assert.equal(result.theme, sample.theme, `${label}: theme did not match account`);
-        if (result.overflow > 1) {
-          await page.screenshot({path: path.join(shots, `${sample.name}-${slug}-overflow.png`), fullPage: true});
+        try {
+          const response = await page.goto(fixture.base + route, {waitUntil: 'load'});
+          assert.equal(response?.status(), 200, `${label}: HTTP ${response?.status()}`);
+          assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, route, `${label}: unexpected redirect`);
+          const result = await page.evaluate(() => ({
+            theme: document.documentElement.getAttribute('data-bs-theme'),
+            title: document.title,
+            heading: [...document.querySelectorAll('main h1, main h2, main h3, .content-wrapper h1, .content-wrapper h2, .content-wrapper h3')]
+              .some(element => element.getClientRects().length > 0 && element.textContent.trim()),
+            overflow: document.documentElement.scrollWidth - window.innerWidth,
+          }));
+          assert.ok(result.title, `${label}: missing document title`);
+          assert.ok(result.heading, `${label}: no visible page heading`);
+          if (sample.theme) assert.equal(result.theme, sample.theme, `${label}: theme did not match account`);
+          if (result.overflow > 1) {
+            await page.screenshot({path: path.join(shots, `${sample.name}-${slug}-overflow.png`), fullPage: true});
+          }
+          assert.ok(result.overflow <= 1, `${label}: document overflows ${result.overflow}px`);
+          assert.deepEqual(errors, [], `${label}: browser console or asset error`);
+          if (sample.capture) {
+            await page.evaluate(() => document.fonts.ready);
+            await page.screenshot({path: path.join(shots, `${sample.name}-${slug}.png`), fullPage: true});
+          }
+          checked++;
+        } catch (error) {
+          failures.push(`${label}: ${error.message}`);
+          try {
+            await page.screenshot({path: path.join(shots, `${sample.name}-${slug}-failed.png`), fullPage: true});
+          } catch { /* A navigation failure may leave no document to capture. */ }
         }
-        assert.ok(result.overflow <= 1, `${label}: document overflows ${result.overflow}px`);
-        assert.deepEqual(errors, [], `${label}: browser console or asset error`);
-        if (sample.capture) {
-          await page.evaluate(() => document.fonts.ready);
-          await page.screenshot({path: path.join(shots, `${sample.name}-${slug}.png`), fullPage: true});
-        }
-        checked++;
       }
       await context.close();
+    }
+    if (failures.length) {
+      throw new Error(`${failures.length} authenticated UI cases failed:\n${failures.join('\n')}`);
     }
     console.log(`Authenticated route smoke: ${checked} route/viewport cases passed (${agentRoutes.length} agent, ${adminRoutes.length} admin, ${portalRoutes.length} portal routes).`);
   } finally {
