@@ -13,9 +13,27 @@ const agentRoutes = [
   '/agent/assets.php', '/agent/software.php', '/agent/documentation.php',
   '/agent/contacts.php', '/agent/locations.php', '/agent/projects.php',
   '/agent/quotes.php', '/agent/vendors.php', '/agent/products.php',
-  '/agent/services.php', '/agent/notifications.php', '/agent/business_reviews.php',
+  '/agent/services.php', '/agent/notifications.php',
+  `/agent/business_reviews.php?client_id=${fixture.client}`,
   `/agent/client_overview.php?client_id=${fixture.client}`,
   `/agent/ticket.php?ticket_id=${fixture.ticket}`,
+];
+// Every global technician navigation destination plus the client sidebar's
+// scoped destinations. Detail records without a disposable fixture stay separate.
+const agentAdditionalRoutes = [
+  '/agent/accounts.php', '/agent/billing_review.php', '/agent/calendar.php',
+  '/agent/expenses.php', '/agent/income.php', '/agent/portal_requests.php',
+  '/agent/profitability.php', '/agent/purchasing.php', '/agent/recurring_expenses.php',
+  '/agent/recurring_invoices.php', '/agent/recurring_tickets.php',
+  '/agent/subscriptions.php', '/agent/transactions.php', '/agent/transfers.php',
+  '/agent/trips.php',
+  ...[
+    'agreements', 'assets', 'calendar', 'certificates', 'contacts',
+    'credentials', 'documentation', 'domains', 'files', 'income',
+    'invoices', 'locations', 'networks', 'projects', 'quotes', 'racks',
+    'recurring_invoices', 'recurring_tickets', 'services', 'software',
+    'tickets', 'trips', 'vendors',
+  ].map(name => `/agent/${name}.php?client_id=${fixture.client}`),
 ];
 const adminRoutes = ['/admin/users.php', '/admin/audit_logs.php', '/admin/api_keys.php'];
 const portalRoutes = ['/client/index.php', '/client/tickets.php',
@@ -23,12 +41,15 @@ const portalRoutes = ['/client/index.php', '/client/tickets.php',
   '/client/reviews.php', '/client/assets.php', '/client/domains.php',
   '/client/certificates.php', '/client/contacts.php', '/client/profile.php',
   '/client/quotes.php', '/client/recurring_invoices.php',
+  '/client/unpaid_invoices.php', '/client/statement.php',
+  '/client/saved_payment_methods.php', '/client/activity.php',
+  '/client/ticket_view_all.php',
   `/client/ticket.php?id=${fixture.ticket}`, '/client/ticket_add.php',
   `/client/document.php?id=${fixture.doc}`];
 const cases = [
-  {name: 'agent-light-desktop', session: fixture.sessions[0], width: 1440, routes: agentRoutes.concat(adminRoutes), theme: 'light', capture: true},
+  {name: 'agent-light-desktop', session: fixture.sessions[0], width: 1440, routes: agentRoutes.concat(agentAdditionalRoutes, adminRoutes), theme: 'light', capture: true},
   {name: 'agent-dark-tablet', session: fixture.sessions[2], width: 768, routes: agentRoutes.concat(adminRoutes), theme: 'dark'},
-  {name: 'agent-dark-narrow', session: fixture.sessions[2], width: 393, routes: agentRoutes.concat(adminRoutes), theme: 'dark', capture: true},
+  {name: 'agent-dark-narrow', session: fixture.sessions[2], width: 393, routes: agentRoutes.concat(agentAdditionalRoutes, adminRoutes), theme: 'dark', capture: true},
   {name: 'portal-desktop', session: fixture.portal_session, width: 1440, routes: portalRoutes, capture: true},
   {name: 'portal-narrow', session: fixture.portal_session, width: 393, routes: portalRoutes, capture: true},
 ];
@@ -72,7 +93,15 @@ const cases = [
             overflow: document.documentElement.scrollWidth - window.innerWidth,
           }));
           assert.ok(result.title, `${label}: missing document title`);
-          assert.ok(result.heading, `${label}: no visible page heading`);
+        assert.ok(result.heading, `${label}: no visible page heading`);
+        if (route.startsWith('/agent/ticket.php?')) {
+          const badge = await page.locator('.ticket-field-value .n45-status-badge').first().evaluate(element => {
+            const styles = getComputedStyle(element);
+            return {text: element.textContent.trim(), color: styles.color, background: styles.backgroundColor};
+          });
+          assert.ok(badge.text && badge.color !== badge.background,
+            `${label}: ticket status is not readable`);
+        }
           if (sample.theme) assert.equal(result.theme, sample.theme, `${label}: theme did not match account`);
           if (result.overflow > 1) {
             await page.screenshot({path: path.join(shots, `${sample.name}-${slug}-overflow.png`), fullPage: true});
@@ -96,7 +125,7 @@ const cases = [
     if (failures.length) {
       throw new Error(`${failures.length} authenticated UI cases failed:\n${failures.join('\n')}`);
     }
-    console.log(`Authenticated route smoke: ${checked} route/viewport cases passed (${agentRoutes.length} agent, ${adminRoutes.length} admin, ${portalRoutes.length} portal routes).`);
+    console.log(`Authenticated route smoke: ${checked} route/viewport cases passed (${agentRoutes.length + agentAdditionalRoutes.length} agent, ${adminRoutes.length} admin, ${portalRoutes.length} portal routes).`);
   } finally {
     await browser.close();
   }
