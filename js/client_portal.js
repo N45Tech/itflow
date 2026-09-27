@@ -18,6 +18,38 @@
     labelModalExits(document);
     document.addEventListener('show.bs.modal', function (event) { labelModalExits(event.target); });
 
+    // The portal's self-only Content Security Policy blocks inline scripts.
+    // Initialize only on pages with an editor so ordinary portal routes stay quiet.
+    if (document.querySelector('.tinymce') && window.tinymce) {
+        window.tinymce.init({
+            selector: '.tinymce',
+            browser_spellcheck: true,
+            resize: true,
+            min_height: 300,
+            max_height: 600,
+            promotion: false,
+            branding: false,
+            menubar: false,
+            statusbar: false,
+            license_key: 'gpl',
+            toolbar: [
+                {name: 'styles', items: ['styles']},
+                {name: 'formatting', items: ['bold', 'italic', 'forecolor']},
+                {name: 'lists', items: ['bullist', 'numlist']},
+                {name: 'alignment', items: ['alignleft', 'aligncenter', 'alignright', 'alignjustify']},
+                {name: 'indentation', items: ['outdent', 'indent']},
+                {name: 'table', items: ['table']},
+                {name: 'extra', items: ['fullscreen']}
+            ],
+            mobile: {
+                menubar: false,
+                plugins: 'autosave lists autolink',
+                toolbar: 'undo bold italic styles'
+            },
+            plugins: 'link image lists table code codesample fullscreen autoresize'
+        });
+    }
+
     document.querySelectorAll('.n45-portal-route .table').forEach(function (table) {
         var tableBody = table.querySelector('tbody');
         if (tableBody && tableBody.children.length === 0) {
