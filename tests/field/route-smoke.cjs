@@ -11,10 +11,20 @@ const agentRoutes = [
   '/agent/dashboard.php', '/agent/clients.php', '/agent/operations.php',
   '/agent/tickets.php', '/agent/agreements.php', '/agent/invoices.php',
   '/agent/assets.php', '/agent/software.php', '/agent/documentation.php',
+  '/agent/contacts.php', '/agent/locations.php', '/agent/projects.php',
+  '/agent/quotes.php', '/agent/vendors.php', '/agent/products.php',
+  '/agent/services.php', '/agent/notifications.php', '/agent/business_reviews.php',
+  `/agent/client_overview.php?client_id=${fixture.client}`,
+  `/agent/ticket.php?ticket_id=${fixture.ticket}`,
 ];
 const adminRoutes = ['/admin/users.php', '/admin/audit_logs.php', '/admin/api_keys.php'];
 const portalRoutes = ['/client/index.php', '/client/tickets.php',
-  '/client/documents.php', '/client/invoices.php'];
+  '/client/documents.php', '/client/invoices.php', '/client/requests.php',
+  '/client/reviews.php', '/client/assets.php', '/client/domains.php',
+  '/client/certificates.php', '/client/contacts.php', '/client/profile.php',
+  '/client/quotes.php', '/client/recurring_invoices.php',
+  `/client/ticket.php?id=${fixture.ticket}`, '/client/ticket_add.php',
+  `/client/document.php?id=${fixture.doc}`];
 const cases = [
   {name: 'agent-light-desktop', session: fixture.sessions[0], width: 1440, routes: agentRoutes.concat(adminRoutes), theme: 'light', capture: true},
   {name: 'agent-dark-tablet', session: fixture.sessions[2], width: 768, routes: agentRoutes.concat(adminRoutes), theme: 'dark'},
@@ -34,12 +44,24 @@ const cases = [
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
+      page.on('console', message => {
+        if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+      });
+      page.on('response', response => {
+        const request = response.request();
+        if (response.status() >= 400 && new URL(response.url()).origin === new URL(fixture.base).origin &&
+            ['script', 'stylesheet', 'image', 'font'].includes(request.resourceType())) {
+          errors.push(`${request.resourceType()} HTTP ${response.status()}: ${new URL(response.url()).pathname}`);
+        }
+      });
       for (const route of sample.routes) {
         const label = `${sample.name} ${route}`;
+        const slug = path.basename(new URL(route, fixture.base).pathname, '.php') +
+          (new URL(route, fixture.base).search ? '-' + new URL(route, fixture.base).searchParams.keys().next().value : '');
         errors.length = 0;
-        const response = await page.goto(fixture.base + route, {waitUntil: 'domcontentloaded'});
+        const response = await page.goto(fixture.base + route, {waitUntil: 'load'});
         assert.equal(response?.status(), 200, `${label}: HTTP ${response?.status()}`);
-        assert.equal(new URL(page.url()).pathname, route, `${label}: unexpected redirect`);
+        assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, route, `${label}: unexpected redirect`);
         const result = await page.evaluate(() => ({
           theme: document.documentElement.getAttribute('data-bs-theme'),
           title: document.title,
@@ -51,13 +73,13 @@ const cases = [
         assert.ok(result.heading, `${label}: no visible page heading`);
         if (sample.theme) assert.equal(result.theme, sample.theme, `${label}: theme did not match account`);
         if (result.overflow > 1) {
-          await page.screenshot({path: path.join(shots, `${sample.name}-${path.basename(route, '.php')}-overflow.png`), fullPage: true});
+          await page.screenshot({path: path.join(shots, `${sample.name}-${slug}-overflow.png`), fullPage: true});
         }
         assert.ok(result.overflow <= 1, `${label}: document overflows ${result.overflow}px`);
-        assert.deepEqual(errors, [], `${label}: browser runtime error`);
+        assert.deepEqual(errors, [], `${label}: browser console or asset error`);
         if (sample.capture) {
           await page.evaluate(() => document.fonts.ready);
-          await page.screenshot({path: path.join(shots, `${sample.name}-${path.basename(route, '.php')}.png`), fullPage: true});
+          await page.screenshot({path: path.join(shots, `${sample.name}-${slug}.png`), fullPage: true});
         }
         checked++;
       }
