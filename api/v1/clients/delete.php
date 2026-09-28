@@ -84,8 +84,15 @@ if (!empty($client_id)) {
             logAudit("Client", "Delete", "$client_name and all associated data via API ($api_key_name)", $client_id);
         }
     }
+    if ($delete_count) {
+        $client_upload_directory = dirname(__DIR__, 3) . "/uploads/clients/$client_id";
+        removeDirectory($client_upload_directory);
+        if (file_exists($client_upload_directory) || is_link($client_upload_directory)) {
+            mysqli_rollback($mysqli);
+            throw new RuntimeException('Could not remove client uploads.');
+        }
+    }
     if (!mysqli_commit($mysqli)) { throw new RuntimeException('Could not commit client deletion.'); }
-    if ($delete_count) { removeDirectory("../../uploads/clients/$client_id"); }
 }
 
 // Output
