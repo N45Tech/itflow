@@ -168,6 +168,7 @@ if ($recurring_invoice_has_filters) {
         ) : array(),
         'tabs' => $recurring_invoice_tabs,
         'tabs_label' => 'Recurring invoice status',
+        'tabs_class' => 'n45-ticket-state-tabs',
         'actions' => $recurring_invoice_page_actions,
     ));
     ?>
