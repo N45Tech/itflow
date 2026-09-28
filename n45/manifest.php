@@ -2203,7 +2203,7 @@ return [
             'fingerprint' => [
                 'columns' => [
                     'clients' => [
-                        'client_ticket_retention_policy' => $column_fingerprint('varchar(20)', false, 'override'),
+                        'client_ticket_retention_policy' => $column_fingerprint('varchar(20)', false, 'strict'),
                     ],
                 ],
                 'failure_queries' => [
