@@ -63,6 +63,9 @@ function fieldWorkspaceApproval(array $input, int $user_id): array
         if (!$task || in_array($task['task_state'],['Completed','Skipped'],true)) { throw new DomainException('This task no longer accepts approval changes.'); }
     }
     $id=(int)($input['approval_id']??0);$operation=(string)($input['operation']??'request');$before=[];
+    if (in_array($operation, ['retry', 'reroute'], true) && lookupUserPermission('module_support') < 3) {
+        throw new DomainException('Support administrator access is required to manage approval requests.');
+    }
     if ($id) {
         $row=mysqli_fetch_assoc(fieldDb("SELECT * FROM $table WHERE {$p}id = $id AND {$p}{$parent}_id = $parent_id FOR UPDATE"));
         if (!$row) { throw new DomainException('This approval is unavailable for the job.'); }
