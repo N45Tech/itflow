@@ -717,6 +717,10 @@ $assertNotContains('workflow_run:', $production_notification_workflow, 'Producti
 $assertContains("pull.head?.ref === 'next'", $production_notification_workflow, 'Production notification accepts a merge from outside next');
 $assertContains('mainCommit.tree.sha !== headCommit.tree.sha', $production_notification_workflow, 'Production notification does not compare the release tree with the tested next tree');
 $assertContains("event: 'pull_request'", $production_notification_workflow, 'Production notification does not require pull-request test runs');
+$assertContains('associatedPull.number === pull.number', $production_notification_workflow, 'Production notification can reuse a run from another pull request');
+$assertContains('associatedPull.head?.sha === headSha', $production_notification_workflow, 'Production notification does not bind a run to the selected pull request head');
+$assertContains('associatedPull.base?.sha === baseSha', $production_notification_workflow, 'Production notification does not bind a run to the tested merge-candidate base');
+$assertNotContains('run.updated_at', $production_notification_workflow, 'Production notification can discard a newer run after the pull request merge');
 $assertContains("core.setOutput('source_run_id', String(context.runId))", $production_notification_workflow, 'Production notification does not identify its exact attestation run');
 $assertContains('ensure_commit_available()', $release_database_test, 'Release database tests cannot recover pinned fixtures omitted from a clean checkout');
 $assertContains('git fetch --no-tags --no-write-fetch-head origin "$commit_sha"', $release_database_test, 'Release database tests do not fetch missing fixtures by exact SHA');
