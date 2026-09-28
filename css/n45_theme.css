@@ -182,22 +182,54 @@ body.dark-mode .app-header .nav-link:focus {
     color: var(--n45-ink) !important;
 }
 
-.navbar-search-field {
-    background: var(--n45-surface-subtle);
+.navbar-search {
+    --lte-search-field-width: 100%;
+    --lte-search-field-focus-width: 100%;
+    flex: 0 1 36rem;
+    min-width: 0;
+}
+
+.navbar-search .navbar-search-field {
+    width: 100%;
+    background: var(--n45-surface);
     border: 1px solid var(--n45-border);
-    border-radius: var(--n45-radius-sm);
+    border-radius: 999px;
     transition: border-color var(--n45-transition), box-shadow var(--n45-transition), background-color var(--n45-transition);
 }
 
 .navbar-search-field:focus-within {
-    background: var(--n45-surface);
     border-color: var(--n45-action);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--n45-action) 16%, transparent);
 }
 
-.navbar-search-field .form-control,
-.navbar-search-field .navbar-search-submit {
+.navbar-search .navbar-search-field .form-control {
+    width: 100%;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    border-radius: inherit;
+    box-shadow: none;
+    padding-left: 2.125rem;
+    padding-right: 1rem;
     color: var(--n45-ink);
+}
+
+.navbar-search .navbar-search-field .form-control:hover,
+.navbar-search .navbar-search-field .form-control:focus,
+.navbar-search .navbar-search-field .form-control:focus-visible {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    outline: none;
+}
+
+.navbar-search .navbar-search-submit {
+    color: var(--n45-ink);
+    cursor: pointer;
+}
+
+.navbar-search .navbar-search-submit:hover {
+    color: var(--n45-action);
 }
 
 .navbar-search-field .form-control::placeholder {
