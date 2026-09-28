@@ -40,8 +40,9 @@ if (isset($_GET['category']) & !empty($_GET['category'])) {
 
 // Client Filter
 if (isset($_GET['client']) & !empty($_GET['client'])) {
-    $client_query = 'AND (transaction_client_id = ' . intval($_GET['client']) . ')';
     $client_filter = intval($_GET['client']);
+    enforceClientAccess($client_filter);
+    $client_query = "AND (transaction_client_id = $client_filter)";
 } else {
     // Default - any
     $client_query = '';
@@ -84,6 +85,10 @@ if ($sort == 'transaction_date') {
 }
 
 if ($account_filter) {
+
+    // Apply client access before calculating the running balance so unauthorized
+    // transactions cannot affect either the rows or balances shown to the user.
+    $transaction_access_query = clientScopeSql('transaction_client_id');
 
     // Account details - opening balance feeds the running balance, currency feeds the summary
     $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT account_currency_code, opening_balance FROM accounts WHERE account_id = $account_filter LIMIT 1"));
@@ -171,7 +176,9 @@ if ($account_filter) {
             LEFT JOIN invoices ON payment_invoice_id = invoice_id
             WHERE payment_account_id = $account_filter
             AND payment_archived_at IS NULL
-        ) AS ledger";
+        ) AS ledger
+        WHERE 1 = 1
+        $transaction_access_query";
 
     $transaction_filter_query =
         "WHERE DATE(transaction_date) BETWEEN '$dtf' AND '$dtt'
@@ -246,13 +253,16 @@ if ($account_filter) {
                                 <option value="">- Select an Account -</option>
 
                                 <?php
+                                $revenue_access_query = clientScopeSql('revenue_client_id');
+                                $expense_access_query = clientScopeSql('expense_client_id');
+                                $payment_access_query = clientScopeSql('invoice_client_id');
                                 $sql_accounts_filter = mysqli_query(
                                     $mysqli,
                                     "SELECT account_id, account_name, account_currency_code,
                                         opening_balance
-                                        + COALESCE((SELECT SUM(revenue_amount) FROM revenues WHERE revenue_account_id = account_id AND revenue_archived_at IS NULL), 0)
-                                        + COALESCE((SELECT SUM(payment_amount) FROM payments WHERE payment_account_id = account_id AND payment_archived_at IS NULL), 0)
-                                        - COALESCE((SELECT SUM(expense_amount) FROM expenses WHERE expense_account_id = account_id AND expense_archived_at IS NULL), 0)
+                                        + COALESCE((SELECT SUM(revenue_amount) FROM revenues WHERE revenue_account_id = account_id AND revenue_archived_at IS NULL $revenue_access_query), 0)
+                                        + COALESCE((SELECT SUM(payment_amount) FROM payments LEFT JOIN invoices ON payment_invoice_id = invoice_id WHERE payment_account_id = account_id AND payment_archived_at IS NULL $payment_access_query), 0)
+                                        - COALESCE((SELECT SUM(expense_amount) FROM expenses WHERE expense_account_id = account_id AND expense_archived_at IS NULL $expense_access_query), 0)
                                         AS account_balance
                                     FROM accounts WHERE account_archived_at IS NULL ORDER BY account_name ASC"
                                 );
@@ -311,7 +321,8 @@ if ($account_filter) {
                                 <option value="">- All Clients -</option>
 
                                 <?php
-                                $sql_clients_filter = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_archived_at IS NULL AND (EXISTS (SELECT 1 FROM revenues WHERE revenue_client_id = client_id) OR EXISTS (SELECT 1 FROM expenses WHERE expense_client_id = client_id) OR EXISTS (SELECT 1 FROM invoices WHERE invoice_client_id = client_id)) ORDER BY client_name ASC");
+                                $client_access_query = clientScopeSql('clients.client_id');
+                                $sql_clients_filter = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_archived_at IS NULL $client_access_query AND (EXISTS (SELECT 1 FROM revenues WHERE revenue_client_id = client_id) OR EXISTS (SELECT 1 FROM expenses WHERE expense_client_id = client_id) OR EXISTS (SELECT 1 FROM invoices WHERE invoice_client_id = client_id)) ORDER BY client_name ASC");
                                 while ($row = mysqli_fetch_assoc($sql_clients_filter)) {
                                     $client_id = intval($row['client_id']);
                                     $client_name = escapeHtml($row['client_name']);
