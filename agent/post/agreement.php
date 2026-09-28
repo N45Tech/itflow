@@ -90,7 +90,7 @@ if ($agreement_action !== null) {
             $version_id = $created['version_id'];
             unset($_SESSION['agreement_setup_input'], $_SESSION['agreement_setup_error']);
             logAudit('Agreement', 'Create', "$session_name created agreement " . $created['name'], $client_id, $contract_id);
-            flashAlert('Complete agreement draft saved with coverage, SLA targets, support hours and review cadence. Review it below, then publish when approved.');
+            flashAlert('Operational agreement draft saved. Compare its coverage and SLA rules with the approved customer agreement before publishing.');
             redirect("agreement.php?agreement_id=$contract_id&version_id=$version_id");
         }
 
@@ -404,7 +404,7 @@ if ($agreement_action !== null) {
             enforceClientAccess($client_id);
             agreementPublishVersion($version_id, $session_user_id, trim((string) ($_POST['reason'] ?? '')));
             logAudit('Agreement', 'Publish', "$session_name published agreement version $version_id", $client_id, $contract_id);
-            flashAlert('Agreement version published; its definition is now immutable');
+            flashAlert('Operational agreement version published and locked. ITFlow evaluates applicable published rules for new ticket decisions; this action does not record client acceptance.');
             redirect($return_url);
         }
 

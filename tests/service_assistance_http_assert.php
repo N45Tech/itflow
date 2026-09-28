@@ -105,8 +105,28 @@ try {
     $assert(str_contains($http_response_header[0],'409')&&str_contains($body,'retained'),'Client API deletion bypassed knowledge retention: '.$body);
     fieldDb("UPDATE clients SET client_archived_at = NULL WHERE client_id = $client");fieldDb("DELETE FROM api_keys WHERE api_key_id = $api_key");
     if (getenv('N45_ASSISTANCE_BROWSER') === '1') {
+        require_once dirname(__DIR__) . '/functions/agreement_setup.php';
+        $agreement_input = [
+            'setup_version' => '1', 'type' => 'Fully Managed', 'effective_until' => '',
+            'review_cadence_months' => '3', 'renewal_notice_days' => '90',
+            'calendar' => ['mode' => '24x7', 'timezone' => 'America/New_York'],
+            'coverage' => array_fill_keys(array_keys(agreementSetupScopes()), ['classification' => 'included', 'limit' => '']),
+            'sla' => array_fill_keys(array_keys(ticketPriorityDefinitions()), ['profile_id' => '0']),
+        ];
+        $baseline = agreementCreateFromSetup($agreement_input + [
+            'name' => 'Baseline Support', 'effective_from' => date('Y-m-d', strtotime('-20 days')),
+        ], $client, $users[0]);
+        agreementPublishVersion($baseline['version_id'], $users[0], 'Disposable browser fixture');
+        $overlay = agreementCreateFromSetup($agreement_input + [
+            'name' => 'Project Overlay', 'effective_from' => date('Y-m-d', strtotime('-1 day')),
+        ], $client, $users[0]);
+        agreementPublishVersion($overlay['version_id'], $users[0], 'Disposable browser fixture');
+        $selected = agreementGetActiveVersionForClient($client);
+        $assert(intval($selected['agreement_version_id'] ?? 0) === $overlay['version_id'],
+            'The fixture did not select the newer effective agreement for ticket rules');
         $fixture=tempnam(sys_get_temp_dir(),'assistance-browser-');
-        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'portal_session'=>$portal_session,'ticket'=>$ticket,'solved'=>$solved,'response'=>$response_id,'client'=>$client,'doc'=>$doc]));
+        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'portal_session'=>$portal_session,'ticket'=>$ticket,'solved'=>$solved,'response'=>$response_id,'client'=>$client,'doc'=>$doc,
+            'agreements' => ['baseline' => $baseline['contract_id'], 'overlay' => $overlay['contract_id']]]));
         try {
             foreach (['assistance.cjs','route-smoke.cjs'] as $script) {
                 $command=['node',__DIR__.'/field/'.$script,$fixture];

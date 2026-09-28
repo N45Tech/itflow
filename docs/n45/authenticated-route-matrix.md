@@ -4,15 +4,17 @@ The PR-to-`next` database job runs `tests/field/route-smoke.cjs` against a dispo
 
 | Surface | Routes | Viewports and account |
 | --- | --- | --- |
-| Agent | Dashboard, clients, operations, tickets, agreements, invoices, assets, software, documentation | 1440px light admin; 768px dark admin; 393px dark admin |
+| Agent | Dashboard, clients, operations, tickets, agreements, agreement setup, two competing agreement details, business reviews, invoices, assets, software, documentation | 1440px light admin; 768px dark admin; 393px dark admin |
 | Admin | Users, audit logs, API keys | 1440px light admin; 768px dark admin; 393px dark admin |
 | Client portal | Overview, tickets, documents, invoices | 1440px and 393px portal contact |
 
 The job uploads synthetic screenshots as the `n45-authenticated-route-smoke` artifact for seven days. Captures are review evidence, not an approved pixel baseline. The narrow agent case uses a desktop browser at a narrow width; physical Android and PWA routing remain separate acceptance checks.
 
+The agreement fixture publishes two definitions for one synthetic client with different effective dates. The browser checks that the older detail page identifies the newer agreement as the current ticket rule, that the selected detail page identifies itself, that setup explains the separate client-acceptance gate, and that Business Reviews lists both schedules. These are synthetic selection and rendering checks; they do not verify any customer-approved source.
+
 ## Remaining coverage
 
 - Add signed-in navigation and actions, including forms, modals, broken same-origin assets, and failed requests. The existing ticket/Field Mode browser suite covers selected interactions.
-- Extend to the remaining agent, admin, and portal routes, including login, settings, client-scoped detail views, and intentionally excluded or redirected routes.
+- Extend to the remaining agent, admin, and portal routes, including login, settings, other client-scoped detail views, and intentionally excluded or redirected routes.
 - Capture both account themes at each relevant width, review the images, and establish a maintained visual baseline with explicit change approval.
 - Witness signed-in portal and Field Mode behavior on physical Android Chrome/PWA, including offline, camera, location, and recovery paths.
