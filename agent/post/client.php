@@ -239,6 +239,7 @@ if (isset($_GET['archive_client'])) {
     enforceUserPermission('module_client', 2);
 
     $client_id = intval($_GET['archive_client']);
+    enforceClientAccess($client_id);
 
     // Archive client
     mysqli_query($mysqli, "UPDATE clients SET client_archived_at = NOW() WHERE client_id = $client_id");

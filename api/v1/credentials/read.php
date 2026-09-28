@@ -14,6 +14,21 @@ if (isset($_POST['api_key_decrypt_password'])) {
     $api_key_decrypt_password = $_POST['api_key_decrypt_password'];
 }
 
+// Possession of the API key must not substitute for the separate credential
+// decryption password. Validate it before selecting rows because credentials
+// contain plaintext metadata (including TOTP secrets and notes).
+if ($api_key_decrypt_password !== '') {
+    if (!is_string($api_key_decrypt_password)
+        || decryptUserSpecificKey($api_key_decrypt_hash, $api_key_decrypt_password) === false) {
+        http_response_code(401);
+        echo json_encode([
+            'success' => 'False',
+            'message' => 'Invalid credential decryption password.',
+        ]);
+        exit();
+    }
+}
+
 // Specific credential/login via ID (single)
 if (isset($_GET['credential_id']) && !empty($api_key_decrypt_password)) {
 
