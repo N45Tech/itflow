@@ -18,8 +18,9 @@ $error_description = escapeSql($_GET['error_description'] ?? '');
 
 $session_state = $_SESSION['mail_oauth_state'] ?? '';
 $session_state_expires = intval($_SESSION['mail_oauth_state_expires_at'] ?? 0);
+$scope = $_SESSION['mail_oauth_scope'] ?? '';
 
-unset($_SESSION['mail_oauth_state'], $_SESSION['mail_oauth_state_expires_at']);
+unset($_SESSION['mail_oauth_state'], $_SESSION['mail_oauth_state_expires_at'], $_SESSION['mail_oauth_scope']);
 
 if (!empty($error)) {
     $msg = "Microsoft OAuth authorization failed: $error";
@@ -36,6 +37,17 @@ if (empty($state) || empty($code) || empty($session_state) || !hash_equals($sess
     redirect($settings_mail_path);
 }
 
+$base_scope = 'offline_access openid profile';
+$valid_scopes = [
+    "$base_scope https://outlook.office.com/IMAP.AccessAsUser.All",
+    "$base_scope https://outlook.office.com/SMTP.Send",
+    "$base_scope https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send",
+];
+if (!in_array($scope, $valid_scopes, true)) {
+    flashAlert("Microsoft OAuth callback permissions could not be validated. Please try connecting again.", 'error');
+    redirect($settings_mail_path);
+}
+
 if (empty($config_mail_oauth_client_id) || empty($config_mail_oauth_client_secret) || empty($config_mail_oauth_tenant_id)) {
     flashAlert("Microsoft OAuth settings are incomplete. Please fill Client ID, Client Secret, and Tenant ID.", 'error');
     redirect($settings_mail_path);
@@ -49,7 +61,6 @@ if (defined('BASE_URL') && !empty(BASE_URL)) {
 
 $redirect_uri = $base_url . '/admin/oauth_microsoft_mail_callback.php';
 $token_url = 'https://login.microsoftonline.com/' . rawurlencode($config_mail_oauth_tenant_id) . '/oauth2/v2.0/token';
-$scope = 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send';
 
 $ch = curl_init($token_url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -90,8 +101,6 @@ $access_token_esc = mysqli_real_escape_string($mysqli, $access_token);
 $expires_at_esc = mysqli_real_escape_string($mysqli, $expires_at);
 
 mysqli_query($mysqli, "UPDATE settings SET
-    config_imap_provider = 'microsoft_oauth',
-    config_smtp_provider = 'microsoft_oauth',
     config_mail_oauth_refresh_token = '$refresh_token_esc',
     config_mail_oauth_access_token = '$access_token_esc',
     config_mail_oauth_access_token_expires_at = '$expires_at_esc'
