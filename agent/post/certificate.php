@@ -243,17 +243,29 @@ if (isset($_POST['bulk_refresh_certificates'])) {
 
     enforceUserPermission('module_support', 2);
 
-    if (isset($_POST['certificate_ids'])) {
+    if (isset($_POST['certificate_ids']) && is_array($_POST['certificate_ids'])) {
 
-        // TLS lookups on dead hosts wait out a 5 sec timeout each - don't time out mid-batch
-        set_time_limit(0);
+        // Bound synchronous TLS lookups so one request cannot monopolize a PHP worker.
+        $certificate_ids = array_unique(array_map('intval', array_filter($_POST['certificate_ids'], 'is_scalar')));
+        $maximum_certificate_refreshes = 20;
+        $certificate_refresh_time_limit = 30;
+
+        if (count($certificate_ids) > $maximum_certificate_refreshes) {
+            flashAlert("A maximum of <strong>$maximum_certificate_refreshes</strong> certificates can be refreshed at once", 'error');
+            redirect();
+        }
 
         // Get Selected Count
-        $count = count($_POST['certificate_ids']);
+        $count = count($certificate_ids);
         $refreshed_count = 0;
+        $refresh_started_at = microtime(true);
 
         // Cycle through array and refresh each record
-        foreach ($_POST['certificate_ids'] as $certificate_id) {
+        foreach ($certificate_ids as $certificate_id) {
+
+            if (microtime(true) - $refresh_started_at >= $certificate_refresh_time_limit) {
+                break;
+            }
 
             $certificate_id = intval($certificate_id);
 
