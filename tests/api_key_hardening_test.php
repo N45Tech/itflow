@@ -70,6 +70,12 @@ $contains($rbac, 'role_is_admin, role_archived_at', 'API authentication does not
 $contains($rbac, 'intval($api_user[\'linked_role_id\']) !== intval($api_user[\'user_role_id\'])',
     'API authentication does not reject a dangling role reference');
 $contains($rbac, '$api_user[\'role_archived_at\'] !== null', 'API authentication does not reject archived linked roles');
+$contains($rbac, "'archive.php'   => 2", 'API RBAC does not classify archive endpoints as writes');
+$contains($rbac, "'unarchive.php' => 2", 'API RBAC does not classify unarchive endpoints as writes');
+$contains($rbac, "'resolve.php'   => 2", 'API RBAC does not classify resolve endpoints as writes');
+$contains($rbac, "'close.php'     => 2", 'API RBAC does not classify close endpoints as writes');
+$contains($rbac, '$is_write = $required_level > 1;',
+    'API RBAC client-scope enforcement is not derived from the operation permission level');
 $ordered($admin, [
     "if (isset(\$_POST['bulk_delete_api_keys']))",
     'sort($api_key_ids, SORT_NUMERIC)',
