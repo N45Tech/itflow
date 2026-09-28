@@ -534,7 +534,7 @@ n45RenderPageHeader(array(
 
                                         <!-- Ticket Status -->
                                         <td>
-                                            <span class='badge rounded-pill text-light p-2' style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                                            <span <?= n45TicketStatusBadgeAttributes($ticket_status_color) ?>><?= $ticket_status_name ?></span>
                                         </td>
 
                                         <!-- Ticket Assigned agent -->

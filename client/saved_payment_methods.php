@@ -7,24 +7,36 @@ require_once "includes/inc_all.php";
 
 enforceContactCan('accounting');
 
-// Initialize Stripe
-require_once '../includes/stripe_init.php';
-
 // Get Stripe provider info
 $stripe_provider_query = mysqli_query($mysqli, "
-    SELECT payment_provider_id, payment_provider_private_key, payment_provider_public_key FROM payment_providers WHERE payment_provider_name = 'Stripe' LIMIT 1
+    SELECT payment_provider_id, payment_provider_private_key, payment_provider_public_key FROM payment_providers
+    WHERE payment_provider_name = 'Stripe' AND payment_provider_active = 1 LIMIT 1
 ");
 $stripe_provider = mysqli_fetch_assoc($stripe_provider_query);
 
-if (!$stripe_provider) {
-    echo "Stripe payment error - Stripe provider is not configured.";
-    include_once 'includes/footer.php';
-    exit();
+?>
+<header class="n45-page-header">
+    <div>
+        <h1>Saved payment methods</h1>
+        <p>Securely manage the payment methods available for automatic billing.</p>
+    </div>
+</header>
+<?php
+if (!$stripe_provider || empty($stripe_provider['payment_provider_public_key']) || empty($stripe_provider['payment_provider_private_key'])) { ?>
+    <section class="n45-portal-panel p-4" aria-labelledby="payment-unavailable-heading">
+        <h2 class="h5" id="payment-unavailable-heading">Automatic payments are not available right now</h2>
+        <p>You can still review your invoices. Contact the service desk if you need help with a payment.</p>
+        <a class="btn btn-outline-primary" href="requests.php">Contact service desk</a>
+    </section>
+    <?php require_once 'includes/footer.php';
+    return;
 }
+
+require_once '../includes/stripe_init.php';
 
 $stripe_provider_id = intval($stripe_provider['payment_provider_id']);
 $stripe_public_key = escapeHtml($stripe_provider['payment_provider_public_key']);
-$stripe_secret_key = escapeHtml($stripe_provider['payment_provider_private_key']);
+$stripe_secret_key = $stripe_provider['payment_provider_private_key'];
 
 // Get client's Stripe customer ID
 $stripe_customer_query = mysqli_query($mysqli, "
@@ -47,20 +59,7 @@ while ($row = mysqli_fetch_assoc($saved_methods_query)) {
     $saved_methods[] = $row;
 }
 
-// Stripe not properly configured
-if (!$stripe_public_key || !$stripe_secret_key) {
-    echo "Stripe payment error - Stripe credentials missing. Please contact support.";
-    include_once 'includes/footer.php';
-    exit();
-}
 ?>
-
-<header class="n45-page-header">
-    <div>
-        <h1>Saved payment methods</h1>
-        <p>Securely manage the payment methods available for automatic billing.</p>
-    </div>
-</header>
 <div class="row n45-payment-layout">
     <div class="col-md-6">
 

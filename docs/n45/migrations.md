@@ -147,3 +147,7 @@ Any environment that experimentally ran an earlier local `2.8.0.php` must be res
 6. Never edit a migration after it has been applied to any environment; add a new migration instead, because the ledger checksum deliberately detects drift.
 
 Feature flags stop optional ingress or processing. They do not undo schema, erase history, bypass deletion cleanup, or make older code compatible with a newer database.
+
+## n45-0030-automation-investigation
+
+Adds isolated investigation jobs, non-payload audit receipts and durable provider rate accounting. No existing data is changed. New installations and upgrades remain disabled until explicit client/provider/model and cron opt-ins. Disable `N45_FEATURE_AUTOMATION_INVESTIGATION` to stop processing; retain the schema for authorized historical reads, retention and permanent-ticket deletion. Reverting schema requires restoring the matching pre-upgrade application/database snapshot. See `automation-investigation.md`.

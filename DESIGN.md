@@ -75,8 +75,8 @@ components:
     rounded: "{rounded.md}"
     padding: "{spacing.md}"
   status-tab:
-    backgroundColor: "{colors.mountain-ink}"
-    textColor: "{colors.surface}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.muted}"
     rounded: "{rounded.lg}"
     padding: "0.28rem 0.55rem"
 ---
@@ -109,7 +109,7 @@ The palette pairs forest neutrals with one dependable action teal; Trail Teal an
 
 ### Secondary
 
-- **Mountain Ink:** Workspace headers, high-emphasis headings, and brand anchoring.
+- **Mountain Ink:** Navigation, high-emphasis headings, and brand anchoring.
 - **Deep Spruce:** Application and portal navigation surfaces.
 
 ### Tertiary
@@ -171,10 +171,25 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 - **Primary:** Action Teal fill with a contrast-safe foreground; one dominant action per region.
 - **Secondary:** White or quiet surface fill with a visible border and muted-strong text.
 - **Hover / Focus:** Short color transitions and a visible three-pixel teal focus ring; reduced-motion preferences remove meaningful transition duration.
+- **Pending:** Preserve the control's hierarchy, pair a compact spinner with action-specific copy, expose `aria-busy`, and prevent repeated activation until navigation or recovery.
+
+### Interaction Feedback
+
+- **Form actions:** High-value create, update, resolve, and destructive forms opt into the shared pending state. The chosen submit action must remain present in the request even after its control is disabled.
+- **AJAX dialogs:** Open an accessible loading shell immediately. Network or server failures remain inside the dialog with specific recovery copy plus Retry and Close actions; never fall back to a native browser alert.
+- **Focus:** Move focus into loaded dialog content, return it to the originating control on close or cancellation, and use the parent menu trigger when the original control becomes hidden.
+- **Recovery:** Abort stale requests, suppress duplicate modal loads and form submissions, and clear stale busy states when a page returns from the back-forward cache.
+
+### Automated Investigations
+
+- **Placement:** Keep analysis inside the existing automation incident card so source state remains the primary record.
+- **Disclosure:** Label model output as read-only and AI-generated, and state explicitly when no remediation was attempted.
+- **Structure:** Present the concise summary first, then a hypothetical cause, uncalibrated model confidence, suggested non-destructive technician checks, and expandable unknowns.
+- **Trust:** Render only escaped structured fields; never present model HTML, credentials, or unverified conclusions as confirmed facts.
 
 ### Status Tabs and Badges
 
-- **Style:** Compact pills within a dark workspace header; selection uses a quiet translucent fill and Trail Teal underline.
+- **Style:** Compact pills within the light workspace header; selection uses a quiet teal-tinted fill and Action Teal underline.
 - **State:** `aria-current="page"` is required for active navigation. Badges communicate state and counts, never decoration.
 
 ### Cards / Containers
@@ -186,7 +201,7 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 
 ### Shared Page Structure
 
-- **Workspace lists:** One compact workspace header holds the page title, state or type tabs, client context, and primary action. Filters live in the quiet band immediately below it; records and pagination follow without a second title bar.
+- **Workspace lists:** One compact light workspace header holds the page title, state or type tabs, client context, and a right-aligned primary action, matching the established Vendors composition. Filters live in the quiet band immediately below it; records and pagination follow without a second title bar.
 - **Detail and summary pages:** Breadcrumbs precede one page lead containing the title, restrained status, supporting text, client context, and actions. Summary metrics or record panels follow in reading order.
 - **Action hierarchy:** Expose one primary action per page region. Import, export, linking, archival, and destructive operations belong in a labeled secondary or split menu.
 - **Reusable PHP:** New or migrated pages use the renderers in `functions/ui.php` for page headers, tabs, actions, context, badges, empty states, and modal headers. Business rules and permission checks stay in the calling page.

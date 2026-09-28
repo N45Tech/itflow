@@ -85,28 +85,59 @@ $sql = mysqli_query($mysqli, "SELECT SQL_CALC_FOUND_ROWS domains.*, clients.*,
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$domain_page_actions = array();
+$domain_primary_action = array(
+    'type' => 'button',
+    'label' => 'New Domain',
+    'icon' => 'fa-plus',
+    'variant' => 'primary',
+    'class' => 'ajax-modal',
+    'attributes' => array('data-modal-url' => 'modals/domain/domain_add.php?' . $client_url),
+);
+if ($num_rows[0] > 0) {
+    $domain_page_actions[] = array(
+        'type' => 'split-menu',
+        'button' => $domain_primary_action,
+        'items' => array(
+            array(
+                'label' => 'Export',
+                'icon' => 'fa-download',
+                'class' => 'ajax-modal',
+                'attributes' => array(
+                    'data-modal-url' => buildExportModalUrl('modals/domain/domain_export.php', array('client_id', 'client', 'expire_days', 'archived', 'q')),
+                ),
+            ),
+        ),
+        'menu_label' => 'More domain actions',
+        'align_end' => true,
+    );
+} else {
+    $domain_page_actions[] = $domain_primary_action;
+}
+
+$domain_has_filters = $q !== '' || $expire_days !== '' || $archived == 1 || (!$client_url && $client !== '');
+$domain_empty_action = $domain_has_filters
+    ? array('label' => 'Clear filters', 'icon' => 'fa-times', 'variant' => 'secondary', 'href' => 'domains.php?' . $client_url)
+    : $domain_primary_action;
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fa fa-fw fa-globe me-2"></i>Domains</h3>
-        <div class="card-tools">
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/domain/domain_add.php?<?= $client_url ?>"><i class="fas fa-plus me-2"></i>New Domain</button>
-                <?php if ($num_rows[0] > 0) { ?>
-                    <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                    <div class="dropdown-menu">
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="<?= buildExportModalUrl('modals/domain/domain_export.php', ['client_id', 'client', 'expire_days', 'archived', 'q']) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                    </div>
-                <?php } ?>
-            </div>
-        </div>
-    </div>
+<section class="card n45-workspace" aria-labelledby="domains-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Domains',
+        'title_id' => 'domains-page-title',
+        'icon' => 'fa-globe',
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+        'actions' => $domain_page_actions,
+    ));
+    ?>
 
-    <div class="card-header py-3">
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
             <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -115,8 +146,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
             <div class="row g-2 align-items-center">
                 <div class="col-md-4">
                     <div class="input-group">
-                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Domains">
-                            <button class="btn btn-dark"><i class="fa fa-search"></i></button>
+                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search domains">
+                            <button class="btn btn-dark" aria-label="Search domains"><i class="fa fa-search" aria-hidden="true"></i></button>
                     </div>
                 </div>
 
@@ -207,14 +238,23 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
             </div>
         </form>
     </div>
-    <div class="table-responsive">
-
-        <form id="bulkActions" action="post.php" method="post">
-            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-            <?php if ($client_url) { ?>
-            <input type="hidden" name="client_id" value="<?= $client_id ?>">
-            <?php } ?>
-            <table class="table table-striped table-borderless table-hover mb-0">
+    <form id="bulkActions" action="post.php" method="post">
+        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+        <?php if ($client_url) { ?>
+        <input type="hidden" name="client_id" value="<?= $client_id ?>">
+        <?php } ?>
+        <?php if ($num_rows[0] == 0) { ?>
+            <?php
+            n45RenderEmptyState(array(
+                'title' => $domain_has_filters ? 'No domains match these filters' : 'No domains yet',
+                'description' => $domain_has_filters ? 'Clear the current filters to return to the domain list.' : 'Add client domains to track ownership, hosting, and renewal dates.',
+                'icon' => 'fa-globe',
+                'action' => $domain_empty_action,
+            ));
+            ?>
+        <?php } else { ?>
+        <div class="table-responsive">
+            <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
                 <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?> text-nowrap">
                 <tr>
                     <td class="checkbox-column border-end">
@@ -394,11 +434,11 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
                 </tbody>
             </table>
-
-        </form>
-    </div>
+        </div>
+        <?php } ?>
+    </form>
     <?php require_once "../includes/filter_footer.php"; ?>
-</div>
+</section>
 
 <script src="../js/bulk_actions.js"></script>
 

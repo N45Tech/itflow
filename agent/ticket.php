@@ -725,14 +725,14 @@ if (isset($_GET['ticket_id'])) {
                             can each have room rather than being crammed onto one.
                         -->
                         <!-- The ticket's name is the page heading, so it comes first -->
-                        <h4 class="ticket-subject mb-1">
+                        <h1 class="ticket-subject mb-1">
                             <?= $ticket_subject ?>
                             <?php if ($can_edit_ticket && !$ticket_is_closed) { ?>
                                 <a href="#" class="btn btn-tool ajax-modal" data-modal-url="modals/ticket/ticket_edit.php?id=<?= $ticket_id ?>" data-modal-size="lg" title="Edit subject and details">
                                     <i class="fas fa-edit"></i>
                                 </a>
                             <?php } ?>
-                        </h4>
+                        </h1>
 
                         <!-- Who it belongs to, where it came from, and anyone else in here right now -->
                         <div class="ticket-meta">
@@ -896,7 +896,7 @@ if (isset($_GET['ticket_id'])) {
                                <?php if ($can_edit_ticket && !$ticket_is_closed) { ?>
                                    data-modal-url="modals/ticket/ticket_status.php?id=<?= $ticket_id ?>"
                                <?php } ?>>
-                                <span class="badge rounded-pill p-2 text-light" style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                                <span <?= n45TicketStatusBadgeAttributes($ticket_status_color) ?>><?= $ticket_status_name ?></span>
                             </a>
                             <?php } ?>
                         </div>
@@ -1450,7 +1450,7 @@ if (isset($_GET['ticket_id'])) {
                 <!-- Reply composer - only while the ticket is still being worked -->
                 <?php if ($can_edit_ticket && $ticket_is_open) { ?>
 
-                    <form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off" id="ticket-update">
+                    <form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off" id="ticket-update" data-itflow-submit>
                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                         <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
 
@@ -1625,7 +1625,7 @@ if (isset($_GET['ticket_id'])) {
 
                                             <div class="col-md-3">
                                                 <div class="d-flex gap-2 mt-3 mt-md-4">
-                                                    <button type="submit" id="ticket_add_reply" name="add_ticket_reply" class="btn btn-success flex-grow-1">
+                                                    <button type="submit" id="ticket_add_reply" name="add_ticket_reply" class="btn btn-success flex-grow-1" data-busy-label="Posting update…">
                                                         <i class="fas fa-fw fa-paper-plane me-2"></i>Send
                                                     </button>
                                                     <button type="button" id="cancelReply" class="btn btn-light" title="Close without replying">
@@ -1949,6 +1949,11 @@ if (isset($_GET['ticket_id'])) {
                                     <?php } ?>
                                 </div>
                             <?php } ?>
+
+                            <?php
+                            defined('N45_TICKET_INVESTIGATION_VIEW') || define('N45_TICKET_INVESTIGATION_VIEW', true);
+                            require __DIR__ . '/includes/ticket_investigation.php';
+                            ?>
 
                             <div class="mt-3 pt-2 border-top">
                                 <a href="operations.php<?= $automation_incident_open ? '#incident-' . intval($automation_incident['automation_incident_id']) : '#recent-activity' ?>">Open in Operations <i class="fas fa-arrow-right ml-1"></i></a>

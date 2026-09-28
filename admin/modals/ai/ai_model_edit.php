@@ -63,7 +63,9 @@ ob_start();
                     <option <?php if ($use_case == 'General') { echo "selected"; } ?>>General</option>
                     <option <?php if ($use_case == 'Tickets') { echo "selected"; } ?>>Tickets</option>
                     <option <?php if ($use_case == 'Documentation') { echo "selected"; } ?>>Documentation</option>
+                    <option <?php if ($use_case == 'Automation Investigation') { echo "selected"; } ?>>Automation Investigation</option>
                 </select>
+                <small id="investigation-use-case-note" class="form-text text-muted">Automation Investigation requires a separate deployment opt-in, approved client IDs and provider host. It uses a fixed read-only prompt, not the custom prompt below.</small>
             </div>
         </div>
 
