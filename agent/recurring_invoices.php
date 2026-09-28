@@ -117,13 +117,11 @@ if (lookupUserPermission("module_sales") >= 2) {
 $recurring_invoice_tabs = array(
     array(
         'label' => 'Active',
-        'icon' => 'fa-check',
         'href' => '?' . $client_url . 'status=active',
         'active' => $status_filter === 'active',
     ),
     array(
         'label' => 'Inactive',
-        'icon' => 'fa-ban',
         'href' => '?' . $client_url . 'status=inactive',
         'active' => $status_filter === 'inactive',
     ),
