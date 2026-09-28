@@ -63,6 +63,15 @@ if (!$is_draft) {
         exit;
     }
 }
+$ticket_rule_version = null;
+$ticket_rule_error = false;
+try {
+    // Use the same selection and integrity checks as ticket SLA decisions.
+    $ticket_rule_version = agreementGetActiveVersionForClient($client_id);
+} catch (Throwable $e) {
+    error_log("Could not resolve current ticket agreement for client $client_id: " . $e->getMessage());
+    $ticket_rule_error = true;
+}
 $entitlements = mysqli_query($mysqli, "SELECT * FROM agreement_entitlements
     WHERE agreement_entitlement_version_id = $version_id
     ORDER BY agreement_entitlement_scope_type, agreement_entitlement_scope_label,
@@ -106,6 +115,32 @@ $default_period_start = agreementShiftCalendarMonths(
             </form>
         <?php } ?>
     </div>
+</div>
+
+<div class="alert alert-info" role="note">
+    This page records ITFlow's operational service rules, not client acceptance of a commercial agreement.
+    Published rules affect ticket coverage, billable flags, and SLAs during their effective dates.
+    Verify the approved customer agreement and its scope in the separate source of record.
+</div>
+
+<div class="alert <?= $ticket_rule_error ? 'alert-danger' : 'alert-light' ?>" data-current-ticket-rules role="status">
+    <?php if ($ticket_rule_error) { ?>
+        <strong>Current ticket rules could not be verified.</strong> Ask an administrator to investigate the published definitions before relying on them.
+    <?php } elseif (!$ticket_rule_version) { ?>
+        <strong>No published agreement currently applies to new ticket decisions for this client.</strong> Check publication status and effective dates.
+    <?php } else {
+        $selected_contract_id = intval($ticket_rule_version['agreement_version_contract_id']);
+        $selected_version_id = intval($ticket_rule_version['agreement_version_id']); ?>
+        <strong>New ticket decisions currently use</strong>
+        <a href="agreement.php?agreement_id=<?= $selected_contract_id ?>&version_id=<?= $selected_version_id ?>"><?= escapeHtml($ticket_rule_version['contract_name']) ?> v<?= intval($ticket_rule_version['agreement_version_number']) ?></a>.
+        <?php if ($selected_contract_id !== $agreement_id) { ?>
+            This agreement is not selected for the client's ticket rules.
+        <?php } elseif ($selected_version_id !== $version_id) { ?>
+            The version displayed here is not the selected version.
+        <?php } else { ?>
+            This is the selected published version.
+        <?php } ?>
+    <?php } ?>
 </div>
 
 <div class="card card-dark">
@@ -331,11 +366,12 @@ $default_period_start = agreementShiftCalendarMonths(
 <?php if ($can_edit) { ?>
     <div class="card border-success">
         <div class="card-body d-flex justify-content-between align-items-center">
-            <div><strong>Ready to activate?</strong><div class="text-muted">Publishing locks this definition and supersedes the previous published version.</div></div>
+            <div class="mr-3"><strong>Publish operational rules</strong><div class="text-muted">Compare coverage and SLA terms with the approved customer agreement first. Publication changes ticket decisions, locks this version, and supersedes the previous version of this agreement. ITFlow does not verify a signature or client acceptance.</div></div>
             <form action="post.php" method="post" class="form-inline">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="version_id" value="<?= $version_id ?>">
-                <input class="form-control mr-2" name="reason" required maxlength="255" placeholder="Publication reason">
+                <label for="agreement-publication-reason" class="mr-2">Reason / source reference</label>
+                <input id="agreement-publication-reason" class="form-control mr-2" name="reason" required maxlength="255" placeholder="Approved scope reference">
                 <button class="btn btn-success confirm-link" name="publish_agreement_version"><i class="fas fa-lock mr-2"></i>Publish v<?= intval($version['agreement_version_number']) ?></button>
             </form>
         </div>

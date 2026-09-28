@@ -278,6 +278,12 @@ $assertContains('data-modal-url="modal.php?q=&quot;bad&quot;"', $rendered, 'Shar
 $assertNotContains('onclick=', $rendered, 'Shared actions allow arbitrary event attributes');
 $assertNotContains('onclick=bad', $rendered, 'Shared action classes allow attribute injection');
 
+$assertContains('color: #000000', n45TicketStatusBadgeAttributes('#ffffff'), 'Pale ticket status badges are unreadable');
+$assertContains('color: #ffffff', n45TicketStatusBadgeAttributes('#123431'), 'Dark ticket status badges lost contrast');
+$invalid_status = n45TicketStatusBadgeAttributes('red; background-image: url(https://example.invalid)');
+$assertContains('text-bg-secondary', $invalid_status, 'Invalid saved status colors do not fall back to a readable badge');
+$assertNotContains('background-image', $invalid_status, 'Saved status colors allow CSS injection');
+
 if ($failures) {
     fwrite(STDERR, "Shared page structure test failed:\n- " . implode("\n- ", $failures) . "\n");
     exit(1);

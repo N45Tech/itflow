@@ -4434,6 +4434,10 @@ label,
     text-align: left;
 }
 
+.n45-table-scroll > .n45-table-empty {
+    padding: var(--n45-portal-space-4);
+}
+
 .n45-table-empty > i {
     color: var(--n45-portal-action);
     font-size: 1.5rem;

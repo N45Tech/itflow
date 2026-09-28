@@ -725,14 +725,14 @@ if (isset($_GET['ticket_id'])) {
                             can each have room rather than being crammed onto one.
                         -->
                         <!-- The ticket's name is the page heading, so it comes first -->
-                        <h4 class="ticket-subject mb-1">
+                        <h1 class="ticket-subject mb-1">
                             <?= $ticket_subject ?>
                             <?php if ($can_edit_ticket && !$ticket_is_closed) { ?>
                                 <a href="#" class="btn btn-tool ajax-modal" data-modal-url="modals/ticket/ticket_edit.php?id=<?= $ticket_id ?>" data-modal-size="lg" title="Edit subject and details">
                                     <i class="fas fa-edit"></i>
                                 </a>
                             <?php } ?>
-                        </h4>
+                        </h1>
 
                         <!-- Who it belongs to, where it came from, and anyone else in here right now -->
                         <div class="ticket-meta">
@@ -896,7 +896,7 @@ if (isset($_GET['ticket_id'])) {
                                <?php if ($can_edit_ticket && !$ticket_is_closed) { ?>
                                    data-modal-url="modals/ticket/ticket_status.php?id=<?= $ticket_id ?>"
                                <?php } ?>>
-                                <span class="badge rounded-pill p-2 text-light" style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                                <span <?= n45TicketStatusBadgeAttributes($ticket_status_color) ?>><?= $ticket_status_name ?></span>
                             </a>
                             <?php } ?>
                         </div>
