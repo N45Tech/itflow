@@ -2,6 +2,9 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_sales', 3);
+enforceUserPermission('module_financial', 3);
+
 // Income rows are a UNION of payments and revenues, so each checkbox carries a composite
 // reference ("Payment-12" / "Revenue-7"). Whitelist the shape before echoing it back.
 $income_ids = preg_grep('/^(Payment|Revenue)-[1-9][0-9]*$/', array_filter((array) ($_GET['income_ids'] ?? []), 'is_string'));
