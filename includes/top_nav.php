@@ -14,7 +14,8 @@
         <div class="navbar-search-field">
             <input class="form-control" type="search" id="navbar-search-input" name="query"
                 placeholder="Search clients, tickets, and assets" autocomplete="off"
-                value="<?php if (isset($_GET['query'])) { echo escapeHtml($_GET['query']); } ?>">
+                minlength="2" maxlength="200" required
+                value="<?php if (isset($_GET['query']) && is_scalar($_GET['query'])) { echo escapeHtml((string) $_GET['query']); } ?>">
             <button class="navbar-search-submit" type="submit" aria-label="Submit search">
                 <i class="fas fa-search" aria-hidden="true"></i>
             </button>
@@ -71,7 +72,7 @@
         </li>
 
         <li class="nav-item dropdown user-menu">
-            <a href="#" class="nav-link" data-bs-toggle="dropdown" aria-label="Open account menu" title="Account">
+            <a href="#" class="nav-link" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="Open account menu" title="Account">
                 <?php if (empty($session_avatar)) { ?>
                 <i class="fas fa-user-circle me-1"></i>
                 <?php }else{ ?>
@@ -93,6 +94,13 @@
                         <?= stripslashes(escapeHtml($session_name)) ?>
                         <small><?= escapeHtml($session_user_role_display) ?></small>
                     </p>
+                </li>
+                <li class="n45-profile-density">
+                    <span class="n45-profile-density-label" id="n45-sidebar-density-label">Sidebar spacing</span>
+                    <div class="n45-density-options" role="group" aria-labelledby="n45-sidebar-density-label">
+                        <button class="n45-density-option" type="button" data-n45-sidebar-density-option="compact" aria-pressed="true">Compact</button>
+                        <button class="n45-density-option" type="button" data-n45-sidebar-density-option="comfortable" aria-pressed="false">Comfortable</button>
+                    </div>
                 </li>
                 <!-- Menu Footer-->
                 <li class="user-footer bg-light">

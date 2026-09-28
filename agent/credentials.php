@@ -98,38 +98,69 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$credential_action_items = array();
+if ($client_url) {
+    $credential_action_items[] = array(
+        'label' => 'Import',
+        'icon' => 'fa-upload',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/credential/credential_import.php?' . $client_url),
+    );
+}
+if ($client_url && $num_rows[0] > 0) {
+    $credential_action_items[] = array('type' => 'separator');
+}
+if ($num_rows[0] > 0) {
+    $credential_action_items[] = array(
+        'label' => 'Export',
+        'icon' => 'fa-download',
+        'class' => 'ajax-modal',
+        'attributes' => array(
+            'data-modal-url' => buildExportModalUrl('modals/credential/credential_export.php', array('client_id', 'client', 'tags', 'archived', 'q')),
+        ),
+    );
+}
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fa fa-fw fa-key me-2"></i>Credentials</h3>
-        <div class="card-tools">
-            <?php if (lookupUserPermission("module_credential") >= 2) { ?>
-                <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/credential/credential_add.php?<?= $client_url ?>" <?php if (!isset($_COOKIE['user_encryption_session_key'])) { echo "disabled"; } ?>>
-                    <i class="fas fa-plus me-2"></i>New Credential
-                </button>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                <div class="dropdown-menu">
-                    <?php if ($client_url) { ?>
-                    <a class="dropdown-item text-dark ajax-modal" href="#"
-                        data-modal-url="modals/credential/credential_import.php?<?= $client_url ?>">
-                        <i class="fa fa-fw fa-upload me-2"></i>Import
-                    </a>
-                    <div class="dropdown-divider"></div>
-                    <?php } ?>
-                    <?php if ($num_rows[0] > 0) { ?>
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="<?= buildExportModalUrl('modals/credential/credential_export.php', ['client_id', 'client', 'tags', 'archived', 'q']) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                    <?php } ?>
-                </div>
-            </div>
-            <?php } ?>
-        </div>
-    </div>
-    <div class="card-header py-3">
+<section class="card n45-workspace" aria-labelledby="credentials-page-title">
+    <?php
+    $credential_page_actions = array();
+    if (lookupUserPermission("module_credential") >= 2) {
+        $credential_primary_action = array(
+            'type' => 'button',
+            'label' => 'New Credential',
+            'icon' => 'fa-plus',
+            'variant' => 'primary',
+            'class' => 'ajax-modal',
+            'attributes' => array(
+                'data-modal-url' => 'modals/credential/credential_add.php?' . $client_url,
+                'disabled' => !isset($_COOKIE['user_encryption_session_key']),
+            ),
+        );
+        $credential_page_actions[] = $credential_action_items
+            ? array(
+                'type' => 'split-menu',
+                'button' => $credential_primary_action,
+                'items' => $credential_action_items,
+                'menu_label' => 'More credential actions',
+                'align_end' => true,
+            )
+            : $credential_primary_action;
+    }
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Credentials',
+        'title_id' => 'credentials-page-title',
+        'icon' => 'fa-key',
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+        'actions' => $credential_page_actions,
+    ));
+    ?>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
             <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -275,7 +306,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
         <div class="table-responsive">
-            <table class="table table-striped table-borderless table-hover mb-0">
+            <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
                 <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?> text-nowrap">
                     <tr>
                         <td class="checkbox-column border-end">
@@ -533,7 +564,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         </div>
     </form>
     <?php require_once "../includes/filter_footer.php"; ?>
-</div>
+</section>
 
 <!-- Include script to get TOTP code via the login ID -->
 <script src="js/credential_show_otp_via_id.js"></script>

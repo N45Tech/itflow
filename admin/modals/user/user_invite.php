@@ -6,7 +6,7 @@ ob_start();
 
 ?>
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fas fa-fw fa-user-plus"></i>Invite User</h5>
+    <h5 class="modal-title"><i class="fas fa-fw fa-user-plus me-2"></i>Invite User</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <form action="post.php" method="post" enctype="multipart/form-data" autocomplete="off">

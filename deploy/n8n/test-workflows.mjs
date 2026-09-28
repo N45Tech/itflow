@@ -47,55 +47,82 @@ function code(workflowName, nodeName, input, vars = {}) {
 const broker = 'N45 - ITFlow Operations Event Broker';
 const down = code(broker, 'Normalize Event', {
   body: {
-    monitor: { id: 42, name: 'Acme Dental :: Main Office :: Internet', hostname: 'edge-01', url: 'https://example.net/status' },
-    heartbeat: { status: 0, time: '2026-08-25T10:00:00Z' },
+    monitor_id: '0123456789abcdef0123456789abcdef',
+    monitor_name: 'Acme Dental :: Main Office :: Internet',
+    monitor_target: 'https://example.net/status',
+    monitor_type: 'website',
+    monitor_category: 'Customer edge',
+    monitor_status: 'offline',
+    timestamp: 1787652000,
+    monitor_errors: { 'New York': 'timeout', London: 'http code 503' },
   },
 });
-assert.equal(down[0].json.source, 'uptime_kuma');
+assert.equal(down[0].json.source, 'hetrix');
 assert.equal(down[0].json.state, 'open');
+assert.equal(down[0].json.severity, 'high');
+assert.equal(down[0].json.occurred_at, '2026-08-25T10:00:00.000Z');
 assert.equal(down[0].json.identity.client.name, 'Acme Dental');
 assert.equal(down[0].json.identity.location.name, 'Main Office');
 assert.equal(down[0].json.identity.external_name, 'Internet');
+assert.equal(down[0].json.identity.external_id, '0123456789abcdef0123456789abcdef');
+assert.equal(down[0].json.identity.metadata.monitor_type, 'website');
+assert.equal(down[0].json.identity.metadata.monitor_category, 'Customer edge');
+assert.match(down[0].json.description, /New York: timeout/);
+assert.match(down[0].json.description, /London: http code 503/);
 assert.equal(down[0].json.identity.options.create_client, false);
 assert.equal(down[0].json.identity.options.create_location, false);
 assert.equal(down[0].json.identity.options.create_asset, false);
 assert.equal(down[0].json.request_type_key, 'monitoring-alert');
 assert.equal(down[0].json.contact_mode, 'none');
 
-const uptimeWithLocalOffset = code(broker, 'Normalize Event', {
+const routedHetrix = code(broker, 'Normalize Event', {
   body: {
-    monitor: { id: 5, name: 'N45 Technologies :: Infrastructure :: PSA', url: 'https://psa.n45tech.com' },
-    heartbeat: {
-      status: 0,
-      time: '2026-09-05 22:16:50.407',
-      localDateTime: '2026-09-05 18:16:50',
-      timezoneOffset: '-04:00',
-      msg: '[PSA] [Down] connect ECONNREFUSED',
-    },
+    monitor_id: 'fedcba9876543210fedcba9876543210',
+    monitor_name: 'N45 Technologies :: Infrastructure :: PSA',
+    monitor_target: 'https://psa.n45tech.com',
+    monitor_type: 'website',
+    monitor_category: 'Core',
+    monitor_status: 'offline',
+    timestamp: 1788646610,
+    monitor_errors: { Dallas: 'connection refused' },
   },
 }, {
   N45_EVENT_ROUTING_JSON: JSON.stringify({
-    uptime_kuma: { assigned_to: 7, category_id: 12, contact_id: 19, request_type_key: 'Infrastructure Alert', contact_mode: 'none' },
+    hetrix: { assigned_to: 7, category_id: 12, contact_id: 19, request_type_key: 'Infrastructure Alert', contact_mode: 'none' },
   }),
 });
-assert.equal(uptimeWithLocalOffset[0].json.occurred_at, '2026-09-05T22:16:50.000Z');
-assert.equal(uptimeWithLocalOffset[0].json.title, 'Monitoring alert: PSA');
-assert.match(uptimeWithLocalOffset[0].json.description, /^PSA \(psa\.n45tech\.com\) is unavailable\./);
-assert.doesNotMatch(uptimeWithLocalOffset[0].json.description, /^\[/);
-assert.equal(uptimeWithLocalOffset[0].json.assigned_to, 7);
-assert.equal(uptimeWithLocalOffset[0].json.category_id, 12);
-assert.equal(uptimeWithLocalOffset[0].json.contact_id, 19);
-assert.equal(uptimeWithLocalOffset[0].json.request_type_key, 'infrastructure-alert');
+assert.equal(routedHetrix[0].json.occurred_at, '2026-09-05T22:16:50.000Z');
+assert.equal(routedHetrix[0].json.title, 'Monitoring alert: PSA');
+assert.match(routedHetrix[0].json.description, /^PSA \(psa\.n45tech\.com\) is unavailable\./);
+assert.equal(routedHetrix[0].json.assigned_to, 7);
+assert.equal(routedHetrix[0].json.category_id, 12);
+assert.equal(routedHetrix[0].json.contact_id, 19);
+assert.equal(routedHetrix[0].json.request_type_key, 'infrastructure-alert');
 
 const recovered = code(broker, 'Normalize Event', {
   body: {
-    monitor: { name: 'Acme Dental :: Main Office :: Internet' },
-    heartbeat: { monitorID: 42, status: 1, time: '2026-08-25T10:05:00Z' },
+    monitor_id: '0123456789abcdef0123456789abcdef',
+    monitor_name: 'Acme Dental :: Main Office :: Internet',
+    monitor_target: 'https://example.net/status',
+    monitor_type: 'website',
+    monitor_category: 'Customer edge',
+    monitor_status: 'online',
+    timestamp: 1787652300,
   },
 });
 assert.equal(recovered[0].json.state, 'resolved');
-assert.equal(recovered[0].json.identity.external_id, '42');
+assert.equal(recovered[0].json.identity.external_id, '0123456789abcdef0123456789abcdef');
 assert.equal(recovered[0].json.incident_key, down[0].json.incident_key);
+
+assert.throws(() => code(broker, 'Normalize Event', {
+  body: {
+    source: 'uptime_kuma',
+    event_id: 'retired-source-event',
+    incident_key: 'uptime_kuma:retired-monitor',
+    state: 'open',
+    identity: { external_id: 'retired-monitor' },
+  },
+}), /event source has been retired/);
 
 const canonical = {
   source: 'backup', event_id: 'backup-1', incident_key: 'backup:example-host',
@@ -122,6 +149,11 @@ assert.equal(sanitizedCanonical.metadata.useful, 'retained');
 assert.equal(sanitizedCanonical.identity.metadata.device_id, 'device-1');
 
 const brokerWorkflow = workflows.get(broker);
+const hetrixWebhook = brokerWorkflow.nodes.find((entry) => entry.name === 'Hetrix Webhook');
+assert(hetrixWebhook, 'The broker does not expose a dedicated Hetrix webhook');
+assert.equal(hetrixWebhook.parameters.path, 'n45-hetrix-events');
+assert.equal(hetrixWebhook.parameters.authentication, 'headerAuth');
+assert.equal(hetrixWebhook.credentials.httpHeaderAuth.name, 'N45 Hetrix Webhook');
 assert(brokerWorkflow.nodes.some((entry) => entry.name === 'Queue Event' && entry.type === 'n8n-nodes-base.dataTable'));
 const queueNode = brokerWorkflow.nodes.find((entry) => entry.name === 'Queue Event');
 assert.deepEqual(queueNode.parameters.filters.conditions.map((condition) => condition.keyName), ['source', 'event_id']);
