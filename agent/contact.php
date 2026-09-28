@@ -903,7 +903,7 @@ if (isset($_GET['contact_id'])) {
                                     <td><a href="ticket.php?client_id=<?= $client_id ?>&ticket_id=<?= $ticket_id ?>"><span class="badge rounded-pill bg-secondary p-3"><?= "$ticket_prefix$ticket_number" ?></span></a></td>
                                     <td><a href="ticket.php?client_id=<?= $client_id ?>&ticket_id=<?= $ticket_id ?>"><?= $ticket_subject ?></a></td>
                                     <td><?= $ticket_priority_display ?></td>
-                                    <td><span class='badge rounded-pill text-light p-2' style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span></td>
+                                    <td><span <?= n45TicketStatusBadgeAttributes($ticket_status_color) ?>><?= $ticket_status_name ?></span></td>
                                     <td><?= $ticket_assigned_to_display ?></td>
                                     <td><?= $ticket_updated_at_display ?></td>
                                     <td><?= $ticket_created_at ?></td>

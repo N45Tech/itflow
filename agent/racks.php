@@ -25,16 +25,30 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
 ?>
 
-<div class="card card-dark">
-    <div class="card-header py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-fw fa-server me-2"></i>Network Racks</h3>
-        <div class="card-tools">
-            <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/rack/rack_add.php?client_id=<?= $client_id ?>">
-                <i class="fas fa-plus me-2"></i>New Rack
-            </button>
-        </div>
-    </div>
-    <div class="card-body">
+<section class="card n45-workspace" aria-labelledby="racks-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Network Racks',
+        'title_id' => 'racks-page-title',
+        'icon' => 'fa-server',
+        'context' => array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ),
+        'actions' => array(
+            array(
+                'type' => 'button',
+                'label' => 'New Rack',
+                'icon' => 'fa-plus',
+                'variant' => 'primary',
+                'class' => 'ajax-modal',
+                'attributes' => array('data-modal-url' => 'modals/rack/rack_add.php?client_id=' . $client_id),
+            ),
+        ),
+    ));
+    ?>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <input type="hidden" name="client_id" value="<?= $client_id ?>">
             <input type="hidden" name="archived" value="<?= $archived ?>">
@@ -58,7 +72,17 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
             </div>
         </form>
-        <hr>
+    </div>
+
+    <div class="card-body">
+
+        <?php if (!$num_rows[0]) {
+            n45RenderEmptyState(array(
+                'icon' => 'fa-server',
+                'title' => 'No network racks yet.',
+                'description' => 'Racks added for this client will show up here.',
+            ));
+        } ?>
 
         <div class="row">
 
@@ -88,7 +112,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 ?>
                 <div class="col-md-6">
 
-                    <div class="card card-dark">
+                    <div class="card n45-panel">
                         <div class="card-header">
                             <h3 class="card-title"><i class="fas fa-fw fa-server me-2"></i><?= "$rack_name - $rack_units" ?>U</h3>
 
@@ -339,7 +363,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
     </div>
 
-</div>
+</section>
 
 <?php
 require_once "../includes/footer.php";

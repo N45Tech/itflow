@@ -16,13 +16,26 @@ foreach (['module_support','module_client'] as $module) {
 }
 $sessions=[];$users=[];$session_dir=sys_get_temp_dir().'/assistance-sessions-'.bin2hex(random_bytes(8));mkdir($session_dir,0700);
 ini_set('session.save_path',$session_dir);
-foreach (['Morgan Chen','Alex Rivera'] as $name) {
+foreach (['Morgan Chen','Alex Rivera','Jordan Lee'] as $name) {
     fieldDb('INSERT INTO users SET user_name = '.fieldSql($name).", user_email = 'fixture@example.invalid', user_password = 'fixture', user_role_id = $role");$user=$id();$users[]=$user;
     if(count($users)===2){fieldDb("UPDATE users SET user_role_id = $technician_role WHERE user_id = $user");}
-    fieldDb("INSERT INTO user_settings SET user_id = $user, user_config_theme_dark = " . (count($users) === 2 ? 1 : 0));
+    fieldDb("INSERT INTO user_settings SET user_id = $user, user_config_theme_dark = " . (count($users) !== 1 ? 1 : 0));
     session_id('assistance-'.bin2hex(random_bytes(16)));session_start();$_SESSION=['logged'=>true,'user_id'=>$user,'csrf_token'=>'assistance-fixture-csrf'];$sessions[]=session_id();session_write_close();
 }
+fieldDb("INSERT INTO logs SET log_type = 'Login', log_action = 'Login', log_description = 'Fixture login',
+    log_user_id = {$users[1]}, log_ip = '127.0.0.1', log_user_agent = 'N45 fixture browser',
+    log_created_at = '2026-09-25 11:00:00'");
+fieldDb("INSERT INTO remember_tokens SET remember_token_user_id = {$users[1]},
+    remember_token_token = 'fixture-remember-token'");
 fieldDb("INSERT INTO clients SET client_name = 'Example Branch Services', client_currency_code = 'USD', client_net_terms = 30");$client=$id();
+fieldDb("INSERT INTO users SET user_name = 'Sam Patel', user_email = 'portal-fixture@example.invalid', user_password = 'fixture', user_type = 2, user_status = 1");$portal_user=$id();
+fieldDb("INSERT INTO contacts SET contact_name = 'Sam Patel', contact_email = 'portal-fixture@example.invalid', contact_client_id = $client,
+    contact_user_id = $portal_user, contact_primary = 1, contact_technical = 1, contact_billing = 1,
+    contact_portal_ticket_scope = 'client', contact_portal_asset_scope = 'client'");$portal_contact=$id();
+session_id('assistance-'.bin2hex(random_bytes(16)));session_start();
+$_SESSION=['client_logged_in'=>true,'logged'=>true,'client_id'=>$client,'contact_id'=>$portal_contact,
+    'user_id'=>$portal_user,'user_type'=>2,'login_method'=>'local','csrf_token'=>'assistance-fixture-csrf'];
+$portal_session=session_id();session_write_close();
 fieldDb("INSERT INTO tickets SET ticket_prefix = 'N45-', ticket_number = 1042, ticket_subject = 'Restore branch DNS resolution',
     ticket_details = 'DNS queries time out at the branch. Check the resolver settings and validate the service from a workstation.',
     ticket_priority = 'High', ticket_status = 2, ticket_client_id = $client, ticket_created_by = {$users[0]}, ticket_assigned_to = {$users[0]},
@@ -58,6 +71,13 @@ try {
     $assert($request('/agent/followups.php')['status']===302,'Legacy follow-up link did not redirect');
     $assert($request('/agent/tickets.php?queue=followups&client_id='.$client)['status']===200,'Tickets follow-up filter failed');
     $assert($request('/agent/ticket.php?ticket_id='.$ticket)['status']===200,'Ticket page failed');
+    $directory=$request('/admin/users.php');
+    $assert($directory['status']===200,'Authenticated admin Users page failed');
+    $assert(str_contains($directory['body'],'id="users-page-title"')&&str_contains($directory['body'],'Alex Rivera'),'Users workspace or page-bounded query failed');
+    $assert(str_contains($directory['body'],'2026-09-25 11:00:00')&&str_contains($directory['body'],'Revoke 1 Remember Tokens'),'Batched login or remember-token details were missing');
+    $assert(str_contains($directory['body'],'MFA not enrolled'),'Users MFA status has no accessible text');
+    $empty_users=$request('/admin/users.php?q=n45-fixture-no-match');
+    $assert($empty_users['status']===200&&substr_count($empty_users['body'],'class="n45-empty-state')===1,'Filtered Users page emitted duplicate or missing empty state');
     $q=$request('/agent/field/api.php?action=followups&scope=all&client_id='.$client);
     $assert(count($q['data']['data']['items'])===2,'HTTP queue lost canonical sources');
     $assert(str_contains(implode(' ',$q['headers']),'no-store'),'Queue data was cacheable');
@@ -85,10 +105,35 @@ try {
     $assert(str_contains($http_response_header[0],'409')&&str_contains($body,'retained'),'Client API deletion bypassed knowledge retention: '.$body);
     fieldDb("UPDATE clients SET client_archived_at = NULL WHERE client_id = $client");fieldDb("DELETE FROM api_keys WHERE api_key_id = $api_key");
     if (getenv('N45_ASSISTANCE_BROWSER') === '1') {
+        require_once dirname(__DIR__) . '/functions/agreement_setup.php';
+        $agreement_input = [
+            'setup_version' => '1', 'type' => 'Fully Managed', 'effective_until' => '',
+            'review_cadence_months' => '3', 'renewal_notice_days' => '90',
+            'calendar' => ['mode' => '24x7', 'timezone' => 'America/New_York'],
+            'coverage' => array_fill_keys(array_keys(agreementSetupScopes()), ['classification' => 'included', 'limit' => '']),
+            'sla' => array_fill_keys(array_keys(ticketPriorityDefinitions()), ['profile_id' => '0']),
+        ];
+        $baseline = agreementCreateFromSetup($agreement_input + [
+            'name' => 'Baseline Support', 'effective_from' => date('Y-m-d', strtotime('-20 days')),
+        ], $client, $users[0]);
+        agreementPublishVersion($baseline['version_id'], $users[0], 'Disposable browser fixture');
+        $overlay = agreementCreateFromSetup($agreement_input + [
+            'name' => 'Project Overlay', 'effective_from' => date('Y-m-d', strtotime('-1 day')),
+        ], $client, $users[0]);
+        agreementPublishVersion($overlay['version_id'], $users[0], 'Disposable browser fixture');
+        $selected = agreementGetActiveVersionForClient($client);
+        $assert(intval($selected['agreement_version_id'] ?? 0) === $overlay['version_id'],
+            'The fixture did not select the newer effective agreement for ticket rules');
         $fixture=tempnam(sys_get_temp_dir(),'assistance-browser-');
-        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'ticket'=>$ticket,'solved'=>$solved,'response'=>$response_id,'client'=>$client,'doc'=>$doc]));
-        $command=['node',__DIR__.'/field/assistance.cjs',$fixture];$browser=proc_open($command,[0=>['pipe','r'],1=>STDOUT,2=>STDERR],$browser_pipes,dirname(__DIR__));fclose($browser_pipes[0]);
-        $assert(proc_close($browser)===0,'Service assistance browser checks failed');unlink($fixture);
+        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'portal_session'=>$portal_session,'ticket'=>$ticket,'solved'=>$solved,'response'=>$response_id,'client'=>$client,'doc'=>$doc,
+            'agreements' => ['baseline' => $baseline['contract_id'], 'overlay' => $overlay['contract_id']]]));
+        try {
+            foreach (['assistance.cjs','route-smoke.cjs'] as $script) {
+                $command=['node',__DIR__.'/field/'.$script,$fixture];
+                $browser=proc_open($command,[0=>['pipe','r'],1=>STDOUT,2=>STDERR],$browser_pipes,dirname(__DIR__));fclose($browser_pipes[0]);
+                $assert(proc_close($browser)===0,'Browser checks failed: '.$script);
+            }
+        } finally { unlink($fixture); }
     }
     $logtext=file_get_contents($log);$assert(!preg_match('/PHP (Warning|Fatal error):/',$logtext),'HTTP emitted a PHP warning: '.$logtext);
     echo "Ticket workflow HTTP: admin-only response creation, technician insertion, retired knowledge gates, follow-up filter, CSRF, no-store and legacy retention passed.\n";

@@ -1526,5 +1526,8 @@ if (settingsColumnExists($mysqli, 'config_update_latest_commit')) {
  * ###############################################################################################################
  */
 
+// Payload retention runs even when investigation processing is disabled.
+investigationRetention();
+
 // Logging
 logApp("Cron", "info", "Cron executed successfully");

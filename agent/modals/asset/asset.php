@@ -671,7 +671,7 @@ ob_start();
                             <td><a href="ticket.php?client_id=<?= $client_id ?>&ticket_id=<?= $ticket_id ?>"><?= $ticket_subject ?></a></td>
                             <td><?= $ticket_priority_display ?></td>
                             <td>
-                                <span class='badge rounded-pill text-light p-2' style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                                <span <?= n45TicketStatusBadgeAttributes($ticket_status_color) ?>><?= $ticket_status_name ?></span>
                             </td>
                             <td><?= $ticket_assigned_to_display ?></td>
                             <td><?= $ticket_updated_at_display ?></td>

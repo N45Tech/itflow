@@ -1,5 +1,6 @@
 <?php
 
+$client_header_is_page_title = true;
 require_once "includes/inc_all_client.php";
 
 $sql_recent_activities = mysqli_query(

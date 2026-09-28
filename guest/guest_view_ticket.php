@@ -113,11 +113,11 @@ if ($ticket_row) {
         <div class="col-4">
             <div class="row">
                 <div class="col">
-                    <a href="guest_post.php?reopen_ticket&ticket_id=<?= $ticket_id ?>&url_key=<?= $url_key ?>" class="btn btn-secondary btn-lg"><i class="fas fa-fw fa-redo text-white"></i> Reopen ticket</a>
+                    <a href="guest_post.php?reopen_ticket&ticket_id=<?= $ticket_id ?>&url_key=<?= $url_key ?>" class="btn btn-secondary btn-lg"><i class="fas fa-fw fa-redo text-white me-2"></i>Reopen ticket</a>
                 </div>
 
                 <div class="col">
-                    <a href="guest_post.php?close_ticket=&ticket_id=<?= $ticket_id ?>&url_key=<?= $url_key ?>" class="btn btn-success btn-lg"><i class="fas fa-fw fa-gavel text-white"></i> Close ticket</a>
+                    <a href="guest_post.php?close_ticket=&ticket_id=<?= $ticket_id ?>&url_key=<?= $url_key ?>" class="btn btn-success btn-lg"><i class="fas fa-fw fa-gavel text-white me-2"></i>Close ticket</a>
                 </div>
             </div>
         </div>
@@ -130,11 +130,11 @@ if ($ticket_row) {
         <div class="col-4">
             <div class="row">
                 <div class="col">
-                    <a href="guest_post.php?add_ticket_feedback&ticket_id=<?= $ticket_id ?>&url_key=<?= $url_key ?>&feedback=Good" class="btn btn-success btn-lg"><i class="fas fa-fw fa-smile text-white"></i> Good</a>
+                    <a href="guest_post.php?add_ticket_feedback&ticket_id=<?= $ticket_id ?>&url_key=<?= $url_key ?>&feedback=Good" class="btn btn-success btn-lg"><i class="fas fa-fw fa-smile text-white me-2"></i>Good</a>
                 </div>
 
                 <div class="col">
-                    <a href="guest_post.php?add_ticket_feedback&ticket_id=<?= $ticket_id ?>&url_key=<?= $url_key ?>&feedback=Bad" class="btn btn-danger btn-lg"><i class="fas fa-fw fa-frown text-white"></i> Bad</a>
+                    <a href="guest_post.php?add_ticket_feedback&ticket_id=<?= $ticket_id ?>&url_key=<?= $url_key ?>&feedback=Bad" class="btn btn-danger btn-lg"><i class="fas fa-fw fa-frown text-white me-2"></i>Bad</a>
                 </div>
             </div>
         </div>

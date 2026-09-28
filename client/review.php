@@ -52,7 +52,7 @@ $period_end = date('M j, Y', strtotime($review['service_review_period_end']));
 
 <header class="n45-page-header n45-review-page-header">
     <div>
-        <a class="n45-portal-back-link" href="reviews.php"><i class="fas fa-chevron-left" aria-hidden="true"></i>Business reviews</a>
+        <a class="n45-portal-back-link" href="reviews.php"><i class="fas fa-chevron-left me-2" aria-hidden="true"></i>Business reviews</a>
         <h1><?= escapeHtml($period_start) ?> through <?= escapeHtml($period_end) ?></h1>
         <p>Completed <?= portalDateTime($review['service_review_published_at']) ?></p>
     </div>
@@ -116,7 +116,7 @@ $period_end = date('M j, Y', strtotime($review['service_review_period_end']));
                     <textarea class="form-control" id="reviewComment" name="comment" rows="3" maxlength="255" required placeholder="Question, context, or follow-up for the N45 team"></textarea>
                     <div class="n45-review-comment-actions">
                         <small>Up to 255 characters</small>
-                        <button class="btn btn-primary" type="submit" name="add_service_review_comment"><i class="far fa-comment" aria-hidden="true"></i>Add comment</button>
+                        <button class="btn btn-primary" type="submit" name="add_service_review_comment"><i class="far fa-comment me-2" aria-hidden="true"></i>Add comment</button>
                     </div>
                 </form>
             </div>
