@@ -74,34 +74,59 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$network_action_items = array();
+if ($num_rows[0] > 0) {
+    $network_action_items[] = array(
+        'label' => 'Export',
+        'icon' => 'fa-download',
+        'class' => 'ajax-modal',
+        'attributes' => array(
+            'data-modal-url' => buildExportModalUrl('modals/network/network_export.php', array('client_id', 'client', 'location', 'archived', 'q')),
+        ),
+    );
+    $network_action_items[] = array('type' => 'separator');
+}
+$network_action_items[] = array(
+    'label' => 'Import',
+    'icon' => 'fa-upload',
+    'class' => 'ajax-modal',
+    'attributes' => array('data-modal-url' => 'modals/network/network_import.php?' . $client_url),
+);
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-fw fa-network-wired me-2"></i>Networks</h3>
-        <div class="card-tools">
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/network/network_add.php?<?= $client_url ?>&location_id=<?= $location_filter ?>"><i class="fas fa-plus me-2"></i>New Network</button>
-                    <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                    <div class="dropdown-menu">
-                        <?php if ($num_rows[0] > 0) { ?>
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="<?= buildExportModalUrl('modals/network/network_export.php', ['client_id', 'client', 'location', 'archived', 'q']) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                        <?php } ?>
-                        <div class="dropdown-divider"></div>
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="modals/network/network_import.php?<?= $client_url ?>">
-                            <i class="fa fa-fw fa-upload me-2"></i>Import
-                        </a>
-                    </div>
-
-            </div>
-
-        </div>
-    </div>
-    <div class="card-header py-3">
+<section class="card n45-workspace" aria-labelledby="networks-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Networks',
+        'title_id' => 'networks-page-title',
+        'icon' => 'fa-network-wired',
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+        'actions' => array(
+            array(
+                'type' => 'split-menu',
+                'button' => array(
+                    'type' => 'button',
+                    'label' => 'New Network',
+                    'icon' => 'fa-plus',
+                    'variant' => 'primary',
+                    'class' => 'ajax-modal',
+                    'attributes' => array(
+                        'data-modal-url' => 'modals/network/network_add.php?' . $client_url . 'location_id=' . $location_filter,
+                    ),
+                ),
+                'items' => $network_action_items,
+                'menu_label' => 'More network actions',
+                'align_end' => true,
+            ),
+        ),
+    ));
+    ?>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
             <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -199,7 +224,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         <form id="bulkActions" action="post.php" method="post">
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-            <table class="table table-striped table-borderless table-hover mb-0">
+            <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
                 <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?>">
                 <tr>
                     <td class="checkbox-column border-end">
@@ -367,7 +392,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
         </form>
     </div>
     <?php require_once "../includes/filter_footer.php"; ?>
-</div>
+</section>
 
 <script src="../js/bulk_actions.js"></script>
 

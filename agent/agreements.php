@@ -54,6 +54,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, 'SELECT FOUND_ROWS()'));
         </div>
     </div>
     <div class="card-body">
+        <p class="text-muted">These agreements define ITFlow's operational ticket rules. <strong>Active</strong> is an ITFlow status, not proof that the client signed or accepted a commercial agreement. Check the published version and verify the approved customer terms separately.</p>
+        <p class="text-muted">If a client has more than one published agreement in effect, ticket rules use one definition for the whole client: latest effective start date, then highest version number, then highest agreement record ID. They do not select a different agreement by ticket scope. Confirm the intended rule set before publishing another.</p>
         <form autocomplete="off">
             <?php if (!empty($client_id)) { ?><input type="hidden" name="client_id" value="<?= intval($client_id) ?>"><?php } ?>
             <div class="input-group mb-3">
@@ -69,7 +71,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, 'SELECT FOUND_ROWS()'));
                 <tr>
                     <th>Agreement</th>
                     <?php if (empty($client_id)) { ?><th>Client</th><?php } ?>
-                    <th>Status</th>
+                    <th>ITFlow status</th>
                     <th>Current version</th>
                     <th>Term / renewal</th>
                     <th>Next review</th>

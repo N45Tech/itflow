@@ -23,7 +23,7 @@ if ($total_found_rows > 5) {
 
     ?>
 
-<div class="card-footer itflow-filter-footer">
+<footer class="card-footer itflow-filter-footer n45-result-footer" aria-label="Result pagination">
 
     <div class="row align-items-center g-2">
         <div class="col-auto col-sm">
@@ -62,7 +62,7 @@ if ($total_found_rows > 5) {
         ?>
 
         <div class="col col-sm">
-            <p class="text-center mb-0">
+            <p class="text-center mb-0 n45-result-summary" aria-live="polite">
               Showing <strong><?= $start ?></strong> to <strong><?= $end ?></strong> of <strong><?= $total_found_rows ?></strong> records
             </p>
         </div>
@@ -122,7 +122,7 @@ if ($total_found_rows > 5) {
             </ul>
         </div>
     </div>
-</div>
+</footer>
 
     <?php
 

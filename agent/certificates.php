@@ -75,27 +75,58 @@ $sql = mysqli_query($mysqli, "SELECT SQL_CALC_FOUND_ROWS certificate_archived_at
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$certificate_page_actions = array();
+$certificate_primary_action = array(
+    'type' => 'button',
+    'label' => 'New Certificate',
+    'icon' => 'fa-plus',
+    'variant' => 'primary',
+    'class' => 'ajax-modal',
+    'attributes' => array('data-modal-url' => 'modals/certificate/certificate_add.php?' . $client_url),
+);
+if ($num_rows[0] > 0) {
+    $certificate_page_actions[] = array(
+        'type' => 'split-menu',
+        'button' => $certificate_primary_action,
+        'items' => array(
+            array(
+                'label' => 'Export',
+                'icon' => 'fa-download',
+                'class' => 'ajax-modal',
+                'attributes' => array(
+                    'data-modal-url' => buildExportModalUrl('modals/certificate/certificate_export.php', array('client_id', 'client', 'expire_days', 'archived', 'q')),
+                ),
+            ),
+        ),
+        'menu_label' => 'More certificate actions',
+        'align_end' => true,
+    );
+} else {
+    $certificate_page_actions[] = $certificate_primary_action;
+}
+
+$certificate_has_filters = $q !== '' || $expire_days !== '' || $archived == 1 || (!$client_url && $client !== '');
+$certificate_empty_action = $certificate_has_filters
+    ? array('label' => 'Clear filters', 'icon' => 'fa-times', 'variant' => 'secondary', 'href' => 'certificates.php?' . $client_url)
+    : $certificate_primary_action;
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fas fa-fw fa-lock me-2"></i>Certificates</h3>
-        <div class="card-tools">
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/certificate/certificate_add.php?<?= $client_url ?>"><i class="fas fa-plus me-2"></i>New Certificate</button>
-                <?php if ($num_rows[0] > 0) { ?>
-                    <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                    <div class="dropdown-menu">
-                        <a class="dropdown-item text-dark ajax-modal" href="#"\
-                            data-modal-url="<?= buildExportModalUrl('modals/certificate/certificate_export.php', ['client_id', 'client', 'expire_days', 'archived', 'q']) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                    </div>
-                <?php } ?>
-            </div>
-        </div>
-    </div>
-    <div class="card-header py-3">
+<section class="card n45-workspace" aria-labelledby="certificates-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Certificates',
+        'title_id' => 'certificates-page-title',
+        'icon' => 'fa-lock',
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+        'actions' => $certificate_page_actions,
+    ));
+    ?>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
             <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -105,8 +136,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
                 <div class="col-md-4">
                     <div class="input-group">
-                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Certificates">
-                            <button class="btn btn-dark"><i class="fa fa-search"></i></button>
+                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search certificates">
+                            <button class="btn btn-dark" aria-label="Search certificates"><i class="fa fa-search" aria-hidden="true"></i></button>
                     </div>
                 </div>
 
@@ -185,12 +216,20 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
             </div>
         </form>
     </div>
-    <div class="table-responsive">
-
-        <form id="bulkActions" action="post.php" method="post">
-            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-
-            <table class="table table-striped table-borderless table-hover mb-0">
+    <form id="bulkActions" action="post.php" method="post">
+        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+        <?php if ($num_rows[0] == 0) { ?>
+            <?php
+            n45RenderEmptyState(array(
+                'title' => $certificate_has_filters ? 'No certificates match these filters' : 'No certificates yet',
+                'description' => $certificate_has_filters ? 'Clear the current filters to return to the certificate list.' : 'Track certificate ownership, issuers, and renewal dates.',
+                'icon' => 'fa-lock',
+                'action' => $certificate_empty_action,
+            ));
+            ?>
+        <?php } else { ?>
+        <div class="table-responsive">
+            <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
                 <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?>">
                 <tr>
                     <td class="checkbox-column border-end">
@@ -338,11 +377,11 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
                 </tbody>
             </table>
-
-        </form>
-    </div>
+        </div>
+        <?php } ?>
+    </form>
     <?php require_once "../includes/filter_footer.php"; ?>
-</div>
+</section>
 
 <script src="../js/bulk_actions.js"></script>
 
