@@ -706,12 +706,11 @@ $assertNotContains('push:', $review_workflow, 'Upstream parity reruns after a ne
 $assertContains("github.event.pull_request.head.ref == 'next'", $php_lint_workflow, 'PHP lint is not restricted to next-to-main pull requests');
 $assertContains("github.event.pull_request.head.ref == 'next'", $database_workflow, 'Database validation is not restricted to next-to-main pull requests');
 $assertContains("github.event.pull_request.head.ref == 'next'", $review_workflow, 'Upstream parity is not restricted to next-to-main pull requests');
-$assertContains('PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}', $review_workflow, 'Parity workflow cannot identify same-repository integration PRs');
-$assertContains('[ "$GITHUB_EVENT_NAME" = pull_request ]', $review_workflow, 'Parity workflow does not automatically bind trusted integration PRs');
-$assertContains('[ "$GITHUB_BASE_REF" = main ]', $review_workflow, 'Automatic parity approval is not restricted to PRs targeting main');
-$assertContains('[ "$GITHUB_HEAD_REF" = next ]', $review_workflow, 'Automatic parity approval is not restricted to the next branch');
-$assertContains('[ "$PR_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]', $review_workflow, 'Automatic parity approval is not restricted to the repository write-access boundary');
-$assertContains('reviewed_head_sha="$(git rev-parse HEAD)"', $review_workflow, 'Trusted integration approval is not bound to the exact checked-out merge candidate');
+$assertNotContains('PR_HEAD_REPOSITORY:', $review_workflow, 'Parity workflow treats same-repository branch provenance as review approval');
+$assertNotContains('reviewed_base_sha="$(git rev-parse upstream/master)"', $review_workflow, 'Parity workflow self-approves the upstream commit under test');
+$assertNotContains('reviewed_head_sha="$(git rev-parse HEAD)"', $review_workflow, 'Parity workflow self-approves the merge candidate under test');
+$assertContains('N45_REVIEWED_BASE_SHA="$CONFIGURED_REVIEWED_BASE_SHA"', $review_workflow, 'Parity workflow does not preserve reviewer-supplied upstream approval');
+$assertContains('N45_REVIEWED_HEAD_SHA="$CONFIGURED_REVIEWED_HEAD_SHA"', $review_workflow, 'Parity workflow does not preserve reviewer-supplied fork approval');
 $assertContains('push:', $production_notification_workflow, 'Production notification is not triggered by the main merge');
 $assertNotContains('workflow_run:', $production_notification_workflow, 'Production notification still waits for duplicate post-merge test runs');
 $assertContains("pull.head?.ref === 'next'", $production_notification_workflow, 'Production notification accepts a merge from outside next');
