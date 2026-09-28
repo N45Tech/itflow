@@ -737,7 +737,7 @@ if (isset($_GET['refund_payment_stripe'])) {
     $payment_id = intval($_GET['refund_payment_stripe']);
 
     // payments has no client column - the client comes from the invoice the payment sits on
-    $sql = mysqli_query($mysqli,"SELECT invoice_client_id, invoice_number, invoice_prefix, payment_invoice_id FROM payments
+    $sql = mysqli_query($mysqli,"SELECT invoice_client_id, invoice_number, invoice_prefix, payment_invoice_id, payment_amount, payment_reference FROM payments
         LEFT JOIN invoices ON payment_invoice_id = invoice_id
         WHERE payment_id = $payment_id
         AND payment_method = 'Stripe'
@@ -748,14 +748,16 @@ if (isset($_GET['refund_payment_stripe'])) {
     $invoice_prefix = escapeSql($row['invoice_prefix']);
     $invoice_number = intval($row['invoice_number']);
     $client_id = intval($row['invoice_client_id']);
+    $payment_amount = floatval($row['payment_amount']);
 
     enforceClientAccess();
 
     // Get Stripe Payment Intent ID
-    $sql = mysqli_query($mysqli,"SELECT payment_reference FROM payments WHERE payment_id = $payment_id LIMIT 1");
-    $row = mysqli_fetch_assoc($sql);
     if (preg_match('/(?<payment_intent>pi_[A-Za-z0-9]+)/', $row['payment_reference'], $matches)) {
         $stripe_payment_intent_id = $matches['payment_intent'];
+    } else {
+        flashAlert("Stripe refund failed: payment does not have a valid Stripe PaymentIntent", 'error');
+        redirect();
     }
 
     // Get invoice details
@@ -793,6 +795,23 @@ if (isset($_GET['refund_payment_stripe'])) {
     try {
         require_once __DIR__ . '/../../includes/stripe_init.php';
         $stripe = new \Stripe\StripeClient($stripe_secret_key);
+
+        // Do not trust the locally editable payment reference as authorization for a refund.
+        // Verify that the referenced Stripe object belongs to this client and invoice.
+        $payment_intent = $stripe->paymentIntents->retrieve($stripe_payment_intent_id);
+        $payment_intent_client_id = intval($payment_intent->metadata->itflow_client_id ?? 0);
+        $payment_intent_invoice_id = intval($payment_intent->metadata->itflow_invoice_id ?? 0);
+        $payment_intent_amount = intval($payment_intent->amount_received);
+        $payment_intent_currency = strtolower($payment_intent->currency);
+
+        if (
+            $payment_intent_client_id !== $client_id
+            || $payment_intent_invoice_id !== $invoice_id
+            || $payment_intent_amount !== intval(round($payment_amount * 100))
+            || $payment_intent_currency !== strtolower($invoice_currency_code)
+        ) {
+            throw new UnexpectedValueException('PaymentIntent does not match the selected payment and invoice');
+        }
 
         // Refund
         $refund = $stripe->refunds->create([
