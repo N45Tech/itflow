@@ -126,13 +126,13 @@ function n45UiActionHtml(array $action)
     return '<' . $tag . $href . ' class="' . escapeHtml(n45UiActionClass($action)) . '"' . n45UiAttributes($attributes) . '>' . n45UiActionContent($action) . '</' . $tag . '>';
 }
 
-function n45RenderPageTabs(array $tabs, $aria_label = 'Page sections')
+function n45RenderPageTabs(array $tabs, $aria_label = 'Page sections', $class = '')
 {
     if (!$tabs) {
         return;
     }
 
-    echo '<nav class="n45-status-tabs" aria-label="' . escapeHtml($aria_label) . '">';
+    echo '<nav class="n45-status-tabs ' . escapeHtml(n45UiClassNames($class)) . '" aria-label="' . escapeHtml($aria_label) . '">';
     foreach ($tabs as $tab) {
         if (isset($tab['visible']) && !$tab['visible']) {
             continue;
@@ -224,7 +224,7 @@ function n45RenderPageHeader(array $config)
         if ($context) {
             echo n45UiClientContextHtml($context);
         }
-        n45RenderPageTabs($tabs, $config['tabs_label'] ?? ($title . ' views'));
+        n45RenderPageTabs($tabs, $config['tabs_label'] ?? ($title . ' views'), $config['tabs_class'] ?? '');
         echo '</div>';
         n45RenderPageActions($actions);
         echo '</header>';
@@ -273,14 +273,43 @@ function n45RenderStatusBadge($label, $tone = 'secondary', $icon = '')
     echo n45UiStatusBadgeHtml($label, $tone, $icon);
 }
 
+/** Keep saved ticket status colors readable, including older non-hex values. */
+function n45TicketStatusBadgeAttributes($color)
+{
+    $color = trim((string) $color);
+    $tones = array('primary', 'secondary', 'success', 'warning', 'danger', 'info', 'dark', 'light');
+    if (in_array($color, $tones, true)) {
+        return 'class="badge rounded-pill p-2 n45-status-badge text-bg-' . $color . '"';
+    }
+
+    if (preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/D', $color)) {
+        $hex = substr($color, 1);
+        if (strlen($hex) === 3) {
+            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        }
+        $channels = array();
+        foreach (str_split($hex, 2) as $channel) {
+            $value = hexdec($channel) / 255;
+            $channels[] = $value <= 0.04045 ? $value / 12.92 : (($value + 0.055) / 1.055) ** 2.4;
+        }
+        $luminance = 0.2126 * $channels[0] + 0.7152 * $channels[1] + 0.0722 * $channels[2];
+        $foreground = $luminance > 0.179 ? '#000000' : '#ffffff';
+        return 'class="badge rounded-pill p-2 n45-status-badge" style="background-color: ' . $color . '; color: ' . $foreground . '"';
+    }
+
+    return 'class="badge rounded-pill p-2 n45-status-badge text-bg-secondary"';
+}
+
 function n45RenderEmptyState(array $config)
 {
+    // Pages with a specific empty state should not also get the filter footer's generic one.
+    $GLOBALS['n45_explicit_empty_state'] = true;
     $title = $config['title'] ?? 'Nothing here yet';
     $description = $config['description'] ?? '';
     $icon = $config['icon'] ?? 'fa-inbox';
     $action = $config['action'] ?? null;
 
-    echo '<div class="n45-empty-state text-center py-5 px-3" role="status">';
+    echo '<div class="n45-empty-state n45-empty-state--page text-center py-5 px-3" role="status">';
     echo '<i class="fa fa-3x ' . escapeHtml(n45UiIconClass($icon)) . ' mb-3 d-block" aria-hidden="true"></i>';
     echo '<h2 class="h5">' . escapeHtml($title) . '</h2>';
     if ($description !== '') {

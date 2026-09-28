@@ -626,12 +626,12 @@ if ($show_diagnostics) {
         </div>
         <div class="n45-ops-actions" aria-label="Operations shortcuts">
             <?php if ($show_diagnostics) { ?>
-                <a class="btn btn-outline-secondary" href="/agent/operations.php"><i class="fas fa-arrow-left mr-2"></i>Back to overview</a>
-                <?php if ($session_is_admin) { ?><a class="btn btn-outline-secondary" href="/admin/integration_automation.php">Manage events <i class="fas fa-cog ml-2"></i></a><?php } ?>
+                <a class="btn btn-outline-secondary" href="/agent/operations.php"><i class="fas fa-arrow-left me-2"></i>Back to overview</a>
+                <?php if ($session_is_admin) { ?><a class="btn btn-outline-secondary" href="/admin/integration_automation.php">Manage events <i class="fas fa-cog ms-2"></i></a><?php } ?>
             <?php } else { ?>
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="/agent/modals/ticket/ticket_add.php" data-modal-size="lg"><i class="fas fa-plus mr-2"></i>New ticket</button>
-                <a class="btn btn-outline-secondary" href="https://app.level.io/devices" target="_blank" rel="noopener noreferrer">Level.io <i class="fas fa-external-link-alt ml-2"></i></a>
-                <a class="btn btn-outline-secondary" href="https://automate.n45tech.com" target="_blank" rel="noopener noreferrer">n8n <i class="fas fa-external-link-alt ml-2"></i></a>
+                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="/agent/modals/ticket/ticket_add.php" data-modal-size="lg"><i class="fas fa-plus me-2"></i>New ticket</button>
+                <a class="btn btn-outline-secondary" href="https://app.level.io/devices" target="_blank" rel="noopener noreferrer">Level.io <i class="fas fa-external-link-alt ms-2"></i></a>
+                <a class="btn btn-outline-secondary" href="https://automate.n45tech.com" target="_blank" rel="noopener noreferrer">n8n <i class="fas fa-external-link-alt ms-2"></i></a>
             <?php } ?>
         </div>
     </header>
@@ -787,8 +787,8 @@ if ($show_diagnostics) {
                             <td><?= intval($coverage['entra_devices']) ?>/<?= $active_devices ?> <small class="text-muted"><?= $coverage_percent($coverage['entra_devices']) ?>%</small></td>
                             <td><?= intval($coverage['sentinelone_devices']) ?>/<?= $active_devices ?> <small class="text-muted"><?= $coverage_percent($coverage['sentinelone_devices']) ?>%</small></td>
                             <td>
-                                <?php if (intval($coverage['missing_level_devices'])) { ?><span class="badge badge-warning mr-1"><?= intval($coverage['missing_level_devices']) ?> no Level</span><?php } ?>
-                                <?php if (intval($coverage['missing_intune_devices'])) { ?><span class="badge badge-warning mr-1"><?= intval($coverage['missing_intune_devices']) ?> no Intune</span><?php } ?>
+                                <?php if (intval($coverage['missing_level_devices'])) { ?><span class="badge badge-warning me-1"><?= intval($coverage['missing_level_devices']) ?> no Level</span><?php } ?>
+                                <?php if (intval($coverage['missing_intune_devices'])) { ?><span class="badge badge-warning me-1"><?= intval($coverage['missing_intune_devices']) ?> no Intune</span><?php } ?>
                                 <?php if (intval($coverage['managed_windows_missing_sentinelone'])) { ?><span class="badge badge-danger"><?= intval($coverage['managed_windows_missing_sentinelone']) ?> managed Windows no S1</span><?php } ?>
                                 <?php if (!intval($coverage['missing_level_devices']) && !intval($coverage['missing_intune_devices']) && !intval($coverage['managed_windows_missing_sentinelone'])) { ?><span class="badge badge-success">Complete</span><?php } ?>
                             </td>
@@ -825,14 +825,14 @@ if ($show_diagnostics) {
                         <tr id="incident-<?= $incident_id ?>">
                             <td>
                                 <div class="d-flex align-items-start">
-                                    <span class="n45-state-icon n45-state-<?= in_array(strtolower($incident['automation_incident_severity']), ['emergency', 'critical', 'high']) ? 'danger' : 'warning' ?> mr-2"><i class="fas <?= $source_icon($incident['automation_incident_source']) ?>"></i></span>
+                                    <span class="n45-state-icon n45-state-<?= in_array(strtolower($incident['automation_incident_severity']), ['emergency', 'critical', 'high']) ? 'danger' : 'warning' ?> me-2"><i class="fas <?= $source_icon($incident['automation_incident_source']) ?>"></i></span>
                                     <div><strong><?= escapeHtml($incident['automation_incident_title']) ?></strong><div class="small text-muted"><?= escapeHtml($source_label($incident['automation_incident_source'])) ?></div></div>
                                 </div>
                             </td>
                             <td>
                                 <?php if ($incident_client_id) { ?><a href="/agent/client_overview.php?client_id=<?= $incident_client_id ?>"><?= escapeHtml($incident['client_name']) ?></a><?php } else { ?><span class="text-muted">No client</span><?php } ?>
                                 <?php if ($incident_asset_id) { ?><div class="small"><a href="/agent/asset.php?asset_id=<?= $incident_asset_id ?>"><?= escapeHtml($incident['asset_name']) ?></a></div><?php } elseif (!empty($incident['location_name'])) { ?><div class="small text-muted"><?= escapeHtml($incident['location_name']) ?></div><?php } ?>
-                                <?php if (!empty($incident['service_name'])) { ?><div class="small text-muted"><i class="fas fa-cube mr-1"></i><?= escapeHtml($incident['service_name']) ?></div><?php } ?>
+                                <?php if (!empty($incident['service_name'])) { ?><div class="small text-muted"><i class="fas fa-cube me-1"></i><?= escapeHtml($incident['service_name']) ?></div><?php } ?>
                             </td>
                             <td><span class="badge badge-<?= $severity_badge($incident['automation_incident_severity']) ?>"><?= escapeHtml(ucfirst($incident['automation_incident_severity'])) ?></span><div class="small text-muted mt-1"><?= intval($incident['automation_incident_event_count']) ?> event<?= intval($incident['automation_incident_event_count']) === 1 ? '' : 's' ?><?= intval($incident['automation_incident_repeat_count'] ?? 0) ? ' · ' . intval($incident['automation_incident_repeat_count']) . ' repeats' : '' ?><?= intval($incident['automation_incident_suppressed_count'] ?? 0) ? ' · ' . intval($incident['automation_incident_suppressed_count']) . ' suppressed' : '' ?></div></td>
                             <td><span title="<?= escapeHtml($incident['automation_incident_last_event_at']) ?>"><?= $incident['automation_incident_last_event_at'] ? escapeHtml(timeAgo($incident['automation_incident_last_event_at'])) : '—' ?></span></td>
@@ -912,7 +912,7 @@ if ($show_diagnostics) {
                                 <input class="form-control" id="target_asset_id" name="target_asset_id" type="number" min="1" placeholder="Remap only">
                             </div>
                             <div class="form-group col-lg-2">
-                                <button class="btn btn-primary btn-block" type="submit" name="review_identity_mappings"><i class="fas fa-check mr-1"></i>Apply</button>
+                                <button class="btn btn-primary btn-block" type="submit" name="review_identity_mappings"><i class="fas fa-check me-1"></i>Apply</button>
                             </div>
                         </div>
                         <small class="text-muted">Confirm, ignore, and retire support up to 100 selected rows. Remap requires Full Support permission, exactly one row, and an accessible target asset in the named client.</small>
@@ -995,7 +995,7 @@ if ($show_diagnostics) {
                                     <strong><?= escapeHtml($mapping['automation_mapping_external_name'] ?: $mapping['automation_mapping_external_id']) ?></strong>
                                     <span><?= escapeHtml($source_label($mapping['automation_mapping_source'])) ?> · <?= escapeHtml($mapping['automation_mapping_entity_type']) ?> · <?= escapeHtml(str_replace('_', ' ', $mapping['automation_mapping_strategy'])) ?><?= floatval($mapping['automation_mapping_confidence'] ?? 0) > 0 ? ' · ' . escapeHtml(rtrim(rtrim(number_format(floatval($mapping['automation_mapping_confidence']), 2), '0'), '.')) . '%' : '' ?></span>
                                 </div>
-                                <span class="badge badge-<?= $identity_state_badge($mapping['automation_mapping_state'] ?? 'unresolved') ?> mr-2"><?= escapeHtml(ucfirst($mapping['automation_mapping_state'] ?? 'unresolved')) ?></span>
+                                <span class="badge badge-<?= $identity_state_badge($mapping['automation_mapping_state'] ?? 'unresolved') ?> me-2"><?= escapeHtml(ucfirst($mapping['automation_mapping_state'] ?? 'unresolved')) ?></span>
                                 <?php if ($object_url) { ?><a href="<?= escapeHtml($object_url) ?>" title="Open <?= escapeHtml($object_name) ?>"><i class="fas fa-arrow-right"></i></a><?php } ?>
                             </div>
                         <?php } ?>

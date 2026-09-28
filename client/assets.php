@@ -25,77 +25,36 @@ $assets_sql = mysqli_query($mysqli, "SELECT asset_description, asset_id, asset_m
         </div>
     </header>
 
-    <div class="row">
-
-        <div class="col-md-12">
-
-            <?php if (mysqli_num_rows($assets_sql) == 0) { ?>
-                <?= portalEmptyState('There are no assets on this account yet.') ?>
-            <?php } else { ?>
-            <table class="table table-bordered border border-dark">
-                <thead class="table-dark">
-                <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Model</th>
-                    <th>Serial</th>
-                    <th>Assigned</th>
-                    <th>Purchase</th>
-                    <th>Warranty</th>
-                    <th>Status</th>
-                    <th>URI</th>
-                </tr>
-                </thead>
-                <tbody>
-
-                <?php
-                while ($row = mysqli_fetch_assoc($assets_sql)) {
-                    $asset_id = intval($row['asset_id']);
-                    $asset_name = escapeHtml($row['asset_name']);
-                    $asset_description = escapeHtml($row['asset_description']);
-                    $asset_type = escapeHtml($row['asset_type']);
-                    $asset_make = escapeHtml($row['asset_make']);
-                    $asset_model = escapeHtml($row['asset_model']);
-                    $asset_serial = escapeHtml($row['asset_serial']);
-                    $asset_purchase_date = escapeHtml($row['asset_purchase_date'] ?? "-");
-                    $asset_warranty_expire = escapeHtml($row['asset_warranty_expire'] ?? "-");
-                    $assigned_to = escapeHtml($row['contact_name'] ?? "-");
-                    $asset_status = escapeHtml($row['asset_status']);
-                    $asset_uri_client = escapeUrl($row['asset_uri_client']);
-
-                    ?>
-
-                    <tr>
-                        <td>
-                            <strong><?= $asset_name ?></strong>
-                            <br>
-                            <small class="text-secondary"><?= $asset_description ?></small>
-                        </td>
-                        <td><?= $asset_type ?></td>
-                        <td><?= "$asset_make<br><span class='text-secondary'>$asset_model</span>" ?></td>
-                        <td><?= $asset_serial ?></td>
-                        <td><?= $assigned_to ?></td>
-                        <td><?= $asset_purchase_date ?></td>
-                        <td><?= $asset_warranty_expire ?></td>
-                        <td><?= $asset_status ?></td>
-                        <td>
-                            <?php if ($asset_uri_client) { ?>
-                            <i class="fa fa-fw fa-link text-secondary me-1"></i><a href="<?= $asset_uri_client ?>" target="_blank" title="<?= $asset_uri_client ?>"><?= truncate($asset_uri_client, 40) ?></a>
-                            <?php } else { ?>
-                            -
-                        <?php } ?>
-                        </td>
-                    </tr>
-
-                <?php } ?>
-
-                </tbody>
-            </table>
-            <?php } ?>
-
-        </div>
-
+<?php if (mysqli_num_rows($assets_sql) == 0) { ?>
+    <?= portalEmptyState('There are no assets on this account yet.') ?>
+<?php } else { ?>
+    <div class="n45-portal-assets">
+        <?php while ($asset = mysqli_fetch_assoc($assets_sql)) {
+            $name = trim((string) $asset['asset_name']) ?: 'Unnamed asset';
+            $make_model = trim(implode(' ', array_filter([$asset['asset_make'], $asset['asset_model']])));
+            $uri = escapeUrl($asset['asset_uri_client']);
+        ?>
+            <article class="n45-portal-asset-card">
+                <div class="n45-portal-asset-heading">
+                    <div>
+                        <span class="n45-portal-asset-type"><?= escapeHtml($asset['asset_type'] ?: 'Asset') ?></span>
+                        <h2><?= escapeHtml($name) ?></h2>
+                        <?php if ($asset['asset_description']) { ?><p><?= escapeHtml($asset['asset_description']) ?></p><?php } ?>
+                    </div>
+                    <?php if ($asset['asset_status']) { ?><span class="n45-portal-asset-status"><?= escapeHtml($asset['asset_status']) ?></span><?php } ?>
+                </div>
+                <dl class="n45-portal-asset-details">
+                    <?php if ($make_model) { ?><div><dt>Make &amp; model</dt><dd><?= escapeHtml($make_model) ?></dd></div><?php } ?>
+                    <?php if ($asset['asset_serial']) { ?><div><dt>Serial number</dt><dd><?= escapeHtml($asset['asset_serial']) ?></dd></div><?php } ?>
+                    <?php if ($asset['contact_name']) { ?><div><dt>Assigned to</dt><dd><?= escapeHtml($asset['contact_name']) ?></dd></div><?php } ?>
+                    <?php if ($asset['asset_purchase_date']) { ?><div><dt>Purchased</dt><dd><?= escapeHtml($asset['asset_purchase_date']) ?></dd></div><?php } ?>
+                    <?php if ($asset['asset_warranty_expire']) { ?><div><dt>Warranty expires</dt><dd><?= escapeHtml($asset['asset_warranty_expire']) ?></dd></div><?php } ?>
+                </dl>
+                <?php if ($uri) { ?><a class="n45-portal-asset-link" href="<?= $uri ?>" target="_blank" rel="noopener noreferrer"><i class="fas fa-external-link-alt" aria-hidden="true"></i> Open asset link<span class="sr-only"> for <?= escapeHtml($name) ?></span></a><?php } ?>
+            </article>
+        <?php } ?>
     </div>
+<?php } ?>
 
 <?php
 require_once "includes/footer.php";
