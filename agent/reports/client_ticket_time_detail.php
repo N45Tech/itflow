@@ -3,6 +3,7 @@
 require_once "includes/inc_all_reports.php";
 
 enforceUserPermission('module_sales');
+enforceUserPermission('module_support');
 
 /**
  * Convert seconds to "HH:MM:SS" (supports totals > 24h by using hours > 24)
