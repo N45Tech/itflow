@@ -69,10 +69,10 @@ try {
 $assertTrue(ticketDeletionOverrideReason('Duplicate alert created during connector repair.') === 'Duplicate alert created during connector repair.', 'A valid retention override reason is rejected');
 
 $assertContains('client_ticket_retention_policy', $migration, 'The client retention migration is missing its policy column');
-$assertContains("DEFAULT 'override'", $migration, 'Existing clients do not receive retain-with-override behavior');
+$assertContains("DEFAULT 'strict'", $migration, 'Existing clients do not default to strict ticket retention');
 $assertContains("automation_incident_last_action = 'ticket_closed_reconciled'", $migration,
     'Existing closed tickets do not reconcile their linked Operations incidents');
-$assertContains('`client_ticket_retention_policy` varchar(20) NOT NULL DEFAULT \'override\'', $schema, 'Fresh installs omit client ticket retention policy');
+$assertContains('`client_ticket_retention_policy` varchar(20) NOT NULL DEFAULT \'strict\'', $schema, 'Fresh installs do not default to strict ticket retention');
 $assertContains("'n45-0021-client-ticket-retention'", $manifest, 'The client retention migration is absent from the manifest');
 $assertContains("'data_change' => true", $manifest, 'The incident reconciliation is not classified as a data change');
 $assertContains('ticket_restore_until', $recoverable_migration, 'Recoverable deletion migration omits the restore deadline');
@@ -85,8 +85,9 @@ $assertContains("'n45-0028-ticket-delete-operations-alignment'", $manifest,
 
 $assertContains('Ticket audit retention', $client_modal, 'Client settings do not expose ticket retention');
 $assertContains('Strict retention — no deletion override', $client_modal, 'Client settings do not offer strict retention');
-$assertContains("lookupUserPermission('module_client') >= 3", $client_modal, 'Non-admin client editors can change retention policy');
+$assertContains('$session_is_admin === true', $client_modal, 'Client retention controls are visible to non-administrators');
 $assertContains("in_array(\$ticket_retention_policy, ticketDeletionPolicies(), true)", $client_post, 'Client retention input is not allowlisted server-side');
+$assertContains('enforceAdminPermission();', $client_post, 'Client retention policy changes are not administrator-only');
 $assertContains('enforceClientAccess($client_id)', $client_post, 'Client retention can be changed outside the user client scope');
 $assertContains("logAudit('Client', 'Ticket Retention Policy'", $client_post, 'Client retention policy changes are not audited');
 
@@ -121,6 +122,7 @@ $assertOrdered($ticket_post, [
 ], 'Ticket restoration is not locked and transactional');
 $assertOrdered($ticket_post, [
     "if (isset(\$_POST['purge_ticket']))",
+    'enforceAdminPermission();',
     'ticketDeletionRequirePurgeEligible($locked_ticket)',
     'ticketDeletionPolicyForClient($client_id)',
     'ticketDeletionEvidenceSummary($ticket_id, $client_id)',

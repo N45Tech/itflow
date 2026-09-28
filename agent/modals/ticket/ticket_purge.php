@@ -3,6 +3,7 @@
 require_once '../../../includes/modal_header.php';
 
 enforceUserPermission('module_support', 3);
+enforceAdminPermission();
 
 $ticket_id = intval($_GET['ticket_id'] ?? 0);
 $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix,

@@ -145,6 +145,7 @@ if (isset($_POST['edit_client'])) {
     $ticket_retention_changed = false;
     $ticket_retention_policy = '';
     if (lookupUserPermission('module_client') >= 3 && isset($_POST['client_ticket_retention_policy'])) {
+        enforceAdminPermission();
         $ticket_retention_policy = strtolower(trim((string) $_POST['client_ticket_retention_policy']));
         if (!in_array($ticket_retention_policy, ticketDeletionPolicies(), true)) {
             flashAlert('Choose an available ticket audit-retention policy.', 'error');

@@ -1937,6 +1937,7 @@ if (isset($_POST['purge_ticket'])) {
 
     validateCSRFToken();
     enforceUserPermission('module_support', 3);
+    enforceAdminPermission();
 
     $ticket_id = intval($_POST['ticket_id'] ?? 0);
     $ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix,
