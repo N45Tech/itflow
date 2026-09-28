@@ -4,8 +4,8 @@
  * Client-scoped ticket retention and deliberate hard-deletion helpers.
  *
  * A ticket can participate in several append-only operational records. The
- * client policy decides whether a level-3 support user may override retention;
- * the caller still has to collect a reason and write the surviving audit log.
+ * client policy decides whether an administrator may override retention; the
+ * caller still has to collect a reason and write the surviving audit log.
  */
 
 function ticketDeletionPolicies(): array

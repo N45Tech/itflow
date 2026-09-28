@@ -8,7 +8,7 @@
 defined('FROM_N45_DB_UPDATER') || die("Direct file access is not allowed");
 
 if (!mysqli_query($mysqli, "ALTER TABLE `clients`
-    ADD COLUMN IF NOT EXISTS `client_ticket_retention_policy` varchar(20) NOT NULL DEFAULT 'override'
+    ADD COLUMN IF NOT EXISTS `client_ticket_retention_policy` varchar(20) NOT NULL DEFAULT 'strict'
         AFTER `client_notes`")) {
     throw new RuntimeException('Could not add client ticket retention policy: '
         . mysqli_error($mysqli));
