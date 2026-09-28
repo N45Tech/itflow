@@ -116,7 +116,13 @@ jobs:
                 run.head_sha === headSha &&
                 run.repository?.full_name === context.payload.repository.full_name &&
                 run.head_repository?.full_name === context.payload.repository.full_name &&
-                new Date(run.updated_at).getTime() <= new Date(pull.merged_at).getTime()
+                run.pull_requests?.some((associatedPull) =>
+                  associatedPull.number === pull.number &&
+                  associatedPull.head?.sha === headSha &&
+                  associatedPull.head?.repo?.id === pull.head?.repo?.id &&
+                  associatedPull.base?.sha === baseSha &&
+                  associatedPull.base?.repo?.id === pull.base?.repo?.id
+                )
               ).sort((left, right) =>
                 Number(right.run_number) - Number(left.run_number) ||
                 Number(right.run_attempt) - Number(left.run_attempt) ||
