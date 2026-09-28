@@ -183,13 +183,13 @@ body.dark-mode .app-header .nav-link:focus {
 }
 
 .navbar-search {
+    --lte-search-field-width: 100%;
+    --lte-search-field-focus-width: 100%;
     flex: 0 1 36rem;
     min-width: 0;
 }
 
-.navbar-search-field {
-    display: flex;
-    align-items: center;
+.navbar-search .navbar-search-field {
     width: 100%;
     background: var(--n45-surface);
     border: 1px solid var(--n45-border);
@@ -202,37 +202,33 @@ body.dark-mode .app-header .nav-link:focus {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--n45-action) 16%, transparent);
 }
 
-.navbar-search-field .form-control {
-    flex: 1 1 auto;
+.navbar-search .navbar-search-field .form-control {
+    width: 100%;
     min-width: 0;
     background: transparent;
     border: 0;
-    border-radius: 999px;
+    border-radius: inherit;
     box-shadow: none;
-    padding-left: .25rem;
+    padding-left: 2.125rem;
     padding-right: 1rem;
     color: var(--n45-ink);
 }
 
-.navbar-search-field .form-control:focus,
-.navbar-search-field .form-control:focus-visible {
+.navbar-search .navbar-search-field .form-control:hover,
+.navbar-search .navbar-search-field .form-control:focus,
+.navbar-search .navbar-search-field .form-control:focus-visible {
     background: transparent;
     border: 0;
     box-shadow: none;
     outline: none;
 }
 
-.navbar-search-field .navbar-search-submit {
-    flex: 0 0 2.5rem;
-    min-height: 2.35rem;
-    background: transparent;
-    border: 0;
-    border-radius: 999px;
+.navbar-search .navbar-search-submit {
     color: var(--n45-ink);
     cursor: pointer;
 }
 
-.navbar-search-field .navbar-search-submit:hover {
+.navbar-search .navbar-search-submit:hover {
     color: var(--n45-action);
 }
 
