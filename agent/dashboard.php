@@ -821,7 +821,7 @@ if ($user_config_dashboard_technical_enable == 1) {
                                         <td><a href="tickets.php?client_id=<?= $client_id ?>"><strong><?= $client_name ?></strong></a></td>
                                         <td><?= $contact_display ?></td>
                                         <td><span class='p-2 badge rounded-pill text-bg-<?= $ticket_priority_color ?>'><?= $ticket_priority ?></span></td>
-                                        <td><span class='badge rounded-pill text-light p-2' style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span></td>
+                                        <td><span <?= n45TicketStatusBadgeAttributes($ticket_status_color) ?>><?= $ticket_status_name ?></span></td>
                                         <td><?= $ticket_updated_at_display ?></td>
                                     </tr>
                                 <?php } ?>
