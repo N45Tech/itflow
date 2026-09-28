@@ -37,7 +37,10 @@ $row = mysqli_fetch_assoc($sql_document);
 if ($row) {
     $document_id = intval($row['document_id']);
     $document_name = escapeHtml($row['document_name']);
-    $document_content = $purifier->purify($row['document_content']);
+    $document_content = protectDocumentImageUrls(
+        $purifier->purify($row['document_content']),
+        'document_image.php'
+    );
     $document_description = escapeHtml($row['document_description']);
 } else {
     header("Location: post.php?logout");

@@ -18,7 +18,10 @@ $sql = mysqli_query($mysqli, "SELECT document_client_id, document_content, docum
 
 $row = mysqli_fetch_assoc($sql);
 $document_name = escapeHtml($row['document_name']);
-$document_content = $purifier->purify($row['document_content']);
+$document_content = protectDocumentImageUrls(
+    $purifier->purify($row['document_content']),
+    'document_image.php'
+);
 $client_id = intval($row['document_client_id']);
 
 enforceClientAccess();

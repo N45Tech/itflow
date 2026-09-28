@@ -142,7 +142,11 @@ if ($item_type == "Document") {
 
     $doc_title = escapeHtml($doc_row['document_name']);
     $doc_title_escaped = escapeSql($doc_row['document_name']);
-    $doc_content = $purifier->purify($doc_row['document_content']);
+    $doc_content = protectDocumentImageUrls(
+        $purifier->purify($doc_row['document_content']),
+        'document_image.php',
+        ['id' => $item_id, 'key' => $_GET['key']]
+    );
 
     echo "<h3>$doc_title</h3>";
     echo "<div class='prettyContent'>$doc_content</div>";
