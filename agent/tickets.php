@@ -444,7 +444,7 @@ if ($date_filter_active) {
             <?php } ?>
 
             <div class="row g-2 align-items-center n45-ticket-filter-row">
-                <div class="col-lg-7">
+                <div class="col-12 col-xxl-6">
                     <label class="visually-hidden" for="ticket-search">Search tickets</label>
                     <div class="input-group n45-ticket-search">
                         <input type="search" class="form-control" id="ticket-search" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search ticket number, subject, client, or contact" aria-label="Search tickets">
@@ -455,8 +455,8 @@ if ($date_filter_active) {
                     </div>
                 </div>
 
-                <div class="col-lg-5">
-                    <div class="btn-group n45-ticket-view-controls float-lg-end" role="group" aria-label="Ticket assignment, queues, and layout">
+                <div class="col-12 col-xxl-6">
+                    <div class="btn-group n45-ticket-view-controls float-xxl-end" role="group" aria-label="Ticket assignment, queues, and layout">
                         <a href="<?= $ticket_assigned_filter_id === intval($session_user_id) && !$queue ? ticketsFilterUrl(['assigned' => null]) : ticketsFilterUrl(['assigned' => $session_user_id, 'queue' => null, 'state' => 'open']) ?>"
                             class="btn <?= $ticket_assigned_filter_id === intval($session_user_id) ? 'btn-primary' : 'btn-outline-primary' ?>" aria-label="Filter tickets assigned to me">
                             <i class="fas fa-fw fa-user"></i><span class="d-none d-xl-inline ms-2">Mine</span> | <strong><?= $user_active_assigned_tickets ?></strong>
@@ -502,7 +502,7 @@ if ($date_filter_active) {
 
             <div class="collapse mt-3 <?php if ($hidden_filter_count) { echo"show"; } ?>" id="advancedFilter">
                 <div class="row g-3">
-                    <div class="col-md-3">
+                    <div class="col-sm-6 col-xl-3">
                         <div>
                             <label>Status</label>
                             <select onchange="this.form.submit()" class="form-select select2" name="status[]" data-placeholder="Any status" multiple>
@@ -520,7 +520,7 @@ if ($date_filter_active) {
                         </div>
                     </div>
 
-                    <div class="col-md-3">
+                    <div class="col-sm-6 col-xl-3">
                         <div>
                             <label>Assigned to</label>
                             <select onchange="this.form.submit()" class="form-select select2" name="assigned">
@@ -541,7 +541,7 @@ if ($date_filter_active) {
                         </div>
                     </div>
 
-                    <div class="col-md-3">
+                    <div class="col-sm-6 col-xl-3">
                         <div>
                             <label>Priority</label>
                             <select onchange="this.form.submit()" class="form-select select2" name="priority">
@@ -553,7 +553,7 @@ if ($date_filter_active) {
                         </div>
                     </div>
 
-                    <div class="col-md-3">
+                    <div class="col-sm-6 col-xl-3">
                         <div>
                             <label>Category</label>
                             <select onchange="this.form.submit()" class="form-select select2" name="category">
@@ -575,7 +575,7 @@ if ($date_filter_active) {
                 </div>
 
                 <div class="row mt-3">
-                    <div class="col-md-3">
+                    <div class="col-sm-6 col-xl-3">
                         <div>
                             <label>Project</label>
                             <select onchange="this.form.submit()" class="form-select select2" name="project">
@@ -596,7 +596,7 @@ if ($date_filter_active) {
                     </div>
 
                     <?php if ($show_billing_column) { ?>
-                        <div class="col-md-3">
+                        <div class="col-sm-6 col-xl-3">
                             <div>
                                 <label>Billing</label>
                                 <select class="form-select select2" name="billing" onchange="this.form.submit()">
@@ -610,7 +610,7 @@ if ($date_filter_active) {
                     <?php } ?>
 
                     <?php if ($sla_filter_in_use) { ?>
-                        <div class="col-md-3">
+                        <div class="col-sm-6 col-xl-3">
                             <div>
                                 <label>SLA</label>
                                 <select class="form-select select2" name="sla" onchange="this.form.submit()">
@@ -623,7 +623,7 @@ if ($date_filter_active) {
                         </div>
                     <?php } ?>
 
-                    <div class="col-md-3">
+                    <div class="col-sm-6 col-xl-3">
                         <div>
                             <label>Created</label>
                             <input type="text" id="dateFilter" class="form-control" autocomplete="off">
