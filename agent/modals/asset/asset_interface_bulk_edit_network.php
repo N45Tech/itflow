@@ -5,6 +5,9 @@ require_once '../../../includes/modal_header.php';
 $client_id = intval($_GET['client_id'] ?? 0);
 $interface_ids = array_map('intval', $_GET['interface_ids'] ?? []);
 
+enforceUserPermission('module_support');
+enforceClientAccess($client_id);
+
 $count = count($interface_ids);
 
 ob_start();
