@@ -12,13 +12,13 @@
     <form class="navbar-search ms-auto" role="search" action="/agent/global_search.php" aria-label="Search ITFlow">
         <label for="navbar-search-input" class="visually-hidden">Search everywhere</label>
         <div class="navbar-search-field">
+            <button class="navbar-search-submit" type="submit" aria-label="Submit search">
+                <i class="fas fa-search" aria-hidden="true"></i>
+            </button>
             <input class="form-control" type="search" id="navbar-search-input" name="query"
                 placeholder="Search clients, tickets, and assets" autocomplete="off"
                 minlength="2" maxlength="200" required
                 value="<?php if (isset($_GET['query']) && is_scalar($_GET['query'])) { echo escapeHtml((string) $_GET['query']); } ?>">
-            <button class="navbar-search-submit" type="submit" aria-label="Submit search">
-                <i class="fas fa-search" aria-hidden="true"></i>
-            </button>
         </div>
     </form>
 
