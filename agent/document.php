@@ -2,6 +2,8 @@
 
 require_once "includes/inc_all_client.php";
 
+enforceUserPermission('module_support');
+
 
 //Initialize the HTML Purifier to prevent XSS
 require "../libs/htmlpurifier/HTMLPurifier.standalone.php";
