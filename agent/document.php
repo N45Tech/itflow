@@ -2,6 +2,8 @@
 
 require_once "includes/inc_all_client.php";
 
+enforceUserPermission('module_support');
+
 
 //Initialize the HTML Purifier to prevent XSS
 require "../libs/htmlpurifier/HTMLPurifier.standalone.php";
@@ -37,7 +39,10 @@ $row = mysqli_fetch_assoc($sql_document);
 $folder_name = escapeHtml($row['folder_name']);
 $document_name = escapeHtml($row['document_name']);
 $document_description = escapeHtml($row['document_description']);
-$document_content = $purifier->purify($row['document_content']);
+$document_content = protectDocumentImageUrls(
+    $purifier->purify($row['document_content']),
+    'document_image.php'
+);
 $document_created_by_id = intval($row['document_created_by']);
 $document_created_by_name = escapeHtml($row['user_name']);
 $document_created_at = escapeHtml($row['document_created_at']);

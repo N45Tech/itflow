@@ -7,6 +7,12 @@ require_once dirname(__DIR__) . '/functions.php';
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 $root = dirname(__DIR__);
 $source = file_get_contents($root . '/cron/ticket_email_parser.php');
+$notification_start = strpos($source, 'function ticketEmailNotificationText(');
+$notification_end = strpos($source, '/** ------------------------------------------------------------------', $notification_start);
+if ($notification_start === false || $notification_end === false) {
+    throw new RuntimeException('Could not locate the inbound notification helper');
+}
+eval(substr($source, $notification_start, $notification_end - $notification_start));
 $start = strpos($source, 'function addTicket(');
 $end = strpos($source, '/** ------------------------------------------------------------------', $start);
 eval(substr($source, $start, $end - $start));

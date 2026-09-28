@@ -51,25 +51,10 @@ jobs:
         env:
           CONFIGURED_REVIEWED_BASE_SHA: ${{ inputs.reviewed_base_sha || vars.N45_REVIEWED_BASE_SHA }}
           CONFIGURED_REVIEWED_HEAD_SHA: ${{ inputs.reviewed_head_sha || vars.N45_REVIEWED_HEAD_SHA }}
-          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
-          reviewed_base_sha="$CONFIGURED_REVIEWED_BASE_SHA"
-          reviewed_head_sha="$CONFIGURED_REVIEWED_HEAD_SHA"
-
-          # A next-to-main PR is inside the repository write-access trust
-          # boundary, so bind its exact GitHub merge candidate automatically.
-          # Scheduled and manual reviews retain the explicit reviewed-SHA gate.
-          if [ "$GITHUB_EVENT_NAME" = pull_request ] \
-            && [ "$GITHUB_BASE_REF" = main ] \
-            && [ "$GITHUB_HEAD_REF" = next ] \
-            && [ "$PR_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]; then
-            reviewed_base_sha="$(git rev-parse upstream/master)"
-            reviewed_head_sha="$(git rev-parse HEAD)"
-          fi
-
-          N45_REVIEWED_BASE_SHA="$reviewed_base_sha" \
-          N45_REVIEWED_HEAD_SHA="$reviewed_head_sha" \
+          N45_REVIEWED_BASE_SHA="$CONFIGURED_REVIEWED_BASE_SHA" \
+          N45_REVIEWED_HEAD_SHA="$CONFIGURED_REVIEWED_HEAD_SHA" \
             bash scripts/n45-upstream-review.sh upstream/master HEAD upstream-parity-report.md
 
       - name: Publish job summary

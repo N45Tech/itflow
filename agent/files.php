@@ -6,6 +6,8 @@ $order = "ASC";
 
 require_once "includes/inc_all_client.php";
 
+$can_view_documents = lookupUserPermission('module_support') >= 1;
+
 // Folder
 if (!empty($_GET['folder_id'])) {
     $folder_id = intval($_GET['folder_id']);
@@ -113,7 +115,7 @@ function isAncestorFolder($folder_id, $current_folder_id, $client_id) {
 }
 
 function displayFolders($parent_folder_id, $client_id, $indent = 0, $render_root = false) {
-    global $mysqli, $get_folder_id, $session_user_role, $archive_query, $archived, $num_root_items, $folders_expanded, $view, $type_filter;
+    global $mysqli, $get_folder_id, $session_user_role, $archive_query, $archived, $num_root_items, $folders_expanded, $view, $type_filter, $can_view_documents;
 
     // Always render root (only once)
     if ($parent_folder_id == 0 && $indent == 0) {
@@ -152,15 +154,18 @@ function displayFolders($parent_folder_id, $client_id, $indent = 0, $render_root
         ));
         $num_files = intval($row_files['num']);
 
-        $row_docs = mysqli_fetch_assoc(mysqli_query(
-            $mysqli,
-            "SELECT COUNT('document_id') AS num
-             FROM documents
-             WHERE document_folder_id = $folder_id
-             AND document_client_id = $client_id
-             AND document_$archive_query"
-        ));
-        $num_docs = intval($row_docs['num']);
+        $num_docs = 0;
+        if ($can_view_documents) {
+            $row_docs = mysqli_fetch_assoc(mysqli_query(
+                $mysqli,
+                "SELECT COUNT('document_id') AS num
+                 FROM documents
+                 WHERE document_folder_id = $folder_id
+                 AND document_client_id = $client_id
+                 AND document_$archive_query"
+            ));
+            $num_docs = intval($row_docs['num']);
+        }
 
         $num_total = $num_files + $num_docs;
 
@@ -302,7 +307,7 @@ if ($view == 1) {
     }
 
     $sql_grid_documents = false;
-    if ($type_filter !== 'file') {
+    if ($can_view_documents && $type_filter !== 'file') {
         $sql_grid_documents = mysqli_query(
             $mysqli,
             "SELECT documents.*, users.user_name
@@ -378,7 +383,7 @@ if ($view == 1) {
 
     // Documents query (NO limit - paginate in PHP)
     $sql_documents = false;
-    if ($type_filter !== 'file') {
+    if ($can_view_documents && $type_filter !== 'file') {
         $sql_documents = mysqli_query(
         $mysqli,
         "SELECT documents.*, users.user_name
@@ -509,8 +514,12 @@ if ($view == 1) {
 // Root folder count (for "/" badge)
 // ---------------------------------------------
 $row_root_files = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('file_id') AS num FROM files WHERE file_folder_id = 0 AND file_client_id = $client_id AND file_$archive_query"));
-$row_root_docs  = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('document_id') AS num FROM documents WHERE document_folder_id = 0 AND document_client_id = $client_id AND document_$archive_query"));
-$num_root_items = intval($row_root_files['num']) + intval($row_root_docs['num']);
+$num_root_docs = 0;
+if ($can_view_documents) {
+    $row_root_docs = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT('document_id') AS num FROM documents WHERE document_folder_id = 0 AND document_client_id = $client_id AND document_$archive_query"));
+    $num_root_docs = intval($row_root_docs['num']);
+}
+$num_root_items = intval($row_root_files['num']) + $num_root_docs;
 
 ?>
 

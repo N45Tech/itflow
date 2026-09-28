@@ -68,9 +68,13 @@ if (isset($_GET['calendar_id'])) {
                             <?php } ?>
                             <?php if ($session_user_role == 3) { ?>
                                 <div class="dropdown-divider"></div>
-                                <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?delete_calendar=<?= $calendar_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                    <i class="fas fa-fw fa-trash me-2"></i>Delete
-                                </a>
+                                <form action="post.php" method="post">
+                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                    <input type="hidden" name="calendar_id" value="<?= $calendar_id ?>">
+                                    <button type="submit" class="dropdown-item text-danger text-bold confirm-link" name="delete_calendar">
+                                        <i class="fas fa-fw fa-trash me-2"></i>Delete
+                                    </button>
+                                </form>
                             <?php } ?>
                         </div>
                     </div>

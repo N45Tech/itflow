@@ -216,7 +216,9 @@ class ImapConnection implements ConnectionInterface
 
         $this->assertTaggedResponse($tag);
 
-        $this->stream->setSocketSetCrypto(true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+        if ($this->stream->setSocketSetCrypto(true, STREAM_CRYPTO_METHOD_TLS_CLIENT) !== true) {
+            throw new ImapConnectionFailedException('Failed to enable TLS encryption');
+        }
     }
 
     /**

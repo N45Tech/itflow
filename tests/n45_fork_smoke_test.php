@@ -126,6 +126,7 @@ $assertTrue(
         'n45-0028-ticket-delete-operations-alignment',
         'n45-0029-hetrix-monitoring-source',
         'n45-0030-automation-investigation',
+        'n45-0031-strict-ticket-retention-default',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -144,8 +145,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0030-automation-investigation',
-    'The read-only investigation migration is not the final stable N45 migration'
+    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0031-strict-ticket-retention-default',
+    'The strict ticket-retention default migration is not the final stable N45 migration'
 );
 $commercial_migration = $manifest['migrations']['n45-0027-commercial-operations'] ?? [];
 $assertTrue(
@@ -706,17 +707,20 @@ $assertNotContains('push:', $review_workflow, 'Upstream parity reruns after a ne
 $assertContains("github.event.pull_request.head.ref == 'next'", $php_lint_workflow, 'PHP lint is not restricted to next-to-main pull requests');
 $assertContains("github.event.pull_request.head.ref == 'next'", $database_workflow, 'Database validation is not restricted to next-to-main pull requests');
 $assertContains("github.event.pull_request.head.ref == 'next'", $review_workflow, 'Upstream parity is not restricted to next-to-main pull requests');
-$assertContains('PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}', $review_workflow, 'Parity workflow cannot identify same-repository integration PRs');
-$assertContains('[ "$GITHUB_EVENT_NAME" = pull_request ]', $review_workflow, 'Parity workflow does not automatically bind trusted integration PRs');
-$assertContains('[ "$GITHUB_BASE_REF" = main ]', $review_workflow, 'Automatic parity approval is not restricted to PRs targeting main');
-$assertContains('[ "$GITHUB_HEAD_REF" = next ]', $review_workflow, 'Automatic parity approval is not restricted to the next branch');
-$assertContains('[ "$PR_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]', $review_workflow, 'Automatic parity approval is not restricted to the repository write-access boundary');
-$assertContains('reviewed_head_sha="$(git rev-parse HEAD)"', $review_workflow, 'Trusted integration approval is not bound to the exact checked-out merge candidate');
+$assertNotContains('PR_HEAD_REPOSITORY:', $review_workflow, 'Parity workflow treats same-repository branch provenance as review approval');
+$assertNotContains('reviewed_base_sha="$(git rev-parse upstream/master)"', $review_workflow, 'Parity workflow self-approves the upstream commit under test');
+$assertNotContains('reviewed_head_sha="$(git rev-parse HEAD)"', $review_workflow, 'Parity workflow self-approves the merge candidate under test');
+$assertContains('N45_REVIEWED_BASE_SHA="$CONFIGURED_REVIEWED_BASE_SHA"', $review_workflow, 'Parity workflow does not preserve reviewer-supplied upstream approval');
+$assertContains('N45_REVIEWED_HEAD_SHA="$CONFIGURED_REVIEWED_HEAD_SHA"', $review_workflow, 'Parity workflow does not preserve reviewer-supplied fork approval');
 $assertContains('push:', $production_notification_workflow, 'Production notification is not triggered by the main merge');
 $assertNotContains('workflow_run:', $production_notification_workflow, 'Production notification still waits for duplicate post-merge test runs');
 $assertContains("pull.head?.ref === 'next'", $production_notification_workflow, 'Production notification accepts a merge from outside next');
 $assertContains('mainCommit.tree.sha !== headCommit.tree.sha', $production_notification_workflow, 'Production notification does not compare the release tree with the tested next tree');
 $assertContains("event: 'pull_request'", $production_notification_workflow, 'Production notification does not require pull-request test runs');
+$assertContains('associatedPull.number === pull.number', $production_notification_workflow, 'Production notification can reuse a run from another pull request');
+$assertContains('associatedPull.head?.sha === headSha', $production_notification_workflow, 'Production notification does not bind a run to the selected pull request head');
+$assertContains('associatedPull.base?.sha === baseSha', $production_notification_workflow, 'Production notification does not bind a run to the tested merge-candidate base');
+$assertNotContains('run.updated_at', $production_notification_workflow, 'Production notification can discard a newer run after the pull request merge');
 $assertContains("core.setOutput('source_run_id', String(context.runId))", $production_notification_workflow, 'Production notification does not identify its exact attestation run');
 $assertContains('ensure_commit_available()', $release_database_test, 'Release database tests cannot recover pinned fixtures omitted from a clean checkout');
 $assertContains('git fetch --no-tags --no-write-fetch-head origin "$commit_sha"', $release_database_test, 'Release database tests do not fetch missing fixtures by exact SHA');

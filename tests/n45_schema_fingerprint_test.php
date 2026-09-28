@@ -55,6 +55,11 @@ $required_migration_prefix = [
     'n45-0022-recoverable-ticket-deletion.php',
     'n45-0023-ticket-operational-discipline.php',
 ];
+$assertTrue(
+    hash_file('sha256', $root . '/n45/migrations/n45-0021-client-ticket-retention.php')
+        === '29fc941c8d3636bcf4dc0a76e589c3bdee5c3368e83eb51b1cae4ead6c7d58b6',
+    'The released client ticket-retention migration checksum changed; existing ledgers cannot upgrade'
+);
 $disk_migration_files = array_map('basename', glob($root . '/n45/migrations/*.php') ?: []);
 sort($disk_migration_files);
 $assertTrue(array_slice($disk_migration_files, 0, count($required_migration_prefix)) === $required_migration_prefix, 'The established migration inventory is incomplete on disk');
@@ -98,6 +103,7 @@ $assertTrue(
         'n45-0028-ticket-delete-operations-alignment',
         'n45-0029-hetrix-monitoring-source',
         'n45-0030-automation-investigation',
+        'n45-0031-strict-ticket-retention-default',
     ],
     'The post-integration migration reservations are missing'
 );
@@ -246,6 +252,14 @@ foreach ($definitions as $id => $definition) {
 
 $endpoint_definition = $definitions['n45-0012-unified-endpoint-network'] ?? [];
 $external_identity_definition = $definitions['n45-0008-external-identity-lifecycle'] ?? [];
+$ticket_retention_definition = $definitions['n45-0021-client-ticket-retention'] ?? [];
+$strict_default_definition = $definitions['n45-0031-strict-ticket-retention-default'] ?? [];
+$assertTrue(
+    ($ticket_retention_definition['runner_fingerprint']['columns']['clients']['client_ticket_retention_policy']['default'] ?? null) === 'override'
+        && ($ticket_retention_definition['fingerprint']['columns']['clients']['client_ticket_retention_policy']['default'] ?? null) === 'strict'
+        && ($strict_default_definition['fingerprint']['columns']['clients']['client_ticket_retention_policy']['default'] ?? null) === 'strict',
+    'The released retention default and its forward migration do not match their immediate and final schema contracts'
+);
 $historical_endpoint_snapshot_index = [
     'unique' => true,
     'columns' => [

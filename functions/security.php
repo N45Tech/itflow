@@ -199,10 +199,16 @@ function apiEncryptCredentialEntry(#[\SensitiveParameter]$credential_cleartext, 
     // Decrypt the api hash to get the master key
     $site_encryption_master_key = decryptUserSpecificKey($api_key_decrypt_hash, $api_key_decrypt_password);
 
+    // An invalid vault password makes OpenSSL return false. Do not let that value
+    // become an empty encryption key and produce attacker-controlled ciphertext.
+    if ($site_encryption_master_key === false) {
+        return false;
+    }
+
     // Encrypt the credential using the master key
     $ciphertext = openssl_encrypt($credential_cleartext, 'aes-128-cbc', $site_encryption_master_key, 0, $iv);
 
-    return $iv . $ciphertext;
+    return $ciphertext === false ? false : $iv . $ciphertext;
 }
 
 /*

@@ -361,20 +361,24 @@ if (isset($_POST['bulk_assign_contact_location'])) {
     // Assign Location to Selected Contacts
     if (isset($_POST['contact_ids'])) {
 
-        // Get Selected Contacts Count
-        $contact_count = count($_POST['contact_ids']);
+        // Get Assigned Contacts Count
+        $contact_count = 0;
 
         foreach($_POST['contact_ids'] as $contact_id) {
             $contact_id = intval($contact_id);
 
             // Get Contact Details for Logging
-            $sql = mysqli_query($mysqli,"SELECT contact_name FROM contacts WHERE contact_id = $contact_id");
+            $sql = mysqli_query($mysqli,"SELECT contact_name FROM contacts WHERE contact_id = $contact_id AND contact_client_id = $client_id");
             $row = mysqli_fetch_assoc($sql);
+            if (!$row) {
+                continue;
+            }
             $contact_name = escapeSql($row['contact_name']);
 
-            mysqli_query($mysqli,"UPDATE contacts SET contact_location_id = $location_id WHERE contact_id = $contact_id");
+            mysqli_query($mysqli,"UPDATE contacts SET contact_location_id = $location_id WHERE contact_id = $contact_id AND contact_client_id = $client_id");
 
             logAudit("Contact", "Edit", "$session_name assigned $contact_name to location $location_name", $client_id, $contact_id);
+            $contact_count++;
 
         } // End Assign Location Loop
 

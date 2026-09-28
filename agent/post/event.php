@@ -43,11 +43,13 @@ if (isset($_POST['edit_calendar'])) {
 
 }
 
-if (isset($_GET['delete_calendar'])) {
+if (isset($_POST['delete_calendar'])) {
 
     validateCSRFToken();
 
-    $calendar_id = intval($_GET['delete_calendar']);
+    enforceAdminPermission();
+
+    $calendar_id = intval($_POST['calendar_id']);
 
     // Get Calendar Name
     $sql = mysqli_query($mysqli,"SELECT calendar_name FROM calendars WHERE calendar_id = $calendar_id");

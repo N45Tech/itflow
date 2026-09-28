@@ -29,9 +29,7 @@ N45_REVIEWED_HEAD_SHA=<full-fork-sha> \
 bash scripts/n45-upstream-review.sh upstream/master HEAD upstream-parity-report.md
 ```
 
-For a same-repository pull request targeting `main`, the workflow automatically binds the freshly fetched upstream SHA and GitHub's exact checked-out merge candidate. Direct pushes to protected `main` receive the same automatic binding. Those events are already inside the repository write-access trust boundary, so routine integration does not require manually rotating repository variables.
-
-Fork pull requests, scheduled runs, manual runs without trusted integration context, and other branch pushes still require workflow-dispatch inputs or the `N45_REVIEWED_BASE_SHA` and `N45_REVIEWED_HEAD_SHA` repository variables. A new commit or upstream advance invalidates those explicit approvals deliberately. Never weaken the path rules to make a review pass; review the overlap and approve its exact SHAs.
+Every workflow run, including a same-repository pull request targeting `main`, requires reviewer-supplied workflow-dispatch inputs or the `N45_REVIEWED_BASE_SHA` and `N45_REVIEWED_HEAD_SHA` repository variables when security-sensitive paths overlap. The workflow must not derive approval values from the commits it is checking: branch-write access is not independent review evidence. A new commit or upstream advance invalidates those explicit approvals deliberately. Never weaken the path rules to make a review pass; review the overlap and approve its exact SHAs.
 
 ## Module boundary
 

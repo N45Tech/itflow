@@ -437,7 +437,10 @@ if (isset($_GET['get_document_content'])) {
         $document_purifier = new HTMLPurifier($document_purifier_config);
 
         $response['name'] = $document_row['document_name'];
-        $response['content'] = $document_purifier->purify($document_row['document_content']);
+        $response['content'] = protectDocumentImageUrls(
+            $document_purifier->purify($document_row['document_content']),
+            'document_image.php'
+        );
     } else {
         $response['name'] = '';
         $response['content'] = '';
@@ -1311,7 +1314,15 @@ if (isset($_GET['ai_ticket_summary'])) {
         exit;
     }
 
-    echo $result['content'];
+    // AI output is untrusted: ticket content can influence the model into
+    // returning active HTML. Keep only the simple formatting requested above.
+    require_once "../libs/htmlpurifier/HTMLPurifier.standalone.php";
+    $summary_purifier_config = HTMLPurifier_Config::createDefault();
+    $summary_purifier_config->set('Cache.DefinitionImpl', null);
+    $summary_purifier_config->set('HTML.Allowed', 'h3,ul,li,p,strong,em,br');
+    $summary_purifier = new HTMLPurifier($summary_purifier_config);
+
+    echo $summary_purifier->purify($result['content']);
 }
 
 // Stops people trying to use sub-domains in the domains tracker

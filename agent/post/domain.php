@@ -402,16 +402,27 @@ if (isset($_POST['bulk_refresh_domains'])) {
 
     if (isset($_POST['domain_ids'])) {
 
-        // WHOIS lookups are slow - don't time out mid-batch
-        set_time_limit(0);
+        $domain_ids = is_array($_POST['domain_ids']) ? $_POST['domain_ids'] : [];
+        $domain_ids = array_values(array_unique(array_filter(
+            array_map(
+                static fn ($domain_id) => is_scalar($domain_id) ? intval($domain_id) : 0,
+                $domain_ids
+            ),
+            static fn ($domain_id) => $domain_id > 0
+        )));
+
+        // Keep synchronous DNS and WHOIS work within the normal request timeout.
+        $bulk_refresh_limit = 10;
+        if (count($domain_ids) > $bulk_refresh_limit) {
+            flashAlert("Select no more than $bulk_refresh_limit domains to refresh at once", 'error');
+            redirect();
+        }
 
         // Get Selected Count
-        $count = count($_POST['domain_ids']);
+        $count = count($domain_ids);
 
         // Cycle through array and refresh each record
-        foreach ($_POST['domain_ids'] as $domain_id) {
-
-            $domain_id = intval($domain_id);
+        foreach ($domain_ids as $domain_id) {
 
             // Get Name and Client ID for logging and alert message
             $sql = mysqli_query($mysqli,"SELECT domain_name, domain_client_id FROM domains WHERE domain_id = $domain_id");

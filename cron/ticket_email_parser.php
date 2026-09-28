@@ -67,6 +67,22 @@ $max_emails_per_run = 50;          // Cap per cron run to bound memory usage (cr
 $max_attachment_bytes = 15728640;  // 15 MB - larger attachments are skipped & logged
 $max_inline_embed_bytes = 2097152; // 2 MB - larger inline images are saved as regular attachments instead of base64-embedded in the ticket body
 
+/**
+ * Render untrusted inbound HTML as inert text inside an HTML notification.
+ *
+ * Ticket replies retain their existing HTML storage/display path, where the UI
+ * applies its own purifier. Notifications cross a separate trust boundary, so
+ * they must not carry sender-controlled elements, attributes, or remote resources.
+ */
+function ticketEmailNotificationText(string $html): string {
+    $html = preg_replace('/<(style|script)\b[^>]*>.*?<\/\1\s*>/is', '', $html) ?? $html;
+    $text = preg_replace('/<br\s*\/?>|<\/p\s*>/i', "\n", $html);
+    $text = html_entity_decode(strip_tags((string) $text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $text = trim(preg_replace("/[ \t]+\n|\n[ \t]+/", "\n", $text) ?? $text);
+
+    return nl2br(htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8'), false);
+}
+
 /** ------------------------------------------------------------------
  * Ticket / Reply helpers (owned by ticketEmailProcess)
  * ------------------------------------------------------------------ */
@@ -256,6 +272,7 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
 
     // 3) Final wrapper
     $message = "<i>Email from: $from_email at $date:-</i><br><br><div style='line-height:1.5;'>$message</div>";
+    $notification_message = ticketEmailNotificationText($message);
 
     $ticket_number_esc = intval($ticket_number);
     $message_esc = mysqli_real_escape_string($mysqli, $message);
@@ -368,7 +385,7 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
                 $tech_name = escapeSql($tech_row['user_name']);
 
                 $email_subject = "$config_app_name - Ticket updated - [$config_ticket_prefix$ticket_number] $ticket_subject";
-                $email_body    = "Hello $tech_name,<br><br>A new reply has been added to the below ticket.<br><br>Client: $client_name<br>Ticket: $config_ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Link: https://$config_base_url/agent/ticket.php?ticket_id=$ticket_id$client_uri<br><br>--------------------------------<br>$message_esc";
+                $email_body    = "Hello $tech_name,<br><br>A new reply has been added to the below ticket.<br><br>Client: $client_name<br>Ticket: $config_ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Link: https://$config_base_url/agent/ticket.php?ticket_id=$ticket_id$client_uri<br><br>--------------------------------<br>$notification_message";
 
                 $data = [
                     [
@@ -724,12 +741,6 @@ foreach ($messages as $message) {
             $precedence     = strtolower((string)($message->header('Precedence')?->getValue() ?? ''));
             if (str_starts_with($auto_submitted, 'auto-replied') || $precedence === 'auto_reply') {
                 logApp("Cron-Email-Parser", "info", "Email parser skipped auto-responder from $from_email ($subject)");
-                    appNotify(
-                        "Mail",
-                        "Email parser: Skipped auto-responder message from $from_email. Subject: $subject",
-                        "",
-                        0
-                    );
                 return true;
             }
 

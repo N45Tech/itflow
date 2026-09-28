@@ -2,6 +2,8 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_client');
+
 $document_id = intval($_GET['document_id']);
 
 $sql = mysqli_query($mysqli, "SELECT document_client_id, document_name FROM documents
@@ -10,10 +12,15 @@ $sql = mysqli_query($mysqli, "SELECT document_client_id, document_name FROM docu
 ");
 
 $row = mysqli_fetch_assoc($sql);
+if (!$row) {
+    http_response_code(404);
+    echo json_encode(['error' => 'Document not found']);
+    exit;
+}
 $document_name = escapeHtml($row['document_name']);
 $client_id = intval($row['document_client_id']);
 
-enforceClientAccess();
+enforceClientAccess($client_id);
 
 ob_start();
 

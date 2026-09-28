@@ -28,7 +28,7 @@ $client_ticket_retention_policy = ticketDeletionNormalizePolicy($row['client_tic
 $client_ticket_retention_days = intval($row['client_ticket_retention_days']);
 $client_created_at = escapeHtml($row['client_created_at']);
 $client_archived_at = escapeHtml($row['client_archived_at']);
-$can_manage_ticket_retention = lookupUserPermission('module_client') >= 3;
+$can_manage_ticket_retention = isset($session_is_admin) && $session_is_admin === true;
 
 // Client SLA assignments
 $client_sla_assignments = [];

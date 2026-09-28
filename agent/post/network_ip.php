@@ -195,6 +195,9 @@ if (isset($_GET['download_network_ips_csv_template'])) {
 
 if (isset($_POST['import_network_ips_csv'])) {
 
+    $max_file_size = 5 * 1024 * 1024;
+    $max_data_rows = 10000;
+
     validateCSRFToken();
 
     enforceUserPermission('module_support', 2);
@@ -226,20 +229,36 @@ if (isset($_POST['import_network_ips_csv'])) {
     }
 
     // Check file isn't empty
-    elseif ($_FILES['file']['size'] < 1) {
+    elseif ($_FILES['file']['size'] < 1 || filesize($file_name) < 1) {
         $error = true;
         flashAlert("Bad file size (empty file?).", 'error');
+    }
+
+    // Keep imports small enough to process within a normal web request. Check
+    // both values because the multipart size is supplied by the client.
+    elseif ($_FILES['file']['size'] > $max_file_size || filesize($file_name) > $max_file_size) {
+        $error = true;
+        flashAlert("CSV files must be 5 MB or smaller.", 'error');
     }
 
     // Check column count (IP Address, Hostname, Description)
     else {
         $f = fopen($file_name, 'r');
         $f_columns = fgetcsv($f, 1000, ',');
+
+        $data_rows = 0;
+        while ($data_rows <= $max_data_rows && fgetcsv($f, 1000, ',') !== false) {
+            $data_rows++;
+        }
+
         fclose($f);
 
-        if (count($f_columns) !== 3) {
+        if (!is_array($f_columns) || count($f_columns) !== 3) {
             $error = true;
             flashAlert("Bad column count - expected 3 columns: IP Address, Hostname, Description.", 'error');
+        } elseif ($data_rows > $max_data_rows) {
+            $error = true;
+            flashAlert("CSV files may contain at most $max_data_rows data rows.", 'error');
         }
     }
 

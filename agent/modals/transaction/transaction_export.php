@@ -29,6 +29,7 @@ if (isset($_GET['category']) & !empty($_GET['category'])) {
 // Client Filter
 if (isset($_GET['client']) & !empty($_GET['client'])) {
     $client_filter = intval($_GET['client']);
+    enforceClientAccess($client_filter);
 } else {
     $client_filter = '';
 }
@@ -163,7 +164,8 @@ ob_start();
                     <option value="">- All Clients -</option>
 
                     <?php
-                    $sql_clients_filter = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_archived_at IS NULL AND (EXISTS (SELECT 1 FROM revenues WHERE revenue_client_id = client_id) OR EXISTS (SELECT 1 FROM expenses WHERE expense_client_id = client_id) OR EXISTS (SELECT 1 FROM invoices WHERE invoice_client_id = client_id)) ORDER BY client_name ASC");
+                    $client_access_query = clientScopeSql('clients.client_id');
+                    $sql_clients_filter = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_archived_at IS NULL $client_access_query AND (EXISTS (SELECT 1 FROM revenues WHERE revenue_client_id = client_id) OR EXISTS (SELECT 1 FROM expenses WHERE expense_client_id = client_id) OR EXISTS (SELECT 1 FROM invoices WHERE invoice_client_id = client_id)) ORDER BY client_name ASC");
                     while ($row = mysqli_fetch_assoc($sql_clients_filter)) {
                         $client_id = intval($row['client_id']);
                         $client_name = escapeHtml($row['client_name']);

@@ -2,6 +2,8 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_support', 2);
+
 $rack_id = intval($_GET['id']);
 
 $sql = mysqli_query($mysqli, "SELECT rack_client_id, rack_name FROM racks WHERE rack_id = $rack_id LIMIT 1");

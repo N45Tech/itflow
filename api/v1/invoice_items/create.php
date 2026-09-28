@@ -42,23 +42,42 @@ $item_order = intval($_POST['item_order'] ?? 0);
 $product_id = intval($_POST['product_id'] ?? 0);
 
 $insert_id = false;
+$transaction_started = false;
+
+// invoice_items uses DECIMAL(15,2); reject non-numeric, infinite, and values
+// which cannot be represented before any inventory or invoice write occurs.
+$maximum_decimal_value = 9999999999999.99;
+$numeric_input_valid = is_numeric($_POST['qty'] ?? null)
+    && is_numeric($_POST['price'] ?? null)
+    && is_finite($qty)
+    && is_finite($price)
+    && $qty > 0
+    && $qty <= $maximum_decimal_value
+    && abs($price) <= $maximum_decimal_value;
 
 if (
     !empty($invoice_id)
     && !empty($name)
-    && $qty > 0
+    && $numeric_input_valid
 ) {
 
-    // Load invoice, scoped to API key permissions
-    $invoice_sql = mysqli_query(
-        $mysqli,
-        "SELECT *
-         FROM invoices
-         WHERE invoice_id = $invoice_id
-         AND invoice_status != 'Paid'
-           AND 1=1 " . apiClientScopeSql('invoice_client_id') . "
-         LIMIT 1"
-    );
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin the invoice item transaction');
+        }
+        $transaction_started = true;
+
+        // Load and lock the invoice through the API key's client scope.
+        $invoice_sql = mysqli_query(
+            $mysqli,
+            "SELECT *
+             FROM invoices
+             WHERE invoice_id = $invoice_id
+             AND invoice_status != 'Paid'
+               AND 1=1 " . apiClientScopeSql('invoice_client_id') . "
+             LIMIT 1
+             FOR UPDATE"
+        );
 
     $invoice_row = $invoice_sql ? mysqli_fetch_assoc($invoice_sql) : null;
 
@@ -76,12 +95,56 @@ if (
 
         $subtotal = $price * $qty;
 
+        if (!is_finite($subtotal) || abs($subtotal) > $maximum_decimal_value) {
+            throw new RuntimeException('Invoice item subtotal is outside the supported range');
+        }
+
+        // Tax is calculated before inventory is changed, so all derived values
+        // can be validated before the first business-data write.
+        if ($tax_id > 0) {
+
+            $tax_sql = mysqli_query($mysqli, "SELECT tax_percent FROM taxes WHERE tax_id = $tax_id");
+            if (!$tax_sql) {
+                throw new RuntimeException('Could not load the invoice item tax');
+            }
+            $tax_row = mysqli_fetch_assoc($tax_sql);
+
+            $tax_percent = floatval($tax_row['tax_percent'] ?? 0);
+            $tax_amount = $subtotal * $tax_percent / 100;
+
+        } else {
+
+            $tax_amount = 0;
+
+        }
+
+        $total = $subtotal + $tax_amount;
+
+        if (!is_finite($tax_amount) || !is_finite($total)
+            || abs($tax_amount) > $maximum_decimal_value
+            || abs($total) > $maximum_decimal_value) {
+            throw new RuntimeException('Invoice item totals are outside the supported range');
+        }
+
         // Product inventory
         if ($product_id) {
 
-            $product_type = escapeSql(getFieldById('products', $product_id, 'product_type'));
+            // Lock the product row to serialize stock checks for this endpoint.
+            $product_sql = mysqli_query(
+                $mysqli,
+                "SELECT product_type FROM products WHERE product_id = $product_id FOR UPDATE"
+            );
+            if (!$product_sql) {
+                throw new RuntimeException('Could not lock the invoice item product');
+            }
+            $product_row = mysqli_fetch_assoc($product_sql);
+            $product_type = $product_row['product_type'] ?? '';
 
             if ($product_type === 'product') {
+
+                if (floor($qty) !== $qty || $qty > 2147483647) {
+                    throw new RuntimeException('Product stock quantity is outside the supported range');
+                }
 
                 $stock_sql = mysqli_query(
                     $mysqli,
@@ -90,12 +153,16 @@ if (
                      WHERE stock_product_id = $product_id"
                 );
 
+                if (!$stock_sql) {
+                    throw new RuntimeException('Could not read available product stock');
+                }
+
                 $stock_row = mysqli_fetch_assoc($stock_sql);
                 $available_stock = floatval($stock_row['available_stock']);
 
                 if ($available_stock >= $qty) {
 
-                    mysqli_query(
+                    $stock_insert_sql = mysqli_query(
                         $mysqli,
                         "INSERT INTO product_stock
                          SET stock_qty = -$qty,
@@ -103,7 +170,14 @@ if (
                              stock_product_id = $product_id"
                     );
 
+                    if (!$stock_insert_sql) {
+                        throw new RuntimeException('Could not reserve product stock');
+                    }
+
                 } else {
+
+                    mysqli_rollback($mysqli);
+                    $transaction_started = false;
 
                     logAudit(
                         "API",
@@ -121,23 +195,6 @@ if (
 
         }
 
-        // Tax
-        if ($tax_id > 0) {
-
-            $tax_sql = mysqli_query($mysqli, "SELECT tax_percent FROM taxes WHERE tax_id = $tax_id");
-            $tax_row = mysqli_fetch_assoc($tax_sql);
-
-            $tax_percent = floatval($tax_row['tax_percent']);
-            $tax_amount = $subtotal * $tax_percent / 100;
-
-        } else {
-
-            $tax_amount = 0;
-
-        }
-
-        $total = $subtotal + $tax_amount;
-
         $insert_sql = mysqli_query(
             $mysqli,
             "INSERT INTO invoice_items SET
@@ -154,24 +211,30 @@ if (
                 item_invoice_id = $invoice_id"
         );
 
-        if ($insert_sql) {
+        if (!$insert_sql) {
+            throw new RuntimeException('Could not insert the invoice item');
+        }
 
-            $insert_id = mysqli_insert_id($mysqli);
+        $insert_id = mysqli_insert_id($mysqli);
 
-            // Recalculate invoice total
-            $items_sql = mysqli_query(
+        // Recalculate invoice total
+        $items_sql = mysqli_query(
                 $mysqli,
                 "SELECT SUM(item_total) AS invoice_total
                  FROM invoice_items
                  WHERE item_invoice_id = $invoice_id"
             );
 
-            $items_row = mysqli_fetch_assoc($items_sql);
-            $invoice_total = floatval($items_row['invoice_total']);
+        if (!$items_sql) {
+            throw new RuntimeException('Could not recalculate the invoice total');
+        }
 
-            $new_invoice_amount = $invoice_total - $invoice_discount;
+        $items_row = mysqli_fetch_assoc($items_sql);
+        $invoice_total = floatval($items_row['invoice_total']);
 
-            mysqli_query(
+        $new_invoice_amount = $invoice_total - $invoice_discount;
+
+        $update_sql = mysqli_query(
                 $mysqli,
                 "UPDATE invoices
                  SET invoice_amount = $new_invoice_amount
@@ -179,23 +242,47 @@ if (
                  LIMIT 1"
             );
 
-            logAudit(
+        if (!$update_sql) {
+            throw new RuntimeException('Could not update the invoice total');
+        }
+
+        if (!logAudit(
                 "Invoice",
                 "Edit",
                 "Added item $name to invoice $invoice_prefix$invoice_number via API ($api_key_name)",
                 $client_id,
                 $invoice_id
-            );
+        )) {
+            throw new RuntimeException('Could not audit the invoice item');
+        }
 
-            logAudit(
+        if (!logAudit(
                 "API",
                 "Success",
                 "Added item $name to invoice $invoice_prefix$invoice_number via API ($api_key_name)",
                 $client_id
-            );
-
+        )) {
+            throw new RuntimeException('Could not audit the API invoice item');
         }
 
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit the invoice item transaction');
+        }
+        $transaction_started = false;
+
+    }
+
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+            $transaction_started = false;
+        }
+
+    } catch (Throwable $exception) {
+        if ($transaction_started) {
+            mysqli_rollback($mysqli);
+        }
+        $insert_id = false;
+        error_log('API invoice item creation failed: ' . $exception->getMessage());
     }
 
 }

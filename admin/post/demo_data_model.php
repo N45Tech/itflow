@@ -8,18 +8,33 @@ defined('FROM_POST_HANDLER') || defined('FROM_STARTER_CONTENT') || die("Direct f
  * clients with the people, kit, documentation, tickets and billing a typical
  * MSP would be carrying for them, generated across a two year history.
  *
- * Nothing written here is labelled as demo data. A demo instance should look
- * like a working system, so the rows carry ordinary names, references and tags.
- * Identification for removal is by name instead: the ten client names, the four
- * account names, the three SLA names, the two tax names and the organisation
- * vendor names below are the library, and removal matches against those.
- * Rename a demo client and it stops being removable - that is the trade for
- * data that reads as real.
+ * Demo clients carry a dedicated marker tag so removal never relies on a
+ * mutable client name. The rest of the rows carry ordinary names, references
+ * and tags so a demo instance still looks like a working system.
  *
  * Named _model so admin/post.php does not glob it in on every admin request.
  */
 
 require_once __DIR__ . '/starter_content_model.php';
+
+const DEMO_DATA_TAG = 'Demo Data';
+
+function demoDataTagId($mysqli, $create = false) {
+    $name = escapeSql(DEMO_DATA_TAG);
+    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT tag_id FROM tags WHERE tag_name = '$name' AND tag_type = 1 LIMIT 1"));
+    $tag_id = intval($row['tag_id'] ?? 0);
+
+    if (!$tag_id && $create) {
+        $tag_id = starterInsert($mysqli, 'tags', [
+            'tag_name' => DEMO_DATA_TAG,
+            'tag_type' => 1,
+            'tag_color' => '#e83e8c',
+            'tag_icon' => 'flask',
+        ]);
+    }
+
+    return $tag_id;
+}
 
 // ------------------------------
 // demoDataAccounts
@@ -239,25 +254,16 @@ function demoEnsureCalendars($mysqli) {
 }
 
 // ------------------------------
-// demoDataClientNames / demoDataClients
+// demoDataClients
 // ------------------------------
-function demoDataClientNames() {
-    $names = [];
-    foreach (demoDataSpecs() as $spec) {
-        $names[] = $spec['name'];
-    }
-    return $names;
-}
-
 function demoDataClients($mysqli) {
     $clients = [];
-    $names = [];
-    foreach (demoDataClientNames() as $name) {
-        $names[] = "'" . escapeSql($name) . "'";
+    $tag_id = demoDataTagId($mysqli);
+    if (!$tag_id) {
+        return $clients;
     }
-    $names = implode(',', $names);
 
-    $sql = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_name IN ($names) ORDER BY client_name ASC");
+    $sql = mysqli_query($mysqli, "SELECT clients.client_id, client_name FROM clients INNER JOIN client_tags ON client_tags.client_id = clients.client_id WHERE client_tags.tag_id = $tag_id ORDER BY client_name ASC");
     while ($row = mysqli_fetch_assoc($sql)) {
         $clients[intval($row['client_id'])] = $row['client_name'];
     }
@@ -570,10 +576,12 @@ function demoDataLoad($mysqli) {
     ];
 
     $existing = starterExistingNames($mysqli, 'clients', 'client_name');
+    $tag_id = demoDataTagId($mysqli, true);
 
     $context = [
         'user_id' => intval($session_user_id ?? 0),
         'currency' => $currency,
+        'tag_id' => $tag_id,
         'accounts' => demoEnsureAccounts($mysqli, $currency),
         'cash_account_id' => demoCashAccountId($mysqli),
         'org_vendors' => demoEnsureOrgVendors($mysqli),
@@ -1064,6 +1072,8 @@ function demoBuildClient($mysqli, $profile, $index, $context, &$counts) {
         'client_accessed_at' => demoDateTime($index % 5, 11, 20),
     ]);
 
+    // This marker, rather than the mutable client name, controls removal.
+    mysqli_query($mysqli, "INSERT INTO client_tags SET client_id = $client_id, tag_id = {$context['tag_id']}");
     demoAttachTags($mysqli, 'client_tags', 'client_id', 'tag_id', $client_id, 1, $profile['tags']);
 
     // Response targets, by priority
