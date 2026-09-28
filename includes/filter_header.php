@@ -71,9 +71,22 @@ if (empty($_GET['canned_date'])) {
 }
 
 // Date Filter
-if ($_GET['canned_date'] == "custom" && !empty($_GET['dtf'])) {
-    $dtf = escapeSql($_GET['dtf']);
-    $dtt = escapeSql($_GET['dtt']);
+$is_valid_date = static function ($date) {
+    if (!is_string($date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        return false;
+    }
+
+    [$year, $month, $day] = array_map('intval', explode('-', $date));
+    return checkdate($month, $day, $year);
+};
+
+if (
+    $_GET['canned_date'] == "custom"
+    && $is_valid_date($_GET['dtf'] ?? null)
+    && $is_valid_date($_GET['dtt'] ?? null)
+) {
+    $dtf = $_GET['dtf'];
+    $dtt = $_GET['dtt'];
 } elseif ($_GET['canned_date'] == "today") {
     $dtf = date('Y-m-d');
     $dtt = date('Y-m-d');

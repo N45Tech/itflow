@@ -159,6 +159,20 @@ $summary_total_payments = floatval($row['total_payments']);
 $summary_total_revenues = floatval($row['total_revenues']);
 $summary_total_income = floatval($row['total_income']);
 
+$income_export_query = [
+    'type' => $type_filter,
+    'category' => $category_filter,
+    'account' => $account_filter,
+    'method' => $_GET['method'] ?? '',
+    'dtf' => $dtf,
+    'dtt' => $dtt,
+    'q' => $q ?? '',
+];
+if (isset($client_id)) {
+    $income_export_query = ['client_id' => $client_id] + $income_export_query;
+}
+$income_export_url = 'modals/income/income_export.php?' . http_build_query($income_export_query);
+
 ?>
 
     <div class="card">
@@ -173,14 +187,14 @@ $summary_total_income = floatval($row['total_income']);
                         <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
                         <div class="dropdown-menu">
                             <a class="dropdown-item text-dark ajax-modal" href="#"
-                                data-modal-url="modals/income/income_export.php?<?= $client_url ?>type=<?= urlencode($type_filter) ?>&category=<?= $category_filter ?>&account=<?= $account_filter ?>&method=<?= urlencode($_GET['method'] ?? '') ?>&dtf=<?= $dtf ?>&dtt=<?= $dtt ?>&q=<?= urlencode($q ?? '') ?>">
+                                data-modal-url="<?= escapeHtml($income_export_url) ?>">
                                 <i class="fa fa-fw fa-download me-2"></i>Export
                             </a>
                         </div>
                     </div>
                 <?php } else { ?>
                     <button type="button" class="btn btn-default ajax-modal"
-                        data-modal-url="modals/income/income_export.php?<?= $client_url ?>type=<?= urlencode($type_filter) ?>&category=<?= $category_filter ?>&account=<?= $account_filter ?>&method=<?= urlencode($_GET['method'] ?? '') ?>&dtf=<?= $dtf ?>&dtt=<?= $dtt ?>&q=<?= urlencode($q ?? '') ?>">
+                        data-modal-url="<?= escapeHtml($income_export_url) ?>">
                         <i class="fa fa-fw fa-download me-2"></i>Export
                     </button>
                 <?php } ?>
