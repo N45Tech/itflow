@@ -10,12 +10,14 @@ if (isset($_GET['year'])) {
     $year = date('Y');
 }
 
-$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets ORDER BY ticket_year DESC");
+$ticket_client_scope = clientScopeSql('ticket_client_id');
+
+$sql_ticket_years = mysqli_query($mysqli, "SELECT DISTINCT YEAR(ticket_created_at) AS ticket_year FROM tickets WHERE 1 = 1 $ticket_client_scope ORDER BY ticket_year DESC");
 
 // Compliance figures for a slice of tickets carrying an SLA
 function getSlaCompliance($where)
 {
-    global $mysqli;
+    global $mysqli, $ticket_client_scope;
 
     $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
         COUNT(ticket_id) AS ticket_count,
@@ -26,7 +28,7 @@ function getSlaCompliance($where)
         SUM(ticket_resolution_sla_met = 0) AS resolution_missed,
         SUM(ticket_resolution_sla_met IS NULL AND ticket_resolution_due_at IS NOT NULL) AS resolution_pending
         FROM tickets
-        WHERE ticket_sla_id > 0 $where"
+        WHERE ticket_sla_id > 0 $where $ticket_client_scope"
     ));
 
     $compliance = [
