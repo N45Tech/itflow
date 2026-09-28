@@ -23,9 +23,10 @@ RUN apt-get update \
 COPY deploy/psa/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 COPY deploy/psa/php-production.ini /usr/local/etc/php/conf.d/itflow-production.ini
 COPY deploy/psa/container-entrypoint.sh /usr/local/bin/itflow-entrypoint
+COPY deploy/psa/cron-entrypoint.sh /usr/local/bin/itflow-cron
 COPY . /var/www/html
 
-RUN chmod 0755 /usr/local/bin/itflow-entrypoint \
+RUN chmod 0755 /usr/local/bin/itflow-entrypoint /usr/local/bin/itflow-cron \
     && install -d -m 0750 -o www-data -g www-data /usr/local/share/itflow-uploads /var/lib/itflow \
     && cp -a /var/www/html/uploads/. /usr/local/share/itflow-uploads/ \
     && rm -rf /var/www/html/uploads /var/www/html/config.php \

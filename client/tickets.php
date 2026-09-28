@@ -48,7 +48,7 @@ $total_tickets = intval($row['total_tickets']);
         <p>Review your support history, follow active work, and respond when N45 needs your input.</p>
     </div>
     <div class="n45-page-header-actions">
-        <a href="ticket_add.php" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i>New ticket</a>
+        <a href="ticket_add.php" class="btn btn-primary"><i class="fas fa-plus me-2" aria-hidden="true"></i>New ticket</a>
     </div>
 </header>
 
