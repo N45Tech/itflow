@@ -70,6 +70,8 @@ $contains($rbac, 'role_is_admin, role_archived_at', 'API authentication does not
 $contains($rbac, 'intval($api_user[\'linked_role_id\']) !== intval($api_user[\'user_role_id\'])',
     'API authentication does not reject a dangling role reference');
 $contains($rbac, '$api_user[\'role_archived_at\'] !== null', 'API authentication does not reject archived linked roles');
+$contains($rbac, "['create.php', 'update.php', 'archive.php', 'unarchive.php', 'delete.php']",
+    'Credential archive lifecycle operations bypass per-client write authorization');
 $ordered($admin, [
     "if (isset(\$_POST['bulk_delete_api_keys']))",
     'sort($api_key_ids, SORT_NUMERIC)',

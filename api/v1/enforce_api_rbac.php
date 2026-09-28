@@ -157,12 +157,14 @@ $resource_module = [
     'device_source' => 'module_support',
 ];
 
-// Operation -> required permission level (read = 1, create/update = 2, delete = 3).
+// Operation -> required permission level (read = 1, writes = 2, delete = 3).
 $operation_level = [
-    'read.php'   => 1,
-    'create.php' => 2,
-    'update.php' => 2,
-    'delete.php' => 3,
+    'read.php'      => 1,
+    'create.php'    => 2,
+    'update.php'    => 2,
+    'archive.php'   => 2,
+    'unarchive.php' => 2,
+    'delete.php'    => 3,
 ];
 
 if (!isset($resource_module[$resource])) {
@@ -178,14 +180,14 @@ if (lookupUserPermission($resource_module[$resource]) < $required_level) {
 }
 
 // --- 3) Target client for writes: taken from the request, validated against the user ---
-// Create/update/delete act on a single client the caller names (client_id in the
+// Writes act on a single client the caller names (client_id in the
 // body/query); it must be within the user's access. Callers that omit it get
 // $client_id = 0 (creates that require a client fail their own !empty($client_id) guard,
 // which is the intended "must name a client"). On a read the same parameter is not a
 // permission at all, just an optional filter applied inside apiClientScopeSql().
 $client_id = intval($_POST['client_id'] ?? $_GET['client_id'] ?? 0);
 $client_id_supplied = isset($_POST['client_id']) || isset($_GET['client_id']);
-$is_write = in_array($operation_file, ['create.php', 'update.php', 'delete.php'], true);
+$is_write = in_array($operation_file, ['create.php', 'update.php', 'archive.php', 'unarchive.php', 'delete.php'], true);
 if ($is_write && !apiUserCanAccessClient($client_id)) {
     // Writes act on a single client the caller names (client_id 0 = a global record).
     // The user must be able to access it - this also blocks a restricted user from
