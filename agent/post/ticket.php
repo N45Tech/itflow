@@ -3347,6 +3347,11 @@ if (isset($_POST['add_ticket_reply'])) {
     // Defaults
     $send_email = 0;
     $ticket_reply_id = 0;
+    $has_reply_attachments = in_array(
+        UPLOAD_ERR_OK,
+        (array) ($_FILES['attachments']['error'] ?? []),
+        true
+    );
     $public_reply_type = intval($_POST['public_reply_type'] ?? 0);
     $structured_work_note = null;
     if ($public_reply_type == 1) {
@@ -3464,7 +3469,9 @@ if (isset($_POST['add_ticket_reply'])) {
                 WHERE ticket_id = $ticket_id", 'Could not touch the ticket for the reply');
         }
 
-        if (!empty($ticket_reply)) {
+        // Attachment-only updates still need a reply row so their selected
+        // Public/Internal visibility is retained.
+        if (!empty($ticket_reply) || $has_reply_attachments) {
             ticketCreationDbQuery("INSERT INTO ticket_replies SET ticket_reply = '$ticket_reply',
                 ticket_reply_time_worked = '$ticket_reply_time_worked', ticket_reply_type = '$ticket_reply_type',
                 ticket_reply_by = $session_user_id, ticket_reply_ticket_id = $ticket_id",
@@ -3511,8 +3518,9 @@ if (isset($_POST['add_ticket_reply'])) {
         logAudit("Ticket", "Resolved", "$session_name resolved Ticket ticket ID $ticket_id", $client_id, $ticket_id);
     }
 
-    // Process reply actions, if we have a reply to work with (e.g. we're not just editing the status)
-    if (!empty($ticket_reply)) {
+    // Process reply actions when a reply row was created. This includes an
+    // attachment-only update whose empty row carries its visibility setting.
+    if ($ticket_reply_id) {
         // Store any attached files against this reply before the email is built, so
         // a public reply can carry them
         $reply_attachments = saveTicketAttachments($ticket_id, $ticket_reply_id);
@@ -3646,13 +3654,6 @@ if (isset($_POST['add_ticket_reply'])) {
 
     } else {
         flashAlert("Ticket updated");
-    }
-
-    // A file uploaded without any accompanying text has no reply to hang off, so it
-    // attaches to the ticket itself. With reply text the files were already stored
-    // above, before the email was composed.
-    if (empty($ticket_reply_id)) {
-        $emailable_attachments = filterEmailableAttachments(saveTicketAttachments($ticket_id, null));
     }
 
     // Tell the agent about anything too large for the mail queue to carry, rather
