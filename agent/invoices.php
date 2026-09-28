@@ -201,7 +201,7 @@ n45RenderPageHeader(array(
     <div class="col-lg-4">
         <!-- small box -->
         <a href="?<?= $url_query_strings_sort ?>&status=Unpaid" class="small-box bg-info">
-            <div class="inner text-white">
+            <div class="inner">
                 <h3><?= numfmt_format_currency($currency_format, $total_unpaid_amount, $session_company_currency) ?></h3>
                 <p><?= $unpaid_count ?> Unpaid</p>
             </div>

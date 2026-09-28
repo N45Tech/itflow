@@ -63,6 +63,43 @@ $can_decide = $is_eligible_approver && $definition;
 $can_view_ticket = intval($submission['portal_request_submission_ticket_id']) > 0
     && (intval($submission['portal_request_submission_contact_id']) === $session_contact_id
         || contactCan('tickets_all'));
+$visible_ticket = null;
+$ticket_progress = [];
+if ($can_view_ticket) {
+    $ticket_id = intval($submission['portal_request_submission_ticket_id']);
+    $ticket_contact_scope = contactCan('tickets_all') ? '' : "AND t.ticket_contact_id = $session_contact_id";
+    $visible_ticket = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT t.ticket_id, t.ticket_created_at,
+        t.ticket_updated_at, t.ticket_first_response_at, t.ticket_resolved_at, t.ticket_closed_at, ts.ticket_status_name
+        FROM tickets t LEFT JOIN ticket_statuses ts ON ts.ticket_status_id = t.ticket_status
+        WHERE t.ticket_id = $ticket_id AND t.ticket_client_id = $session_client_id
+        AND t.ticket_archived_at IS NULL $ticket_contact_scope LIMIT 1"));
+    $can_view_ticket = (bool) $visible_ticket;
+    if ($visible_ticket) {
+        $ticket_progress[] = ['label' => 'Ticket opened', 'at' => $visible_ticket['ticket_created_at']];
+        $history = mysqli_query($mysqli, "SELECT ticket_history_status, ticket_history_created_at
+            FROM ticket_history WHERE ticket_history_ticket_id = $ticket_id
+            ORDER BY ticket_history_id ASC");
+        $last_status = '';
+        while ($history_entry = mysqli_fetch_assoc($history)) {
+            $status = trim((string) $history_entry['ticket_history_status']);
+            if ($status !== '' && $status !== $last_status) {
+                $ticket_progress[] = ['label' => $status, 'at' => $history_entry['ticket_history_created_at']];
+                $last_status = $status;
+            }
+        }
+        $current_status = trim((string) $visible_ticket['ticket_status_name']);
+        if ($current_status !== '' && $current_status !== $last_status) {
+            $ticket_progress[] = ['label' => $current_status,
+                'at' => $visible_ticket['ticket_closed_at'] ?: ($visible_ticket['ticket_resolved_at'] ?: ($visible_ticket['ticket_updated_at'] ?: $visible_ticket['ticket_created_at']))];
+        }
+        if ($visible_ticket['ticket_first_response_at']) {
+            $ticket_progress[] = ['label' => 'First response', 'at' => $visible_ticket['ticket_first_response_at']];
+        }
+        usort($ticket_progress, static function ($a, $b) {
+            return strcmp($a['at'], $b['at']);
+        });
+    }
+}
 
 ?>
 
@@ -76,7 +113,7 @@ $can_view_ticket = intval($submission['portal_request_submission_ticket_id']) > 
                 <?php if (!$definition) { ?><div class="alert alert-danger">This request snapshot failed its integrity check. Support has been notified in the application log.</div><?php } else { ?>
                     <dl><?php foreach ($definition['fields'] as $field) { ?><dt><?= escapeHtml($field['label']) ?></dt><dd><?= nl2br(escapeHtml(portalRequestResponseText($responses[$field['key']] ?? null))) ?></dd><?php } ?></dl>
                 <?php } ?>
-                <?php if ($can_view_ticket) { ?><a class="btn btn-primary" href="ticket.php?id=<?= intval($submission['portal_request_submission_ticket_id']) ?>"><i class="fas fa-ticket-alt mr-1"></i>View service ticket</a><?php } ?>
+                <?php if ($can_view_ticket) { ?><p class="mb-3"><strong>Service ticket:</strong> <?= escapeHtml($visible_ticket['ticket_status_name'] ?: 'Open') ?></p><a class="btn btn-primary" href="ticket.php?id=<?= intval($visible_ticket['ticket_id']) ?>"><i class="fas fa-ticket-alt mr-1"></i>View service ticket</a><?php } ?>
             </div>
         </div>
         <?php if ($can_decide) { ?>
@@ -84,6 +121,7 @@ $can_view_ticket = intval($submission['portal_request_submission_ticket_id']) > 
         <?php } ?>
     </div>
     <div class="col-lg-4">
+        <?php if ($can_view_ticket) { ?><div class="card"><div class="card-header"><h2 class="h5 mb-0">Service progress</h2></div><div class="card-body"><ol class="pl-3 mb-0"><?php foreach ($ticket_progress as $step) { ?><li class="mb-3"><strong><?= escapeHtml($step['label']) ?></strong><div class="small text-muted"><?= escapeHtml($step['at']) ?></div></li><?php } ?></ol></div></div><?php } ?>
         <div class="card"><div class="card-header"><h2 class="h5 mb-0">Audit history</h2></div><div class="card-body"><ol class="pl-3 mb-0"><?php while ($event = mysqli_fetch_assoc($events)) { ?><li class="mb-3"><strong><?= escapeHtml(ucwords(str_replace('_', ' ', $event['portal_request_submission_event_action']))) ?></strong><div class="small text-muted"><?= escapeHtml($event['portal_request_submission_event_created_at']) ?> · <?= escapeHtml(portalRequestClientEventActorLabel($event)) ?></div><?php if ($event['portal_request_submission_event_note']) { ?><div class="small"><?= escapeHtml($event['portal_request_submission_event_note']) ?></div><?php } ?></li><?php } ?></ol></div></div>
     </div>
 </div>

@@ -367,7 +367,7 @@ $default_period_start = agreementShiftCalendarMonths(
     <div class="card border-success">
         <div class="card-body d-flex justify-content-between align-items-center">
             <div class="mr-3"><strong>Publish operational rules</strong><div class="text-muted">Compare coverage and SLA terms with the approved customer agreement first. Publication changes ticket decisions, locks this version, and supersedes the previous version of this agreement. ITFlow does not verify a signature or client acceptance.</div></div>
-            <form action="post.php" method="post" class="form-inline">
+            <form action="post.php" method="post" class="n45-review-period-form">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="version_id" value="<?= $version_id ?>">
                 <label for="agreement-publication-reason" class="mr-2">Reason / source reference</label>
@@ -403,11 +403,9 @@ $default_period_start = agreementShiftCalendarMonths(
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="client_id" value="<?= $client_id ?>">
                 <input type="hidden" name="contract_id" value="<?= $agreement_id ?>">
-                <label class="mr-2">Period</label>
-                <input type="date" class="form-control mr-2" name="period_start" required value="<?= $default_period_start ?>">
-                <span class="mr-2">through</span>
-                <input type="date" class="form-control mr-2" name="period_end" required max="<?= date('Y-m-d') ?>" value="<?= $default_period_end ?>">
-                <button class="btn btn-primary" name="generate_service_review"><i class="fas fa-sync mr-2"></i>Generate Review</button>
+                <div><label class="form-label" for="review-period-start">Period start</label><input type="date" class="form-control" id="review-period-start" name="period_start" required value="<?= $default_period_start ?>"></div>
+                <div><label class="form-label" for="review-period-end">Period end</label><input type="date" class="form-control" id="review-period-end" name="period_end" required max="<?= date('Y-m-d') ?>" value="<?= $default_period_end ?>"></div>
+                <button class="btn btn-primary" name="generate_service_review"><i class="fas fa-sync me-2"></i>Generate Review</button>
             </form>
             <small class="text-muted">The report stores a point-in-time source snapshot. Scheduled reviews create drafts for human approval.</small>
         <?php } elseif (intval($agreement['contract_published_version_id']) === 0) { ?>
