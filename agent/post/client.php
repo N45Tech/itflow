@@ -1170,10 +1170,17 @@ if (isset($_POST['bulk_edit_client_net_terms'])) {
 
     if (isset($_POST['client_ids'])) {
 
-        $count = count($_POST['client_ids']);
+        $client_ids = array_map('intval', $_POST['client_ids']);
 
-        foreach($_POST['client_ids'] as $client_id) {
-            $client_id = intval($client_id);
+        // Hidden form fields are caller-controlled. Authorize the complete batch
+        // before making any changes so a rejected client cannot leave a partial update.
+        foreach ($client_ids as $client_id) {
+            enforceClientAccess($client_id);
+        }
+
+        $count = count($client_ids);
+
+        foreach($client_ids as $client_id) {
 
             $sql = mysqli_query($mysqli,"SELECT client_name FROM clients WHERE client_id = $client_id");
             $row = mysqli_fetch_assoc($sql);
