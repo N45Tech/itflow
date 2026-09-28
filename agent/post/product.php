@@ -360,6 +360,8 @@ if (isset($_POST["import_products_csv"])) {
 
     enforceUserPermission('module_sales', 2);
     $error = false;
+    $max_file_size = 1024 * 1024;
+    $max_product_rows = 1000;
 
     if (!empty($_FILES["file"]["tmp_name"])) {
         $file_name = $_FILES["file"]["tmp_name"];
@@ -369,7 +371,7 @@ if (isset($_POST["import_products_csv"])) {
     }
 
     //Check file is CSV
-    $file_extension = strtolower(end(explode('.',$_FILES['file']['name'])));
+    $file_extension = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));
     $allowed_file_extensions = array('csv');
     if (in_array($file_extension,$allowed_file_extensions) === false) {
         $error = true;
@@ -382,50 +384,80 @@ if (isset($_POST["import_products_csv"])) {
         flashAlert("Bad file size (empty?)", 'error');
     }
 
-    //(Else)Check column count
-    $f = fopen($file_name, "r");
-    $f_columns = fgetcsv($f, 1000, ",");
-    if (!$error & count($f_columns) != 3) {
+    // Keep this endpoint well below the application-wide upload limit.
+    elseif ($_FILES["file"]["size"] > $max_file_size || filesize($file_name) > $max_file_size) {
         $error = true;
-        flashAlert("Bad column count.", 'error');
+        flashAlert("CSV files must be 1 MB or smaller.", 'error');
     }
 
-    //Else, parse the file
+    // Validate and bound the entire import before writing anything.
     if (!$error) {
-
         $file = fopen($file_name, "r");
-        fgetcsv($file, 1000, ","); // Skip first line
-        $row_count = 0;
+        $header = $file ? fgetcsv($file, 1000, ",") : false;
+        $products = [];
 
-        while(($column = fgetcsv($file, 1000, ",")) !== false) {
-            $name = '';
-            if (isset($column[0])) {
-                $name = escapeSql(substr($column[0], 0, 200));
+        if ($header === false || count($header) !== 3) {
+            $error = true;
+            flashAlert("Bad column count.", 'error');
+        } else {
+            while (($column = fgetcsv($file, 1000, ",")) !== false) {
+                // Ignore blank lines, but reject partial or over-wide records.
+                if (count($column) === 1 && ($column[0] === null || trim($column[0]) === '')) {
+                    continue;
+                }
+                if (count($column) !== 3) {
+                    $error = true;
+                    flashAlert("Every product row must contain exactly 3 columns.", 'error');
+                    break;
+                }
+                if (count($products) >= $max_product_rows) {
+                    $error = true;
+                    flashAlert("CSV files may contain at most $max_product_rows products.", 'error');
+                    break;
+                }
+                if (!empty($column[0])) {
+                    $products[] = $column;
+                }
             }
-
-            $description = '';
-            if (isset($column[1])) {
-                $description = escapeSql($column[1]);
-            }
-
-            $price = 0;
-            if (isset($column[2])) {
-                $price = floatval($column[2]);
-            }
-
-            if (!empty($name)) {
-                mysqli_query($mysqli, "INSERT INTO products SET product_name = '$name', product_type = 'product', product_description = '$description', product_price = '$price', product_currency_code = '$session_company_currency', product_category_id = 0");
-                $row_count++;
-            }
-
         }
-        fclose($file);
+        if ($file) {
+            fclose($file);
+        }
 
-        logAudit("Product", "Import", "$session_name imported $row_count product(s) via CSV file");
+        if (!$error) {
+            $row_count = 0;
+            $transaction_started = mysqli_begin_transaction($mysqli);
 
-        flashAlert("<strong>$row_count</strong> Product(s) added");
+            if ($transaction_started) {
+                foreach ($products as $column) {
+                    $name = escapeSql(substr($column[0], 0, 200));
+                    $description = escapeSql($column[1]);
+                    $price = floatval($column[2]);
 
-        redirect();
+                    if (!mysqli_query($mysqli, "INSERT INTO products SET product_name = '$name', product_type = 'product', product_description = '$description', product_price = '$price', product_currency_code = '$session_company_currency', product_category_id = 0")) {
+                        $error = true;
+                        break;
+                    }
+                    $row_count++;
+                }
+            }
+
+            if (!$transaction_started || $error || !mysqli_commit($mysqli)) {
+                if ($transaction_started) {
+                    mysqli_rollback($mysqli);
+                }
+                $error = true;
+                flashAlert("Products could not be imported.", 'error');
+            }
+        }
+
+        if (!$error) {
+            logAudit("Product", "Import", "$session_name imported $row_count product(s) via CSV file");
+
+            flashAlert("<strong>$row_count</strong> Product(s) added");
+
+            redirect();
+        }
 
     }
 
