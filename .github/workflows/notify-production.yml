@@ -114,14 +114,21 @@ jobs:
                 run.event === 'pull_request' &&
                 run.head_branch === 'next' &&
                 run.head_sha === headSha &&
+                run.created_at >= pull.created_at &&
+                run.created_at <= pull.merged_at &&
                 run.repository?.full_name === context.payload.repository.full_name &&
                 run.head_repository?.full_name === context.payload.repository.full_name &&
-                run.pull_requests?.some((associatedPull) =>
-                  associatedPull.number === pull.number &&
-                  associatedPull.head?.sha === headSha &&
-                  associatedPull.head?.repo?.id === pull.head?.repo?.id &&
-                  associatedPull.base?.sha === baseSha &&
-                  associatedPull.base?.repo?.id === pull.base?.repo?.id
+                // GitHub may clear run.pull_requests after the PR merges. The
+                // exact merge parents, tree, head commit, branch and repository
+                // checks above still bind an empty association to this release.
+                (run.pull_requests?.length === 0 ||
+                  run.pull_requests?.some((associatedPull) =>
+                    associatedPull.number === pull.number &&
+                    associatedPull.head?.sha === headSha &&
+                    associatedPull.head?.repo?.id === pull.head?.repo?.id &&
+                    associatedPull.base?.sha === baseSha &&
+                    associatedPull.base?.repo?.id === pull.base?.repo?.id
+                  )
                 )
               ).sort((left, right) =>
                 Number(right.run_number) - Number(left.run_number) ||
