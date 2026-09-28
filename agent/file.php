@@ -27,12 +27,8 @@ if (isset($_GET['action']) && $_GET['action'] == "view") {
     $disposition = "inline";
 }
 
-// Thumbnail mode - inline image for grid/preview use, not audit logged
-$thumb = false;
-if (isset($_GET['thumb']) && intval($_GET['thumb']) == 1) {
-    $thumb = true;
-    $disposition = "inline";
-}
+// Thumbnail mode is validated against the stored MIME type after lookup
+$thumbnail_requested = isset($_GET['thumb']) && intval($_GET['thumb']) == 1;
 
 // Look up the file
 $sql = mysqli_query($mysqli, "SELECT * FROM files WHERE file_id = $file_id LIMIT 1");
@@ -55,6 +51,15 @@ enforceClientAccess();
 // MIME types that are safe to render inline in the browser
 // Everything else (esp. HTML/SVG - stored XSS risk) falls back to download
 $inline_allowed_mime_types = getInlineViewableMimeTypes();
+
+// Only safe inline images qualify as incidental thumbnail loads. A caller
+// cannot suppress auditing for another file type merely by adding thumb=1.
+$thumb = $thumbnail_requested
+    && strpos($file_mime_type, "image/") === 0
+    && in_array($file_mime_type, $inline_allowed_mime_types, true);
+if ($thumb) {
+    $disposition = "inline";
+}
 
 if ($disposition == "inline" && !in_array($file_mime_type, $inline_allowed_mime_types, true)) {
     $disposition = "attachment";
