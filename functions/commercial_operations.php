@@ -412,7 +412,9 @@ function commercialManagedQuantity(int $client_id, string $basis, ?float $manual
 
 function commercialSubscriptionRows(int $client_id = 0): array
 {
-    $scope = $client_id > 0 ? "AND sr.subscription_client_id = $client_id" : '';
+    $scope = $client_id > 0
+        ? "AND sr.subscription_client_id = $client_id"
+        : clientScopeSql('sr.subscription_client_id');
     $rows = commercialDbQuery("SELECT sr.*, c.client_name, p.product_name, v.vendor_name, ct.contract_name,
         COALESCE(cp.commercial_quantity_basis, 'manual') AS quantity_basis,
         COALESCE((SELECT SUM(rii.item_quantity) FROM recurring_invoice_items rii

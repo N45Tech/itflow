@@ -64,6 +64,10 @@ $contains('subscription_vendor_id', $service . $handler . $migration, 'Subscript
 $contains('subscription_contract_id', $service . $handler . $migration, 'Subscription cost cannot be allocated to agreements');
 $contains('subscription_purchased_quantity', $service, 'Subscription reconciliation does not compare purchased quantity');
 $contains('billed_quantity', $service, 'Subscription reconciliation does not compare recurring billing');
+$contains("clientScopeSql('sr.subscription_client_id')", $service, 'Unfiltered subscription reconciliation is not client scoped');
+$contains('subscription_external_id = \'$external_id\' FOR UPDATE', $handler, 'Subscription source identity is not locked before update');
+$contains('enforceClientAccess(intval($existing[\'subscription_client_id\']))', $handler, 'Existing subscription ownership is not authorized before update');
+$notContains('ON DUPLICATE KEY UPDATE subscription_client_id = VALUES(subscription_client_id)', $handler, 'Subscription upsert can reassign an unauthorized source record');
 $contains('commercialProfitabilityRows', $service, 'Client and agreement profitability reporting is missing');
 $contains("'Outside agreement / unallocated'", $service, 'Profitability does not expose unallocated client activity');
 $contains('mysqli_begin_transaction', $handler, 'Commercial multi-record writes are not transactional');
