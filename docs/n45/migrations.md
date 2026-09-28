@@ -151,3 +151,7 @@ Feature flags stop optional ingress or processing. They do not undo schema, eras
 ## n45-0030-automation-investigation
 
 Adds isolated investigation jobs, non-payload audit receipts and durable provider rate accounting. No existing data is changed. New installations and upgrades remain disabled until explicit client/provider/model and cron opt-ins. Disable `N45_FEATURE_AUTOMATION_INVESTIGATION` to stop processing; retain the schema for authorized historical reads, retention and permanent-ticket deletion. Reverting schema requires restoring the matching pre-upgrade application/database snapshot. See `automation-investigation.md`.
+
+## n45-0031-strict-ticket-retention-default
+
+Changes the default for new client records to `strict`. Existing client policy values stay intact. The released `n45-0021-client-ticket-retention` file remains unchanged so deployed migration ledgers retain a valid checksum. If the prior default is required, preserve client selections and change the default with a new forward migration.
