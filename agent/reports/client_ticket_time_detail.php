@@ -107,6 +107,7 @@ $stmt = $mysqli->prepare("
         AND tr.ticket_reply_created_at BETWEEN ? AND ?
 
     WHERE c.client_archived_at IS NULL
+      " . clientScopeSql('t.ticket_client_id') . "
       $billable_sql
 
     ORDER BY c.client_name ASC,
