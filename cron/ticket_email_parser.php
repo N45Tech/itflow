@@ -724,12 +724,6 @@ foreach ($messages as $message) {
             $precedence     = strtolower((string)($message->header('Precedence')?->getValue() ?? ''));
             if (str_starts_with($auto_submitted, 'auto-replied') || $precedence === 'auto_reply') {
                 logApp("Cron-Email-Parser", "info", "Email parser skipped auto-responder from $from_email ($subject)");
-                    appNotify(
-                        "Mail",
-                        "Email parser: Skipped auto-responder message from $from_email. Subject: $subject",
-                        "",
-                        0
-                    );
                 return true;
             }
 
