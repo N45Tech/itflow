@@ -48,6 +48,7 @@ if (isExportRequest('export_transactions')) {
     // Client Filter
     $client = intval($_POST['client']);
     if ($client) {
+        enforceClientAccess($client);
         $client_query = "AND (transaction_client_id = $client)";
         $client_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT client_name FROM clients WHERE client_id = $client"));
         $filter_summary['Client'] = $client_row['client_name'] ?? '';
@@ -101,6 +102,11 @@ if (isExportRequest('export_transactions')) {
 
     // Account is required - export is a per-account ledger
     if ($account) {
+
+        // Scope the ledger before calculating running balances. clientScopeSql()
+        // deliberately permits clientless transactions (client ID 0) while
+        // enforcing both the signed-in technician's allow and deny lists.
+        $transaction_access_query = clientScopeSql('transaction_client_id');
 
         // Account details for the running balance and file name
         $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT account_name, opening_balance FROM accounts WHERE account_id = $account LIMIT 1"));
@@ -178,6 +184,8 @@ if (isExportRequest('export_transactions')) {
                     WHERE payment_account_id = $account
                     AND payment_archived_at IS NULL
                 ) AS ledger
+                WHERE 1 = 1
+                $transaction_access_query
             ) AS transactions
             WHERE 1 = 1
             $date_query
