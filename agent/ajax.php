@@ -1311,7 +1311,15 @@ if (isset($_GET['ai_ticket_summary'])) {
         exit;
     }
 
-    echo $result['content'];
+    // AI output is untrusted: ticket content can influence the model into
+    // returning active HTML. Keep only the simple formatting requested above.
+    require_once "../libs/htmlpurifier/HTMLPurifier.standalone.php";
+    $summary_purifier_config = HTMLPurifier_Config::createDefault();
+    $summary_purifier_config->set('Cache.DefinitionImpl', null);
+    $summary_purifier_config->set('HTML.Allowed', 'h3,ul,li,p,strong,em,br');
+    $summary_purifier = new HTMLPurifier($summary_purifier_config);
+
+    echo $summary_purifier->purify($result['content']);
 }
 
 // Stops people trying to use sub-domains in the domains tracker
