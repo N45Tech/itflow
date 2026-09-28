@@ -434,9 +434,30 @@ return [
                     "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_archived_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
                 ],
             ],
+            'n45-0029-hetrix-monitoring-source' => [
+                'module' => 'automation', 'legacy_version' => null, 'data_change' => true,
+                'rollback' => 'Preserve monitoring incident history and restore the matching database snapshot before reactivating the retired Uptime Kuma source.',
+                'created_tables' => [], 'altered_columns' => [], 'altered_indexes' => [],
+                'legacy_bridge_index_overrides' => [],
+                'failure_queries' => [
+                    "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix') THEN 0 ELSE 1 END",
+                    "SELECT COUNT(*) FROM automation_event_policies WHERE automation_policy_source = 'uptime_kuma' AND (automation_policy_enabled <> 0 OR automation_policy_ticket_enabled <> 0 OR automation_policy_auto_resolve <> 0)",
+                ],
+            ],
+            'n45-0030-automation-investigation' => [
+                'module' => 'automation_investigation', 'legacy_version' => null, 'data_change' => false,
+                'rollback' => 'Disable investigation processing and preserve run history; restore the matching pre-upgrade database and application snapshot before removing these tables.',
+                'created_tables' => ['automation_investigations', 'automation_investigation_audit', 'automation_investigation_rate'],
+                'altered_columns' => [], 'altered_indexes' => [], 'legacy_bridge_index_overrides' => [],
+            ],
         ],
     ],
     'features' => [
+        'automation_investigation' => [
+            'default' => false, 'toggleable' => true,
+            'environment' => 'N45_FEATURE_AUTOMATION_INVESTIGATION',
+            'scope' => 'Opt-in read-only analysis of selected clients retained automation alerts',
+        ],
         'level' => [
             'default' => true,
             'toggleable' => true,
@@ -451,6 +472,12 @@ return [
         ],
     ],
     'modules' => [
+        'automation_investigation' => [
+            'runtime_files' => ['functions/automation_investigation.php'],
+            'migrations' => ['n45-0030-automation-investigation'],
+            'feature' => 'automation_investigation', 'toggleable' => true,
+            'reason' => 'Processing stops independently; authorized advisory reads and permanent-deletion cleanup remain available.',
+        ],
         'schema' => [
             'runtime_files' => ['functions/n45_schema.php'],
             'migrations' => ['n45-0000-namespace-foundation', 'n45-0016-release-safety-hardening'],
@@ -496,6 +523,7 @@ return [
                 'n45-0009-automation-event-lifecycle',
                 'n45-0017-automation-action-outbox',
                 'n45-0028-ticket-delete-operations-alignment',
+                'n45-0029-hetrix-monitoring-source',
             ],
             'feature' => 'automation',
             'toggleable' => true,
@@ -2875,6 +2903,82 @@ return [
             'fingerprint' => [
                 'failure_queries' => [
                     "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_archived_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
+                ],
+            ],
+        ],
+        'n45-0029-hetrix-monitoring-source' => [
+            'module' => 'automation', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0029-hetrix-monitoring-source.php',
+            'summary' => 'Make HetrixTools the outside-in monitoring source and retire Uptime Kuma ingestion without deleting historical events.',
+            'data_change' => true,
+            'rollback' => 'Preserve monitoring incident history and restore the matching database snapshot before reactivating the retired Uptime Kuma source.',
+            'fingerprint' => [
+                'failure_queries' => [
+                    "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'hetrix') THEN 0 ELSE 1 END",
+                    "SELECT COUNT(*) FROM automation_event_policies WHERE automation_policy_source = 'uptime_kuma' AND (automation_policy_enabled <> 0 OR automation_policy_ticket_enabled <> 0 OR automation_policy_auto_resolve <> 0)",
+                ],
+            ],
+        ],
+        'n45-0030-automation-investigation' => [
+            'module' => 'automation_investigation', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0030-automation-investigation.php',
+            'summary' => 'Add isolated, opt-in read-only incident investigation records, audit receipts and durable provider rate limits.',
+            'data_change' => false,
+            'rollback' => 'Disable investigation processing and preserve run history; restore the matching pre-upgrade database and application snapshot before removing these tables.',
+            'fingerprint' => [
+                'tables' => ['automation_investigations', 'automation_investigation_audit', 'automation_investigation_rate'],
+                'columns' => [
+                    'automation_investigations' => [
+                        'investigation_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'generation_key' => $column_fingerprint('char(64)', false, null),
+                        'incident_id' => $column_fingerprint('bigint(20)', false, null),
+                        'client_id' => $column_fingerprint('int(11)', false, null),
+                        'ticket_id' => $column_fingerprint('int(11)', false, null),
+                        'event_id' => $column_fingerprint('bigint(20)', false, null),
+                        'opened_at' => $column_fingerprint('datetime', true, null),
+                        'signal_hash' => $column_fingerprint('char(64)', false, null),
+                        'evidence_hash' => $column_fingerprint('char(64)', false, null),
+                        'evidence_json' => $column_fingerprint('text', true, null),
+                        'result_json' => $column_fingerprint('text', true, null),
+                        'status' => $column_fingerprint('varchar(20)', false, 'Pending'),
+                        'error_code' => $column_fingerprint('varchar(80)', true, null),
+                        'model_id' => $column_fingerprint('int(11)', false, '0'),
+                        'provider_id' => $column_fingerprint('int(11)', false, '0'),
+                        'model_name' => $column_fingerprint('varchar(200)', true, null),
+                        'lease_token' => $column_fingerprint('char(64)', true, null),
+                        'lease_until' => $column_fingerprint('datetime', true, null),
+                        'started_at' => $column_fingerprint('datetime', true, null),
+                        'finished_at' => $column_fingerprint('datetime', true, null),
+                        'created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                    ],
+                    'automation_investigation_audit' => [
+                        'audit_id' => $column_fingerprint('bigint(20)', false, null, 'auto_increment'),
+                        'investigation_id' => $column_fingerprint('bigint(20)', false, null),
+                        'event_code' => $column_fingerprint('varchar(80)', false, null),
+                        'created_at' => $column_fingerprint('datetime', false, 'current_timestamp()'),
+                    ],
+                    'automation_investigation_rate' => [
+                        'rate_id' => $column_fingerprint('tinyint(4)', false, null),
+                        'last_started_at' => $column_fingerprint('datetime', true, null),
+                        'call_day' => $column_fingerprint('date', true, null),
+                        'daily_calls' => $column_fingerprint('int(11)', false, '0'),
+                    ],
+                ],
+                'indexes' => [
+                    'automation_investigations' => [
+                        'PRIMARY' => $index_fingerprint(true, ['investigation_id']),
+                        'investigation_generation' => $index_fingerprint(true, ['generation_key']),
+                        'investigation_queue' => $index_fingerprint(false, ['status', 'investigation_id']),
+                        'investigation_ticket' => $index_fingerprint(false, ['ticket_id', 'client_id', 'investigation_id']),
+                        'investigation_signal' => $index_fingerprint(false, ['incident_id', 'client_id', 'ticket_id', 'opened_at', 'signal_hash']),
+                    ],
+                    'automation_investigation_audit' => [
+                        'PRIMARY' => $index_fingerprint(true, ['audit_id']),
+                        'investigation_audit_history' => $index_fingerprint(false, ['investigation_id', 'audit_id']),
+                    ],
+                    'automation_investigation_rate' => [
+                        'PRIMARY' => $index_fingerprint(true, ['rate_id']),
+                    ],
                 ],
             ],
         ],

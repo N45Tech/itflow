@@ -13,15 +13,28 @@
 // max_execution_time
 DEFINE("AI_REQUEST_TIMEOUT", 60);
 
+function aiModelUseCases(): array {
+    return ['General', 'Tickets', 'Documentation', 'Automation Investigation'];
+}
+
+function aiModelUseCase($value): string {
+    $value = trim((string) $value);
+    if (!in_array($value, aiModelUseCases(), true)) {
+        throw new InvalidArgumentException('The AI model use case is invalid.');
+    }
+    return $value;
+}
+
 /*
- * The model configured for a use case - one of the values the add/edit modals offer:
- * General, Tickets, Documentation.
+ * The model configured for a use case - one of the values the add/edit modals offer.
  *
  * A feature-specific model wins, a General model is the fallback, so an install with
- * a single General model keeps working everywhere. Returns null when nothing usable
- * is configured; callers report that rather than posting to an empty URL.
+ * a single General model keeps working everywhere. Sensitive background workflows may
+ * disable that fallback so evidence is sent only to a model explicitly selected for
+ * their use case. Returns null when nothing usable is configured; callers report that
+ * rather than posting to an empty URL.
  */
-function getAiModel($use_case = 'General') {
+function getAiModel($use_case = 'General', $allow_general_fallback = true) {
 
     global $mysqli;
 
@@ -29,7 +42,8 @@ function getAiModel($use_case = 'General') {
 
     // Feature-specific first, then General - FIELD() keeps that preference in SQL so
     // one query answers both
-    $preference = ($use_case === 'General') ? "'General'" : "'$use_case', 'General'";
+    $preference = ($use_case === 'General' || !$allow_general_fallback)
+        ? "'$use_case'" : "'$use_case', 'General'";
 
     $sql = mysqli_query($mysqli,
         "SELECT ai_model_name, ai_model_prompt, ai_model_use_case, ai_model_temperature,
@@ -57,10 +71,11 @@ function getAiModel($use_case = 'General') {
  *     ['ok' => true,  'content' => '...']
  *     ['ok' => false, 'error'   => 'short message safe to show the user']
  *
- * Provider detail - status code, error type, code and message - goes to the app log
- * so a misconfiguration is diagnosable. The API key and the message bodies never do.
+ * Provider detail - status code, error type, code and, by default, message - goes to
+ * the app log so a misconfiguration is diagnosable. Sensitive background callers may
+ * suppress the provider message. The API key and request message bodies never log here.
  */
-function callAiApi($model, $messages) {
+function callAiApi($model, $messages, $log_provider_message = true) {
 
     $data = [
         'model'    => $model['ai_model_name'],
@@ -107,7 +122,7 @@ function callAiApi($model, $messages) {
                 $detail .= " $field=" . $provider_error[$field];
             }
         }
-        if (!empty($provider_error['message'])) {
+        if ($log_provider_message && !empty($provider_error['message'])) {
             $detail .= ' - ' . $provider_error['message'];
         }
         logApp('AI', 'error', $detail);

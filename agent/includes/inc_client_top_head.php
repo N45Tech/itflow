@@ -19,7 +19,7 @@
 <div class="card mb-3 d-print-none client-context-bar">
     <div class="card-header pb-1 pt-2 px-3">
         <div class="card-title">
-            <a href="#" class="client-header-toggle<?= $client_header_open ? '' : ' collapsed' ?>" data-bs-toggle="collapse" data-bs-target="#clientHeader" aria-controls="clientHeader" aria-expanded="<?= $client_header_open ? 'true' : 'false' ?>"><h4 class="text-dark client-context-title" data-bs-toggle="tooltip" data-bs-placement="right" title="Client ID: <?= $client_id ?>"><i class="fas fa-fw fa-chevron-<?= $client_header_open ? 'down' : 'right' ?> client-header-chevron" aria-hidden="true"></i><strong><?= escapeHtml($client_name) ?></strong> <?php if ($client_archived_at) { echo "(archived)"; } ?></h4></a>
+            <a href="#" class="client-header-toggle<?= $client_header_open ? '' : ' collapsed' ?>" data-bs-toggle="collapse" data-bs-target="#clientHeader" aria-controls="clientHeader" aria-expanded="<?= $client_header_open ? 'true' : 'false' ?>"><?php $client_heading_tag = !empty($client_header_is_page_title) ? 'h1' : 'h4'; ?><<?= $client_heading_tag ?> class="text-dark client-context-title" data-bs-toggle="tooltip" data-bs-placement="right" title="Client ID: <?= $client_id ?>"><i class="fas fa-fw fa-chevron-<?= $client_header_open ? 'down' : 'right' ?> client-header-chevron" aria-hidden="true"></i><strong><?= escapeHtml($client_name) ?></strong> <?php if ($client_archived_at) { echo "(archived)"; } ?></<?= $client_heading_tag ?>></a>
         </div>
         <?php if (!empty($client_tag_name_display_array)) { ?><div class="card-title ms-2"><?= $client_tags_display ?></div> <?php } ?>
         <?php if (lookupUserPermission("module_client") >= 2) { ?>

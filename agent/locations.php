@@ -75,34 +75,76 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$location_action_items = array(
+    array(
+        'label' => 'Import',
+        'icon' => 'fa-upload',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/location/location_import.php?' . $client_url),
+    ),
+);
+if ($num_rows[0] > 0) {
+    $location_action_items[] = array('type' => 'separator');
+    $location_action_items[] = array(
+        'label' => 'Export',
+        'icon' => 'fa-download',
+        'class' => 'ajax-modal',
+        'attributes' => array(
+            'data-modal-url' => buildExportModalUrl('modals/location/location_export.php', array('client_id', 'client', 'tags', 'archived', 'q')),
+        ),
+    );
+}
+
+$location_has_filters = $q !== ''
+    || $archived == 1
+    || $tag_filter !== 0
+    || (!$client_url && $client !== '');
+$location_clear_href = $client_url
+    ? 'locations.php?client_id=' . $client_id
+    : 'locations.php';
+$location_empty_action = $location_has_filters
+    ? array('label' => 'Clear filters', 'icon' => 'fa-times', 'variant' => 'secondary', 'href' => $location_clear_href)
+    : array(
+        'type' => 'button',
+        'label' => 'New Location',
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/location/location_add.php?' . $client_url),
+    );
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fa fa-fw fa-map-marker-alt me-2"></i>Locations</h3>
-        <div class="card-tools">
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/location/location_add.php?<?= $client_url ?>">
-                    <i class="fas fa-plus me-2"></i>New Location
-                </button>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                <div class="dropdown-menu">
-                    <a class="dropdown-item text-dark ajax-modal" href="#"
-                        data-modal-url="modals/location/location_import.php?<?= $client_url ?>">
-                        <i class="fa fa-fw fa-upload me-2"></i>Import
-                    </a>
-                    <?php if ($num_rows[0] > 0) { ?>
-                        <div class="dropdown-divider"></div>
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="<?= buildExportModalUrl('modals/location/location_export.php', ['client_id', 'client', 'tags', 'archived', 'q']) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                    <?php } ?>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="card-header py-3">
+<section class="card n45-workspace" aria-labelledby="locations-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Locations',
+        'title_id' => 'locations-page-title',
+        'icon' => 'fa-map-marker-alt',
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+        'actions' => array(
+            array(
+                'type' => 'split-menu',
+                'button' => array(
+                    'type' => 'button',
+                    'label' => 'New Location',
+                    'icon' => 'fa-plus',
+                    'variant' => 'primary',
+                    'class' => 'ajax-modal',
+                    'attributes' => array('data-modal-url' => 'modals/location/location_add.php?' . $client_url),
+                ),
+                'items' => $location_action_items,
+                'menu_label' => 'More location actions',
+                'align_end' => true,
+            ),
+        ),
+    ));
+    ?>
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
             <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -112,14 +154,14 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
                 <div class="col-md-4">
                     <div class="input-group">
-                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Locations">
-                            <button class="btn btn-dark"><i class="fa fa-search"></i></button>
+                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search locations">
+                        <button class="btn btn-dark" aria-label="Search locations"><i class="fa fa-search" aria-hidden="true"></i></button>
                     </div>
                 </div>
 
                 <div class="col-md-3">
                     <div class="input-group">
-                        <select onchange="this.form.submit()" class="form-select select2" name="tags[]" data-placeholder="- Select Tags -" multiple>
+                        <select onchange="this.form.submit()" class="form-select select2" name="tags[]" data-placeholder="- Select Tags -" multiple aria-label="Filter locations by tags">
                             <?php
                             $sql_tags_filter = mysqli_query($mysqli, "
                                 SELECT tags.tag_id, tags.tag_name, tag_type
@@ -146,7 +188,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <?php } else { ?>
                 <div class="col-md-2">
                     <div class="input-group">
-                        <select class="form-select select2" name="client" onchange="this.form.submit()">
+                        <select class="form-select select2" name="client" onchange="this.form.submit()" aria-label="Filter locations by client">
                             <option value="" <?php if ($client == "") { echo "selected"; } ?>>- All Clients -</option>
 
                             <?php
@@ -175,8 +217,10 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <div class="col-md-3">
                     <div class="btn-group float-end">
                         <a href="?<?= $client_url ?>archived=<?php if($archived == 1){ echo 0; } else { echo 1; } ?>"
-                            class="btn btn-<?php if($archived == 1){ echo"primary"; } else { echo "default"; } ?>">
-                            <i class="fa fa-fw fa-archive me-2"></i>Archived
+                            class="btn btn-<?php if($archived == 1){ echo"primary"; } else { echo "default"; } ?>"
+                            aria-label="<?= $archived == 1 ? 'Show active locations' : 'Show archived locations' ?>"
+                            <?php if ($archived == 1) { ?>aria-current="page"<?php } ?>>
+                            <i class="fa fa-fw fa-archive me-2" aria-hidden="true"></i>Archived
                         </a>
                         <div class="dropdown ms-2" id="bulkActionButton" hidden>
                             <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
@@ -217,13 +261,23 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
     <form id="bulkActions" action="post.php" method="post" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
+        <?php if ($num_rows[0] == 0) { ?>
+            <?php
+            n45RenderEmptyState(array(
+                'title' => $location_has_filters ? 'No locations match these filters' : 'No locations yet',
+                'description' => $location_has_filters ? 'Clear the current filters to return to the location list.' : 'Add the offices, sites, and service addresses associated with this workspace.',
+                'icon' => 'fa-map-marker-alt',
+                'action' => $location_empty_action,
+            ));
+            ?>
+        <?php } else { ?>
         <div class="table-responsive">
-            <table class="table table-striped table-borderless table-hover mb-0">
-                <thead class="<?php if ($num_rows[0] == 0) { echo "d-none"; } ?>">
+            <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
+                <thead class="text-nowrap">
                 <tr>
                     <td class="checkbox-column border-end">
                         <div class="form-check">
-                            <input class="form-check-input" id="selectAllCheckbox" type="checkbox" onclick="checkAll(this)">
+                            <input class="form-check-input" id="selectAllCheckbox" type="checkbox" onclick="checkAll(this)" aria-label="Select all displayed locations">
                         </div>
                     </td>
                     <th>
@@ -322,7 +376,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                         }
 
                         $location_tag_id_array[] = $location_tag_id;
-                        $location_tag_name_display_array[] = "<a href='locations.php?$client_url tags[]=$location_tag_id'><span class='badge text-light p-1 me-1' style='background-color: $location_tag_color;'><i class='fa fa-fw fa-$location_tag_icon me-2'></i>$location_tag_name</span></a>";
+                        $location_tag_name_display_array[] = "<a href='locations.php?{$client_url}tags[]=$location_tag_id'><span class='badge text-light p-1 me-1' style='background-color: $location_tag_color;'><i class='fa fa-fw fa-$location_tag_icon me-2'></i>$location_tag_name</span></a>";
                     }
                     $location_tags_display = implode('', $location_tag_name_display_array);
 
@@ -330,7 +384,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     <tr>
                         <td class="checkbox-column bg-light border-end">
                             <div class="form-check">
-                                <input class="form-check-input bulk-select" type="checkbox" name="location_ids[]" value="<?= $location_id ?>">
+                                <input class="form-check-input bulk-select" type="checkbox" name="location_ids[]" value="<?= $location_id ?>" aria-label="Select location <?= $location_name ?>">
                             </div>
                         </td>
                         <td>
@@ -353,7 +407,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                         </td>
                         <td>
                             <a href="//maps.<?= $session_map_source ?>.com?q=<?= "$location_address $location_zip" ?>"
-                                target="_blank"><?= $full_address ?>
+                                target="_blank" rel="noopener"><?= $full_address ?>
                             </a>
                         </td>
                         <td>
@@ -366,8 +420,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                         <?php } ?>
                         <td>
                             <div class="dropdown dropstart text-center">
-                                <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown">
-                                    <i class="fas fa-ellipsis-h"></i>
+                                <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-label="Actions for <?= $location_name ?>">
+                                    <i class="fas fa-ellipsis-h" aria-hidden="true"></i>
                                 </button>
                                 <div class="dropdown-menu">
                                     <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/location/location_edit.php?id=<?= $location_id ?>">
@@ -403,9 +457,10 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </tbody>
             </table>
         </div>
+        <?php } ?>
     </form>
     <?php require_once "../includes/filter_footer.php"; ?>
-</div>
+</section>
 
 <script src="../js/bulk_actions.js"></script>
 

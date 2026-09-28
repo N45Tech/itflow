@@ -46,18 +46,47 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
-?>
-    <div class="card">
-        <div class="card-header bg-dark py-2">
-            <h3 class="card-title mt-2"><i class="fa fa-fw fa-stream me-2"></i>Services</h3>
-            <div class="card-tools">
-                <?php if (lookupUserPermission("module_support") >= 2) { ?>
-                    <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/service/service_add.php?<?= $client_url ?>"><i class="fas fa-plus me-2"></i>New Service</button>
-                <?php } ?>
-            </div>
-        </div>
+$service_page_actions = array();
+if (lookupUserPermission("module_support") >= 2) {
+    $service_page_actions[] = array(
+        'type' => 'button',
+        'label' => 'New Service',
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/service/service_add.php?' . $client_url),
+    );
+}
 
-        <div class="card-header py-3">
+$service_has_filters = $q !== '' || (!$client_url && $client !== '');
+$service_empty_action = $service_has_filters
+    ? array('label' => 'Clear filters', 'icon' => 'fa-times', 'variant' => 'secondary', 'href' => 'services.php?' . $client_url)
+    : (lookupUserPermission("module_support") >= 2 ? array(
+        'type' => 'button',
+        'label' => 'New Service',
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/service/service_add.php?' . $client_url),
+    ) : null);
+
+?>
+    <section class="card n45-workspace" aria-labelledby="services-page-title">
+        <?php
+        n45RenderPageHeader(array(
+            'variant' => 'workspace',
+            'title' => 'Services',
+            'title_id' => 'services-page-title',
+            'icon' => 'fa-stream',
+            'context' => $client_url ? array(
+                'label' => $tab_title,
+                'href' => 'client_overview.php?client_id=' . $client_id,
+            ) : array(),
+            'actions' => $service_page_actions,
+        ));
+        ?>
+
+        <div class="card-header n45-filter-bar">
 
             <form autocomplete="off">
                 <?php if ($client_url) { ?>
@@ -66,8 +95,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 <div class="row g-2 align-items-center">
                     <div class="col-md-4">
                         <div class="input-group">
-                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Services">
-                                <button class="btn btn-dark"><i class="fa fa-search"></i></button>
+                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search services">
+                                <button class="btn btn-dark" aria-label="Search services"><i class="fa fa-search" aria-hidden="true"></i></button>
                         </div>
                     </div>
 
@@ -110,8 +139,18 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
             </form>
         </div>
 
+        <?php if ($num_rows[0] == 0) { ?>
+            <?php
+            n45RenderEmptyState(array(
+                'title' => $service_has_filters ? 'No services match these filters' : 'No services yet',
+                'description' => $service_has_filters ? 'Clear the current filters to return to the service list.' : 'Document the services that matter to client operations.',
+                'icon' => 'fa-stream',
+                'action' => $service_empty_action,
+            ));
+            ?>
+        <?php } else { ?>
         <div class="table-responsive">
-            <table class="table table-striped table-borderless table-hover mb-0">
+            <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
                 <thead class="<?php if ($num_rows[0] == 0) { echo "d-none"; } ?>">
                 <tr>
                     <th class="ps-3">
@@ -214,9 +253,10 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                 </tbody>
             </table>
         </div>
+        <?php } ?>
         <?php require_once "../includes/filter_footer.php";
  ?>
-    </div>
+    </section>
 
 <?php
 require_once "../includes/footer.php";

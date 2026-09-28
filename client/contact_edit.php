@@ -138,7 +138,7 @@ if ($row) {
                 <?php if ($contact_primary || $contact_id == $_SESSION['contact_id']) { ?>
                     <span class="text-muted"><i class="fas fa-lock me-2" aria-hidden="true"></i>This protected contact cannot be changed here.</span>
                 <?php } else { ?>
-                    <button class="btn btn-primary" name="edit_contact"><i class="fas fa-check" aria-hidden="true"></i>Save changes</button>
+                    <button class="btn btn-primary" name="edit_contact"><i class="fas fa-check me-2" aria-hidden="true"></i>Save changes</button>
                 <?php } ?>
                 <a class="btn btn-secondary" href="contacts.php">Back to contacts</a>
             </div>

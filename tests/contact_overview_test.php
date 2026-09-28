@@ -9,10 +9,17 @@ if ($source === false) {
 
 $initializer = strpos($source, '$client_id = 0;');
 $client_branch = strpos($source, "if (isset(\$_GET['client_id']))");
-$add_contact_url = strpos(
+$legacy_add_contact_url = strpos(
     $source,
     'modals/contact/contact_add.php?client_id=<?= $client_id ?>'
 );
+$shared_header_add_contact_url = strpos(
+    $source,
+    "'data-modal-url' => 'modals/contact/contact_add.php?client_id=' . intval(\$client_id ?? 0)"
+);
+$add_contact_url = $shared_header_add_contact_url !== false
+    ? $shared_header_add_contact_url
+    : $legacy_add_contact_url;
 
 if ($initializer === false || $client_branch === false || $add_contact_url === false) {
     fwrite(STDERR, "Contacts overview client context contract is incomplete\n");

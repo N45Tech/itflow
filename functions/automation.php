@@ -70,7 +70,7 @@ function automationSource($value): string
 
 function automationSourceIsRetired($value): bool
 {
-    return in_array(automationSource($value), ['netbox', 'checkmk'], true);
+    return in_array(automationSource($value), ['netbox', 'checkmk', 'uptime_kuma'], true);
 }
 
 function automationEntityType($value): string
@@ -463,6 +463,8 @@ function automationDeleteTicketOperations(int $ticket_id): int
     if ($ticket_id < 1) {
         return 0;
     }
+
+    investigationDeleteTicket($ticket_id);
 
     $incident_keys = [];
     $sql_incidents = automationDbQuery("SELECT automation_incident_source,
