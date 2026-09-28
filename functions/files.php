@@ -502,6 +502,55 @@ function saveBase64Images(string $html, string $baseFsPath, string $baseWebPath,
     return $html;
 }
 
+/**
+ * Replace legacy, web-root document image paths with an authorization-checked
+ * application endpoint. The files remain in their existing location so old
+ * documents and versions continue to render after direct HTTP access is denied.
+ */
+function protectDocumentImageUrls(string $html, string $endpoint, array $query = []): string {
+    return preg_replace_callback(
+        '#(?<=["\'])/uploads/documents/(\d+)/(img_[a-f0-9]{32}\.(?:jpe?g|png|gif|webp))(?=["\'])#i',
+        static function (array $matches) use ($endpoint, $query): string {
+            $parameters = array_merge($query, [
+                'document_id' => intval($matches[1]),
+                'file' => strtolower($matches[2]),
+            ]);
+            return $endpoint . '?' . http_build_query($parameters, '', '&amp;', PHP_QUERY_RFC3986);
+        },
+        $html
+    );
+}
+
+/** Stream an embedded document image after its caller has authorized the document. */
+function streamDocumentImage(int $documentId, string $filename): void {
+    if ($documentId < 1
+        || preg_match('/^img_[a-f0-9]{32}\.(?:jpe?g|png|gif|webp)$/i', $filename) !== 1) {
+        http_response_code(404);
+        exit('Image not found');
+    }
+
+    $directory = realpath(dirname(__DIR__) . "/uploads/documents/$documentId");
+    $file = $directory === false ? false : realpath($directory . '/' . basename($filename));
+    if ($file === false || !is_file($file) || strpos($file, $directory . DIRECTORY_SEPARATOR) !== 0) {
+        http_response_code(404);
+        exit('Image not found');
+    }
+
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file);
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
+        http_response_code(404);
+        exit('Image not found');
+    }
+
+    header('Content-Type: ' . $mime);
+    header('Content-Length: ' . filesize($file));
+    header('Content-Disposition: inline; filename="' . basename($filename) . '"');
+    header('Cache-Control: private, no-store');
+    header('X-Content-Type-Options: nosniff');
+    readfile($file);
+    exit;
+}
+
 function cleanupUnusedImages(string $html, string $folderFsPath, string $folderWebPath) {
 
     $folderFsPath  = rtrim($folderFsPath, '/\\') . '/';

@@ -437,7 +437,10 @@ if (isset($_GET['get_document_content'])) {
         $document_purifier = new HTMLPurifier($document_purifier_config);
 
         $response['name'] = $document_row['document_name'];
-        $response['content'] = $document_purifier->purify($document_row['document_content']);
+        $response['content'] = protectDocumentImageUrls(
+            $document_purifier->purify($document_row['document_content']),
+            'document_image.php'
+        );
     } else {
         $response['name'] = '';
         $response['content'] = '';
