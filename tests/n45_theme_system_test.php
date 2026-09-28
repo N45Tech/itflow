@@ -113,7 +113,9 @@ $assertContains('id="tickets-page-title"', $tickets, 'Tickets do not expose a pa
 $assertContains('class="card-tools n45-page-actions"', $tickets, 'The ticket create action is not pinned to the workspace edge');
 $assertContains('class="input-group n45-ticket-search"', $tickets, 'The ticket search does not use the expanded shared treatment');
 $assertContains('placeholder="Search ticket number, subject, client, or contact"', $tickets, 'The ticket search does not explain its searchable fields');
-$assertContains('class="btn-group n45-ticket-view-controls float-lg-end"', $tickets, 'Ticket assignment, queue, and layout controls are not one aligned group');
+$assertContains('class="btn-group n45-ticket-view-controls float-xxl-end"', $tickets, 'Ticket assignment, queue, and layout controls are not one aligned group');
+$assertContains('class="col-12 col-xxl-6"', $tickets, 'Ticket search and view controls must stack before desktop width');
+$assertContains('class="col-sm-6 col-xl-3"', $tickets, 'Advanced filters must allow two columns at tablet width');
 $assertContains('aria-label="Queues"', $tickets, 'The compact queue control has no accessible name');
 $assertContains('aria-label="Switch to the <?= $view == \'kanban\' ? \'list\' : \'kanban\' ?> view"', $tickets, 'The compact ticket layout control has no accessible name');
 $assertNotContains('class="btn-group ms-2"', $tickets, 'Queues retain one-off spacing outside the ticket control group');

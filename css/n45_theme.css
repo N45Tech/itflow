@@ -831,6 +831,31 @@ a.n45-client-context:focus {
     height: 100%;
 }
 
+.n45-ticket-filter-row > [class*="col-"] {
+    min-width: 0;
+}
+
+.n45-review-period-form {
+    align-items: end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    margin-bottom: .5rem;
+}
+
+.n45-review-period-form > div {
+    flex: 1 1 11rem;
+    max-width: 15rem;
+}
+
+.n45-review-period-form .form-label {
+    margin-bottom: .3rem;
+}
+
+.n45-review-period-form > .btn {
+    min-height: 2.4rem;
+}
+
 .n45-page-lead {
     align-items: center;
     display: flex;

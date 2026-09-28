@@ -126,13 +126,13 @@ function n45UiActionHtml(array $action)
     return '<' . $tag . $href . ' class="' . escapeHtml(n45UiActionClass($action)) . '"' . n45UiAttributes($attributes) . '>' . n45UiActionContent($action) . '</' . $tag . '>';
 }
 
-function n45RenderPageTabs(array $tabs, $aria_label = 'Page sections')
+function n45RenderPageTabs(array $tabs, $aria_label = 'Page sections', $class = '')
 {
     if (!$tabs) {
         return;
     }
 
-    echo '<nav class="n45-status-tabs" aria-label="' . escapeHtml($aria_label) . '">';
+    echo '<nav class="n45-status-tabs ' . escapeHtml(n45UiClassNames($class)) . '" aria-label="' . escapeHtml($aria_label) . '">';
     foreach ($tabs as $tab) {
         if (isset($tab['visible']) && !$tab['visible']) {
             continue;
@@ -224,7 +224,7 @@ function n45RenderPageHeader(array $config)
         if ($context) {
             echo n45UiClientContextHtml($context);
         }
-        n45RenderPageTabs($tabs, $config['tabs_label'] ?? ($title . ' views'));
+        n45RenderPageTabs($tabs, $config['tabs_label'] ?? ($title . ' views'), $config['tabs_class'] ?? '');
         echo '</div>';
         n45RenderPageActions($actions);
         echo '</header>';
@@ -309,7 +309,7 @@ function n45RenderEmptyState(array $config)
     $icon = $config['icon'] ?? 'fa-inbox';
     $action = $config['action'] ?? null;
 
-    echo '<div class="n45-empty-state text-center py-5 px-3" role="status">';
+    echo '<div class="n45-empty-state n45-empty-state--page text-center py-5 px-3" role="status">';
     echo '<i class="fa fa-3x ' . escapeHtml(n45UiIconClass($icon)) . ' mb-3 d-block" aria-hidden="true"></i>';
     echo '<h2 class="h5">' . escapeHtml($title) . '</h2>';
     if ($description !== '') {
