@@ -34,7 +34,7 @@ $assertContains('service_review_client_id = $session_client_id', $post, 'Portal 
 $assertContains('Client discussion', $agent_review, 'Technicians cannot see portal review comments');
 $assertContains('SELECT client_id, client_name FROM clients', $agent_reviews, 'Clients without a prior review disappear from the business-review filter');
 $assertContains("require_once 'includes/inc_all_client.php'", $agent_client_reviews, 'Client business reviews do not stay in the client workspace');
-$assertContains('Reviews follow the active agreement schedule.', $agent_client_reviews, 'Client business reviews do not explain how reviews are initiated');
+$assertContains('Each agreement has its own review schedule.', $agent_client_reviews, 'Client business reviews do not explain how published agreements schedule reviews');
 $assertContains('/agent/documentation.php?client_id=', $client_nav, 'Client documents are not available from client navigation');
 $assertContains('/agent/business_reviews.php?client_id=', $client_nav, 'Business reviews are not available from client navigation');
 

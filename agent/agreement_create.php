@@ -36,7 +36,7 @@ $back_url = 'agreements.php' . ($client_id > 0 ? '?client_id=' . $client_id : ''
 
 <div class="n45-agreement-setup">
     <header class="n45-agreement-heading">
-        <div><h1>New agreement</h1><p>Set the service expectations in one place, then review the draft before it becomes active.</p></div>
+        <div><h1>New agreement</h1><p>Define ITFlow's ticket coverage and service levels for a client. Saving keeps these operational rules in draft.</p></div>
         <a href="<?= $back_url ?>" class="btn btn-light">Back to agreements</a>
     </header>
 
@@ -104,6 +104,7 @@ $back_url = 'agreements.php' . ($client_id > 0 ? '?client_id=' . $client_id : ''
         <?php };
         ?>
         <p class="n45-agreement-client"><strong><?= escapeHtml($client['client_name']) ?></strong> <span>New draft</span></p>
+        <p class="n45-agreement-help">This definition controls ticket coverage, billable flags, SLA targets, and service reviews after publication. It does not record a client signature or acceptance. Verify the approved customer agreement separately before publishing.</p>
         <?php if ($setup_error !== '') { ?><div class="alert alert-danger" role="alert"><?= escapeHtml($setup_error) ?> Your entries have been kept below.</div><?php } ?>
         <nav class="n45-agreement-steps" aria-label="Agreement setup" hidden data-setup-navigation>
             <?php foreach (['Agreement', 'Coverage', 'Service levels', 'Reviews', 'Check & save'] as $i => $label) { ?>
@@ -127,7 +128,7 @@ $back_url = 'agreements.php' . ($client_id > 0 ? '?client_id=' . $client_id : ''
                             <option <?= $value('type') === $type ? 'selected' : '' ?>><?= $type ?></option>
                         <?php } ?>
                     </select></div>
-                    <div><label for="setup-from">Start date *</label><input id="setup-from" type="date" class="form-control" name="effective_from" required value="<?= escapeHtml($value('effective_from', date('Y-m-d'))) ?>"><small>Future-dated agreements stay drafts until their start date.</small></div>
+                    <div><label for="setup-from">Start date *</label><input id="setup-from" type="date" class="form-control" name="effective_from" required value="<?= escapeHtml($value('effective_from', date('Y-m-d'))) ?>"><small>Future-dated definitions stay in draft until their start date.</small></div>
                     <div><label for="setup-until">End date</label><input id="setup-until" type="date" class="form-control" name="effective_until" value="<?= escapeHtml($value('effective_until')) ?>"><small>Leave blank for an evergreen agreement.</small></div>
                     <div class="n45-agreement-wide"><label for="setup-responsibilities">Client responsibilities</label><textarea id="setup-responsibilities" class="form-control" name="responsibilities" rows="3" maxlength="4000" placeholder="Client contacts, access requirements, approvals and responsibilities"><?= escapeHtml($value('responsibilities')) ?></textarea></div>
                 </div>
@@ -227,7 +228,7 @@ $back_url = 'agreements.php' . ($client_id > 0 ? '?client_id=' . $client_id : ''
 
             <section data-setup-step aria-labelledby="setup-summary-title">
                 <h2 id="setup-summary-title" tabindex="-1">Check the agreement</h2>
-                <p>Saving creates one complete draft with its coverage and SLA rules. It will not change client commitments until you publish it.</p>
+                <p>Saving creates a draft. Ticket coverage and SLA decisions change only after publication; verify client approval separately.</p>
                 <div data-setup-summary></div>
                 <noscript><p>Review the sections above before saving. All sections are available without JavaScript.</p></noscript>
             </section>
