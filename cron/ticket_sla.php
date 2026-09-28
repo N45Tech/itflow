@@ -96,12 +96,15 @@ function sendSlaAlert($ticket, $subject_line, $body_line)
 
     $ticket_id = intval($ticket['ticket_id']);
     $client_id = intval($ticket['ticket_client_id']);
+    $assigned_user_id = intval($ticket['ticket_assigned_to']);
 
     $ticket_ref = "{$ticket['ticket_prefix']}{$ticket['ticket_number']}";
     $ticket_subject = strval($ticket['ticket_subject']);
 
-    // appNotify inserts what it is given - escape at the boundary
-    appNotify("Ticket SLA", escapeSql("$subject_line - $ticket_ref - $ticket_subject"), "/agent/ticket.php?ticket_id=$ticket_id", $client_id, $ticket_id);
+    // Ticket details are client-scoped, so notify only the assigned agent.
+    if ($assigned_user_id) {
+        appNotify("Ticket SLA", escapeSql("$subject_line - $ticket_ref - $ticket_subject"), "/agent/ticket.php?ticket_id=$ticket_id", $client_id, $ticket_id, $assigned_user_id);
+    }
 
     // addToMailQueue also inserts raw, and the body's link markup contains
     // single quotes - escape whole strings once here. The body keeps its HTML,
@@ -142,7 +145,7 @@ function sendSlaAlert($ticket, $subject_line, $body_line)
 
 // --- Response SLA track ---
 // Open tickets awaiting a first response, not yet marked breached
-$sql_response = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number,
+$sql_response = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number, ticket_assigned_to,
     ticket_subject, ticket_client_id, ticket_created_at, ticket_response_due_at,
     ticket_response_due_at_utc,
     ticket_response_sla_alert_stage, ticket_sla_response_minutes_snapshot,
@@ -193,7 +196,7 @@ while ($ticket = mysqli_fetch_assoc($sql_response)) {
 
 // --- Resolution SLA track ---
 // Open tickets with a resolution target, not yet resolved or marked breached
-$sql_resolution = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number,
+$sql_resolution = mysqli_query($mysqli, "SELECT ticket_id, ticket_prefix, ticket_number, ticket_assigned_to,
     ticket_subject, ticket_client_id, ticket_created_at, ticket_resolution_due_at,
     ticket_resolution_due_at_utc,
     ticket_resolution_sla_alert_stage, ticket_sla_resolution_minutes_snapshot,
