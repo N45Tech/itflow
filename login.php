@@ -829,7 +829,7 @@ if (($is_technician_login && !$show_agent_sso) || ($is_customer_login && !$show_
                         <label class="visually-hidden" for="login-email">Email address</label>
                         <input type="email" class="form-control"
                             id="login-email"
-                            placeholder="<?php if ($config_login_key_required) { if (!isset($_GET['key']) || $_GET['key'] !== $config_login_key_secret) { echo "Client "; } } echo "Email"; ?>"
+                            placeholder="Email"
                             name="email"
                             value="<?= htmlspecialchars($email ?? '', ENT_QUOTES) ?>"
                             required autofocus
