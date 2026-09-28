@@ -46,11 +46,13 @@ ob_start();
             <label>Use Case <strong class="text-danger">*</strong></label>
             <div class="input-group">
                     <span class="input-group-text"><i class="fa fa-fw fa-th-list"></i></span>
-                <select class="form-select select2" name="use_case">
+                <select class="form-select select2" name="use_case" aria-describedby="investigation-use-case-note">
                     <option>General</option>
                     <option>Tickets</option>
                     <option>Documentation</option>
+                    <option>Automation Investigation</option>
                 </select>
+                <small id="investigation-use-case-note" class="form-text text-muted">Automation Investigation requires a separate deployment opt-in, approved client IDs and provider host. It uses a fixed read-only prompt, not the custom prompt below.</small>
             </div>
         </div>
 

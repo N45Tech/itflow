@@ -93,7 +93,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     </td>
                     <td><small class="text-muted"><?= escapeHtml(ticketStatusGuidance($ticket_status_name_raw)) ?></small></td>
                     <td>
-                        <span class='badge rounded-pill text-light p-2' style="background-color: <?= $ticket_status_color ?>"><?= $ticket_status_name ?></span>
+                        <span <?= n45TicketStatusBadgeAttributes($ticket_status_color) ?>><?= $ticket_status_name ?></span>
                     <td><?= $ticket_status_display ?></td>
                     <td>
                         <?php if ($ticket_status_pauses_sla) { ?>

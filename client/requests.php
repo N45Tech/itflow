@@ -16,7 +16,8 @@ $available = [];
 while ($catalog = mysqli_fetch_assoc($catalog_rows)) {
     try {
         $definition = portalRequestAssertVersion(intval($catalog['portal_request_catalog_item_published_version_id']));
-        if (portalRequestContactCanUse($definition, $contact_context, $session_client_id)) {
+        if (portalRequestContactCanUse($definition, $contact_context, $session_client_id)
+            && strcasecmp(trim($definition['name']), 'Schedule Work') !== 0) {
             $available[] = [
                 'version_id' => intval($catalog['portal_request_catalog_item_published_version_id']),
                 'definition' => $definition,
@@ -35,10 +36,16 @@ $history_scope = contactCan('tickets_all') ? '' : "AND (
 $submissions = mysqli_query($mysqli, "SELECT s.portal_request_submission_id,
     s.portal_request_submission_ticket_id, s.portal_request_submission_status,
     s.portal_request_submission_submitted_at, v.portal_request_catalog_version_name,
-    v.portal_request_catalog_version_icon
+    v.portal_request_catalog_version_icon, t.ticket_id AS visible_ticket_id,
+    ts.ticket_status_name AS visible_ticket_status
     FROM portal_request_submissions s
     INNER JOIN portal_request_catalog_versions v
         ON v.portal_request_catalog_version_id = s.portal_request_submission_version_id
+    LEFT JOIN tickets t ON t.ticket_id = s.portal_request_submission_ticket_id
+        AND t.ticket_client_id = s.portal_request_submission_client_id
+        AND t.ticket_archived_at IS NULL
+        AND " . (contactCan('tickets_all') ? '1=1' : "t.ticket_contact_id = $session_contact_id") . "
+    LEFT JOIN ticket_statuses ts ON ts.ticket_status_id = t.ticket_status
     WHERE s.portal_request_submission_client_id = $session_client_id $history_scope
     ORDER BY s.portal_request_submission_submitted_at DESC LIMIT 20");
 
@@ -94,7 +101,17 @@ while ($approval = mysqli_fetch_assoc($approval_rows)) {
     <div class="alert alert-info">No guided requests are currently available for your portal role and services.</div>
 <?php } ?>
 
-<p><a href="ticket_add.php"><i class="far fa-comment mr-1"></i>Something else? Send a general support request.</a></p>
+<div class="row">
+    <div class="col-md-6 col-xl-4 mb-3">
+        <a class="card h-100 text-dark text-decoration-none n45-portal-request-card" href="ticket_add.php">
+            <div class="card-body">
+                <i class="far fa-comment fa-2x text-primary mb-3" aria-hidden="true"></i>
+                <h2 class="h5">Something else?</h2>
+                <p class="text-muted mb-0">Send a general support request.</p>
+            </div>
+        </a>
+    </div>
+</div>
 
 <?php if ($pending_approvals) { ?>
     <div class="card card-outline card-warning mt-4">
@@ -116,9 +133,9 @@ while ($approval = mysqli_fetch_assoc($approval_rows)) {
             <?php while ($submission = mysqli_fetch_assoc($submissions)) { ?>
                 <tr>
                     <td><a href="request_status.php?id=<?= intval($submission['portal_request_submission_id']) ?>"><i class="<?= escapeHtml($submission['portal_request_catalog_version_icon']) ?> fa-fw mr-1"></i><?= escapeHtml($submission['portal_request_catalog_version_name']) ?></a></td>
-                    <td><span class="badge <?= portalRequestStatusBadgeClass($submission['portal_request_submission_status']) ?>"><?= escapeHtml(portalRequestStatusLabel($submission['portal_request_submission_status'])) ?></span></td>
+                    <td><span class="badge <?= portalRequestStatusBadgeClass($submission['portal_request_submission_status']) ?>"><?= escapeHtml(portalRequestStatusLabel($submission['portal_request_submission_status'])) ?></span><?php if ($submission['visible_ticket_status']) { ?><div class="small mt-1">Ticket: <?= escapeHtml($submission['visible_ticket_status']) ?></div><?php } ?></td>
                     <td><?= escapeHtml($submission['portal_request_submission_submitted_at']) ?></td>
-                    <td><?php if (intval($submission['portal_request_submission_ticket_id'])) { ?><a href="ticket.php?id=<?= intval($submission['portal_request_submission_ticket_id']) ?>">View ticket</a><?php } else { ?>—<?php } ?></td>
+                    <td><?php if (intval($submission['visible_ticket_id'])) { ?><a href="ticket.php?id=<?= intval($submission['visible_ticket_id']) ?>">View ticket</a><?php } else { ?>—<?php } ?></td>
                 </tr>
             <?php } ?>
             </tbody>

@@ -182,17 +182,14 @@ $portal_can_technology = $portal_can_assets || $portal_can_itdoc || $portal_can_
             </button>
         </header>
 
-        <header class="n45-portal-context-bar" aria-label="Client workspace">
+        <header class="n45-portal-context-bar" aria-label="Client portal">
             <div class="n45-portal-context-copy">
-                <span>Client workspace</span>
+                <span>Client Portal</span>
                 <strong><?= escapeHtml($session_client_name) ?></strong>
             </div>
             <div class="n45-portal-context-actions">
-                <span class="n45-portal-context-status">
-                    <i class="fas fa-lock" aria-hidden="true"></i>
-                    Secure client access
-                </span>
-                <a href="/client/requests.php">
+                <a class="n45-portal-context-phone" href="tel:+18285151530"><i class="fas fa-phone" aria-hidden="true"></i>828-515-1530</a>
+                <a class="n45-portal-context-cta" href="/client/ticket_add.php">
                     Contact service desk
                     <i class="fas fa-arrow-right" aria-hidden="true"></i>
                 </a>

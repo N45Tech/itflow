@@ -171,6 +171,21 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 - **Primary:** Action Teal fill with a contrast-safe foreground; one dominant action per region.
 - **Secondary:** White or quiet surface fill with a visible border and muted-strong text.
 - **Hover / Focus:** Short color transitions and a visible three-pixel teal focus ring; reduced-motion preferences remove meaningful transition duration.
+- **Pending:** Preserve the control's hierarchy, pair a compact spinner with action-specific copy, expose `aria-busy`, and prevent repeated activation until navigation or recovery.
+
+### Interaction Feedback
+
+- **Form actions:** High-value create, update, resolve, and destructive forms opt into the shared pending state. The chosen submit action must remain present in the request even after its control is disabled.
+- **AJAX dialogs:** Open an accessible loading shell immediately. Network or server failures remain inside the dialog with specific recovery copy plus Retry and Close actions; never fall back to a native browser alert.
+- **Focus:** Move focus into loaded dialog content, return it to the originating control on close or cancellation, and use the parent menu trigger when the original control becomes hidden.
+- **Recovery:** Abort stale requests, suppress duplicate modal loads and form submissions, and clear stale busy states when a page returns from the back-forward cache.
+
+### Automated Investigations
+
+- **Placement:** Keep analysis inside the existing automation incident card so source state remains the primary record.
+- **Disclosure:** Label model output as read-only and AI-generated, and state explicitly when no remediation was attempted.
+- **Structure:** Present the concise summary first, then a hypothetical cause, uncalibrated model confidence, suggested non-destructive technician checks, and expandable unknowns.
+- **Trust:** Render only escaped structured fields; never present model HTML, credentials, or unverified conclusions as confirmed facts.
 
 ### Status Tabs and Badges
 

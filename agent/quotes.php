@@ -34,30 +34,71 @@ $sql = mysqli_query(
 
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
+$quote_page_actions = array();
+$new_quote_action = null;
+if (lookupUserPermission("module_sales") >= 2) {
+    $new_quote_action = array(
+        'type' => 'button',
+        'label' => 'New Quote',
+        'icon' => 'fa-plus',
+        'variant' => 'primary',
+        'class' => 'ajax-modal',
+        'attributes' => array('data-modal-url' => 'modals/quote/quote_add.php?' . $client_url),
+    );
+    if ($num_rows[0] > 0) {
+        $quote_page_actions[] = array(
+            'type' => 'split-menu',
+            'button' => $new_quote_action,
+            'items' => array(
+                array(
+                    'label' => 'Export',
+                    'icon' => 'fa-download',
+                    'class' => 'ajax-modal',
+                    'attributes' => array(
+                        'data-modal-url' => buildExportModalUrl('modals/quote/quote_export.php', array('client_id', 'q'), array('dtf' => $dtf, 'dtt' => $dtt)),
+                    ),
+                ),
+            ),
+            'menu_label' => 'More quote actions',
+            'align_end' => true,
+        );
+    } else {
+        $quote_page_actions[] = $new_quote_action;
+    }
+}
+
+$quote_has_date_filters = !empty($_GET['canned_date'])
+    || (isset($_GET['dtf']) && $_GET['dtf'] !== '1970-01-01')
+    || (isset($_GET['dtt']) && $_GET['dtt'] !== '2999-12-31');
+$quote_has_filters = $q !== '' || $quote_has_date_filters;
+$quote_clear_href = $client_url
+    ? 'quotes.php?client_id=' . $client_id
+    : 'quotes.php';
+$quote_empty_action = null;
+if ($quote_has_filters) {
+    $quote_empty_action = array('label' => 'Clear filters', 'icon' => 'fa-times', 'variant' => 'secondary', 'href' => $quote_clear_href);
+} elseif (lookupUserPermission("module_sales") >= 2) {
+    $quote_empty_action = $new_quote_action;
+}
+
 ?>
 
-<div class="card">
-    <div class="card-header bg-dark py-2">
-        <h3 class="card-title mt-2"><i class="fa fa-comment-dollar me-2"></i>Quotes</h3>
-        <div class="card-tools">
-        <?php if (lookupUserPermission("module_sales") >= 2) { ?>
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/quote/quote_add.php?<?= $client_url ?>"><i class="fas fa-plus me-2"></i>New Quote</button>
-                <?php if ($num_rows[0] > 0) { ?>
-                    <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
-                    <div class="dropdown-menu">
-                        <a class="dropdown-item text-dark ajax-modal" href="#"
-                            data-modal-url="<?= buildExportModalUrl('modals/quote/quote_export.php', ['client_id', 'q'], ['dtf' => $dtf, 'dtt' => $dtt]) ?>">
-                            <i class="fa fa-fw fa-download me-2"></i>Export
-                        </a>
-                    </div>
-                <?php } ?>
-            </div>
-        <?php } ?>
-        </div>
-    </div>
+<section class="card n45-workspace" aria-labelledby="quotes-page-title">
+    <?php
+    n45RenderPageHeader(array(
+        'variant' => 'workspace',
+        'title' => 'Quotes',
+        'title_id' => 'quotes-page-title',
+        'icon' => 'fa-comment-dollar',
+        'context' => $client_url ? array(
+            'label' => $tab_title,
+            'href' => 'client_overview.php?client_id=' . $client_id,
+        ) : array(),
+        'actions' => $quote_page_actions,
+    ));
+    ?>
 
-    <div class="card-header py-3">
+    <div class="card-header n45-filter-bar">
         <form autocomplete="off">
             <?php if ($client_url) { ?>
                 <input type="hidden" name="client_id" value="<?= $client_id ?>">
@@ -65,24 +106,19 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
             <div class="row g-2 align-items-end">
                 <div class="col-sm-4">
                     <div class="input-group">
-                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Quotes">
-                            <button class="btn btn-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilter"><i class="fas fa-filter"></i></button>
-                            <button class="btn btn-primary"><i class="fa fa-search"></i></button>
-                    </div>
-                </div>
-                <div class="col-sm-8">
-                    <div class="float-end">
-
+                        <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search quotes">
+                        <button class="btn btn-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilter" aria-controls="advancedFilter" aria-expanded="<?= $quote_has_date_filters ? 'true' : 'false' ?>" aria-label="Show quote date filters"><i class="fas fa-filter" aria-hidden="true"></i></button>
+                        <button class="btn btn-primary" aria-label="Search quotes"><i class="fa fa-search" aria-hidden="true"></i></button>
                     </div>
                 </div>
             </div>
-            <div class="collapse mt-3 <?php if (isset($_GET['dtf']) && $_GET['dtf'] !== '1970-01-01') { echo"show"; } ?>" id="advancedFilter">
+            <div class="collapse mt-3 <?= $quote_has_date_filters ? 'show' : '' ?>" id="advancedFilter">
                 <div class="row g-3">
                     <div class="col-md-3">
                         <div>
-                            <label class="form-label">Date range</label>
+                            <label class="form-label" for="dateFilter">Date range</label>
                             <input type="text" id="dateFilter" class="form-control" autocomplete="off">
-                            <input type="hidden" name="canned_date" id="canned_date" value="<?= escapeHtml($_GET['canned_date']) ?? '' ?>">
+                            <input type="hidden" name="canned_date" id="canned_date" value="<?= escapeHtml($_GET['canned_date'] ?? '') ?>">
                             <input type="hidden" name="dtf" id="dtf" value="<?= escapeHtml($dtf ?? '') ?>">
                             <input type="hidden" name="dtt" id="dtt" value="<?= escapeHtml($dtt ?? '') ?>">
                         </div>
@@ -91,49 +127,59 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
             </div>
         </form>
     </div>
+    <?php if ($num_rows[0] == 0) { ?>
+        <?php
+        n45RenderEmptyState(array(
+            'title' => $quote_has_filters ? 'No quotes match these filters' : 'No quotes yet',
+            'description' => $quote_has_filters ? 'Clear the current search or date range to return to the quote list.' : 'Create a quote when a client is ready to review proposed work.',
+            'icon' => 'fa-comment-dollar',
+            'action' => $quote_empty_action,
+        ));
+        ?>
+    <?php } else { ?>
     <div class="table-responsive">
-        <table class="table table-striped table-borderless table-hover mb-0">
-            <thead class="text-dark <?php if ($num_rows[0] == 0) { echo "d-none"; } ?> text-nowrap">
+        <table class="table table-striped table-borderless table-hover mb-0 n45-data-table">
+            <thead class="text-dark text-nowrap">
             <tr>
                 <th class="ps-3">
-                    <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=quote_number&order=<?= $disp ?>">
+                    <a class="text-secondary" href="?<?= $url_query_strings_sort ?>&sort=quote_number&order=<?= $disp ?>">
                         Number <?php if ($sort == 'quote_number') { echo $order_icon; } ?>
                     </a>
                 </th>
                 <th>
-                    <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=quote_scope&order=<?= $disp ?>">
+                    <a class="text-secondary" href="?<?= $url_query_strings_sort ?>&sort=quote_scope&order=<?= $disp ?>">
                         Scope <?php if ($sort == 'quote_scope') { echo $order_icon; } ?>
                     </a>
                 </th>
                 <?php if (!$client_url) { ?>
                 <th>
-                    <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=client_name&order=<?= $disp ?>">
+                    <a class="text-secondary" href="?<?= $url_query_strings_sort ?>&sort=client_name&order=<?= $disp ?>">
                         Client <?php if ($sort == 'client_name') { echo $order_icon; } ?>
                     </a>
                 </th>
                 <?php } ?>
                 <th class="text-end">
-                    <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=quote_amount&order=<?= $disp ?>">
+                    <a class="text-secondary" href="?<?= $url_query_strings_sort ?>&sort=quote_amount&order=<?= $disp ?>">
                         Amount <?php if ($sort == 'quote_amount') { echo $order_icon; } ?>
                     </a>
                 </th>
                 <th>
-                    <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=quote_date&order=<?= $disp ?>">
-                        Date <?php if ($sort == 'quote_number') { echo $order_icon; } ?>
+                    <a class="text-secondary" href="?<?= $url_query_strings_sort ?>&sort=quote_date&order=<?= $disp ?>">
+                        Date <?php if ($sort == 'quote_date') { echo $order_icon; } ?>
                     </a>
                 </th>
                 <th>
-                    <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=quote_expire&order=<?= $disp ?>">
-                        Expire <?php if ($sort == 'quote_number') { echo $order_icon; } ?>
+                    <a class="text-secondary" href="?<?= $url_query_strings_sort ?>&sort=quote_expire&order=<?= $disp ?>">
+                        Expire <?php if ($sort == 'quote_expire') { echo $order_icon; } ?>
                     </a>
                 </th>
                 <th>
-                    <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=category_name&order=<?= $disp ?>">
+                    <a class="text-secondary" href="?<?= $url_query_strings_sort ?>&sort=category_name&order=<?= $disp ?>">
                         Category <?php if ($sort == 'category_name') { echo $order_icon; } ?>
                     </a>
                 </th>
                 <th>
-                    <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=quote_status&order=<?= $disp ?>">
+                    <a class="text-secondary" href="?<?= $url_query_strings_sort ?>&sort=quote_status&order=<?= $disp ?>">
                         Status <?php if ($sort == 'quote_status') { echo $order_icon; } ?>
                     </a>
                 </th>
@@ -209,8 +255,8 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     </td>
                     <td>
                         <div class="dropdown dropstart text-center">
-                            <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown">
-                                <i class="fas fa-ellipsis-h"></i>
+                            <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-label="Actions for quote <?= "$quote_prefix$quote_number" ?>">
+                                <i class="fas fa-ellipsis-h" aria-hidden="true"></i>
                             </button>
                             <div class="dropdown-menu">
                                 <a class="dropdown-item ajax-modal" href="#"
@@ -257,9 +303,10 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
             </tbody>
         </table>
     </div>
+    <?php } ?>
     <?php require_once "../includes/filter_footer.php";
 ?>
-</div>
+</section>
 
 <?php if (lookupUserPermission("module_sales") >= 2 && !empty($config_smtp_provider)) { ?>
     <?php
