@@ -2,6 +2,8 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_support', 2);
+
 $ticket_ids = array_map('intval', $_GET['ticket_ids'] ?? []);
 
 $count = count($ticket_ids);
@@ -17,6 +19,7 @@ $sql_merge = mysqli_query($mysqli, "SELECT client_name, ticket_id, ticket_number
     LEFT JOIN clients ON client_id = ticket_client_id
     WHERE ticket_closed_at IS NULL
     $whereNotIn
+    " . clientScopeSql('ticket_client_id') . "
     ORDER BY ticket_status ASC, ticket_id DESC"
 );
 
