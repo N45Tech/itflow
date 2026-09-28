@@ -2,6 +2,8 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceAdminPermission();
+
 $calendar_id = intval($_GET['id']);
 
 $sql = mysqli_query($mysqli, "SELECT calendar_color, calendar_feed_accessed_at, calendar_feed_busy_only,
