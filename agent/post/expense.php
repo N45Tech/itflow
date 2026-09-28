@@ -57,11 +57,17 @@ if (isset($_POST['edit_expense'])) {
 
     require_once 'expense_model.php';
 
-    if ($client_id) {
-        enforceClientAccess();
-    }
-
     $expense_id = intval($_POST['expense_id']);
+
+    // Authorize the expense's current client before replacing a receipt or
+    // changing any expense data, then authorize a client reassignment.
+    $existing_client_id = intval(getFieldById('expenses', $expense_id, 'expense_client_id'));
+    if ($existing_client_id) {
+        enforceClientAccess($existing_client_id);
+    }
+    if ($client_id) {
+        enforceClientAccess($client_id);
+    }
 
     // Get old receipt
     $existing_file_name = escapeSql(getFieldById('expenses', $expense_id, 'expense_receipt'));
