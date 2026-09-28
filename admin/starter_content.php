@@ -129,9 +129,9 @@ foreach ($starter_content_status as $pack_status) {
             ticket queue, aging, profit and loss and every other report have real history behind them rather than one flat month.
         </p>
         <p class="text-muted">
-            This is sample data, not configuration. Nothing in it is labelled as demo data - the clients, tags and references
-            all read as real, which is the point. Removal matches the <?= intval($demo_data_status['total']) ?> client names in
-            the library, so <strong>renaming a demo client stops it being removable</strong>. Contacts use addresses on the
+            This is sample data, not configuration. Demo clients carry a dedicated <strong>Demo Data</strong> tag so removal
+            cannot mistake a real client with the same name for seeded data. Other tags and references read as real, which is
+            the point. Contacts use addresses on the
             reserved <strong>.example</strong> domain, which cannot receive mail, and the agreements are created with email
             notification switched off. Anything shared - accounts, suppliers, response targets, tax rates, catalogue lines and
             calendars - is matched on more than its name, so records this install already had are never touched, and the
