@@ -16,6 +16,10 @@ if (!str_contains($report, "enforceUserPermission('module_sales')")) {
     $failures[] = 'The client ticket time-detail endpoint does not enforce sales access';
 }
 
+if (!str_contains($report, "enforceUserPermission('module_support')")) {
+    $failures[] = 'The client ticket time-detail endpoint does not enforce support access';
+}
+
 if ($failures) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);
     exit(1);
