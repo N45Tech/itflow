@@ -44,7 +44,7 @@ if (isset($_GET['ticket_id'])) {
         LEFT JOIN locations ON ticket_location_id = location_id
         LEFT JOIN assets ON ticket_asset_id = asset_id
         LEFT JOIN asset_interfaces ON interface_asset_id = asset_id AND interface_primary = 1
-        LEFT JOIN vendors ON ticket_vendor_id = vendor_id
+        LEFT JOIN vendors ON ticket_vendor_id = vendor_id AND vendor_client_id = ticket_client_id
         LEFT JOIN projects ON ticket_project_id = project_id
         LEFT JOIN quotes ON ticket_quote_id = quote_id
         LEFT JOIN invoices ON ticket_invoice_id = invoice_id
