@@ -1370,6 +1370,16 @@ if (isset($_POST['edit_ticket_vendor'])) {
         enforceClientAccess();
     }
 
+    if ($vendor_id) {
+        $vendor = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT vendor_id FROM vendors
+            WHERE vendor_id = $vendor_id AND vendor_client_id = $client_id
+            AND vendor_archived_at IS NULL LIMIT 1"));
+        if (!$vendor) {
+            flashAlert('The selected vendor is unavailable for this client', 'error');
+            redirect();
+        }
+    }
+
     mysqli_query($mysqli, "UPDATE tickets SET ticket_vendor_id = $vendor_id WHERE ticket_id = $ticket_id");
 
     // Get ticket / vendor details for logging
