@@ -582,7 +582,7 @@ if ($date_filter_active) {
                                 <option value="">Any project</option>
 
                                 <?php
-                                $sql_projects = mysqli_query($mysqli, "SELECT project_id, project_prefix, project_number, project_name FROM projects WHERE project_completed_at IS NULL AND project_archived_at IS NULL ORDER BY project_name ASC");
+                                $sql_projects = mysqli_query($mysqli, "SELECT project_id, project_prefix, project_number, project_name FROM projects WHERE project_completed_at IS NULL AND project_archived_at IS NULL " . clientScopeSql('project_client_id') . " ORDER BY project_name ASC");
                                 while ($row = mysqli_fetch_assoc($sql_projects)) {
                                     $filter_project_id = intval($row['project_id']);
                                     $filter_project_label = escapeHtml($row['project_prefix'] . intval($row['project_number']) . ' - ' . $row['project_name']);
