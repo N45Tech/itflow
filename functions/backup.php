@@ -1267,18 +1267,13 @@ function backupRestoreArchive(mysqli $mysqli, string $zip_path, string $key, ?st
             return false;
         }
 
-        for ($i = 0; $i < $uz->numFiles; $i++) {
-            $name = $uz->getNameIndex($i);
-            if ($name === false) {
-                continue;
-            }
-            if (!backupSafeEntryName($name)) {
-                $uz->close();
-                $cleanup();
-                backupAssertUploadsGuards();
-                $error = "The database was restored but uploads.zip contains an unsafe path: $name";
-                return false;
-            }
+        $validation_error = null;
+        if (!backupValidateUploadsZip($uz, $validation_error)) {
+            $uz->close();
+            $cleanup();
+            backupAssertUploadsGuards();
+            $error = "The database was restored but uploads.zip was rejected: $validation_error";
+            return false;
         }
 
         if (!is_dir($uploads_dir)) {
@@ -1350,6 +1345,75 @@ function backupSafeEntryName(string $name): bool
     if (preg_match('#^(?:/|\\\\|[a-zA-Z]:[\\\\/])#', $name)) {
         return false;
     }
+    return true;
+}
+
+/**
+ * Validate every upload before anything in the live uploads directory is removed.
+ * Uploads are deliberately data-only: server configuration files, executable file
+ * types, script signatures, symlinks, and zip bombs have no legitimate place here.
+ */
+function backupValidateUploadsZip(ZipArchive $zip, ?string &$error = null): bool
+{
+    $blocked = '#(?:^|/)(?:\.htaccess|\.user\.ini)$|\.(?:php\d*|phtml|phar|phps|cgi|pl|sh|bash|zsh|exe|dll|bat|cmd|com|ps1|vbs?|jar|jsp|asp|aspx|so|dylib|bin|shtml|shtm|stm)$#i';
+    $max_file_bytes = 200 * 1024 * 1024;
+    $max_total_bytes = 4 * 1024 * 1024 * 1024;
+    $total_bytes = 0;
+
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $name = $zip->getNameIndex($i);
+        if ($name === false || !backupSafeEntryName($name)) {
+            $error = "unsafe path " . ($name === false ? "(unknown)" : $name);
+            return false;
+        }
+        if (str_ends_with($name, '/')) {
+            continue;
+        }
+        if (preg_match($blocked, $name)) {
+            $error = "disallowed file $name";
+            return false;
+        }
+
+        $stat = $zip->statIndex($i);
+        $size = intval($stat['size'] ?? 0);
+        $total_bytes += $size;
+        if ($size > $max_file_bytes || $total_bytes > $max_total_bytes) {
+            $error = "extraction size limit exceeded by $name";
+            return false;
+        }
+
+        // The high Unix mode bits identify symlinks in archives created on Unix.
+        $attributes = 0;
+        $opsys = 0;
+        if ($zip->getExternalAttributesIndex($i, $opsys, $attributes)
+            && (($attributes >> 16) & 0170000) === 0120000) {
+            $error = "symbolic link $name";
+            return false;
+        }
+
+        $stream = $zip->getStream($name);
+        if ($stream === false) {
+            $error = "unreadable file $name";
+            return false;
+        }
+        $sample = '';
+        while (!feof($stream) && strlen($sample) < 8192) {
+            $chunk = fread($stream, 8192 - strlen($sample));
+            if ($chunk === false) {
+                fclose($stream);
+                $error = "read failure for $name";
+                return false;
+            }
+            $sample .= $chunk;
+        }
+        fclose($stream);
+
+        if (preg_match('/<\?(?:php|=)|#!\s*\/.*(?:php|sh|bash|perl|python)|\b(?:shell_exec|proc_open|passthru)\s*\(/i', $sample)) {
+            $error = "executable content in $name";
+            return false;
+        }
+    }
+
     return true;
 }
 
