@@ -450,6 +450,12 @@ return [
                 'created_tables' => ['automation_investigations', 'automation_investigation_audit', 'automation_investigation_rate'],
                 'altered_columns' => [], 'altered_indexes' => [], 'legacy_bridge_index_overrides' => [],
             ],
+            'n45-0031-strict-ticket-retention-default' => [
+                'module' => 'runbooks', 'legacy_version' => null, 'data_change' => false,
+                'rollback' => 'Preserve client policy selections and restore the previous column default through a forward migration if required.',
+                'created_tables' => [], 'altered_columns' => ['clients' => ['client_ticket_retention_policy']],
+                'altered_indexes' => [], 'legacy_bridge_index_overrides' => [],
+            ],
         ],
     ],
     'features' => [
@@ -593,6 +599,7 @@ return [
                 'n45-0024-technician-field-mode',
                 'n45-0025-inbound-mail-receipts',
                 'n45-0026-service-assistance',
+                'n45-0031-strict-ticket-retention-default',
             ],
             'toggleable' => false,
             'reason' => 'Lifecycle gates and evidence integrity must remain active after migration.',
@@ -2211,6 +2218,17 @@ return [
                     "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_closed_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
                 ],
             ],
+            'runner_fingerprint' => [
+                'columns' => [
+                    'clients' => [
+                        'client_ticket_retention_policy' => $column_fingerprint('varchar(20)', false, 'override'),
+                    ],
+                ],
+                'failure_queries' => [
+                    "SELECT COUNT(*) FROM clients WHERE client_ticket_retention_policy NOT IN ('override','strict')",
+                    "SELECT COUNT(*) FROM automation_incidents INNER JOIN tickets ON ticket_id = automation_incident_ticket_id WHERE ticket_closed_at IS NOT NULL AND automation_incident_status <> 'Resolved'",
+                ],
+            ],
         ],
         'n45-0022-recoverable-ticket-deletion' => [
             'module' => 'runbooks', 'legacy_version' => null,
@@ -2978,6 +2996,20 @@ return [
                     ],
                     'automation_investigation_rate' => [
                         'PRIMARY' => $index_fingerprint(true, ['rate_id']),
+                    ],
+                ],
+            ],
+        ],
+        'n45-0031-strict-ticket-retention-default' => [
+            'module' => 'runbooks', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0031-strict-ticket-retention-default.php',
+            'summary' => 'Use strict retention for newly created clients while preserving existing client policy selections.',
+            'data_change' => false,
+            'rollback' => 'Preserve client policy selections and restore the previous column default through a forward migration if required.',
+            'fingerprint' => [
+                'columns' => [
+                    'clients' => [
+                        'client_ticket_retention_policy' => $column_fingerprint('varchar(20)', false, 'strict'),
                     ],
                 ],
             ],

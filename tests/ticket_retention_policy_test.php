@@ -50,6 +50,7 @@ $agent_tickets = $read('agent/tickets.php');
 $agent_dashboard = $read('agent/dashboard.php');
 $agent_operations = $read('agent/operations.php');
 $migration = $read('n45/migrations/n45-0021-client-ticket-retention.php');
+$strict_default_migration = $read('n45/migrations/n45-0031-strict-ticket-retention-default.php');
 $recoverable_migration = $read('n45/migrations/n45-0022-recoverable-ticket-deletion.php');
 $delete_alignment_migration = $read('n45/migrations/n45-0028-ticket-delete-operations-alignment.php');
 $manifest = $read('n45/manifest.php');
@@ -69,7 +70,9 @@ try {
 $assertTrue(ticketDeletionOverrideReason('Duplicate alert created during connector repair.') === 'Duplicate alert created during connector repair.', 'A valid retention override reason is rejected');
 
 $assertContains('client_ticket_retention_policy', $migration, 'The client retention migration is missing its policy column');
-$assertContains("DEFAULT 'strict'", $migration, 'Existing clients do not default to strict ticket retention');
+$assertContains("DEFAULT 'override'", $migration, 'The released migration no longer matches existing database ledgers');
+$assertContains("MODIFY COLUMN `client_ticket_retention_policy` varchar(20) NOT NULL DEFAULT 'strict'", $strict_default_migration,
+    'The forward migration does not set strict retention as the default for new clients');
 $assertContains("automation_incident_last_action = 'ticket_closed_reconciled'", $migration,
     'Existing closed tickets do not reconcile their linked Operations incidents');
 $assertContains('`client_ticket_retention_policy` varchar(20) NOT NULL DEFAULT \'strict\'', $schema, 'Fresh installs do not default to strict ticket retention');
