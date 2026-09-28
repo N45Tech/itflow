@@ -26,7 +26,7 @@ function triggerCustomAction($trigger, $entity, $custom_action_idempotency_key =
     return $executed;
 }
 
-function appNotify($type, $details, $action = null, $client_id = 0, $entity_id = 0) {
+function appNotify($type, $details, $action = null, $client_id = 0, $entity_id = 0, $recipient_user_id = 0) {
     global $mysqli;
 
     if (is_null($action)) {
@@ -35,6 +35,7 @@ function appNotify($type, $details, $action = null, $client_id = 0, $entity_id =
 
     $client_id = intval($client_id);
     $entity_id = intval($entity_id);
+    $recipient_user_id = intval($recipient_user_id);
 
     $type = substr($type, 0, 200);
     $details = substr($details, 0, 1000);
@@ -53,8 +54,10 @@ function appNotify($type, $details, $action = null, $client_id = 0, $entity_id =
         $action = substr($action, 0, -1);
     }
 
+    $recipient_sql = $recipient_user_id ? " AND user_id = $recipient_user_id" : '';
     $sql = mysqli_query($mysqli, "SELECT user_id FROM users
         WHERE user_type = 1 AND user_status = 1 AND user_archived_at IS NULL
+        $recipient_sql
     ");
 
     while ($row = mysqli_fetch_assoc($sql)) {
