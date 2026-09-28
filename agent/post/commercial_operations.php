@@ -229,16 +229,39 @@ if (isset($_POST['save_subscription_record'])) {
     $managed_sql = $managed === '' ? 'NULL' : (string) max(0, floatval($managed));
     $cost = max(0, floatval($_POST['unit_cost'] ?? 0));
     $price = max(0, floatval($_POST['unit_price'] ?? 0));
-    commercialDbQuery("INSERT INTO subscription_records SET subscription_vendor_id = $vendor_id,
-        subscription_external_id = '$external_id', subscription_client_id = $client_id, subscription_contract_id = $contract_id,
-        subscription_product_id = $product_id, subscription_purchased_quantity = $purchased,
-        subscription_managed_quantity = $managed_sql, subscription_unit_cost = $cost,
-        subscription_unit_price = $price, subscription_observed_at = NOW(), subscription_updated_by = $session_user_id
-        ON DUPLICATE KEY UPDATE subscription_client_id = VALUES(subscription_client_id), subscription_contract_id = VALUES(subscription_contract_id),
-        subscription_product_id = VALUES(subscription_product_id), subscription_purchased_quantity = VALUES(subscription_purchased_quantity),
-        subscription_managed_quantity = VALUES(subscription_managed_quantity), subscription_unit_cost = VALUES(subscription_unit_cost),
-        subscription_unit_price = VALUES(subscription_unit_price), subscription_status = 'active',
-        subscription_observed_at = VALUES(subscription_observed_at), subscription_updated_by = VALUES(subscription_updated_by)", 'Could not save subscription record');
+    try {
+        if (!mysqli_begin_transaction($mysqli)) {
+            throw new RuntimeException('Could not begin subscription update');
+        }
+        $existing = mysqli_fetch_assoc(commercialDbQuery("SELECT subscription_id, subscription_client_id
+            FROM subscription_records WHERE subscription_vendor_id = $vendor_id
+            AND subscription_external_id = '$external_id' FOR UPDATE", 'Could not lock subscription source'));
+        if ($existing) {
+            enforceClientAccess(intval($existing['subscription_client_id']));
+            $subscription_id = intval($existing['subscription_id']);
+            commercialDbQuery("UPDATE subscription_records SET subscription_client_id = $client_id,
+                subscription_contract_id = $contract_id, subscription_product_id = $product_id,
+                subscription_purchased_quantity = $purchased, subscription_managed_quantity = $managed_sql,
+                subscription_unit_cost = $cost, subscription_unit_price = $price, subscription_status = 'active',
+                subscription_observed_at = NOW(), subscription_updated_by = $session_user_id
+                WHERE subscription_id = $subscription_id", 'Could not update subscription record');
+        } else {
+            commercialDbQuery("INSERT INTO subscription_records SET subscription_vendor_id = $vendor_id,
+                subscription_external_id = '$external_id', subscription_client_id = $client_id,
+                subscription_contract_id = $contract_id, subscription_product_id = $product_id,
+                subscription_purchased_quantity = $purchased, subscription_managed_quantity = $managed_sql,
+                subscription_unit_cost = $cost, subscription_unit_price = $price,
+                subscription_observed_at = NOW(), subscription_updated_by = $session_user_id", 'Could not create subscription record');
+        }
+        if (!mysqli_commit($mysqli)) {
+            throw new RuntimeException('Could not commit subscription update');
+        }
+    } catch (Throwable $exception) {
+        mysqli_rollback($mysqli);
+        error_log('Subscription source update failed: ' . $exception->getMessage());
+        flashAlert('The subscription source was not updated. Please retry.', 'error');
+        redirect('subscriptions.php');
+    }
     logAudit('Subscription', 'Edit', "$session_name reconciled {$vendor['vendor_name']} subscription $external_id", $client_id);
     flashAlert('Subscription source updated');
     redirect("subscriptions.php?client_id=$client_id");
