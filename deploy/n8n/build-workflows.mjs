@@ -8,6 +8,7 @@ import {
   normalizeEntra,
   normalizeIntune,
   normalizeSentinelOne,
+  selectDeviceSourceFailure,
   validateSentinelOneSites,
 } from './device-source-code.mjs';
 
@@ -56,6 +57,19 @@ function connect(...names) {
     result[names[index]] = { main: [[{ node: names[index + 1], type: 'main', index: 0 }]] };
   }
   return result;
+}
+
+function readDeviceSourceConfiguration(id, position) {
+  return node({
+    id, name: 'Read Device Source Configuration', type: 'n8n-nodes-base.dataTable', typeVersion: 1,
+    position, alwaysOutputData: true, executeOnce: true,
+    parameters: {
+      resource: 'row', operation: 'get',
+      dataTableId: { __rl: true, mode: 'name', value: 'N45 Device Source Configuration' },
+      matchType: 'allConditions', filters: { conditions: [{ keyName: 'key', condition: 'eq', keyValue: 'device-sources' }] },
+      returnAll: false, limit: 2,
+    },
+  });
 }
 
 const normalizeOperations = String.raw`
@@ -657,36 +671,41 @@ const sourcePublishParameters = {
 };
 
 const intuneReconciliation = workflow('N45 - Microsoft Intune Device Reconciliation', [
-  node({ id: '43f14cb4-e9f4-4f78-a6c1-84acef63f001', name: 'Every 6 Hours', type: 'n8n-nodes-base.scheduleTrigger', typeVersion: 1.2, position: [-760, -120], parameters: { rule: { interval: [{ field: 'cronExpression', expression: '10 */6 * * *' }] } } }),
-  node({ id: '43f14cb4-e9f4-4f78-a6c1-84acef63f002', name: 'Manual Intune Reconciliation', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [-760, 40], parameters: {} }),
+  readDeviceSourceConfiguration('43f14cb4-e9f4-4f78-a6c1-84acef63f007', [-760, -40]),
+  node({ id: '43f14cb4-e9f4-4f78-a6c1-84acef63f001', name: 'Every 6 Hours', type: 'n8n-nodes-base.scheduleTrigger', typeVersion: 1.2, position: [-1020, -120], parameters: { rule: { interval: [{ field: 'cronExpression', expression: '10 */6 * * *' }] } } }),
+  node({ id: '43f14cb4-e9f4-4f78-a6c1-84acef63f002', name: 'Manual Intune Reconciliation', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [-1020, 40], parameters: {} }),
   node({ id: '43f14cb4-e9f4-4f78-a6c1-84acef63f003', name: 'Load Intune Tenant Map', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-500, -40], parameters: { jsCode: loadCippSourceConfig('intune', 'deviceManagement/managedDevices', 'id,deviceName,managedDeviceName,managementState,lastSyncDateTime,operatingSystem,complianceState,osVersion,azureADDeviceId,isEncrypted,userId,userDisplayName,userPrincipalName,emailAddress,model,manufacturer,serialNumber,wiFiMacAddress,ethernetMacAddress,deviceHealthAttestationState') } }),
   node({ id: '43f14cb4-e9f4-4f78-a6c1-84acef63f004', name: 'Fetch Intune Pages Through CIPP', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [-220, -40], nodeCredentials: credentials.cipp, parameters: { url: '={{ $json.request_url }}', authentication: 'genericCredentialType', genericAuthType: 'oAuth2Api', options: cippPagination }, ...sourceRetry }),
   node({ id: '43f14cb4-e9f4-4f78-a6c1-84acef63f005', name: 'Normalize Intune Devices', type: 'n8n-nodes-base.code', typeVersion: 2, position: [60, -40], parameters: { jsCode: normalizeIntune } }),
   node({ id: '43f14cb4-e9f4-4f78-a6c1-84acef63f006', name: 'Publish Intune Cycle to ITFlow', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [340, -40], nodeCredentials: credentials.itflow, parameters: sourcePublishParameters, ...sourceRetry }),
 ], {
-  'Every 6 Hours': { main: [[{ node: 'Load Intune Tenant Map', type: 'main', index: 0 }]] },
-  'Manual Intune Reconciliation': { main: [[{ node: 'Load Intune Tenant Map', type: 'main', index: 0 }]] },
+  'Every 6 Hours': { main: [[{ node: 'Read Device Source Configuration', type: 'main', index: 0 }]] },
+  'Manual Intune Reconciliation': { main: [[{ node: 'Read Device Source Configuration', type: 'main', index: 0 }]] },
+  'Read Device Source Configuration': { main: [[{ node: 'Load Intune Tenant Map', type: 'main', index: 0 }]] },
   'Load Intune Tenant Map': { main: [[{ node: 'Fetch Intune Pages Through CIPP', type: 'main', index: 0 }]] },
   'Fetch Intune Pages Through CIPP': { main: [[{ node: 'Normalize Intune Devices', type: 'main', index: 0 }]] },
   'Normalize Intune Devices': { main: [[{ node: 'Publish Intune Cycle to ITFlow', type: 'main', index: 0 }]] },
 }, { executionTimeout: 3600, timezone: 'UTC' });
 
 const entraReconciliation = workflow('N45 - Microsoft Entra Device Reconciliation', [
-  node({ id: 'af645055-1b1c-45da-a96d-d02bec314001', name: 'Every 6 Hours', type: 'n8n-nodes-base.scheduleTrigger', typeVersion: 1.2, position: [-760, -120], parameters: { rule: { interval: [{ field: 'cronExpression', expression: '40 */6 * * *' }] } } }),
-  node({ id: 'af645055-1b1c-45da-a96d-d02bec314002', name: 'Manual Entra Reconciliation', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [-760, 40], parameters: {} }),
+  readDeviceSourceConfiguration('af645055-1b1c-45da-a96d-d02bec314007', [-760, -40]),
+  node({ id: 'af645055-1b1c-45da-a96d-d02bec314001', name: 'Every 6 Hours', type: 'n8n-nodes-base.scheduleTrigger', typeVersion: 1.2, position: [-1020, -120], parameters: { rule: { interval: [{ field: 'cronExpression', expression: '40 */6 * * *' }] } } }),
+  node({ id: 'af645055-1b1c-45da-a96d-d02bec314002', name: 'Manual Entra Reconciliation', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [-1020, 40], parameters: {} }),
   node({ id: 'af645055-1b1c-45da-a96d-d02bec314003', name: 'Load Entra Tenant Map', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-500, -40], parameters: { jsCode: loadCippSourceConfig('entra', 'devices', 'id,deviceId,displayName,accountEnabled,operatingSystem,operatingSystemVersion,approximateLastSignInDateTime,registrationDateTime,manufacturer,model,isManaged,isCompliant') } }),
   node({ id: 'af645055-1b1c-45da-a96d-d02bec314004', name: 'Fetch Entra Pages Through CIPP', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [-220, -40], nodeCredentials: credentials.cipp, parameters: { url: '={{ $json.request_url }}', authentication: 'genericCredentialType', genericAuthType: 'oAuth2Api', options: cippPagination }, ...sourceRetry }),
   node({ id: 'af645055-1b1c-45da-a96d-d02bec314005', name: 'Normalize Entra Devices', type: 'n8n-nodes-base.code', typeVersion: 2, position: [60, -40], parameters: { jsCode: normalizeEntra } }),
   node({ id: 'af645055-1b1c-45da-a96d-d02bec314006', name: 'Publish Entra Cycle to ITFlow', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [340, -40], nodeCredentials: credentials.itflow, parameters: sourcePublishParameters, ...sourceRetry }),
 ], {
-  'Every 6 Hours': { main: [[{ node: 'Load Entra Tenant Map', type: 'main', index: 0 }]] },
-  'Manual Entra Reconciliation': { main: [[{ node: 'Load Entra Tenant Map', type: 'main', index: 0 }]] },
+  'Every 6 Hours': { main: [[{ node: 'Read Device Source Configuration', type: 'main', index: 0 }]] },
+  'Manual Entra Reconciliation': { main: [[{ node: 'Read Device Source Configuration', type: 'main', index: 0 }]] },
+  'Read Device Source Configuration': { main: [[{ node: 'Load Entra Tenant Map', type: 'main', index: 0 }]] },
   'Load Entra Tenant Map': { main: [[{ node: 'Fetch Entra Pages Through CIPP', type: 'main', index: 0 }]] },
   'Fetch Entra Pages Through CIPP': { main: [[{ node: 'Normalize Entra Devices', type: 'main', index: 0 }]] },
   'Normalize Entra Devices': { main: [[{ node: 'Publish Entra Cycle to ITFlow', type: 'main', index: 0 }]] },
 }, { executionTimeout: 3600, timezone: 'UTC' });
 
 const sentinelOneReconciliation = workflow('N45 - SentinelOne Agent Reconciliation', [
+  readDeviceSourceConfiguration('64ddad76-fec6-4bca-8831-a2b0e9b15009', [-980, -40]),
   node({ id: '64ddad76-fec6-4bca-8831-a2b0e9b15001', name: 'Every 6 Hours', type: 'n8n-nodes-base.scheduleTrigger', typeVersion: 1.2, position: [-980, -120], parameters: { rule: { interval: [{ field: 'cronExpression', expression: '55 */6 * * *' }] } } }),
   node({ id: '64ddad76-fec6-4bca-8831-a2b0e9b15002', name: 'Manual SentinelOne Reconciliation', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [-980, 40], parameters: {} }),
   node({ id: '64ddad76-fec6-4bca-8831-a2b0e9b15003', name: 'Load SentinelOne Site Map', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-720, -40], parameters: { jsCode: loadSentinelOneConfig } }),
@@ -696,8 +715,9 @@ const sentinelOneReconciliation = workflow('N45 - SentinelOne Agent Reconciliati
   node({ id: '64ddad76-fec6-4bca-8831-a2b0e9b15007', name: 'Normalize SentinelOne Agents', type: 'n8n-nodes-base.code', typeVersion: 2, position: [320, -40], parameters: { jsCode: normalizeSentinelOne } }),
   node({ id: '64ddad76-fec6-4bca-8831-a2b0e9b15008', name: 'Publish SentinelOne Cycle to ITFlow', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [580, -40], nodeCredentials: credentials.itflow, parameters: sourcePublishParameters, ...sourceRetry }),
 ], {
-  'Every 6 Hours': { main: [[{ node: 'Load SentinelOne Site Map', type: 'main', index: 0 }]] },
-  'Manual SentinelOne Reconciliation': { main: [[{ node: 'Load SentinelOne Site Map', type: 'main', index: 0 }]] },
+  'Every 6 Hours': { main: [[{ node: 'Read Device Source Configuration', type: 'main', index: 0 }]] },
+  'Manual SentinelOne Reconciliation': { main: [[{ node: 'Read Device Source Configuration', type: 'main', index: 0 }]] },
+  'Read Device Source Configuration': { main: [[{ node: 'Load SentinelOne Site Map', type: 'main', index: 0 }]] },
   'Load SentinelOne Site Map': { main: [[{ node: 'Fetch SentinelOne Sites', type: 'main', index: 0 }]] },
   'Fetch SentinelOne Sites': { main: [[{ node: 'Validate SentinelOne Sites', type: 'main', index: 0 }]] },
   'Validate SentinelOne Sites': { main: [[{ node: 'Fetch SentinelOne Agent Pages', type: 'main', index: 0 }]] },
@@ -706,17 +726,21 @@ const sentinelOneReconciliation = workflow('N45 - SentinelOne Agent Reconciliati
 }, { executionTimeout: 3600, timezone: 'UTC' });
 
 const n8nErrorWorkflow = workflow('N45 - Automation Failure to ITFlow', [
+  node({ id: '02b2831b-e105-4ef3-a978-fe0adea1caf8', name: 'Select Device Source Failure', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-200, 180], parameters: { jsCode: selectDeviceSourceFailure } }),
+  readDeviceSourceConfiguration('02b2831b-e105-4ef3-a978-fe0adea1caf9', [60, 180]),
   node({ id: 'cb44be91-41cd-4b32-a69a-ce2ad33d6ab7', name: 'Workflow Error', type: 'n8n-nodes-base.errorTrigger', typeVersion: 1, position: [-460, 0], parameters: {} }),
   node({ id: 'db633e22-451f-4796-a19c-14d0bea75343', name: 'Normalize n8n Error', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-200, 0], parameters: { jsCode: normalizeN8nError } }),
   node({ id: '02b2831b-e105-4ef3-a978-fe0adea1caf5', name: 'Open ITFlow Incident', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [60, 0], nodeCredentials: credentials.webhook, parameters: { method: 'POST', url: 'https://automate.n45tech.com/webhook/n45-itflow-events', authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify($json) }}', options: {} }, ...sourceRetry }),
-  node({ id: '02b2831b-e105-4ef3-a978-fe0adea1caf6', name: 'Normalize Device Source Failure', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-200, 180], parameters: { jsCode: normalizeDeviceSourceFailure } }),
-  node({ id: '02b2831b-e105-4ef3-a978-fe0adea1caf7', name: 'Record Device Source Failure', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [60, 180], nodeCredentials: credentials.itflow, parameters: sourcePublishParameters, ...sourceRetry }),
+  node({ id: '02b2831b-e105-4ef3-a978-fe0adea1caf6', name: 'Normalize Device Source Failure', type: 'n8n-nodes-base.code', typeVersion: 2, position: [320, 180], parameters: { jsCode: normalizeDeviceSourceFailure } }),
+  node({ id: '02b2831b-e105-4ef3-a978-fe0adea1caf7', name: 'Record Device Source Failure', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [580, 180], nodeCredentials: credentials.itflow, parameters: sourcePublishParameters, ...sourceRetry }),
 ], {
   'Workflow Error': { main: [[
     { node: 'Normalize n8n Error', type: 'main', index: 0 },
-    { node: 'Normalize Device Source Failure', type: 'main', index: 0 },
+    { node: 'Select Device Source Failure', type: 'main', index: 0 },
   ]] },
   'Normalize n8n Error': { main: [[{ node: 'Open ITFlow Incident', type: 'main', index: 0 }]] },
+  'Select Device Source Failure': { main: [[{ node: 'Read Device Source Configuration', type: 'main', index: 0 }]] },
+  'Read Device Source Configuration': { main: [[{ node: 'Normalize Device Source Failure', type: 'main', index: 0 }]] },
   'Normalize Device Source Failure': { main: [[{ node: 'Record Device Source Failure', type: 'main', index: 0 }]] },
 }, { timezone: 'UTC' });
 

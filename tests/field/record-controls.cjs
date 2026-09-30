@@ -64,6 +64,11 @@ const shots = process.env.N45_ROUTE_SHOTS || path.resolve(__dirname, '../../.imp
             await dialog.getByRole('link', { name: 'Records', exact: true }).click();
             const txt = dialog.getByLabel('TXT Records', { exact: true });
             await txt.waitFor({ state: 'visible' });
+            await page.waitForFunction(id => {
+                const pane = document.getElementById(id);
+                return pane.classList.contains('active') && pane.classList.contains('show')
+                    && getComputedStyle(pane).opacity === '1';
+            }, `pills-records${fixture.domain}`);
             await page.waitForFunction(id => document.getElementById(id).offsetHeight > 60, `txt_records${fixture.domain}`);
             const fields = await dialog.locator('textarea[data-itflow-autosize]').evaluateAll(elements => elements.map(field => {
                 const styles = getComputedStyle(field);
@@ -74,7 +79,7 @@ const shots = process.env.N45_ROUTE_SHOTS || path.resolve(__dirname, '../../.imp
             assert.ok(fields.every(field => field.height <= field.maximum + 1 && (field.fits || field.scrollable)),
                 `${sample.name}: record fields hide content or grow beyond the modal`);
             assert.ok(fields[4].scrollable, 'Long WHOIS content has no scroll fallback');
-            await dialog.screenshot({ path: path.join(shots, `record-controls-${sample.name}-dns.png`) });
+            await dialog.screenshot({ path: path.join(shots, `record-controls-${sample.name}-dns.png`), animations: 'disabled' });
 
             const before = await txt.evaluate(element => element.offsetHeight);
             await txt.evaluate(element => { element.value = 'v=spf1 -all'; element.dispatchEvent(new Event('input', { bubbles: true })); });

@@ -3,11 +3,24 @@ const text = (value) => value === undefined || value === null ? '' : String(valu
 const integer = (value, fallback = 0) => Number.isInteger(Number(value)) ? Math.max(0, Number(value)) : fallback;
 const bool = (value, fallback = false) => value === undefined || value === null || value === ''
   ? fallback : value === true || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+let configuration;
+const sourceConfiguration = () => {
+  if (configuration) return configuration;
+  const rows = $('Read Device Source Configuration').all()
+    .filter((item) => item.json?.key === 'device-sources');
+  if (rows.length !== 1) throw new Error('Device source configuration requires exactly one device-sources row.');
+  try { configuration = JSON.parse(text(rows[0].json.config_json)); }
+  catch { throw new Error('Device source config_json is not valid JSON.'); }
+  if (!configuration || typeof configuration !== 'object' || Array.isArray(configuration)) {
+    throw new Error('Device source config_json must be an object.');
+  }
+  return configuration;
+};
 const parseMappings = (source) => {
-  const raw = text($vars.N45_DEVICE_SOURCE_MAP_JSON);
-  if (!raw) throw new Error('N45_DEVICE_SOURCE_MAP_JSON is required.');
-  let document;
-  try { document = JSON.parse(raw); } catch { throw new Error('N45_DEVICE_SOURCE_MAP_JSON is not valid JSON.'); }
+  const document = sourceConfiguration().device_source_map;
+  if (!document || typeof document !== 'object' || Array.isArray(document)) {
+    throw new Error('Device source configuration requires a device_source_map object.');
+  }
   const entries = document && Array.isArray(document[source]) ? document[source] : [];
   if (!entries.length) throw new Error('No mappings are configured for ' + source + '.');
   const scopes = entries.map((entry, index) => {
@@ -49,7 +62,7 @@ export function loadCippSourceConfig(source, endpoint, select) {
   return String.raw`
 ${mappingHelpers}
 const SOURCE = '${source}';
-const base = httpsBase($vars.N45_CIPP_BASE_URL, 'N45_CIPP_BASE_URL');
+const base = httpsBase(sourceConfiguration().cipp_base_url, 'cipp_base_url');
 return parseMappings(SOURCE).map((scope) => {
   const query = queryString({
     TenantFilter: scope.tenant_filter,
@@ -226,7 +239,7 @@ return output;
 export const loadSentinelOneConfig = String.raw`
 ${mappingHelpers}
 const SOURCE = 'sentinelone';
-const base = httpsBase($vars.N45_SENTINELONE_BASE_URL, 'N45_SENTINELONE_BASE_URL');
+const base = httpsBase(sourceConfiguration().sentinelone_base_url, 'sentinelone_base_url');
 const scopes = parseMappings(SOURCE);
 const siteIds = scopes.map((scope) => scope.site_id);
 const query = queryString({ limit: '1000', siteIds: siteIds.join(',') });
@@ -258,7 +271,7 @@ for (const item of $input.all()) {
 for (const scope of scopes) {
   if (!observed.has(scope.site_id)) throw new Error('SentinelOne did not return configured site ' + scope.site_id + '.');
 }
-const base = httpsBase($vars.N45_SENTINELONE_BASE_URL, 'N45_SENTINELONE_BASE_URL');
+const base = httpsBase(sourceConfiguration().sentinelone_base_url, 'sentinelone_base_url');
 const siteIds = [...expected];
 return [{ json: {
   source: SOURCE, site_ids: siteIds, observed_sites: Object.fromEntries(observed),
@@ -348,9 +361,16 @@ for (const scope of scopes) output.push(completion(scope, counts.get(scope.scope
 return output;
 `.trim();
 
+// Keep unrelated workflow failures on the generic incident branch only.
+export const selectDeviceSourceFailure = String.raw`
+const input = $input.first().json;
+const name = String(input.workflow?.name || '').toLowerCase();
+return /intune|entra|sentinelone/.test(name) ? [{ json: input }] : [];
+`.trim();
+
 export const normalizeDeviceSourceFailure = String.raw`
 ${mappingHelpers}
-const input = $input.first().json;
+const input = $('Workflow Error').first().json;
 const workflow = input.workflow || {};
 const execution = input.execution || {};
 const name = text(workflow.name).toLowerCase();
