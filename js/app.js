@@ -127,6 +127,42 @@ function itflowReady(fn) {
     }
 }
 
+// Hidden tab/modal fields cannot be measured until their container is shown.
+function itflowAutosizeTextareas(root) {
+    root.querySelectorAll('textarea[data-itflow-autosize]').forEach(function (field) {
+        if (!field.getClientRects().length || !field.clientWidth) return;
+        var style = getComputedStyle(field);
+        var borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+        var padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+        var lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+        var minimum = Math.max(parseFloat(style.minHeight) || 0, lineHeight * field.rows + padding + borders);
+        var maximum = parseFloat(style.maxHeight) || Infinity;
+        field.style.height = '0px';
+        var contentHeight = field.scrollHeight + borders;
+        field.style.height = Math.min(Math.max(minimum, contentHeight), maximum) + 'px';
+        field.style.overflowY = contentHeight > maximum ? 'auto' : 'hidden';
+    });
+}
+
+if (!window.itflowAutosizeBound) {
+    window.itflowAutosizeBound = true;
+    ['shown.bs.modal', 'shown.bs.tab', 'shown.bs.collapse'].forEach(function (type) {
+        document.addEventListener(type, function (event) {
+            itflowAutosizeTextareas(event.target.closest('.modal') || document);
+        });
+    });
+    document.addEventListener('input', function (event) {
+        if (event.target.matches('textarea[data-itflow-autosize]')) {
+            itflowAutosizeTextareas(event.target.parentElement);
+        }
+    });
+    var autosizeFrame;
+    window.addEventListener('resize', function () {
+        cancelAnimationFrame(autosizeFrame);
+        autosizeFrame = requestAnimationFrame(function () { itflowAutosizeTextareas(document); });
+    });
+}
+
 /* Normalize old and new Bootstrap modal exits without changing footer actions. */
 function itflowNormalizeModalControls(root) {
     root.querySelectorAll('[data-dismiss="modal"]').forEach(function (control) {
@@ -156,6 +192,7 @@ if (!window.itflowModalCloseBound) {
 }
 
 function itflowInit() {
+    itflowAutosizeTextareas(document);
     // Prevents resubmit on forms
     if (window.history.replaceState) {
         window.history.replaceState(null, null, window.location.href);
