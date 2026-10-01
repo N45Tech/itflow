@@ -4,6 +4,7 @@
 .github/workflows/*
 !.github/workflows/upstream-parity.yml
 .codex-tmp
+node_modules
 deploy/psa/.env
 config.php
 uploads/*
