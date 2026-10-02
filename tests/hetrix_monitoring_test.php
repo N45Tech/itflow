@@ -18,11 +18,11 @@ $assertTrue = static function (bool $condition, string $message) use (&$failures
     }
 };
 
-$assertTrue(str_contains($automation, "['netbox', 'checkmk', 'uptime_kuma']"),
+$assertTrue(str_contains($automation, "['netbox', 'uptime_kuma']"),
     'Uptime Kuma is not retired at the event-ingestion boundary');
 $assertTrue(str_contains($operations, "'hetrix' => 'HetrixTools'"),
     'Operations does not label HetrixTools incidents');
-$assertTrue(str_contains($operations, "'infrastructure', 'hetrix', 'n8n'"),
+$assertTrue(str_contains($operations, "'infrastructure', 'hetrix', 'checkmk', 'n8n'"),
     'Operations does not include HetrixTools in source health');
 $assertTrue(!str_contains($ticket, "'uptime_kuma' => 'Uptime Kuma'"),
     'Ticket detail still exposes Uptime Kuma as an active source');
@@ -38,7 +38,7 @@ $assertTrue(str_contains($builder, "body.monitor_id && body.monitor_status"),
     'The Operations broker does not recognize the HetrixTools uptime payload');
 $assertTrue(!str_contains($builder, "source = 'uptime_kuma'"),
     'The n8n builder still generates an Uptime Kuma adapter');
-$assertTrue(str_contains($builder, "['netbox', 'checkmk', 'uptime_kuma'].includes(source)"),
+$assertTrue(str_contains($builder, "['netbox', 'uptime_kuma'].includes(source)"),
     'The n8n broker does not reject events from retired sources');
 $assertTrue(str_contains($readme, 'N45 Hetrix Webhook'),
     'The deployment guide does not document the HetrixTools credential');

@@ -12,12 +12,13 @@ $mapping_scope = clientScopeSql('automation_mapping_client_id');
 $bound_identity_scope = $session_is_admin ? '' : 'AND automation_mapping_client_id > 0';
 $ticket_scope = clientScopeSql('ticket_client_id');
 $level_asset_scope = clientScopeSql('assets.asset_client_id');
-$active_incident_sources = "AND automation_incident_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')";
-$active_event_sources = "AND automation_event_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')";
-$active_mapping_sources = "AND automation_mapping_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')";
+$active_incident_sources = "AND automation_incident_source NOT IN ('netbox', 'uptime_kuma')";
+$active_event_sources = "AND automation_event_source NOT IN ('netbox', 'uptime_kuma')";
+$active_mapping_sources = "AND automation_mapping_source NOT IN ('netbox', 'uptime_kuma')";
 
 $source_label = static function ($source) {
     $labels = [
+        'checkmk' => 'Checkmk',
         'hetrix' => 'HetrixTools',
         'n8n' => 'n8n',
         'backup' => 'Backups',
@@ -35,6 +36,7 @@ $source_label = static function ($source) {
 
 $source_icon = static function ($source) {
     return match (strtolower((string) $source)) {
+        'checkmk' => 'fa-server',
         'hetrix' => 'fa-heartbeat',
         'n8n' => 'fa-random',
         'backup' => 'fa-database',
@@ -112,7 +114,7 @@ $event_queue_stats = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT
 $active_maintenance_count = intval(mysqli_fetch_row(mysqli_query($mysqli, "SELECT COUNT(*)
     FROM automation_maintenance_windows
     WHERE automation_maintenance_deleted_at IS NULL
-    AND automation_maintenance_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')
+    AND automation_maintenance_source NOT IN ('netbox', 'uptime_kuma')
     AND automation_maintenance_starts_at <= NOW()
     AND automation_maintenance_ends_at >= NOW()"))[0] ?? 0);
 
@@ -183,7 +185,7 @@ $source_policies = [];
 $sql_source_policies = mysqli_query($mysqli, "SELECT automation_policy_source AS source,
     automation_policy_enabled AS enabled, automation_policy_updated_at AS updated_at
     FROM automation_event_policies
-    WHERE automation_policy_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')");
+    WHERE automation_policy_source NOT IN ('netbox', 'uptime_kuma')");
 while ($row = mysqli_fetch_assoc($sql_source_policies)) {
     $source_policies[$row['source']] = $row;
 }
@@ -256,7 +258,7 @@ while ($row = mysqli_fetch_assoc($sql_source_mappings)) {
     $source_health[$row['source']]['last_mapping_at'] = $row['last_mapping_at'];
 }
 
-foreach (['level', 'sentinelone', 'cipp', 'entra', 'intune', 'backup', 'infrastructure', 'hetrix', 'n8n'] as $known_source) {
+foreach (['level', 'sentinelone', 'cipp', 'entra', 'intune', 'backup', 'infrastructure', 'hetrix', 'checkmk', 'n8n'] as $known_source) {
     if (!isset($source_health[$known_source])) {
         $source_health[$known_source] = [
             'source' => $known_source,
@@ -274,7 +276,7 @@ foreach (['level', 'sentinelone', 'cipp', 'entra', 'intune', 'backup', 'infrastr
 $source_order = [
     'level' => 10, 'sentinelone' => 20, 'cipp' => 40,
     'entra' => 50, 'intune' => 60, 'backup' => 70, 'infrastructure' => 80,
-    'hetrix' => 90, 'n8n' => 100,
+    'hetrix' => 90, 'checkmk' => 95, 'n8n' => 100,
 ];
 uksort($source_health, static function ($a, $b) use ($source_order) {
     return ($source_order[$a] ?? 100) <=> ($source_order[$b] ?? 100) ?: strcmp($a, $b);
@@ -293,6 +295,7 @@ $source_stale_hours = [
     // Alert-only webhooks do not emit a continuous heartbeat. A generous
     // evidence window avoids permanent green status without treating a quiet
     // week as an outage.
+    'checkmk' => 720,
     'hetrix' => 720,
     'n8n' => 720,
 ];

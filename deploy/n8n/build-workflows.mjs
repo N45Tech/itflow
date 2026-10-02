@@ -1,3 +1,4 @@
+import { validateCheckmkEvent } from './checkmk-code.mjs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -192,7 +193,8 @@ let source = sourceName(body.source || header('x-n45-source'));
 if (!source && body.monitor_id && body.monitor_status) source = 'hetrix';
 if (!source && (body.job || body.backup_job)) source = 'backup';
 if (!source) throw new Error('The event source is missing. Send x-n45-source or a canonical source field.');
-if (['netbox', 'checkmk', 'uptime_kuma'].includes(source)) throw new Error('The event source has been retired.');
+if (['netbox', 'uptime_kuma'].includes(source)) throw new Error('The event source has been retired.');
+if (source === 'checkmk') (${validateCheckmkEvent.toString()})(body);
 const sourceRoute = record(routing[source]);
 const routeValue = (key, fallback) => body[key] !== undefined && body[key] !== null && body[key] !== ''
   ? body[key] : (sourceRoute[key] !== undefined ? sourceRoute[key] : fallback);
@@ -210,7 +212,7 @@ if (body.identity && body.event_id && body.incident_key) {
   const canonicalIncidentKey = limitedText(body.incident_key, 255);
   if (!canonicalEventId || !canonicalIncidentKey) throw new Error('Canonical event_id and incident_key are required.');
   const fallbackRequestType = source === 'n8n' ? 'automation-failure'
-    : (source === 'backup' ? 'backup-alert' : (source === 'hetrix' ? 'monitoring-alert' : 'integration-alert'));
+    : (source === 'backup' ? 'backup-alert' : (['hetrix', 'checkmk'].includes(source) ? 'monitoring-alert' : 'integration-alert'));
   return [{ json: {
     source,
     event_id: canonicalEventId,
@@ -570,7 +572,9 @@ return { json: { id: row.id, event_id: row.event_id, disposition: 'terminal', at
 
 const operationsBroker = workflow('N45 - ITFlow Operations Event Broker', [
   node({ id: '5de48c0c-a723-49ad-9b39-f276bc055e5e', name: 'Operations Webhook', type: 'n8n-nodes-base.webhook', typeVersion: 2.1, position: [-900, -240], nodeCredentials: credentials.webhook, parameters: { httpMethod: 'POST', path: 'n45-itflow-events', authentication: 'headerAuth', responseMode: 'responseNode', options: {} } }),
+  node({ id: '4b1679cf-e9ba-4e17-8c45-9cfb721deeb1', name: 'Checkmk Webhook', type: 'n8n-nodes-base.webhook', typeVersion: 2.1, position: [-900, -520], nodeCredentials: credentials.webhook, parameters: { httpMethod: 'POST', path: 'n45-checkmk-events', authentication: 'headerAuth', responseMode: 'responseNode', options: {} } }),
   node({ id: '7195df85-bf20-45f4-a9cc-51dde8d77b85', name: 'Hetrix Webhook', type: 'n8n-nodes-base.webhook', typeVersion: 2.1, position: [-900, -380], nodeCredentials: credentials.hetrixWebhook, parameters: { httpMethod: 'POST', path: 'n45-hetrix-events', authentication: 'headerAuth', responseMode: 'responseNode', options: {} } }),
+  node({ id: 'd07149e0-3fe8-4b83-ae62-79d6b696c3b4', name: 'Require Checkmk Source', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-680, -520], parameters: { jsCode: "const input = $input.first().json; if (!input.body || input.body.source !== 'checkmk') throw new Error('The Checkmk webhook only accepts Checkmk events.'); return [{ json: input }];" } }),
   node({ id: '1ce06b1c-76f2-43d4-a0ab-546a3ca85a7d', name: 'Normalize Event', type: 'n8n-nodes-base.code', typeVersion: 2, position: [-650, -240], parameters: { jsCode: normalizeOperations } }),
   node({ id: 'b5b28290-c8f5-4f50-8dcc-d5369f0c5122', name: 'Queue Event', type: 'n8n-nodes-base.dataTable', typeVersion: 1.1, position: [-380, -240], parameters: {
     resource: 'row', operation: 'upsert', dataTableId: operationsOutboxTable, matchType: 'allConditions',
@@ -603,6 +607,8 @@ const operationsBroker = workflow('N45 - ITFlow Operations Event Broker', [
   node({ id: '01a9801e-da74-4880-a415-28b5f47ce09a', name: 'Hold Terminal Event', type: 'n8n-nodes-base.dataTable', typeVersion: 1.1, position: [650, 280], parameters: { resource: 'row', operation: 'update', dataTableId: operationsOutboxTable, matchType: 'allConditions', filters: { conditions: [{ keyName: 'id', condition: 'eq', keyValue: '={{ $json.id }}' }] }, columns: { mappingMode: 'defineBelow', matchingColumns: [], value: { status: '={{ $json.status }}', attempts: '={{ $json.attempts }}', next_attempt_at: '={{ $json.next_attempt_at }}', last_error: '={{ $json.last_error }}' } }, options: {} } }),
 ], {
   'Operations Webhook': { main: [[{ node: 'Normalize Event', type: 'main', index: 0 }]] },
+  'Checkmk Webhook': { main: [[{ node: 'Require Checkmk Source', type: 'main', index: 0 }]] },
+  'Require Checkmk Source': { main: [[{ node: 'Normalize Event', type: 'main', index: 0 }]] },
   'Hetrix Webhook': { main: [[{ node: 'Normalize Event', type: 'main', index: 0 }]] },
   'Normalize Event': { main: [[{ node: 'Queue Event', type: 'main', index: 0 }]] },
   'Queue Event': { main: [[{ node: 'Acknowledge Event', type: 'main', index: 0 }]] },

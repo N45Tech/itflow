@@ -1,0 +1,8 @@
+#!/bin/sh
+# Root-run local check on the Docker host's Checkmk agent. Verify these names.
+output=$(docker exec --user cmk n45-monitor /omd/sites/cmk/local/share/check_mk/notifications/n45_itflow --local-check 2>/dev/null)
+if [ -n "$output" ]; then
+    printf '%s\n' "$output"
+else
+    printf '%s\n' '2 "N45 ITFlow notification outbox" - Cannot read the Checkmk site outbox status'
+fi

@@ -155,3 +155,7 @@ Adds isolated investigation jobs, non-payload audit receipts and durable provide
 ## n45-0031-strict-ticket-retention-default
 
 Changes the default for new client records to `strict`. Existing client policy values stay intact. The released `n45-0021-client-ticket-retention` file remains unchanged so deployed migration ledgers retain a valid checksum. If the prior default is required, preserve client selections and change the default with a new forward migration.
+
+## Checkmk monitoring source
+
+`n45-0032-checkmk-monitoring-source` seeds the Checkmk event policy for upgrades without changing an existing operator policy. Fresh installs seed the same source in `db.sql`. Its scalar fingerprint requires that policy row to exist. Replay is idempotent and preserves disabled/custom policy choices. Rollback disables the Checkmk sender/policy while retaining incident history, or restores the matching pre-upgrade application/database snapshot.

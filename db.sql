@@ -711,6 +711,7 @@ CREATE TABLE `automation_event_policies` (
   PRIMARY KEY (`automation_policy_source`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 INSERT INTO `automation_event_policies` (`automation_policy_source`) VALUES ('hetrix');
+INSERT INTO `automation_event_policies` (`automation_policy_source`) VALUES ('checkmk');
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

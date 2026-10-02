@@ -138,3 +138,7 @@ Administrators configure per-source ticket thresholds, auto-resolution, retry li
 - Integration secrets stay in n8n credentials and API authorization headers, not workflow JSON or URLs.
 - Generated workflows disable successful, failed, and manual execution-data retention. The broker Data Table stores only the normalized allowlist, never inbound headers or the raw vendor payload.
 - Do not point n8n directly at the ITFlow MariaDB database.
+
+## Checkmk infrastructure monitoring
+
+The Operations broker includes an authenticated Checkmk notification ingress. Install and configure the sender using [the Checkmk deployment guide](../checkmk/README.md). The sender posts canonical host/service events to `/webhook/n45-checkmk-events`, reusing the N45 Integration Webhook credential. Release ITFlow support before publishing the broker draft or enabling notifications.

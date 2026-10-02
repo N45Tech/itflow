@@ -127,6 +127,7 @@ $assertTrue(
         'n45-0029-hetrix-monitoring-source',
         'n45-0030-automation-investigation',
         'n45-0031-strict-ticket-retention-default',
+        'n45-0032-checkmk-monitoring-source',
     ],
     'The post-integration migrations are not reserved'
 );
@@ -145,8 +146,8 @@ $assertTrue(
 );
 $assertTrue(($manifest_migration_ids[14] ?? '') === 'n45-0014-agreement-entitlements', 'The agreement migration is not the final reserved feature ID');
 $assertTrue(
-    ($manifest_migration_ids[array_key_last($manifest_migration_ids)] ?? '') === 'n45-0031-strict-ticket-retention-default',
-    'The strict ticket-retention default migration is not the final stable N45 migration'
+    array_slice($manifest_migration_ids, -2) === ['n45-0031-strict-ticket-retention-default', 'n45-0032-checkmk-monitoring-source'],
+    'The Checkmk migration must follow the strict ticket-retention default migration'
 );
 $commercial_migration = $manifest['migrations']['n45-0027-commercial-operations'] ?? [];
 $assertTrue(
@@ -178,8 +179,9 @@ $assertTrue(
             'n45-0017-automation-action-outbox',
             'n45-0028-ticket-delete-operations-alignment',
             'n45-0029-hetrix-monitoring-source',
+            'n45-0032-checkmk-monitoring-source',
         ],
-    'Hetrix monitoring retirement is not owned by the automation module boundary'
+    'Monitoring source migrations are not owned by the automation module boundary'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(

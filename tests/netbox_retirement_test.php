@@ -25,27 +25,19 @@ $assertTrue(!str_contains($readme, 'NetBox'),
     'The active n8n deployment guide still documents NetBox');
 $assertTrue(!str_contains($operations, 'https://netbox.n45tech.com'),
     'Operations still links to NetBox');
-$assertTrue(str_contains($automation, "['netbox', 'checkmk', 'uptime_kuma']"),
+$assertTrue(str_contains($automation, "['netbox', 'uptime_kuma']"),
     'The complete retired source list is not enforced centrally');
-$assertTrue(str_contains($operations, "automation_incident_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')"),
+$assertTrue(str_contains($operations, "automation_incident_source NOT IN ('netbox', 'uptime_kuma')"),
     'Operations does not suppress retired source incidents');
-$assertTrue(str_contains($operations, "automation_mapping_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')"),
+$assertTrue(str_contains($operations, "automation_mapping_source NOT IN ('netbox', 'uptime_kuma')"),
     'Operations does not suppress retired source identity mappings');
-$assertTrue(str_contains($operations, "automation_maintenance_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')"),
+$assertTrue(str_contains($operations, "automation_maintenance_source NOT IN ('netbox', 'uptime_kuma')"),
     'Operations still counts retired source maintenance windows');
 $assertTrue(str_contains($ticket, '!automationSourceIsRetired'),
     'Ticket detail still exposes retired integration cards');
-$assertTrue(!str_contains($operations, 'Checkmk'),
-    'Operations still exposes Checkmk');
-$assertTrue(!str_contains($ticket, 'Checkmk'),
-    'Ticket detail still exposes Checkmk');
-$assertTrue(!str_contains($admin, 'Checkmk'),
-    'Automation administration still exposes Checkmk');
-$assertTrue(!str_contains($readme, 'Checkmk'),
-    'The active n8n deployment guide still documents Checkmk');
 $assertTrue(!str_contains($device_docs, 'Checkmk') && !str_contains($endpoint_docs, 'Checkmk'),
     'Active endpoint documentation still describes Checkmk');
-$assertTrue(str_contains($admin, "automation_policy_source NOT IN ('netbox', 'checkmk', 'uptime_kuma')"),
+$assertTrue(str_contains($admin, "automation_policy_source NOT IN ('netbox', 'uptime_kuma')"),
     'Admin integration policies still expose retired sources');
 $assertTrue(!str_contains($operations, 'Uptime Kuma'),
     'Operations still exposes Uptime Kuma');
