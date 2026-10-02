@@ -82,6 +82,8 @@ jobs:
         run: |
           node deploy/n8n/build-workflows.mjs
           node deploy/n8n/test-workflows.mjs
+          python3 tests/checkmk_adapter_test.py
+          node --test tests/checkmk_broker_test.cjs
           git diff --exit-code -- deploy/n8n/workflows
 
       - name: Exercise database upgrade, browser and lock-order contracts

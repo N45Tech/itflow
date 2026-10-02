@@ -456,6 +456,15 @@ return [
                 'created_tables' => [], 'altered_columns' => ['clients' => ['client_ticket_retention_policy']],
                 'altered_indexes' => [], 'legacy_bridge_index_overrides' => [],
             ],
+            'n45-0032-checkmk-monitoring-source' => [
+                'module' => 'automation', 'legacy_version' => null, 'data_change' => true,
+                'rollback' => 'Disable the Checkmk event policy and sender; preserve historical incidents and mappings, or restore the matching pre-upgrade database and application snapshot.',
+                'created_tables' => [], 'altered_columns' => [], 'altered_indexes' => [],
+                'legacy_bridge_index_overrides' => [],
+                'failure_queries' => [
+                    "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'checkmk') THEN 0 ELSE 1 END",
+                ],
+            ],
         ],
     ],
     'features' => [
@@ -530,6 +539,7 @@ return [
                 'n45-0017-automation-action-outbox',
                 'n45-0028-ticket-delete-operations-alignment',
                 'n45-0029-hetrix-monitoring-source',
+                'n45-0032-checkmk-monitoring-source',
             ],
             'feature' => 'automation',
             'toggleable' => true,
@@ -3011,6 +3021,18 @@ return [
                     'clients' => [
                         'client_ticket_retention_policy' => $column_fingerprint('varchar(20)', false, 'strict'),
                     ],
+                ],
+            ],
+        ],
+        'n45-0032-checkmk-monitoring-source' => [
+            'module' => 'automation', 'legacy_version' => null,
+            'file' => 'n45/migrations/n45-0032-checkmk-monitoring-source.php',
+            'summary' => 'Restore Checkmk host/service event ingestion and seed its policy without changing operator selections.',
+            'data_change' => true,
+            'rollback' => 'Disable the Checkmk event policy and sender; preserve historical incidents and mappings, or restore the matching pre-upgrade database and application snapshot.',
+            'fingerprint' => [
+                'failure_queries' => [
+                    "SELECT CASE WHEN EXISTS (SELECT 1 FROM automation_event_policies WHERE automation_policy_source = 'checkmk') THEN 0 ELSE 1 END",
                 ],
             ],
         ],
