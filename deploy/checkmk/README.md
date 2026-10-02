@@ -6,6 +6,7 @@ Checkmk owns infrastructure checks and metrics. ITFlow receives host/service inc
 
 - `n45_itflow.py`: standard-library Python notification method for Checkmk Community and commercial sites.
 - `n45-itflow.example.json`: empty, fail-closed host allowlist; no credential or invented client IDs.
+- Private SQLite outbox and `n45-itflow.cron`: persisted delivery and retries in Community sites, independent of the commercial notification spooler.
 - Authenticated `Checkmk Webhook` in the generated Operations broker at `/webhook/n45-checkmk-events`.
 - Checkmk policy, identity visibility, incident/ticket labels and maintenance support in ITFlow.
 - Sender, broker, and disposable-database regression tests in next/main release checks.
@@ -24,9 +25,13 @@ The prepared N45 site is `cmk`, with UI at `https://monitor.n45tech.com/cmk/`. T
 
 ```sh
 install -o cmk -g cmk -m 0750 n45_itflow.py /omd/sites/cmk/local/share/check_mk/notifications/n45_itflow
-install -o cmk -g cmk -m 0600 n45-itflow.example.json /omd/sites/cmk/etc/n45-itflow.json
-install -o cmk -g cmk -m 0600 /dev/null /omd/sites/cmk/etc/n45-itflow-webhook.key
+test -e /omd/sites/cmk/etc/n45-itflow.json || install -o cmk -g cmk -m 0600 n45-itflow.example.json /omd/sites/cmk/etc/n45-itflow.json
+test -e /omd/sites/cmk/etc/n45-itflow-webhook.key || install -o cmk -g cmk -m 0600 /dev/null /omd/sites/cmk/etc/n45-itflow-webhook.key
+install -d -o cmk -g cmk -m 0700 /omd/sites/cmk/var/n45-itflow
+install -o cmk -g cmk -m 0600 n45-itflow.cron /omd/sites/cmk/etc/cron.d/n45_itflow
 ```
+
+As the site user, run `omd reload crontab` and verify `crontab -l` contains the minute worker. For a different site, update the configuration paths. The outbox must live in the persistent site volume (`var/n45-itflow`), not the temporary directory. Python's standard-library SQLite module is required; no package installation is needed. Notification invocation writes and commits the event locally, then exits promptly; only the cron worker performs network delivery.
 
 Store the existing N45 Integration Webhook credential value in that final file using a secure editor/secret provisioning method. The sender rejects symlinks, broadly readable files, files owned by another user, non-printable/header-injection values and oversized values. Do not put the credential in shell arguments, notification parameters, source control, tickets or logs. The Checkmk site needs Python 3 and normal outbound HTTPS access to n8n; TLS verification stays enabled and redirects are rejected.
 
@@ -57,7 +62,11 @@ The script ignores acknowledgement, custom, flapping and downtime lifecycle noti
 
 Host mapping identity is a hash of site+host. Incident identity is a hash of site+host+HOST/SERVICE+service; recovery reuses that incident key. Delivery identity includes notification type, state, source transition timestamp and bounded output, excluding the receiving contact. This prevents retries or multiple contacts from duplicating an event while preserving independent services and sites. Missing source time is rejected; receipt time cannot make an old failure look newer than recovery.
 
-Exit `0` means a non-actionable notice was suppressed or n8n returned HTTP 202 with both `accepted=true` and `queued=true`. Exit `1` means transient delivery failure; HTTP 408/425/429/5xx and network failures are retryable. Exit `2` means invalid source/configuration or permanent HTTP rejection. Configure and verify the installed edition's notification spooler/retry behavior; do not assume every edition retries automatically. The n8n queue acknowledges only after persistence, retries ITFlow outages, retains terminal failures, and ITFlow rechecks the originating API authority.
+A native notification exits `0` only when a non-actionable notice was suppressed or its canonical event was committed to the private local outbox. This is local acceptance, not proof that ITFlow received it. Invalid context/configuration, queue capacity (20,000 events) or persistence errors fail visibly with exit `2`. Duplicate delivery IDs preserve the original queued payload.
+
+`--flush` sends at most ten due events per invocation. It removes an event only after n8n returns HTTP 202 with both `accepted=true` and `queued=true`. HTTP 408/425/429/5xx, invalid receipts and network failures remain pending with exponential retry delays of one minute to one hour; other HTTP rejections become held for operator review. The worker returns `1` while pending events remain and `2` while held events remain. An exclusive worker lock prevents overlapping cron delivery; expired leases recover a worker crash. A crash after remote acceptance can resend the same delivery ID safely. The n8n queue then retries ITFlow outages and retains terminal failures, and ITFlow rechecks the originating API authority.
+
+As the site user, use `local/share/check_mk/notifications/n45_itflow --status` to inspect only aggregate pending/held counts, oldest pending age and last worker age, without payloads or credentials. Monitor any held event, pending age above five minutes, and a missing/older-than-five-minutes worker heartbeat; inspect `var/log/n45-itflow.log`. Repair the cause of a permanent rejection before using `--retry-held` to requeue retained events. Do not erase the database to clear a failed delivery. Back up the outbox with the site; retain it during rollback.
 
 ## Acceptance
 
@@ -70,6 +79,7 @@ Exit `0` means a non-actionable notice was suppressed or n8n returned HTTP 202 w
 - [ ] Prove delayed failures do not reopen a newer recovery, and a later genuine outage creates a new ticket.
 - [ ] Prove Checkmk downtime, ITFlow maintenance and policy disable/threshold controls.
 - [ ] Prove n8n delivery retry and terminal-error visibility, with no credential retained in execution output.
+- [ ] Prove the local outbox survives a worker/site restart and retries an n8n outage, and alert on backlog, held events and missing worker runs.
 - [ ] Verify critical incident paging with the intended GoAlert service and recovery route before enabling paging. The separate Alert Router being present does not establish that it is active/configured.
 - [ ] Maintain an independent outside-in availability check for the monitoring service. Quiet alert history is not a Checkmk heartbeat or host-coverage proof.
 
@@ -77,4 +87,4 @@ Local/CI checks use synthetic contexts and disposable data. Physical server cove
 
 ## Disable and rollback
 
-Disable the Checkmk notification rule first, then disable its policy in ITFlow if needed. The seed migration uses `INSERT IGNORE`, so upgrades and replay preserve an existing disabled/custom policy. Historical rows are retained; reactivated Checkmk history becomes visible in the overview and diagnostics. Do not restore obsolete source mappings without reviewing their client ownership. Retired NetBox and Uptime Kuma sources stay blocked.
+Disable the Checkmk notification rule and remove its minute worker from the site crontab before rolling back the application. Preserve the local outbox for reviewed replay after compatibility is restored; disabling the ITFlow policy alone does not stop already queued delivery. The seed migration uses `INSERT IGNORE`, so upgrades and replay preserve an existing disabled/custom policy. Historical rows are retained; reactivated Checkmk history becomes visible in the overview and diagnostics. Do not restore obsolete source mappings without reviewing their client ownership. Retired NetBox and Uptime Kuma sources stay blocked.

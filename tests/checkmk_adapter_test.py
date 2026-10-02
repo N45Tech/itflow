@@ -1,9 +1,13 @@
 import copy
+import contextlib
+import fcntl
 import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
 spec = importlib.util.spec_from_file_location("checkmk_adapter", Path(__file__).resolve().parents[1] / "deploy/checkmk/n45_itflow.py")
@@ -118,6 +122,103 @@ class CheckmkAdapterTests(unittest.TestCase):
             error = HTTPError("https://example.net", code, "fixture", {}, None)
             self.assertEqual(adapter.deliver(event, self.config, "x" * 32, Opener(error)), 1 if code in [408, 425, 429, 500, 503] else 2)
         self.assertEqual(adapter.deliver(event, self.config, "x" * 32, Opener(URLError("offline"))), 1)
+
+    def test_outbox_survives_restart_and_duplicate_delivery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = {**self.config, "outbox_dir": str(Path(directory) / "outbox")}
+            connection, path = adapter.open_outbox(config)
+            event = adapter.build_event(self.env, config)
+            adapter.enqueue(connection, event, 100)
+            adapter.enqueue(connection, {**event, "title": "Duplicate payload must not replace the original"}, 101)
+            connection.close()
+            connection, _ = adapter.open_outbox(config)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM events").fetchone()[0], 1)
+            self.assertEqual(json.loads(connection.execute("SELECT payload FROM events").fetchone()[0]), event)
+            self.assertEqual((path / "events.sqlite3").stat().st_mode & 0o777, 0o600)
+            self.assertIsNone(adapter.outbox_status(connection, 101)["last_flush_age_seconds"])
+            seen = []
+            self.assertEqual(adapter.flush_outbox(connection, path, config, "fixture", lambda e, *_: seen.append(e) or 0, 102), 0)
+            self.assertEqual(seen, [event])
+            self.assertEqual(adapter.outbox_status(connection, 103)["pending"], 0)
+            self.assertEqual(adapter.outbox_status(connection, 103)["last_flush_age_seconds"], 1)
+            connection.close()
+
+    def test_outbox_retries_without_changing_delivery_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = {**self.config, "outbox_dir": str(Path(directory) / "outbox")}
+            connection, path = adapter.open_outbox(config)
+            event = adapter.build_event(self.env, config)
+            adapter.enqueue(connection, event, 100)
+            seen = []
+            self.assertEqual(adapter.flush_outbox(connection, path, config, "fixture", lambda e, *_: seen.append(e) or 1, 100), 1)
+            self.assertEqual(adapter.flush_outbox(connection, path, config, "fixture", lambda e, *_: seen.append(e) or 0, 159), 1)
+            self.assertEqual(len(seen), 1)
+            self.assertEqual(adapter.flush_outbox(connection, path, config, "fixture", lambda e, *_: seen.append(e) or 0, 160), 0)
+            self.assertEqual(seen, [event, event])
+            connection.close()
+
+    def test_terminal_events_are_held_and_expired_worker_leases_recover(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = {**self.config, "outbox_dir": str(Path(directory) / "outbox")}
+            connection, path = adapter.open_outbox(config)
+            event = adapter.build_event(self.env, config)
+            adapter.enqueue(connection, event, 100)
+            self.assertEqual(adapter.flush_outbox(connection, path, config, "fixture", lambda *_: 2, 100), 2)
+            self.assertEqual(adapter.outbox_status(connection, 200)["held"], 1)
+            self.assertEqual(adapter.flush_outbox(connection, path, config, "fixture", lambda *_: self.fail("Held event was retried"), 200), 2)
+            with connection:
+                connection.execute("UPDATE events SET status='pending',next_attempt=200,lease_until=320")
+            self.assertEqual(adapter.flush_outbox(connection, path, config, "fixture", lambda *_: self.fail("Unexpired lease was claimed"), 319), 1)
+            self.assertEqual(adapter.flush_outbox(connection, path, config, "fixture", lambda *_: 0, 320), 0)
+            with (path / "worker.lock").open("w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self.assertEqual(adapter.flush_outbox(connection, path, config, "fixture", lambda *_: self.fail("Concurrent worker ran"), 321), 0)
+            connection.close()
+
+    def test_outbox_permissions_symlinks_and_capacity_fail_visibly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = {**self.config, "outbox_dir": str(Path(directory) / "outbox")}
+            connection, path = adapter.open_outbox(config)
+            event = adapter.build_event(self.env, config)
+            with connection:
+                connection.executemany("INSERT INTO events(event_id,payload,created_at,next_attempt) VALUES (?,'{}',100,100)",
+                                       [(str(i),) for i in range(20000)])
+            with self.assertRaises(adapter.ConfigurationError):
+                adapter.enqueue(connection, event, 101)
+            connection.close()
+            (path / "events.sqlite3").chmod(0o644)
+            with self.assertRaises(adapter.ConfigurationError):
+                adapter.open_outbox(config)
+            (path / "events.sqlite3").chmod(0o600)
+            path.chmod(0o755)
+            with self.assertRaises(adapter.ConfigurationError):
+                adapter.open_outbox(config)
+            path.chmod(0o700)
+            link = Path(directory) / "link"
+            link.symlink_to(path)
+            with self.assertRaises(adapter.ConfigurationError):
+                adapter.open_outbox({**config, "outbox_dir": str(link)})
+
+    def test_notification_cli_queues_without_network_or_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = {**self.config, "outbox_dir": str(Path(directory) / "outbox")}
+            config_file = Path(directory) / "config.json"
+            config_file.write_text(json.dumps(config))
+            with patch.dict(adapter.os.environ, self.env, clear=True), patch.object(adapter, "read_secret", side_effect=AssertionError("Credential read")), \
+                    patch.object(adapter, "deliver", side_effect=AssertionError("Network call")), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(adapter.main(["--config", str(config_file), "--dry-run"]), 0)
+                self.assertFalse(Path(config["outbox_dir"]).exists())
+                self.assertEqual(adapter.main(["--config", str(config_file)]), 0)
+                self.assertEqual(adapter.main(["--config", str(config_file), "--status"]), 0)
+            connection, _ = adapter.open_outbox(config)
+            self.assertEqual(adapter.outbox_status(connection)["pending"], 1)
+            with connection:
+                connection.execute("UPDATE events SET status='held'")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(adapter.main(["--config", str(config_file), "--retry-held"]), 0)
+            self.assertEqual(adapter.outbox_status(connection)["held"], 0)
+            self.assertEqual(adapter.outbox_status(connection)["pending"], 1)
+            connection.close()
 
 
 if __name__ == "__main__":

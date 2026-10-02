@@ -3,6 +3,7 @@
 """Checkmk notification method. No third-party Python packages are required."""
 
 import argparse
+import fcntl
 import hashlib
 import json
 import math
@@ -10,7 +11,9 @@ import os
 from pathlib import Path
 import re
 import stat
+import sqlite3
 import sys
+import time
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
@@ -168,15 +171,118 @@ def deliver(event, config, secret, opener=None):
         return 1
 
 
+def open_outbox(config):
+    """Private persistent queue, shared by short notifications and a cron worker."""
+    path = Path(config.get("outbox_dir", ""))
+    if not path.is_absolute():
+        raise ConfigurationError("An absolute outbox directory is required")
+    path.mkdir(mode=0o700, exist_ok=True)
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.geteuid():
+        raise ConfigurationError("Outbox must be private and owned by the site user")
+    database = path / "events.sqlite3"
+    descriptor = os.open(database, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    info = os.fstat(descriptor)
+    os.close(descriptor)
+    if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.geteuid():
+        raise ConfigurationError("Outbox database must be private and owned by the site user")
+    connection = sqlite3.connect(database, timeout=5)
+    connection.execute("PRAGMA synchronous=FULL")
+    connection.execute("""CREATE TABLE IF NOT EXISTS events (
+        event_id TEXT PRIMARY KEY, payload TEXT NOT NULL, created_at INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt INTEGER NOT NULL, lease_until INTEGER NOT NULL DEFAULT 0)""")
+    connection.execute("CREATE TABLE IF NOT EXISTS worker_state (singleton INTEGER PRIMARY KEY CHECK(singleton=1), last_flush INTEGER NOT NULL)")
+    connection.commit()
+    return connection, path
+
+
+def enqueue(connection, event, now=None):
+    now = int(time.time() if now is None else now)
+    with connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if connection.execute("SELECT 1 FROM events WHERE event_id=?", (event["event_id"],)).fetchone():
+            return
+        if connection.execute("SELECT COUNT(*) FROM events").fetchone()[0] >= 20000:
+            raise ConfigurationError("Outbox is full; operator action is required")
+        connection.execute("INSERT INTO events(event_id,payload,created_at,next_attempt) VALUES (?,?,?,?)",
+                           (event["event_id"], json.dumps(event, ensure_ascii=False), now, now))
+
+
+def outbox_status(connection, now=None):
+    now = int(time.time() if now is None else now)
+    pending, held, oldest = connection.execute("""SELECT
+        COALESCE(SUM(status='pending'),0), COALESCE(SUM(status='held'),0),
+        MIN(CASE WHEN status='pending' THEN created_at END) FROM events""").fetchone()
+    worker = connection.execute("SELECT last_flush FROM worker_state WHERE singleton=1").fetchone()
+    return {"pending": pending, "held": held, "oldest_pending_age_seconds": max(0, now - oldest) if oldest else 0,
+            "last_flush_age_seconds": max(0, now - worker[0]) if worker else None}
+
+
+def flush_outbox(connection, path, config, secret, send=deliver, now=None):
+    """At-least-once delivery; n8n/ITFlow delivery IDs make crash replay safe."""
+    clock = lambda: int(time.time() if now is None else now)
+    descriptor = os.open(path / "worker.lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return 0
+        with connection:
+            connection.execute("INSERT OR REPLACE INTO worker_state(singleton,last_flush) VALUES (1,?)", (clock(),))
+        for _ in range(10):
+            at = clock()
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute("""SELECT event_id,payload,attempts FROM events
+                    WHERE status='pending' AND next_attempt<=? AND lease_until<=?
+                    ORDER BY created_at,event_id LIMIT 1""", (at, at)).fetchone()
+                if row is None:
+                    break
+                connection.execute("UPDATE events SET lease_until=? WHERE event_id=?", (at + 120, row[0]))
+            result = send(json.loads(row[1]), config, secret)
+            with connection:
+                if result == 0:
+                    connection.execute("DELETE FROM events WHERE event_id=?", (row[0],))
+                else:
+                    attempts = row[2] + 1
+                    delay = min(3600, 60 * 2 ** min(attempts - 1, 6))
+                    connection.execute("""UPDATE events SET status=?,attempts=?,next_attempt=?,lease_until=0
+                        WHERE event_id=?""", ("held" if result == 2 else "pending", attempts, clock() + delay, row[0]))
+        status = outbox_status(connection, clock())
+        return 2 if status["held"] else 1 if status["pending"] else 0
+
+
 def main(argv=None):
+    os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=str(Path(os.environ.get("OMD_ROOT", "/omd/sites/cmk")) / "etc/n45-itflow.json"))
     parser.add_argument("--dry-run", action="store_true", help="Print only the mapped event; never read or send a credential")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--flush", action="store_true", help="Deliver up to ten due queued events; run once per minute")
+    mode.add_argument("--status", action="store_true", help="Print only aggregate queue status, without payloads or credentials")
+    mode.add_argument("--retry-held", action="store_true", help="Requeue held events after an operator repairs the rejection")
     args = parser.parse_args(argv)
     try:
         config = json.loads(Path(args.config).read_text(encoding="utf-8"))
         if not isinstance(config, dict):
             raise ConfigurationError("Configuration must be an object")
+        if args.dry_run and (args.flush or args.status or args.retry_held):
+            raise ConfigurationError("Dry-run applies only to a native notification")
+        if args.flush or args.status or args.retry_held:
+            connection, path = open_outbox(config)
+            try:
+                if args.flush:
+                    result = flush_outbox(connection, path, config, read_secret(config["secret_file"]))
+                else:
+                    if args.retry_held:
+                        with connection:
+                            connection.execute("UPDATE events SET status='pending',next_attempt=?,lease_until=0 WHERE status='held'", (int(time.time()),))
+                    result = 0
+                print(json.dumps(outbox_status(connection)))
+                return result
+            finally:
+                connection.close()
         event = build_event(os.environ, config)
         if event is None:
             print("N45 ITFlow: notification suppressed by lifecycle/maintenance rules")
@@ -184,10 +290,15 @@ def main(argv=None):
         if args.dry_run:
             print(json.dumps(event, ensure_ascii=False, indent=2))
             return 0
-        result = deliver(event, config, read_secret(config["secret_file"]))
-        print("N45 ITFlow: " + {0: "event durably queued", 1: "temporary delivery failure", 2: "delivery/configuration rejected"}[result])
-        return result
-    except (ConfigurationError, OSError, KeyError, TypeError, json.JSONDecodeError):
+        https_url(config.get("webhook_url", ""))
+        connection, _ = open_outbox(config)
+        try:
+            enqueue(connection, event)
+        finally:
+            connection.close()
+        print("N45 ITFlow: event durably queued in the local outbox")
+        return 0
+    except (ConfigurationError, OSError, KeyError, TypeError, sqlite3.Error, json.JSONDecodeError):
         print("N45 ITFlow: configuration or source context is invalid", file=sys.stderr)
         return 2
 

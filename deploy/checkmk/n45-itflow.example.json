@@ -3,5 +3,6 @@
   "checkmk_url": "https://monitor.n45tech.com/cmk/",
   "webhook_url": "https://automate.n45tech.com/webhook/n45-checkmk-events",
   "secret_file": "/omd/sites/cmk/etc/n45-itflow-webhook.key",
+  "outbox_dir": "/omd/sites/cmk/var/n45-itflow",
   "hosts": {}
 }

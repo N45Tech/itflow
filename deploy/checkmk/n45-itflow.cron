@@ -1,0 +1,2 @@
+# Install as the site user in etc/cron.d/n45_itflow, then run omd reload crontab.
+* * * * * "$OMD_ROOT/local/share/check_mk/notifications/n45_itflow" --flush >> "$OMD_ROOT/var/log/n45-itflow.log" 2>&1
