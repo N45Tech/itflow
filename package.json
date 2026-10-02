@@ -1,0 +1,13 @@
+{
+  "name": "n45-itflow-quality-gates",
+  "private": true,
+  "scripts": {
+    "lint:js": "eslint js/*.js --max-warnings=0",
+    "lint:shell": "shellcheck --severity=warning deploy/psa/*.sh scripts/*.sh tests/*.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.11.0",
+    "globals": "17.13.0"
+  }
+}

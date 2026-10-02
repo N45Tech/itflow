@@ -4,7 +4,6 @@ set -euo pipefail
 DB_HOST="${N45_CI_DB_HOST:-127.0.0.1}"
 DB_PORT="${N45_CI_DB_PORT:-3306}"
 DB_USER="${N45_CI_DB_USER:-root}"
-DB_NAME="n45_lock_order_acceptance"
 DB_CLIENT=(mariadb --protocol=tcp --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER"
     --batch --skip-column-names)
 

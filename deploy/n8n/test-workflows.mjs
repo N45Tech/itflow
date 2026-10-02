@@ -33,15 +33,22 @@ for (const file of files) {
   }
 }
 
-function code(workflowName, nodeName, input, vars = {}) {
+function code(workflowName, nodeName, input, vars = {}, configRows) {
   const workflow = workflows.get(workflowName);
   assert(workflow, `Missing workflow: ${workflowName}`);
   const codeNode = workflow.nodes.find((node) => node.name === nodeName);
   assert(codeNode, `Missing node: ${nodeName}`);
   const values = Array.isArray(input) ? input : [input];
   const items = values.map((json) => ({ json }));
-  const execute = new Function('$input', '$vars', codeNode.parameters.jsCode);
-  return execute({ first: () => items[0], all: () => items }, vars);
+  const lookup = (name) => {
+    const rows = name === 'Workflow Error' ? items
+      : name === 'Read Device Source Configuration'
+        ? (configRows ?? [{ json: { key: 'device-sources', config_json: JSON.stringify(vars) } }])
+        : assert.fail(`Unexpected node lookup: ${name}`);
+    return { first: () => rows[0], all: () => rows };
+  };
+  const execute = new Function('$input', '$vars', '$', codeNode.parameters.jsCode);
+  return execute({ first: () => items[0], all: () => items }, vars, lookup);
 }
 
 const broker = 'N45 - ITFlow Operations Event Broker';
@@ -195,18 +202,31 @@ const sourceMappings = {
   entra: [{ scope_id: 'contoso.onmicrosoft.com', tenant_filter: 'contoso.onmicrosoft.com', scope_name: 'Contoso', client_id: 42, location_id: 7, create_asset: false }],
   sentinelone: [{ scope_id: 'site-123', site_id: 'site-123', scope_name: 'Contoso HQ', client_id: 42, location_id: 7, create_asset: false }],
 };
-const sourceVars = {
-  N45_DEVICE_SOURCE_MAP_JSON: JSON.stringify(sourceMappings),
-  N45_CIPP_BASE_URL: 'https://cipp.example.test',
-  N45_SENTINELONE_BASE_URL: 'https://usea1.example.sentinelone.net',
+const sourceConfig = {
+  device_source_map: sourceMappings,
+  cipp_base_url: 'https://cipp.example.test',
+  sentinelone_base_url: 'https://usea1.example.sentinelone.net',
 };
 
 const intuneWorkflow = 'N45 - Microsoft Intune Device Reconciliation';
-const intuneConfig = code(intuneWorkflow, 'Load Intune Tenant Map', {}, sourceVars);
+const intuneConfig = code(intuneWorkflow, 'Load Intune Tenant Map', {}, sourceConfig);
 assert.equal(intuneConfig.length, 1);
 assert.equal(intuneConfig[0].json.client_id, 42);
 assert.match(intuneConfig[0].json.request_url, /ListGraphRequest/);
 assert.match(intuneConfig[0].json.request_url, /manualPagination=true/);
+for (const rows of [[], [{ json: {} }], [1, 2].map(() => ({ json: { key: 'device-sources', config_json: JSON.stringify(sourceConfig) } }))]) {
+  assert.throws(() => code(intuneWorkflow, 'Load Intune Tenant Map', {}, sourceConfig, rows), /exactly one/);
+}
+assert.throws(() => code(intuneWorkflow, 'Load Intune Tenant Map', {}, {},
+  [{ json: { key: 'device-sources', config_json: 'broken' } }]), /not valid JSON/);
+assert.throws(() => code(intuneWorkflow, 'Load Intune Tenant Map', {}, { ...sourceConfig, device_source_map: {} }), /No mappings/);
+assert.throws(() => code(intuneWorkflow, 'Load Intune Tenant Map', {}, { ...sourceConfig, cipp_base_url: 'http://unsafe.test' }), /HTTPS/);
+assert.throws(() => code(intuneWorkflow, 'Load Intune Tenant Map', {}, { ...sourceConfig,
+  device_source_map: { intune: [...sourceMappings.intune, ...sourceMappings.intune] } }), /Duplicate/);
+// Every code node uses the row snapshot read at the start, regardless of obsolete Variables.
+const snapshot = [{ json: { key: 'device-sources', config_json: JSON.stringify(sourceConfig) } }];
+const wrongVars = { N45_DEVICE_SOURCE_MAP_JSON: JSON.stringify({ intune: [{ ...sourceMappings.intune[0], client_id: 999 }] }) };
+assert.equal(code(intuneWorkflow, 'Load Intune Tenant Map', {}, wrongVars, snapshot)[0].json.client_id, 42);
 const intune = code(intuneWorkflow, 'Normalize Intune Devices', [{
   Results: [{
     id: 'intune-1', deviceName: 'WS-01', managementState: 'managed',
@@ -218,7 +238,7 @@ const intune = code(intuneWorkflow, 'Normalize Intune Devices', [{
     deviceHealthAttestationState: { secureBoot: 'enabled' }, api_key: 'must-not-pass',
   }],
   Metadata: { TenantFilter: 'contoso.onmicrosoft.com' },
-}], sourceVars);
+}], sourceConfig);
 assert.equal(intune.length, 2);
 assert.equal(intune[0].json.action, 'publish');
 assert.equal(intune[0].json.source, 'intune');
@@ -237,19 +257,19 @@ const entra = code(entraWorkflow, 'Normalize Entra Devices', [{
     approximateLastSignInDateTime: '2026-09-01T09:30:00Z', isManaged: true, isCompliant: true,
   }],
   Metadata: { TenantFilter: 'contoso.onmicrosoft.com' },
-}], sourceVars);
+}], sourceConfig);
 assert.equal(entra.length, 2);
 assert.equal(entra[0].json.external_id, 'object-1');
 assert.equal(entra[0].json.facts.entra_device_id, 'entra-device-1');
 assert.equal(entra[1].json.action, 'complete');
 
 const sentinelWorkflow = 'N45 - SentinelOne Agent Reconciliation';
-const sentinelConfig = code(sentinelWorkflow, 'Load SentinelOne Site Map', {}, sourceVars);
+const sentinelConfig = code(sentinelWorkflow, 'Load SentinelOne Site Map', {}, sourceConfig);
 assert.deepEqual(sentinelConfig[0].json.site_ids, ['site-123']);
 assert.match(sentinelConfig[0].json.sites_url, /siteIds=site-123/);
 const validatedSites = code(sentinelWorkflow, 'Validate SentinelOne Sites', [{
   data: { sites: [{ id: 'site-123', name: 'Contoso HQ' }] }, pagination: { nextCursor: null },
-}], sourceVars);
+}], sourceConfig);
 assert.match(validatedSites[0].json.agents_url, /isDecommissioned=false/);
 const sentinel = code(sentinelWorkflow, 'Normalize SentinelOne Agents', [{
   data: [{
@@ -261,7 +281,7 @@ const sentinel = code(sentinelWorkflow, 'Normalize SentinelOne Agents', [{
     }], access_token: 'must-not-pass',
   }],
   pagination: { nextCursor: null },
-}], sourceVars);
+}], sourceConfig);
 assert.equal(sentinel.length, 2);
 assert.equal(sentinel[0].json.source, 'sentinelone');
 assert.equal(sentinel[0].json.facts.health_state, 'healthy');
@@ -271,6 +291,15 @@ assert.doesNotMatch(JSON.stringify(sentinel), /must-not-pass/);
 
 for (const workflowName of [intuneWorkflow, entraWorkflow, sentinelWorkflow]) {
   const sourceWorkflow = workflows.get(workflowName);
+  const reader = sourceWorkflow.nodes.find((entry) => entry.name === 'Read Device Source Configuration');
+  assert.equal(reader.type, 'n8n-nodes-base.dataTable');
+  assert.equal(reader.alwaysOutputData, true, 'Missing configuration must reach fail-closed validation');
+  assert.equal(reader.executeOnce, true);
+  assert.equal(reader.parameters.limit, 2, 'Duplicate configuration must be detectable');
+  for (const trigger of sourceWorkflow.nodes.filter((entry) => entry.type.endsWith('Trigger'))) {
+    assert.equal(sourceWorkflow.connections[trigger.name].main[0][0].node, reader.name);
+  }
+  assert(!sourceWorkflow.nodes.some((entry) => entry.parameters.jsCode?.includes('$vars.N45_DEVICE_SOURCE_MAP_JSON')));
   const fetchNodes = sourceWorkflow.nodes.filter((entry) => entry.name.startsWith('Fetch '));
   const publishNode = sourceWorkflow.nodes.find((entry) => entry.name.startsWith('Publish '));
   assert(fetchNodes.length > 0, `${workflowName} has no source fetch node`);
@@ -301,11 +330,13 @@ for (const sentinelFetchNode of sentinelFetchNodes) {
 const sourceFailure = code('N45 - Automation Failure to ITFlow', 'Normalize Device Source Failure', {
   execution: { id: 101, startedAt: '2026-09-01T10:00:00Z', error: { message: 'Bearer must-not-pass failed' } },
   workflow: { id: 8, name: intuneWorkflow },
-}, sourceVars);
+}, sourceConfig);
 assert.equal(sourceFailure.length, 1);
 assert.equal(sourceFailure[0].json.action, 'failure');
 assert.equal(sourceFailure[0].json.source, 'intune');
 assert.doesNotMatch(sourceFailure[0].json.error, /must-not-pass/);
+assert.equal(code('N45 - Automation Failure to ITFlow', 'Select Device Source Failure', { workflow: { name: intuneWorkflow } }).length, 1);
+assert.equal(code('N45 - Automation Failure to ITFlow', 'Select Device Source Failure', { workflow: { name: 'Nightly backup' } }).length, 0);
 
 const cipp = code('N45 - CIPP Alerts to ITFlow', 'Normalize CIPP Alert', {
   body: {

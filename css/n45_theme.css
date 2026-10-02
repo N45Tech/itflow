@@ -429,6 +429,44 @@ button.itflow-action-pending {
     --bs-btn-active-border-color: var(--n45-border-strong);
 }
 
+/* Visibility is one deliberate choice; each label keeps its full touch target. */
+.n45-reply-type-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+    gap: .5rem;
+    min-width: 0;
+    margin: 0;
+}
+
+.n45-reply-type-option {
+    --bs-btn-bg: var(--n45-surface);
+    --bs-btn-color: var(--n45-muted-strong);
+    --bs-btn-border-color: var(--n45-border-strong);
+    --bs-btn-hover-bg: var(--n45-surface-strong);
+    --bs-btn-hover-color: var(--n45-ink);
+    --bs-btn-hover-border-color: var(--n45-action);
+    --bs-btn-active-bg: var(--n45-accent-soft);
+    --bs-btn-active-color: var(--n45-ink);
+    --bs-btn-active-border-color: var(--n45-action);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    min-height: 2.75rem;
+    white-space: normal;
+}
+
+.n45-reply-type-picker .btn-check:focus-visible + .btn {
+    outline: 3px solid var(--n45-action);
+    outline-offset: 2px;
+}
+
+textarea[data-itflow-autosize] {
+    max-height: min(24rem, 50vh);
+    overflow-y: auto;
+    resize: vertical;
+}
+
 .form-control,
 .form-select,
 .input-group-text,

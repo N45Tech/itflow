@@ -28,6 +28,12 @@ fieldDb("INSERT INTO logs SET log_type = 'Login', log_action = 'Login', log_desc
 fieldDb("INSERT INTO remember_tokens SET remember_token_user_id = {$users[1]},
     remember_token_token = 'fixture-remember-token'");
 fieldDb("INSERT INTO clients SET client_name = 'Example Branch Services', client_currency_code = 'USD', client_net_terms = 30");$client=$id();
+fieldDb('INSERT INTO domains SET domain_name = \'branch.example.invalid\', domain_client_id = '.$client.
+    ', domain_ip = '.fieldSql("192.0.2.1\n2001:db8::1").
+    ', domain_name_servers = '.fieldSql("ns1.example.invalid\nns2.example.invalid").
+    ', domain_mail_servers = '.fieldSql("10 mail1.example.invalid\n20 mail2.example.invalid").
+    ', domain_txt = '.fieldSql("v=spf1 include:mail.example.invalid -all\nselector._domainkey v=DKIM1; p=".str_repeat('ABCD',100)."\n_dmarc v=DMARC1; p=reject;").
+    ', domain_raw_whois = '.fieldSql(str_repeat("Synthetic WHOIS record for the browser acceptance fixture.\n",60)));$domain=$id();
 fieldDb("INSERT INTO users SET user_name = 'Sam Patel', user_email = 'portal-fixture@example.invalid', user_password = 'fixture', user_type = 2, user_status = 1");$portal_user=$id();
 fieldDb("INSERT INTO contacts SET contact_name = 'Sam Patel', contact_email = 'portal-fixture@example.invalid', contact_client_id = $client,
     contact_user_id = $portal_user, contact_primary = 1, contact_technical = 1, contact_billing = 1,
@@ -38,7 +44,7 @@ $_SESSION=['client_logged_in'=>true,'logged'=>true,'client_id'=>$client,'contact
 $portal_session=session_id();session_write_close();
 fieldDb("INSERT INTO tickets SET ticket_prefix = 'N45-', ticket_number = 1042, ticket_subject = 'Restore branch DNS resolution',
     ticket_details = 'DNS queries time out at the branch. Check the resolver settings and validate the service from a workstation.',
-    ticket_priority = 'High', ticket_status = 2, ticket_client_id = $client, ticket_created_by = {$users[0]}, ticket_assigned_to = {$users[0]},
+    ticket_priority = 'High', ticket_status = 2, ticket_client_id = $client, ticket_contact_id = $portal_contact, ticket_created_by = {$users[0]}, ticket_assigned_to = {$users[0]},
     ticket_waiting_on = 'vendor', ticket_next_action = 'Confirm the resolver update with the vendor', ticket_next_action_due_at = DATE_SUB(NOW(), INTERVAL 1 DAY)");$ticket=$id();
 fieldDb("INSERT INTO ticket_customer_promises SET ticket_customer_promise_ticket_id = $ticket, ticket_customer_promise_client_id = $client,
     ticket_customer_promise_summary = 'Send the branch manager a service update', ticket_customer_promise_due_at = DATE_SUB(NOW(), INTERVAL 2 HOUR), ticket_customer_promise_created_by = {$users[0]}");
@@ -125,10 +131,10 @@ try {
         $assert(intval($selected['agreement_version_id'] ?? 0) === $overlay['version_id'],
             'The fixture did not select the newer effective agreement for ticket rules');
         $fixture=tempnam(sys_get_temp_dir(),'assistance-browser-');
-        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'portal_session'=>$portal_session,'ticket'=>$ticket,'solved'=>$solved,'response'=>$response_id,'client'=>$client,'doc'=>$doc,
+        file_put_contents($fixture,json_encode(['base'=>'http://'.$address,'sessions'=>$sessions,'portal_session'=>$portal_session,'ticket'=>$ticket,'solved'=>$solved,'response'=>$response_id,'client'=>$client,'doc'=>$doc,'domain'=>$domain,
             'agreements' => ['baseline' => $baseline['contract_id'], 'overlay' => $overlay['contract_id']]]));
         try {
-            foreach (['assistance.cjs','route-smoke.cjs'] as $script) {
+            foreach (['assistance.cjs','route-smoke.cjs','record-controls.cjs'] as $script) {
                 $command=['node',__DIR__.'/field/'.$script,$fixture];
                 $browser=proc_open($command,[0=>['pipe','r'],1=>STDOUT,2=>STDERR],$browser_pipes,dirname(__DIR__));fclose($browser_pipes[0]);
                 $assert(proc_close($browser)===0,'Browser checks failed: '.$script);

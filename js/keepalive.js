@@ -7,7 +7,7 @@ function keep_alive() {
     itflowGet(
         "/keepalive.php",
         {keepalive: 'true'},
-        function(data) {
+        function() {
             // Don't care about a response
         }
     );

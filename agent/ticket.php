@@ -1455,9 +1455,9 @@ if (isset($_GET['ticket_id'])) {
                         <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
 
                         <div class="card mb-3 ticket-update-card">
-                            <div class="card-header px-3 py-2">
-                                <h5 class="card-title mt-1"><i class="fas fa-fw fa-reply me-2"></i>Update ticket</h5>
-                                <span class="small text-muted float-end">Choose who should see the update</span>
+                            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2">
+                                <h5 class="card-title mb-0"><i class="fas fa-fw fa-reply me-2"></i>Update ticket</h5>
+                                <span class="small text-muted">Choose who should see the update</span>
                             </div>
                             <div class="card-body p-3 d-print-none">
 
@@ -1466,18 +1466,19 @@ if (isset($_GET['ticket_id'])) {
                                  * preselected, so a public reply is always a deliberate choice, and the
                                  * conversation sits right under this strip until an agent wants to write.
                                 -->
-                                <div class="btn-group w-100" role="group" id="replyTypePicker">
+                                <fieldset class="n45-reply-type-picker" id="replyTypePicker">
+                                    <legend class="visually-hidden">Update visibility</legend>
                                     <input class="btn-check" id="public_reply_type_opt3" type="radio" name="public_reply_type" value="3">
-                                    <label class="btn btn-outline-primary" for="public_reply_type_opt3"><i class="fas fa-fw fa-clipboard-check me-1"></i>Work note</label>
+                                    <label class="btn n45-reply-type-option" for="public_reply_type_opt3"><i class="fas fa-fw fa-clipboard-check" aria-hidden="true"></i>Work note</label>
                                     <input class="btn-check" id="public_reply_type_opt0" type="radio" name="public_reply_type" value="0">
-                                    <label class="btn btn-outline-dark" for="public_reply_type_opt0"><i class="fas fa-fw fa-lock me-1"></i>Internal note</label>
+                                    <label class="btn n45-reply-type-option" for="public_reply_type_opt0"><i class="fas fa-fw fa-lock" aria-hidden="true"></i>Internal note</label>
                                     <input class="btn-check" id="public_reply_type_opt1" type="radio" name="public_reply_type" value="1">
-                                    <label class="btn btn-outline-info" for="public_reply_type_opt1"><i class="fas fa-fw fa-comment me-1"></i>Public reply</label>
+                                    <label class="btn n45-reply-type-option" for="public_reply_type_opt1"><i class="fas fa-fw fa-comment" aria-hidden="true"></i>Public reply</label>
                                     <?php if ($contact_email) { ?>
                                         <input class="btn-check" id="public_reply_type_opt2" type="radio" name="public_reply_type" value="2">
-                                        <label class="btn btn-outline-info" for="public_reply_type_opt2"><i class="fas fa-fw fa-paper-plane me-1"></i>Public + email</label>
+                                        <label class="btn n45-reply-type-option" for="public_reply_type_opt2"><i class="fas fa-fw fa-paper-plane" aria-hidden="true"></i>Public + email</label>
                                     <?php } ?>
-                                </div>
+                                </fieldset>
 
                                 <div class="collapse" id="replyComposer">
                                     <div class="pt-3">
@@ -2585,6 +2586,10 @@ require_once "../includes/footer.php";
         if (promiseSummary) promiseSummary.addEventListener('input', syncReplyType);
 
         replyComposer.addEventListener('shown.bs.collapse', function () {
+            if (document.getElementById('public_reply_type_opt3')?.checked) {
+                document.getElementById('work_action')?.focus();
+                return;
+            }
             // TinyMCE's autoresize plugin measured the editor while its container was
             // display:none, so it sized to nothing. Re-measure now the box is real.
             const editor = window.tinymce ? tinymce.get('ticket_reply') : null;

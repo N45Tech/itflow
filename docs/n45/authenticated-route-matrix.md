@@ -13,11 +13,11 @@ The job uploads synthetic screenshots as the `n45-authenticated-route-smoke` art
 
 The agreement fixture publishes two definitions for one synthetic client with different effective dates. The browser checks that the older detail page identifies the newer agreement as the current ticket rule, that the selected detail page identifies itself, that setup explains the separate client-acceptance gate, and that Business Reviews lists both schedules. These are synthetic selection and rendering checks; they do not verify any customer-approved source.
 
+The focused `tests/field/record-controls.cjs` check uses the same disposable fixture. At 1440px light, 768px dark and 393px dark it verifies all four ticket visibility choices, native keyboard selection, Work note focus, draft preservation, cancel behavior and absence of accidental submissions. It opens the actual AJAX domain modal and verifies tagged DNS/WHOIS fields grow when their hidden tab opens, shrink with shorter content, and retain a scroll fallback for long records. Captures wait for the tab's fade to finish.
+
 ## Remaining coverage
 
-- Add signed-in navigation and actions, including forms, modals, and failed data requests. The existing ticket/Field Mode browser suite covers selected interactions; this route suite now checks failed same-origin page assets.
-- Extend to admin settings, login, other detail records, payment-provider-enabled states, add/edit flows, and intentionally excluded or redirected routes. The suite covers visible navigation destinations rather than claiming every internal PHP endpoint is an application page.
-- Add signed-in navigation and actions, including forms, modals, broken same-origin assets, and failed requests. The existing ticket/Field Mode browser suite covers selected interactions.
-- Extend to the remaining agent, admin, and portal routes, including login, settings, other client-scoped detail views, and intentionally excluded or redirected routes.
+- Extend signed-in navigation and actions to other forms, modals, and failed data requests. Ticket/Field Mode and record-control checks cover selected interactions only.
+- Extend to admin settings, login, other detail records, payment-provider-enabled states, add/edit flows, and intentionally excluded or redirected routes. Visible navigation destinations do not cover every internal PHP endpoint.
 - Capture both account themes at each relevant width, review the images, and establish a maintained visual baseline with explicit change approval.
 - Witness signed-in portal and Field Mode behavior on physical Android Chrome/PWA, including offline, camera, location, and recovery paths.
