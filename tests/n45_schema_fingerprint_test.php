@@ -104,6 +104,7 @@ $assertTrue(
         'n45-0029-hetrix-monitoring-source',
         'n45-0030-automation-investigation',
         'n45-0031-strict-ticket-retention-default',
+        'n45-0032-checkmk-monitoring-source',
     ],
     'The post-integration migration reservations are missing'
 );

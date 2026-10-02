@@ -19,9 +19,9 @@ $q("INSERT INTO clients SET client_name='Checkmk CI', client_currency_code='USD'
 $mapped_client = intval(mysqli_insert_id($mysqli));
 $q("INSERT INTO user_roles SET role_name='Checkmk CI API', role_is_admin=1");
 $role = intval(mysqli_insert_id($mysqli));
-$q("INSERT INTO users SET user_name='Checkmk CI API', user_email='checkmk-ci@example.invalid', user_type=1, user_status=1, user_role_id=$role");
+$q("INSERT INTO users SET user_name='Checkmk CI API', user_email='checkmk-ci@example.invalid', user_password='fixture', user_type=1, user_status=1, user_role_id=$role");
 $api_key_user_id = intval(mysqli_insert_id($mysqli));
-$q("INSERT INTO api_keys SET api_key_name='Checkmk CI', api_key_secret=REPEAT('c',64), api_key_expire=DATE_ADD(CURRENT_DATE(),INTERVAL 1 YEAR), api_key_user_id=$api_key_user_id");
+$q("INSERT INTO api_keys SET api_key_name='Checkmk CI', api_key_secret=REPEAT('c',64), api_key_decrypt_hash='fixture', api_key_expire=DATE_ADD(CURRENT_DATE(),INTERVAL 1 YEAR), api_key_user_id=$api_key_user_id");
 $api_key_id = intval(mysqli_insert_id($mysqli));
 $session_is_admin = true;
 $client_id = $mapped_client;
