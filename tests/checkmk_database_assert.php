@@ -64,7 +64,7 @@ $assert($blocked['action'] === 'recovery_recorded' && $blocked['ticket_id'] === 
     'Recovery bypassed unfinished customer work');
 $assert(intval($scalar("SELECT ticket_status FROM tickets WHERE ticket_id=$gated_ticket")) !== 4,
     'Recovery closed a ticket with an outstanding customer promise');
-$q("INSERT INTO automation_maintenance_windows SET automation_maintenance_source='checkmk',
+$q("INSERT INTO automation_maintenance_windows SET automation_maintenance_name='Checkmk CI maintenance', automation_maintenance_source='checkmk',
     automation_maintenance_client_id=$mapped_client, automation_maintenance_starts_at='2026-10-02 16:15:00',
     automation_maintenance_ends_at='2026-10-02 16:30:00', automation_maintenance_reason='Disposable maintenance'");
 $during = $process('cmk-ci-maintenance', 'cmk-ci-maintenance', '2026-10-02T16:20:00Z');

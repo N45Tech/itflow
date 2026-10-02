@@ -179,8 +179,9 @@ $assertTrue(
             'n45-0017-automation-action-outbox',
             'n45-0028-ticket-delete-operations-alignment',
             'n45-0029-hetrix-monitoring-source',
+            'n45-0032-checkmk-monitoring-source',
         ],
-    'Hetrix monitoring retirement is not owned by the automation module boundary'
+    'Monitoring source migrations are not owned by the automation module boundary'
 );
 $repair_migration = $manifest['migrations']['n45-0015-documentation-evidence-reference-index'] ?? [];
 $assertTrue(
