@@ -33,6 +33,14 @@ function checkAll(source) {
     updateSelectedCount();
 }
 
+function blockBulkAction(event, trigger) {
+    // Stop both native navigation and the downstream AJAX modal handler.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    trigger.removeAttribute('href');
+    trigger.removeAttribute('data-modal-url');
+}
+
 // --- Wire up once DOM is ready ---
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -77,7 +85,14 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             url = new URL(base, window.location.href);
         } catch (err) {
-            // Invalid URL, bail
+            blockBulkAction(e, trigger);
+            return;
+        }
+
+        // Bulk selections must never be sent to another origin or an executable URL.
+        if ((url.protocol !== 'https:' && url.protocol !== 'http:') ||
+            url.origin !== window.location.origin || url.username || url.password) {
+            blockBulkAction(e, trigger);
             return;
         }
 
@@ -106,7 +121,13 @@ document.addEventListener('DOMContentLoaded', function () {
             params.append(cb.name, cb.value);
         });
 
-        const finalUrl = url.pathname + '?' + params.toString();
+        // Preserve the validated absolute URL. Rebuilding from pathname can turn
+        // a same-origin //path into an external destination or expose a scheme.
+        const finalUrl = url.href;
+        if (!/^https?:\/\//i.test(finalUrl)) {
+            blockBulkAction(e, trigger);
+            return;
+        }
 
         if (trigger.hasAttribute('data-modal-url')) {
             trigger.setAttribute('data-modal-url', finalUrl);
