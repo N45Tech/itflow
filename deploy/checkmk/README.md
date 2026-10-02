@@ -68,6 +68,8 @@ A native notification exits `0` only when a non-actionable notice was suppressed
 
 As the site user, use `local/share/check_mk/notifications/n45_itflow --status` to inspect only aggregate pending/held counts, oldest pending age and last worker age, without payloads or credentials. Monitor any held event, pending age above five minutes, and a missing/older-than-five-minutes worker heartbeat; inspect `var/log/n45-itflow.log`. Repair the cause of a permanent rejection before using `--retry-held` to requeue retained events. Do not erase the database to clear a failed delivery. Back up the outbox with the site; retain it during rollback.
 
+The sender's `--local-check` emits a discoverable **N45 ITFlow notification outbox** service with pending/held/age metrics: WARN for a backlog older than five minutes, CRIT above fifteen minutes, any held rejection, or a missing/stale worker heartbeat. For the prepared Docker site, `n45_itflow_outbox` is a root-run local-check wrapper for the Docker host's agent. Verify container `n45-monitor` and site `cmk`, then install it with mode `0750` in that host agent's local-check directory (commonly `/usr/lib/check_mk_agent/local/`). Discover/activate this service on the Docker host. The wrapper performs only a site-user aggregate status read; no payload or credential is returned. For a native site, run the sender's `--local-check` as its site user through an equivalent fixed local-check wrapper. Verify this service and cron freshness before enabling notifications.
+
 ## Acceptance
 
 - [ ] Verify the running site's version, agent registration, intended hosts and discovered services.

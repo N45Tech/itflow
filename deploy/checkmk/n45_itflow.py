@@ -253,6 +253,15 @@ def flush_outbox(connection, path, config, secret, send=deliver, now=None):
         return 2 if status["held"] else 1 if status["pending"] else 0
 
 
+def local_check(status):
+    age = status["oldest_pending_age_seconds"]
+    worker_age = status["last_flush_age_seconds"]
+    state = 2 if status["held"] or worker_age is None or worker_age > 300 or age > 900 else 1 if age > 300 else 0
+    worker = "never" if worker_age is None else str(worker_age) + "s"
+    return (f'{state} "N45 ITFlow notification outbox" pending={status["pending"]}|held={status["held"]}|pending_age={age};300;900 '
+            f'Pending={status["pending"]}, held={status["held"]}, oldest pending={age}s, last worker={worker}')
+
+
 def main(argv=None):
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -261,15 +270,16 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--flush", action="store_true", help="Deliver up to ten due queued events; run once per minute")
     mode.add_argument("--status", action="store_true", help="Print only aggregate queue status, without payloads or credentials")
+    mode.add_argument("--local-check", action="store_true", help="Emit aggregate queue and worker health in Checkmk local-check format")
     mode.add_argument("--retry-held", action="store_true", help="Requeue held events after an operator repairs the rejection")
     args = parser.parse_args(argv)
     try:
         config = json.loads(Path(args.config).read_text(encoding="utf-8"))
         if not isinstance(config, dict):
             raise ConfigurationError("Configuration must be an object")
-        if args.dry_run and (args.flush or args.status or args.retry_held):
+        if args.dry_run and (args.flush or args.status or args.local_check or args.retry_held):
             raise ConfigurationError("Dry-run applies only to a native notification")
-        if args.flush or args.status or args.retry_held:
+        if args.flush or args.status or args.local_check or args.retry_held:
             connection, path = open_outbox(config)
             try:
                 if args.flush:
@@ -279,7 +289,8 @@ def main(argv=None):
                         with connection:
                             connection.execute("UPDATE events SET status='pending',next_attempt=?,lease_until=0 WHERE status='held'", (int(time.time()),))
                     result = 0
-                print(json.dumps(outbox_status(connection)))
+                status = outbox_status(connection)
+                print(local_check(status) if args.local_check else json.dumps(status))
                 return result
             finally:
                 connection.close()
@@ -299,6 +310,8 @@ def main(argv=None):
         print("N45 ITFlow: event durably queued in the local outbox")
         return 0
     except (ConfigurationError, OSError, KeyError, TypeError, sqlite3.Error, json.JSONDecodeError):
+        if args.local_check:
+            print('2 "N45 ITFlow notification outbox" - Outbox status unavailable; check site configuration and filesystem')
         print("N45 ITFlow: configuration or source context is invalid", file=sys.stderr)
         return 2
 

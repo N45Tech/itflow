@@ -220,6 +220,14 @@ class CheckmkAdapterTests(unittest.TestCase):
             self.assertEqual(adapter.outbox_status(connection)["pending"], 1)
             connection.close()
 
+    def test_local_check_reports_backlog_held_and_worker_failure(self):
+        status = {"pending": 0, "held": 0, "oldest_pending_age_seconds": 0, "last_flush_age_seconds": 60}
+        for changes, expected in [({}, 0), ({"pending": 1, "oldest_pending_age_seconds": 301}, 1),
+                                  ({"pending": 1, "oldest_pending_age_seconds": 901}, 2), ({"held": 1}, 2),
+                                  ({"last_flush_age_seconds": None}, 2), ({"last_flush_age_seconds": 301}, 2)]:
+            with self.subTest(changes=changes):
+                self.assertTrue(adapter.local_check({**status, **changes}).startswith(str(expected) + ' "N45 ITFlow notification outbox" '))
+
 
 if __name__ == "__main__":
     unittest.main()
