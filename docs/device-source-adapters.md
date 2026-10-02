@@ -18,13 +18,17 @@ The Microsoft workflows ask CIPP for manual pagination. n8n returns CIPP's exact
 
 ## Configuration
 
-Create these n8n Variables:
+Create a project Data Table named **N45 Device Source Configuration**, with string columns `key` and `config_json`. Insert exactly one row whose `key` is `device-sources`. Its `config_json` is an object with these properties:
 
-- `N45_CIPP_BASE_URL`: the HTTPS base URL of the CIPP API, without credentials or query parameters.
-- `N45_SENTINELONE_BASE_URL`: the regional SentinelOne management-console HTTPS base URL.
-- `N45_DEVICE_SOURCE_MAP_JSON`: the compact JSON contents of `deploy/n8n/samples/device-source-map.example.json`, with real ITFlow IDs and source scopes.
+- `cipp_base_url`: the HTTPS base URL of the CIPP API, without credentials or query parameters.
+- `sentinelone_base_url`: the regional SentinelOne management-console HTTPS base URL.
+- `device_source_map`: the object from `deploy/n8n/samples/device-source-map.example.json`, with real ITFlow IDs and source scopes.
 
-The map is configuration, not a credential. Keep it in n8n Variables so tenant/site ownership can change without regenerating workflow JSON. Each `scope_id` must be unique within a source. `tenant_filter` is the CIPP tenant domain or customer ID; `site_id` is the SentinelOne site ID. `client_id` and optional `location_id` must already exist in ITFlow and be accessible to the API technician.
+Assign this table to **Read Device Source Configuration** in each inventory workflow and the device-specific error branch. The generated nodes select the exact table name; a deployment may select its immutable table ID instead. No paid n8n Variables feature is required. Keep one row: missing, duplicate, malformed, and unconfigured source mappings fail closed before source reads or completion publications.
+
+Each inventory execution reads one configuration snapshot before fetching source pages. Its loader, validation, and normalization nodes all use that same snapshot, so editing the table during a cycle cannot change the client binding between fetch and publication. The error workflow reads the current shared configuration for device-source failures; unrelated failures stay on the generic incident branch.
+
+The map is configuration, not a credential. Update this row so tenant/site ownership can change without editing copied Code nodes. Each `scope_id` must be unique within a source. `tenant_filter` is the CIPP tenant domain or customer ID; `site_id` is the SentinelOne site ID. `client_id` and optional `location_id` must already exist in ITFlow and be accessible to the API technician.
 
 `create_asset` defaults to `false`. Leave it false for the first production cycles: devices resolve by saved source ID, serial number, or exact same-client/same-location name. Unresolved devices receive a durable mapping and redacted snapshot and reduce coverage, but do not create ambiguous assets. Enable automatic asset creation per scope only after the unresolved list has been reviewed.
 
@@ -87,7 +91,7 @@ Only ITFlow's endpoint allowlist is retained. Vendor response expansion, tokens,
 
 1. Deploy the ITFlow application version containing the unified endpoint tables and this adapter API. No adapter-specific migration is needed.
 2. Rebuild and test the JSON with `node deploy/n8n/build-workflows.mjs` and `node deploy/n8n/test-workflows.mjs`.
-3. Import the three new workflow JSON files and the updated error workflow. Assign credentials and Variables, but keep workflows inactive.
+3. Import the three inventory workflow JSON files and the updated error workflow. Assign credentials and the shared configuration table, but keep workflows inactive. For an existing deployment, copy all current scopes and guard values into the table first; compare the copies before replacing any Code nodes.
 4. Verify every map against the ITFlow client/location IDs and the source tenant/site IDs. Confirm that the ITFlow API technician can access each mapped client and no others.
 5. Run one tenant/site manually with `create_asset: false`. Confirm source pagination reaches its terminal cursor, the completion action is last, and the health endpoint reports the expected source count.
 6. Review unresolved mappings. Bind any ambiguous identities, then replay the canary and require expected coverage. For an explicitly approved clean scope, change only that map entry to `create_asset: true`; leave every other scope review-only.

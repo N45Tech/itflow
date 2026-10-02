@@ -1,6 +1,6 @@
 # N45 n8n integration pack
 
-This pack keeps ITFlow authoritative for clients, locations, assets, domains, incidents, and tickets. n8n translates source payloads and retries delivery; it does not write to the ITFlow database or maintain a second mapping database.
+This pack keeps ITFlow authoritative for clients, locations, assets, domains, incidents, and tickets. n8n translates source payloads and retries delivery; it does not write to the ITFlow database. A project Data Table holds explicit source-scope configuration; durable device identities remain in ITFlow.
 
 ## Included workflows
 
@@ -43,7 +43,7 @@ The ITFlow key must be tied to a dedicated active automation technician with Sup
 3. Assign the seven credentials above.
 4. Create a project Data Table named `N45 Operations Event Outbox` with these columns: `event_id` (string), `incident_key` (string), `source` (string), `occurred_at` (date), `payload` (string), `status` (string), `attempts` (number), `next_attempt_at` (date), and `last_error` (string).
 5. In `Cloudflare Domain Reconciliation`, edit `CLIENT_BY_ZONE` in **Map Zones to Clients**. Zones absent from this explicit map are skipped.
-6. Create the three device-source n8n Variables and exact source map described in `docs/device-source-adapters.md`.
+6. Create the `N45 Device Source Configuration` project Data Table and its single `device-sources` row as described in `docs/device-source-adapters.md`. Assign it to each **Read Device Source Configuration** node, including the device-specific error branch. This configuration works without paid n8n Variables.
 7. Create `N45_CIPP_ALERT_TENANT_MAP_JSON` before testing the CIPP alert workflow. Keys are lowercase tenant domains; each value must include `client_id` and may include `client_name`, `location_id`, `assigned_to`, `category_id`, and `contact_id`. Tenant domains are never guessed into client names.
 8. Optionally create `N45_EVENT_ROUTING_JSON` to route source tickets by immutable ITFlow IDs. Example: `{"hetrix":{"assigned_to":7,"category_id":12,"request_type_key":"monitoring-alert","contact_mode":"none"}}`. Invalid user, category, or contact IDs fail closed instead of silently misrouting a ticket.
 9. Run reconciliation workflows manually and review the output before activation. Empty Cloudflare source responses fail explicitly and must not be accepted as successful reconciliations.

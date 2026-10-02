@@ -178,42 +178,42 @@ ob_start();
             <div class="tab-pane fade" id="pills-records<?= $domain_id ?>">
 
                 <div class="mb-3">
-                    <label>Domain IP(s)</label>
+                    <label for="domain_ip<?= $domain_id ?>">Domain IP(s)</label>
                     <div class="input-group">
                             <span class="input-group-text"><i class="fa fa-fw fa-project-diagram"></i></span>
-                        <textarea class="form-control" rows="1" name="domain_ip" disabled><?= $domain_ip ?></textarea>
+                        <textarea class="form-control" id="domain_ip<?= $domain_id ?>" data-itflow-autosize rows="1" name="domain_ip" disabled><?= $domain_ip ?></textarea>
                     </div>
                 </div>
 
                 <div class="mb-3">
-                    <label>Name Servers</label>
+                    <label for="name_servers<?= $domain_id ?>">Name Servers</label>
                     <div class="input-group">
                             <span class="input-group-text"><i class="fa fa-fw fa-crown"></i></span>
-                        <textarea class="form-control" rows="1" name="name_servers" disabled><?= $domain_name_servers ?></textarea>
+                        <textarea class="form-control" id="name_servers<?= $domain_id ?>" data-itflow-autosize rows="1" name="name_servers" disabled><?= $domain_name_servers ?></textarea>
                     </div>
                 </div>
 
                 <div class="mb-3">
-                    <label>MX Records</label>
+                    <label for="mail_servers<?= $domain_id ?>">MX Records</label>
                     <div class="input-group">
                             <span class="input-group-text"><i class="fa fa-fw fa-mail-bulk"></i></span>
-                        <textarea class="form-control" rows="1" name="mail_servers" disabled><?= $domain_mail_servers ?></textarea>
+                        <textarea class="form-control" id="mail_servers<?= $domain_id ?>" data-itflow-autosize rows="1" name="mail_servers" disabled><?= $domain_mail_servers ?></textarea>
                     </div>
                 </div>
 
                 <div class="mb-3">
-                    <label>TXT Records</label>
+                    <label for="txt_records<?= $domain_id ?>">TXT Records</label>
                     <div class="input-group">
                             <span class="input-group-text"><i class="fa fa-fw fa-check-double"></i></span>
-                        <textarea class="form-control" rows="1" name="txt_records" disabled><?= $domain_txt ?></textarea>
+                        <textarea class="form-control" id="txt_records<?= $domain_id ?>" data-itflow-autosize rows="1" name="txt_records" disabled><?= $domain_txt ?></textarea>
                     </div>
                 </div>
 
                 <div class="mb-3">
-                    <label>Raw WHOIS</label>
+                    <label for="raw_whois<?= $domain_id ?>">Raw WHOIS</label>
                     <div class="input-group">
                             <span class="input-group-text"><i class="fa fa-fw fa-search-plus"></i></span>
-                        <textarea class="form-control" rows="6" name="raw_whois" disabled><?= $domain_raw_whois ?></textarea>
+                        <textarea class="form-control" id="raw_whois<?= $domain_id ?>" data-itflow-autosize rows="6" name="raw_whois" disabled><?= $domain_raw_whois ?></textarea>
                     </div>
                 </div>
 
