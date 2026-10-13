@@ -49,6 +49,7 @@ const portalRoutes = ['/client/index.php', '/client/tickets.php',
   `/client/document.php?id=${fixture.doc}`];
 const cases = [
   {name: 'agent-light-desktop', session: fixture.sessions[0], width: 1440, routes: agentRoutes.concat(agentAdditionalRoutes, adminRoutes), theme: 'light', capture: true},
+  {name: 'agent-light-narrow-profile', session: fixture.sessions[0], width: 393, routes: ['/agent/dashboard.php'], theme: 'light', capture: true},
   {name: 'agent-dark-tablet', session: fixture.sessions[2], width: 768, routes: agentRoutes.concat(adminRoutes), theme: 'dark'},
   {name: 'agent-dark-desktop', session: fixture.sessions[2], width: 1440,
     routes: adminRoutes.concat('/agent/tickets.php'), theme: 'dark', capture: true},
@@ -99,6 +100,56 @@ const cases = [
             assert.ok(await avatars.count() > 0, `${label}: missing-profile-picture fixture is absent`);
             assert.deepEqual(await avatars.evaluateAll(elements => elements.map(element => element.textContent.trim())),
               Array(await avatars.count()).fill(''), `${label}: avatar fallback renders initials instead of an icon`);
+          }
+          if (sample.theme && route === sample.routes[0]) {
+            await page.getByRole('link', {name: 'Open account menu'}).click();
+            const menu = page.locator('.user-menu .dropdown-menu');
+            await menu.waitFor({state: 'visible'});
+            const colors = await menu.evaluate(element => {
+              const channels = value => value.startsWith('#')
+                ? [1, 3, 5].map(index => parseInt(value.slice(index, index + 2), 16))
+                : value.match(/[\d.]+/g).slice(0, 3).map(Number);
+              const body = getComputedStyle(document.body);
+              const token = name => channels(body.getPropertyValue(`--n45-${name}`).trim());
+              const background = node => {
+                while (node) {
+                  const value = getComputedStyle(node).backgroundColor;
+                  if (value !== 'transparent' && value !== 'rgba(0, 0, 0, 0)') return channels(value);
+                  node = node.parentElement;
+                }
+                throw new Error('Account menu has no opaque background');
+              };
+              const luminance = rgb => rgb.map(value => value / 255)
+                .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4)
+                .reduce((total, value, index) => total + value * [.2126, .7152, .0722][index], 0);
+              const texts = [...element.querySelectorAll('.user-header p, .user-header small, .n45-profile-density-label, .n45-density-option, .user-footer .btn')]
+                .map(node => {
+                  const foreground = luminance(channels(getComputedStyle(node).color));
+                  const back = luminance(background(node));
+                  return {text: node.textContent.trim(), contrast: (Math.max(foreground, back) + .05) / (Math.min(foreground, back) + .05)};
+                });
+              const header = element.querySelector('.user-header');
+              return {
+                header: background(header), footer: background(element.querySelector('.user-footer')),
+                name: channels(getComputedStyle(header.querySelector('p')).color),
+                expectedHeader: token('surface-subtle'), expectedFooter: token('surface'), expectedName: token('ink'), texts,
+                left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right,
+              };
+            });
+            assert.deepEqual(colors.header, colors.expectedHeader, `${label}: profile header uses an inverted theme`);
+            assert.deepEqual(colors.footer, colors.expectedFooter, `${label}: profile footer uses an inverted theme`);
+            assert.deepEqual(colors.name, colors.expectedName, `${label}: profile name uses an inverted theme`);
+            for (const text of colors.texts) assert.ok(text.contrast >= 4.5,
+              `${label}: account menu ${text.text} has ${text.contrast.toFixed(2)}:1 contrast`);
+            assert.ok(colors.left >= 0 && colors.right <= sample.width + 1, `${label}: account menu is clipped`);
+            await menu.getByRole('button', {name: 'Comfortable', exact: true}).click();
+            assert.equal(await menu.getByRole('button', {name: 'Comfortable', exact: true}).getAttribute('aria-pressed'), 'true');
+            assert.ok(await menu.isVisible(), `${label}: spacing controls close the account menu`);
+            await menu.getByRole('button', {name: 'Compact', exact: true}).click();
+            await menu.getByRole('link', {name: 'Account', exact: true}).focus();
+            await page.screenshot({path: path.join(shots, `${sample.name}-profile-dropdown.png`)});
+            await page.keyboard.press('Escape');
+            assert.ok(!await menu.isVisible(), `${label}: Escape does not close the account menu`);
           }
           const result = await page.evaluate(() => ({
             theme: document.documentElement.getAttribute('data-bs-theme'),

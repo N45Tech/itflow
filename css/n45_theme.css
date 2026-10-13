@@ -680,6 +680,22 @@ body.dark-mode .bootstrap-datetimepicker-widget table td span.active {
     color: var(--n45-mountain) !important;
 }
 
+/* The account menu follows the workspace, rather than the sidebar palette. */
+.app-header .user-menu .user-header {
+    background: var(--n45-surface-subtle) !important;
+    border-bottom: 1px solid var(--n45-border);
+    color: var(--n45-ink) !important;
+}
+
+.app-header .user-menu .user-header small {
+    color: var(--n45-muted) !important;
+}
+
+.app-header .user-menu .user-footer {
+    background: var(--n45-surface) !important;
+    color: var(--n45-ink);
+}
+
 .n45-profile-density {
     background: var(--n45-surface);
     border-bottom: 1px solid var(--n45-border);
