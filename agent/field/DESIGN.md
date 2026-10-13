@@ -2,21 +2,21 @@
 name: N45 Field Mode
 description: Calm operational clarity for technicians working at a client site.
 colors:
-  action: "#126e61"
-  action-dark: "#7bdfc3"
-  focus: "#087b6b"
-  paper: "#f4f0e8"
-  surface: "#fffdf8"
-  ink: "#0a2423"
-  muted: "#50635d"
-  line: "#c9d6ce"
-  soft: "#dcece5"
-  paper-dark: "#0a2423"
-  surface-dark: "#123431"
-  ink-dark: "#f0f2ea"
-  muted-dark: "#b9d0c5"
-  line-dark: "#385750"
-  soft-dark: "#23473f"
+  action: "#216f63"
+  action-dark: "#6cbaa5"
+  focus: "#18594f"
+  paper: "#e7ebe8"
+  surface: "#f3f4ef"
+  ink: "#25332e"
+  muted: "#58675f"
+  line: "#c9d2cd"
+  soft: "#e0e6e1"
+  paper-dark: "#0d100f"
+  surface-dark: "#171c19"
+  ink-dark: "#dbe2dc"
+  muted-dark: "#a8b6aa"
+  line-dark: "#303a33"
+  soft-dark: "#222a25"
   masthead-support: "#d1eadf"
   danger: "#9b3228"
   danger-dark: "#ffad9f"
@@ -149,13 +149,13 @@ components:
 
 **Creative North Star: "N45 in the field"**
 
-Field Mode carries N45's calm, capable operational identity into work at a client site. Warm paper, dark spruce, clear type, and restrained green actions keep job context legible beside the next useful action. The interface is compact enough for real work, with generous touch controls and ordinary language.
+Field Mode carries N45's calm, capable operational identity into work at a client site. Muted off-white surfaces, near-black dark mode, clear type, and restrained green actions keep job context legible beside the next useful action. The interface is compact enough for real work, with generous touch controls and ordinary language.
 
 This document records the built system within `agent/field/`, from `field.css`, `shell.html`, and the rendered components in `app.mjs` and `workspace.mjs`. It extends the incumbent identity in the root `DESIGN.md` and `PRODUCT.md`; it does not replace guidance for the wider PSA or customer email. The accepted workflow remains in `docs/n45/field-mode.md`. The customer appointment projection keeps its existing portal components.
 
 **Key Characteristics:**
 
-- Warm neutral work surfaces beneath a steady dark spruce masthead.
+- Muted neutral work surfaces beneath a dark masthead; dark mode uses the same charcoal palette as the desktop workspace.
 - Text-led lists and task sections with quiet dividing rules.
 - Large, plainly labeled controls and visible keyboard focus.
 - Tonal emphasis for an active visit, selection, and arrival confirmation.
@@ -172,7 +172,7 @@ The field palette uses N45's paper, ink, and spruce with a darker action teal an
 
 ### Secondary
 
-- **Attention Paper and Brown** (`attention-surface`, `attention-ink`) form a fixed pair for priority and unresolved-issue tags in both themes.
+- **Attention Paper and Brown** (`attention-surface`, `attention-ink`) identify priority and unresolved-issue tags; dark mode uses a subdued amber surface with light amber text.
 - **Error Red** (`danger`, `danger-dark`) identifies explanatory form errors. Text carries the meaning alongside color.
 
 ### Neutral
@@ -186,7 +186,7 @@ The field palette uses N45's paper, ink, and spruce with a darker action teal an
 | Borders and dividers | `line` | `line-dark` |
 | Selection and active-visit fill | `soft` | `soft-dark` |
 
-The masthead stays dark spruce in both themes, using `surface-dark`, `ink-dark`, and `line-dark`, with `masthead-support` for connection text and the Find work link. Theme substitution changes role assignments together; primary button text follows the surface role.
+The masthead stays spruce in light mode and becomes near-black in dark mode, with light text and `masthead-support` for connection text and the Find work link. Theme substitution changes role assignments together; primary button text follows the surface role.
 
 **The State Has Words Rule.** Pair status color with a readable state label, an active navigation state, or an explanatory message.
 
