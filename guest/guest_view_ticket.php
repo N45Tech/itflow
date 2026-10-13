@@ -166,14 +166,14 @@ if ($ticket_row) {
 
         if ($ticket_reply_type == "Client") {
             $ticket_reply_by_display = escapeHtml($row['contact_name']);
-            $user_initials = initials($row['contact_name']);
+
             $user_avatar = $row['contact_photo'];
             $avatar_link = "../uploads/clients/$ticket_reply_by/$user_avatar";
         } else {
             $ticket_reply_by_display = escapeHtml($row['user_name']);
             $user_id = intval($row['user_id']);
             $user_avatar = $row['user_avatar'];
-            $user_initials = initials($row['user_name']);
+
             $avatar_link = "../uploads/users/$user_id/$user_avatar";
         }
         ?>
@@ -189,10 +189,7 @@ if ($ticket_row) {
                             <?php
                         } else {
                             ?>
-                            <span class="fa-stack fa-2x">
-                                    <i class="fa fa-circle fa-stack-2x text-secondary"></i>
-                                    <span class="fa fa-stack-1x text-white"><?= $user_initials ?></span>
-                                </span>
+                            <span class="n45-avatar-placeholder" aria-hidden="true"><i class="fas fa-user"></i></span>
                             <?php
                         }
                         ?>

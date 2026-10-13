@@ -394,7 +394,7 @@ $contact_action_items[] = array(
                     }
                     $contact_pin = escapeHtml($row['contact_pin']);
                     $contact_photo = escapeHtml($row['contact_photo']);
-                    $contact_initials = initials($contact_name);
+
                     $contact_notes = escapeHtml($row['contact_notes']);
                     $contact_primary = intval($row['contact_primary']);
                     $contact_important = intval($row['contact_important']);
@@ -501,10 +501,7 @@ $contact_action_items[] = array(
                                             <img class="img-size-50 rounded-circle" src="<?= "../uploads/clients/$client_id/$contact_photo" ?>">
                                         </span>
                                     <?php } else { ?>
-                                        <span class="fa-stack fa-2x me-3">
-                                            <i class="fa fa-circle fa-stack-2x text-secondary"></i>
-                                            <span class="fa fa-stack-1x text-white"><?= $contact_initials ?></span>
-                                        </span>
+                                        <span class="n45-avatar-placeholder me-3" aria-hidden="true"><i class="fas fa-user"></i></span>
                                     <?php } ?>
 
                                     <div class="flex-grow-1">

@@ -185,7 +185,7 @@ $user_page_actions = $num_rows[0] > 1
                 }
                 $user_role_display = escapeHtml($row['role_name']);
                 $user_archived_at = escapeHtml($row['user_archived_at']);
-                $user_initials = escapeHtml(initials($user_name));
+
 
 
                 if (!isset($last_logins[$user_id])) {
@@ -213,10 +213,7 @@ $user_page_actions = $num_rows[0] > 1
                             <?php if (!empty($user_avatar)) { ?>
                                 <img class="img-size-50 rounded-circle" src="<?= "../uploads/users/$user_id/$user_avatar" ?>" alt="">
                             <?php } else { ?>
-                                <span class="fa-stack fa-2x">
-                                    <i class="fa fa-circle fa-stack-2x text-secondary"></i>
-                                    <span class="fa fa-stack-1x text-white"><?= $user_initials ?></span>
-                                </span>
+                                <span class="n45-avatar-placeholder" aria-hidden="true"><i class="fas fa-user"></i></span>
                                 <br>
                             <?php } ?>
 

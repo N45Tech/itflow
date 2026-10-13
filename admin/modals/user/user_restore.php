@@ -11,7 +11,7 @@ $user_name = str_replace(" (archived)", "", $row['user_name']); //Removed (archi
 $user_name = escapeHtml($user_name);
 $user_email = escapeHtml($row['user_email']);
 $user_avatar = escapeHtml($row['user_avatar']);
-$user_initials = initials($user_name);
+
 $user_role_id = intval($row['user_role_id']);
 
 // Generate the HTML form content using output buffering.
@@ -32,10 +32,7 @@ ob_start();
             <?php if (!empty($user_avatar)) { ?>
                 <img class="img-fluid" src="<?= "../uploads/users/$user_id/$user_avatar" ?>">
             <?php } else { ?>
-                <span class="fa-stack fa-4x">
-                    <i class="fa fa-circle fa-stack-2x text-secondary"></i>
-                    <span class="fa fa-stack-1x text-white"><?= $user_initials ?></span>
-                </span>
+                <span class="n45-avatar-placeholder n45-avatar-placeholder--lg" aria-hidden="true"><i class="fas fa-user"></i></span>
             <?php } ?>
         </center>
 

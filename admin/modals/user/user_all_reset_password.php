@@ -7,7 +7,7 @@ ob_start();
 ?>
 <div class="modal-body">
     <div class="mb-4" style="text-align: center;">
-        <i class="far fas fa-10x fa-skull-crossbones text-danger mb-3 mt-3"></i>
+        <i class="fas fa-10x fa-skull-crossbones text-danger mb-3 mt-3"></i>
         <h2>Incident Response: Agent Password Reset</h2>
         <br>
         <div class="alert alert-danger" role="alert">
