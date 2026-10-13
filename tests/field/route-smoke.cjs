@@ -146,7 +146,7 @@ const cases = [
             assert.equal(await menu.getByRole('button', {name: 'Comfortable', exact: true}).getAttribute('aria-pressed'), 'true');
             assert.ok(await menu.isVisible(), `${label}: spacing controls close the account menu`);
             await menu.getByRole('button', {name: 'Compact', exact: true}).click();
-            await menu.getByRole('link', {name: 'Account', exact: true}).focus();
+            await menu.locator('a[href="/agent/user/user_details.php"]').focus();
             await page.screenshot({path: path.join(shots, `${sample.name}-profile-dropdown.png`)});
             await page.keyboard.press('Escape');
             assert.ok(!await menu.isVisible(), `${label}: Escape does not close the account menu`);
