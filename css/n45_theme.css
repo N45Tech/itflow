@@ -25,7 +25,7 @@
     --n45-surface-subtle: #eaeeea;
     --n45-surface-strong: #e0e6e1;
     --n45-border: #c9d2cd;
-    --n45-border-strong: #a5b5ad;
+    --n45-border-strong: #7f8e85;
     --n45-ink: #25332e;
     --n45-muted: #58675f;
     --n45-muted-strong: #43534b;
@@ -84,7 +84,7 @@ body.dark-mode {
     --n45-surface-subtle: #111613;
     --n45-surface-strong: #222a25;
     --n45-border: #303a33;
-    --n45-border-strong: #536157;
+    --n45-border-strong: #647468;
     --n45-ink: #dbe2dc;
     --n45-muted: #a8b6aa;
     --n45-muted-strong: #c3cec5;
@@ -406,6 +406,11 @@ body.dark-mode .app-header .nav-link:focus {
     color: var(--n45-muted) !important;
 }
 
+.text-success { color: var(--n45-success) !important; }
+.text-warning { color: var(--n45-warning) !important; }
+.text-danger { color: var(--n45-danger) !important; }
+.text-info { color: var(--n45-info) !important; }
+
 .btn {
     --bs-btn-border-radius: var(--n45-radius-sm);
     --bs-btn-font-weight: 600;
@@ -482,7 +487,14 @@ button.itflow-action-pending {
 
 .btn-default,
 .btn-outline-dark,
-.btn-secondary {
+.btn-outline-secondary,
+.btn-light,
+.btn-secondary,
+body.dark-mode .btn-default,
+body.dark-mode .btn-outline-dark,
+body.dark-mode .btn-outline-secondary,
+body.dark-mode .btn-light,
+body.dark-mode .btn-secondary {
     --bs-btn-bg: var(--n45-surface);
     --bs-btn-color: var(--n45-muted-strong);
     --bs-btn-border-color: var(--n45-border-strong);
@@ -492,6 +504,24 @@ button.itflow-action-pending {
     --bs-btn-active-bg: var(--n45-surface-strong);
     --bs-btn-active-color: var(--n45-ink);
     --bs-btn-active-border-color: var(--n45-border-strong);
+    background: var(--n45-surface);
+    border-color: var(--n45-border-strong);
+    color: var(--n45-muted-strong);
+}
+
+.btn-default:hover,
+.btn-outline-dark:hover,
+.btn-outline-secondary:hover,
+.btn-light:hover,
+.btn-secondary:hover,
+body.dark-mode .btn-default:hover,
+body.dark-mode .btn-outline-dark:hover,
+body.dark-mode .btn-outline-secondary:hover,
+body.dark-mode .btn-light:hover,
+body.dark-mode .btn-secondary:hover {
+    background: var(--n45-surface-strong);
+    border-color: var(--n45-border-strong);
+    color: var(--n45-ink);
 }
 
 /* Visibility is one deliberate choice; each label keeps its full touch target. */
