@@ -1707,14 +1707,14 @@ if (isset($_GET['ticket_id'])) {
 
                     if ($ticket_reply_type == "Client") {
                         $ticket_reply_by_display = escapeHtml($reply_row['contact_name']);
-                        $user_initials = initials($reply_row['contact_name']);
+
                         $user_avatar = escapeHtml($reply_row['contact_photo']);
                         $avatar_link = "../uploads/clients/$client_id/$user_avatar";
                     } else {
                         $ticket_reply_by_display = escapeHtml($reply_row['user_name']);
                         $user_id = intval($reply_row['user_id']);
                         $user_avatar = escapeHtml($reply_row['user_avatar']);
-                        $user_initials = initials($reply_row['user_name']);
+
                         $avatar_link = "../uploads/users/$user_id/$user_avatar";
                         $ticket_reply_time_worked = $reply_row['ticket_reply_time_worked'];
                     }
@@ -1746,10 +1746,7 @@ if (isset($_GET['ticket_id'])) {
                                     <?php if (!empty($user_avatar)) { ?>
                                         <img src="<?= $avatar_link ?>" alt="" class="img-size-32 me-2 rounded-circle">
                                     <?php } else { ?>
-                                        <span class="fa-stack me-2">
-                                            <i class="fa fa-circle fa-stack-2x text-secondary"></i>
-                                            <span class="fa fa-stack-1x text-white"><?= $user_initials ?></span>
-                                        </span>
+                                        <span class="n45-avatar-placeholder n45-avatar-placeholder--sm me-2" aria-hidden="true"><i class="fas fa-user"></i></span>
                                     <?php } ?>
 
                                     <div>

@@ -201,7 +201,7 @@ $documentation_current_count = intval($status_counts['Current'] ?? 0);
 
         <section class="mb-0">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <span><i class="fas fa-list-check mr-2 text-muted"></i>Document-level details</span>
+                <span><i class="fas fa-tasks mr-2 text-muted"></i>Document-level details</span>
                 <span class="small text-muted">Open only when a specific record needs attention</span>
             </div>
             <div>

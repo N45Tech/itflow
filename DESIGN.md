@@ -4,18 +4,18 @@ description: A quietly modern, dense operations workspace with a calm customer-f
 colors:
   mountain-ink: "#0A2423"
   deep-spruce: "#123431"
-  action-teal: "#167F70"
+  action-teal: "#216F63"
   trail-teal: "#49C8B1"
   sunrise: "#F2A65A"
   river-mist: "#DDE8E2"
   trail-paper: "#F4F0E8"
   ridge-stone: "#62736E"
-  canvas: "#EEF2F1"
-  surface: "#FFFFFF"
-  surface-subtle: "#F6F8F7"
-  border: "#D4DED9"
-  ink: "#142421"
-  muted: "#5B6D68"
+  canvas: "#E7EBE8"
+  surface: "#F3F4EF"
+  surface-subtle: "#EAEEEA"
+  border: "#C9D2CD"
+  ink: "#25332E"
+  muted: "#58675F"
   success: "#157347"
   warning: "#8A5D00"
   danger: "#B42318"
@@ -123,6 +123,10 @@ The palette pairs forest neutrals with one dependable action teal; Trail Teal an
 - **Border:** Structure between dense records without heavy dividers.
 - **Ink / Muted:** Primary and supporting text.
 
+Light mode uses muted off-white surfaces over a gray-green canvas to reduce glare. Dark mode uses a near-black canvas (`#0D100F`), charcoal surfaces (`#171C19`), subdued off-white text and restrained teal actions (`#6CBAA5`). Apply the shared tokens to Bootstrap utilities, raised panels, menus and inputs so the whole workspace follows the selected mode.
+
+Missing profile pictures use the bundled solid person icon inside a neutral circular avatar, with small, list and large sizes. Names remain ordinary text beside the decorative icon; initials do not use the icon font.
+
 **The One Action Rule.** Use Action Teal for interaction; use success, warning, and danger only to communicate real state.
 
 **The Contrast Pair Rule.** Filled teal states use the paired on-action foreground, including dark mode; never assume white is readable on every teal.
@@ -169,7 +173,7 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 
 - **Shape:** Compact curved controls using the small radius.
 - **Primary:** Action Teal fill with a contrast-safe foreground; one dominant action per region.
-- **Secondary:** White or quiet surface fill with a visible border and muted-strong text.
+- **Secondary:** Quiet off-white or dark surface fill with a visible border and muted-strong text.
 - **Hover / Focus:** Short color transitions and a visible three-pixel teal focus ring; reduced-motion preferences remove meaningful transition duration.
 - **Pending:** Preserve the control's hierarchy, pair a compact spinner with action-specific copy, expose `aria-busy`, and prevent repeated activation until navigation or recovery.
 
@@ -209,7 +213,7 @@ Controls use gently curved small corners, standard cards use a medium radius, an
 
 ### Inputs / Fields
 
-- **Style:** White surface, strong neutral border, compact height, and small radius.
+- **Style:** Theme surface, strong neutral border, compact height, and small radius.
 - **Focus:** Action Teal border plus a soft focus ring.
 - **Labels:** Strong muted text close to the associated control; placeholder text remains secondary.
 

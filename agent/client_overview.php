@@ -250,7 +250,7 @@ $sql_asset_retired = mysqli_query(
                         $contact_mobile = escapeHtml(formatPhoneNumber($row['contact_mobile'], $contact_mobile_country_code));
                         $contact_photo = escapeHtml($row['contact_photo']);
                         $contact_primary = intval($row['contact_primary']);
-                        $contact_initials = initials($contact_name);
+
                         if ($contact_primary == 1) {
                             $contact_primary_display = "<small class='text-success'>Primary Contact</small>";
                         } else {
@@ -269,10 +269,7 @@ $sql_asset_retired = mysqli_query(
                                                 <img class="img-size-50 rounded-circle" src="<?= "../uploads/clients/$client_id/$contact_photo" ?>">
                                             </span>
                                         <?php } else { ?>
-                                            <span class="fa-stack fa-2x me-2">
-                                                <i class="fa fa-circle fa-stack-2x text-secondary"></i>
-                                                <span class="fa fa-stack-1x text-white"><?= $contact_initials ?></span>
-                                            </span>
+                                            <span class="n45-avatar-placeholder me-2" aria-hidden="true"><i class="fas fa-user"></i></span>
                                         <?php } ?>
 
                                         <div class="flex-grow-1">
