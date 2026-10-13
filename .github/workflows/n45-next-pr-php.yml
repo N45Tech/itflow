@@ -94,6 +94,7 @@ jobs:
         run: |
           bash tests/n45_release_database_test.sh
           bash tests/n45_lock_order_database_test.sh
+          N45_FIELD_SCREENSHOTS="$GITHUB_WORKSPACE/.impeccable/review/route-smoke" node tests/field/browser.cjs
 
       - name: Save synthetic route screenshots
         if: always()

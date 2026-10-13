@@ -35,7 +35,8 @@ const agentAdditionalRoutes = [
     'tickets', 'trips', 'vendors',
   ].map(name => `/agent/${name}.php?client_id=${fixture.client}`),
 ];
-const adminRoutes = ['/admin/users.php', '/admin/audit_logs.php', '/admin/api_keys.php'];
+const adminRoutes = ['/admin/users.php', '/admin/audit_logs.php', '/admin/api_keys.php',
+  '/admin/settings_default.php', '/admin/settings_theme.php', '/admin/custom_links.php'];
 const portalRoutes = ['/client/index.php', '/client/tickets.php',
   '/client/documents.php', '/client/invoices.php', '/client/requests.php',
   '/client/reviews.php', '/client/assets.php', '/client/domains.php',
@@ -49,6 +50,8 @@ const portalRoutes = ['/client/index.php', '/client/tickets.php',
 const cases = [
   {name: 'agent-light-desktop', session: fixture.sessions[0], width: 1440, routes: agentRoutes.concat(agentAdditionalRoutes, adminRoutes), theme: 'light', capture: true},
   {name: 'agent-dark-tablet', session: fixture.sessions[2], width: 768, routes: agentRoutes.concat(adminRoutes), theme: 'dark'},
+  {name: 'agent-dark-desktop', session: fixture.sessions[2], width: 1440,
+    routes: adminRoutes.concat('/agent/tickets.php'), theme: 'dark', capture: true},
   {name: 'agent-dark-narrow', session: fixture.sessions[2], width: 393, routes: agentRoutes.concat(agentAdditionalRoutes, adminRoutes), theme: 'dark', capture: true},
   {name: 'portal-desktop', session: fixture.portal_session, width: 1440, routes: portalRoutes, capture: true},
   {name: 'portal-narrow', session: fixture.portal_session, width: 393, routes: portalRoutes, capture: true},
@@ -85,6 +88,18 @@ const cases = [
           const response = await page.goto(fixture.base + route, {waitUntil: 'load'});
           assert.equal(response?.status(), 200, `${label}: HTTP ${response?.status()}`);
           assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, route, `${label}: unexpected redirect`);
+          await page.evaluate(() => document.fonts.ready);
+          const missingIcons = await page.locator('i.fa, i.fas, i.far, i.fab').evaluateAll(elements =>
+            elements.filter(element => element.getClientRects().length &&
+              ['none', 'normal', '""', "''"].includes(getComputedStyle(element, '::before').content))
+              .map(element => element.className));
+          assert.deepEqual(missingIcons, [], `${label}: icon has no bundled glyph`);
+          if (route === '/admin/users.php') {
+            const avatars = page.locator('tbody .n45-avatar-placeholder');
+            assert.ok(await avatars.count() > 0, `${label}: missing-profile-picture fixture is absent`);
+            assert.deepEqual(await avatars.evaluateAll(elements => elements.map(element => element.textContent.trim())),
+              Array(await avatars.count()).fill(''), `${label}: avatar fallback renders initials instead of an icon`);
+          }
           const result = await page.evaluate(() => ({
             theme: document.documentElement.getAttribute('data-bs-theme'),
             title: document.title,

@@ -35,7 +35,7 @@ $contact_mobile = escapeHtml(formatPhoneNumber($row['contact_mobile'], $contact_
 $contact_email = escapeHtml($row['contact_email']);
 $contact_photo = escapeHtml($row['contact_photo']);
 $contact_pin = escapeHtml($row['contact_pin']);
-$contact_initials = initials($contact_name);
+
 $contact_notes = escapeHtml($row['contact_notes']);
 $contact_primary = intval($row['contact_primary']);
 $contact_important = intval($row['contact_important']);
@@ -218,10 +218,7 @@ ob_start();
             <?php if ($contact_photo) { ?>
                 <img class="img-thumbnail rounded-circle img-size-50 me-1" src="<?= "../uploads/clients/$client_id/$contact_photo" ?>">
             <?php } else { ?>
-                <span class="fa-stack">
-                    <i class="fa fa-circle fa-stack-2x text-secondary"></i>
-                    <span class="fa fa-stack-1x text-white"><?= $contact_initials ?></span>
-                </span>
+                <span class="n45-avatar-placeholder n45-avatar-placeholder--sm" aria-hidden="true"><i class="fas fa-user"></i></span>
             <?php } ?>
 
             <div class="flex-grow-1 ms-2">

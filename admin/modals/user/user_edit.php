@@ -18,7 +18,7 @@ $user_config_force_mfa = intval($row['user_config_force_mfa']);
 $user_role_id = intval($row['user_role_id']);
 $user_auth_method = $row['user_auth_method'];
 $user_azure_oid = $row['user_azure_oid'];
-$user_initials = escapeHtml(initials($user_name));
+
 
 // Get User Client Access Permissions (allow + deny)
 $user_client_access_sql = mysqli_query($mysqli,"SELECT client_id, permission_type FROM user_client_permissions WHERE user_id = $user_id");
@@ -65,10 +65,7 @@ ob_start();
                     <?php if (!empty($user_avatar)) { ?>
                         <img class="img-fluid" src="<?= "../uploads/users/$user_id/$user_avatar" ?>">
                     <?php } else { ?>
-                        <span class="fa-stack fa-4x">
-                            <i class="fa fa-circle fa-stack-2x text-secondary"></i>
-                            <span class="fa fa-stack-1x text-white"><?= $user_initials ?></span>
-                        </span>
+                        <span class="n45-avatar-placeholder n45-avatar-placeholder--lg" aria-hidden="true"><i class="fas fa-user"></i></span>
                     <?php } ?>
                 </center>
 

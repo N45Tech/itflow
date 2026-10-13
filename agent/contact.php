@@ -51,7 +51,7 @@ if (isset($_GET['contact_id'])) {
     $contact_email = escapeHtml($row['contact_email']);
     $contact_photo = escapeHtml($row['contact_photo']);
     $contact_pin = escapeHtml($row['contact_pin']);
-    $contact_initials = initials($contact_name);
+
     $contact_notes = escapeHtml($row['contact_notes']);
     $contact_primary = intval($row['contact_primary']);
     $contact_important = intval($row['contact_important']);
@@ -224,10 +224,7 @@ if (isset($_GET['contact_id'])) {
                         <?php if ($contact_photo) { ?>
                             <img class="img-fluid rounded-circle p-3" alt="contact_photo" src="<?= "../uploads/clients/$client_id/$contact_photo" ?>">
                         <?php } else { ?>
-                            <span class="fa-stack fa-4x">
-                                <i class="fa fa-circle fa-stack-2x text-secondary"></i>
-                                <span class="fa fa-stack-1x text-white"><?= $contact_initials ?></span>
-                            </span>
+                            <span class="n45-avatar-placeholder n45-avatar-placeholder--lg" aria-hidden="true"><i class="fas fa-user"></i></span>
                         <?php } ?>
                     </div>
                     <?php

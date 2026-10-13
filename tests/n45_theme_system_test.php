@@ -99,11 +99,31 @@ $assertContains('data-bs-auto-close="outside"', $top_nav, 'The account menu clos
 $assertContains("var STORAGE_KEY = 'n45-sidebar-density';", $density_script, 'Sidebar density does not use a stable browser preference key');
 $assertContains("var DEFAULT_DENSITY = 'compact';", $density_script, 'Compact sidebar density is not the scripted default');
 $assertContains("document.documentElement.setAttribute('data-n45-sidebar-density', density);", $density_script, 'Sidebar density is not applied to the document root');
-if ($contrastRatio('#49c8b1', '#0a2423') < 4.5) {
-    $failures[] = 'The dark-mode active navigation color pair does not meet WCAG AA contrast';
-}
-if ($contrastRatio('#ffffff', '#167f70') < 4.5) {
-    $failures[] = 'The light-mode primary action color pair does not meet WCAG AA contrast';
+preg_match('/:root\s*\{([^}]+)\}/', $theme, $light_match);
+preg_match('/body\.dark-mode\s*\{([^}]+)\}/', $theme, $dark_match);
+foreach (['light' => $light_match[1] ?? '', 'dark' => $dark_match[1] ?? ''] as $mode => $tokens) {
+    preg_match_all('/(--n45-[a-z-]+):\s*(#[a-f0-9]{6}|var\(--n45-[a-z-]+\))\s*;/', $tokens, $matches, PREG_SET_ORDER);
+    $palette = [];
+    foreach ($matches as $match) {
+        $palette[$match[1]] = $match[2];
+    }
+    $resolve = static function (string $name) use (&$palette): string {
+        $value = $palette['--n45-' . $name] ?? '';
+        if (preg_match('/^var\((--n45-[a-z-]+)\)$/', $value, $alias)) {
+            $value = $palette[$alias[1]] ?? '';
+        }
+        return $value;
+    };
+    foreach ([['ink', 'surface'], ['muted', 'surface'], ['muted', 'surface-subtle'],
+        ['muted-strong', 'surface-strong'], ['action', 'surface'], ['action-hover', 'surface'],
+        ['on-action', 'action'], ['on-action', 'action-hover']] as [$foreground, $background]) {
+        $fg = $resolve($foreground);
+        $bg = $resolve($background);
+        if (!preg_match('/^#[a-f0-9]{6}$/', $fg) || !preg_match('/^#[a-f0-9]{6}$/', $bg)
+            || $contrastRatio($fg, $bg) < 4.5) {
+            $failures[] = "$mode $foreground on $background does not meet WCAG AA contrast";
+        }
+    }
 }
 
 $assertContains('class="card n45-workspace mb-3"', $tickets, 'Tickets do not use the shared dense workspace pattern');
