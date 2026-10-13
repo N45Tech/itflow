@@ -1,5 +1,5 @@
 <!-- Navbar -->
-<nav class="app-header navbar navbar-expand d-print-none" data-bs-theme="dark">
+<nav class="app-header navbar navbar-expand d-print-none">
 
     <!-- Left navbar links -->
     <ul class="navbar-nav">
@@ -83,7 +83,7 @@
             </a>
             <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end">
                 <!-- User image -->
-                <li class="user-header bg-dark">
+                <li class="user-header">
                     <?php if (empty($session_avatar)) { ?>
                     <i class="fas fa-user-circle fa-6x"></i>
                     <?php }else{ ?>
@@ -103,7 +103,7 @@
                     </div>
                 </li>
                 <!-- Menu Footer-->
-                <li class="user-footer bg-light">
+                <li class="user-footer">
                     <?php if ($session_is_admin) { ?>
                         <a href="/admin" class="btn btn-default w-100 btn-flat mb-2"><i class="fas fa-user-shield me-2"></i>Administration</a>
                     <?php } ?>
